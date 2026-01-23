@@ -590,7 +590,9 @@ app.post('/api/ai-chat', async (req, res) => {
 module.exports = app;
 
 // Start server only when running locally (not on Vercel)
-if (process.env.VERCEL !== '1') {
+// Check for Vercel environment variables
+const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV || process.env.VERCEL_URL;
+if (!isVercel) {
     app.listen(PORT, () => {
         console.log(`Server running on http://localhost:${PORT}`);
         console.log(`Make sure to set OPENAI_API_KEY in .env file`);
