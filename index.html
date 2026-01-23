@@ -1,0 +1,2833 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- 
+        This is the HEAD section - it contains metadata about the page
+        and styles (CSS) that make the page look nice
+    -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quotation Generator</title>
+    
+    <style>
+        /* 
+            ============================================
+            CSS STYLES - This makes the page look nice
+            ============================================
+            CSS controls colors, fonts, spacing, and layout
+        */
+        
+        /* Reset default browser styles */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        /* Brand color */
+        :root {
+            --brand-color: #3b3f79;
+        }
+
+        /* Body styles - the main container */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f5f5;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        
+        /* Container - wraps all content */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        /* Page title */
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        
+        /* Section titles */
+        h2 {
+            color: #555;
+            margin-top: 30px;
+            margin-bottom: 15px;
+            border-bottom: 2px solid var(--brand-color);
+            padding-bottom: 10px;
+        }
+        
+        /* Input section styling */
+        .input-section {
+            margin-bottom: 30px;
+        }
+        
+        /* Labels for form fields */
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        /* Text area for email content */
+        textarea {
+            width: 100%;
+            min-height: 150px;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            font-family: inherit;
+            resize: vertical; /* Allow vertical resizing only */
+        }
+        
+        /* File input styling */
+        input[type="file"] {
+            width: 100%;
+            padding: 10px;
+            border: 2px dashed #4CAF50;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+            cursor: pointer;
+        }
+        
+        /* Generate button */
+        .generate-btn {
+            background-color: #4CAF50;
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 20px;
+            transition: background-color 0.3s;
+        }
+        
+        /* Button hover effect */
+        .generate-btn:hover {
+            background-color: #45a049;
+        }
+        
+        /* Button when clicked */
+        .generate-btn:active {
+            background-color: #3d8b40;
+        }
+        
+        /* Approve button */
+        .approve-btn {
+            background-color: #2196F3;
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 20px;
+            transition: background-color 0.3s;
+        }
+        
+        /* Approve button hover effect */
+        .approve-btn:hover {
+            background-color: #1976D2;
+        }
+        
+        /* Approve button when clicked */
+        .approve-btn:active {
+            background-color: #1565C0;
+        }
+        
+        /* Upload button */
+        .upload-btn {
+            background-color: #9C27B0;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        .upload-btn:hover {
+            background-color: #7B1FA2;
+        }
+        
+        .upload-btn:active {
+            background-color: #6A1B9A;
+        }
+        
+        /* Save button */
+        .save-btn {
+            background-color: #FF9800;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 15px;
+            transition: background-color 0.3s;
+        }
+        
+        /* Save button hover effect */
+        .save-btn:hover {
+            background-color: #F57C00;
+        }
+        
+        /* Save button when clicked */
+        .save-btn:active {
+            background-color: #E65100;
+        }
+        
+        /* Saved quotation styling */
+        .quotation-saved {
+            border-color: #FF9800 !important;
+            background-color: #FFF3E0 !important;
+        }
+        
+        .quotation-saved h3 {
+            color: #FF9800 !important;
+        }
+        
+        .saved-badge {
+            display: inline-block;
+            background-color: #2e7d32;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 10px;
+            text-transform: uppercase;
+        }
+        
+        /* Folder-like styling for saved quotations */
+        .quotation-folder {
+            background-color: #f5f5f5;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .quotation-folder:hover {
+            background-color: #e8e8e8;
+            border-color: #FF9800;
+        }
+        
+        .quotation-folder-header {
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .quotation-folder-header .folder-icon {
+            margin-right: 10px;
+            font-size: 18px;
+        }
+        
+        .quotation-folder-content {
+            display: none;
+            padding: 20px;
+            background-color: white;
+            border-top: 2px solid #ddd;
+        }
+        
+        .quotation-folder-content.show {
+            display: block;
+        }
+        
+        .folder-toggle-icon {
+            font-size: 20px;
+            transition: transform 0.3s;
+        }
+        
+        .folder-toggle-icon.open {
+            transform: rotate(90deg);
+        }
+        
+        /* Quotation display section - always visible */
+        .quotation-section {
+            display: block;
+            margin-top: 40px;
+            padding: 20px;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+        }
+
+        .config-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .config-toggle-btn {
+            background-color: var(--brand-color);
+            color: #fff;
+            border: none;
+            padding: 8px 14px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .config-toggle-btn:hover {
+            background-color: #2f3268;
+        }
+        
+        /* Quotation header layout */
+        .quotation-header {
+            background-color: #ffffff;
+            color: #333;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 30px;
+        }
+
+        .quote-header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--brand-color);
+            padding-bottom: 10px;
+            margin-bottom: 12px;
+        }
+
+        .logo-placeholder {
+            width: 80px;
+            height: 80px;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: var(--brand-color);
+            overflow: hidden;
+        }
+
+        .logo-placeholder img {
+            max-width: 100%;
+            max-height: 100%;
+            display: block;
+        }
+
+        .company-info {
+            flex: 1;
+            margin-left: 16px;
+        }
+
+        .company-info h3 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .company-info p {
+            margin: 2px 0;
+            font-size: 12px;
+        }
+
+        .quote-title {
+            font-size: 24px;
+            font-weight: bold;
+            color: var(--brand-color);
+        }
+
+        .quote-meta {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            font-size: 12px;
+            margin-bottom: 12px;
+        }
+
+        .quote-meta .meta-row {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .bill-ship {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            border-top: 1px solid #ddd;
+            padding-top: 10px;
+            font-size: 12px;
+        }
+
+        .terms-box {
+            margin-top: 16px;
+            padding: 0;
+            font-size: 14px;
+            background: transparent;
+        }
+
+        .terms-box h4 {
+            margin: 0 0 12px 0;
+            font-size: 15px;
+        }
+
+        .terms-box ol {
+            margin: 0;
+            padding-left: 16px;
+        }
+
+        .terms-divider {
+            margin-top: 22px;
+            border: 0;
+            border-top: 1px solid #ddd;
+        }
+        
+        /* Table styling */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 30px;
+            background-color: white;
+        }
+        
+        /* Table header */
+        th {
+            background-color: var(--brand-color);
+            color: white;
+            padding: 10px;
+            text-align: left;
+            font-weight: bold;
+            font-size: 12px;
+            border: 1px solid white;
+        }
+        
+        /* Table cells */
+        td {
+            padding: 8px;
+            border: 1px solid white;
+            font-size: 12px;
+        }
+        
+        /* Alternate row colors for readability */
+        tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+        
+        /* Editable input styling */
+        input[type="text"], input[type="number"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            background-color: white;
+        }
+        
+        /* Pipe type header row styling */
+        .pipe-type-header {
+            background-color: var(--brand-color);
+            color: white;
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        .pipe-type-header td {
+            padding: 15px 12px;
+            border: 1px solid white;
+            border-bottom: 2px solid #333;
+            background-color: var(--brand-color);
+        }
+
+        .pipe-type-header input {
+            width: 100%;
+            border: none;
+            background: transparent;
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        
+        /* Subtotal row styling */
+        .subtotal-row {
+            background-color: #e8f5e9;
+            font-weight: bold;
+        }
+        
+        .subtotal-row td {
+            padding: 12px;
+            border: 1px solid white;
+            border-top: 2px solid var(--brand-color);
+            border-bottom: 2px solid var(--brand-color);
+        }
+        
+        /* Grand total section */
+        .grand-total {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: var(--brand-color);
+            color: white;
+            text-align: right;
+            font-size: 20px;
+            font-weight: bold;
+            border-radius: 4px;
+        }
+        
+        /* Info message */
+        .info-message {
+            background-color: #e7f3ff;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+        
+        /* Error message */
+        .error-message {
+            background-color: #ffebee;
+            border-left: 4px solid #f44336;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 4px;
+            color: #c62828;
+            display: none;
+        }
+        
+        .error-message.show {
+            display: block;
+        }
+        
+        /* Header editable input styling */
+        .header-editable {
+            font-family: inherit;
+            font-size: inherit;
+        }
+        
+        .header-editable::placeholder {
+            color: rgba(255, 255, 255, 0.7);
+        }
+        
+        /* Approved quotation item styling */
+        .approved-quotation-item {
+            margin-bottom: 40px;
+            padding: 20px;
+            background-color: white;
+            border: 2px solid var(--brand-color);
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .approved-quotation-item:last-child {
+            margin-bottom: 0;
+        }
+        
+        .approved-quotation-item h3 {
+            color: var(--brand-color);
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--brand-color);
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body>
+    <!-- 
+        ============================================
+        HTML BODY - This is what users see on screen
+        ============================================
+    -->
+    
+    <div class="container">
+        <!-- Main title -->
+        <h1>📋 Quotation Generator</h1>
+        
+        <!-- Info message explaining the app -->
+        <div class="info-message">
+            <strong>How to use:</strong> Upload rate file and instructions first, then paste email content and/or upload a file, then click "Generate Quotation".
+        </div>
+        
+        <!-- Configuration Section: Upload rate file and instructions -->
+        <div class="input-section" id="configSection">
+            <div class="config-header">
+                <h2 style="margin: 0;">Configuration</h2>
+                <button class="config-toggle-btn" type="button" onclick="toggleConfigSection()">Show</button>
+            </div>
+            
+            <div id="configContent" style="display: none; margin-top: 16px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+                    <!-- Rate File Upload (Multiple) -->
+                    <div>
+                        <label for="rateFileUpload">Upload Rate Files (Excel or PDF) - You can select multiple:</label>
+                        <input type="file" id="rateFileUpload" accept=".xlsx,.xls,.pdf" multiple style="margin-top: 8px;">
+                        <button type="button" class="upload-btn" onclick="uploadRateFile()" style="margin-top: 10px; width: 100%;">
+                            📤 Upload Rate Files
+                        </button>
+                        <p id="rateFileStatus" style="margin-top: 8px; font-size: 12px; color: #666;"></p>
+                        <div id="uploadStatusBanner" style="display:none; margin-top:10px; padding:10px; border-radius:4px; font-size:14px;"></div>
+                    </div>
+                    
+                    <!-- Instructions Text Input -->
+                    <div>
+                        <label for="instructionsText">AI Instructions (paste your instructions here):</label>
+                        <textarea id="instructionsText" placeholder="Paste your AI instructions here..." style="width: 100%; min-height: 100px; padding: 8px; margin-top: 8px; border: 2px solid #ddd; border-radius: 4px; font-family: inherit;"></textarea>
+                        <button class="upload-btn" onclick="saveInstructions()" style="margin-top: 10px; width: 100%;">
+                            💾 Save Instructions
+                        </button>
+                        <p id="instructionsStatus" style="margin-top: 8px; font-size: 12px; color: #666;"></p>
+                    </div>
+                </div>
+                
+                <!-- Uploaded Files Management Section -->
+                <div class="input-section" id="filesManagementSection" style="margin-top: 30px;">
+                    <h2>Uploaded Rate Files</h2>
+                    <div id="uploadedFilesList">
+                        <p style="text-align: center; color: #999; padding: 20px;">No files uploaded yet.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Input area: Where staff enters data (no heading) -->
+        <div class="input-section" id="creationSection">
+            <!-- Email content input -->
+            <label for="emailContent">Email Content (paste here):</label>
+            <textarea 
+                id="emailContent" 
+                placeholder="Paste email content here... Example: Customer: ABC Company, Project: Office Renovation, Need 50 pipes of 2 inch diameter..."
+            ></textarea>
+            
+            <!-- File upload input -->
+            <label for="fileUpload" style="margin-top: 20px;">Or Upload File (PDF/Word/Text):</label>
+            <input 
+                type="file" 
+                id="fileUpload" 
+                accept=".pdf,.doc,.docx,.txt"
+            >
+            
+            <!-- Generate button -->
+            <button class="generate-btn" onclick="generateQuotation()">
+                ✨ Generate Quotation
+            </button>
+        </div>
+        
+        <!-- Error message area (hidden by default) -->
+        <div id="errorMessage" class="error-message"></div>
+        
+        <!-- Creation: Quotation Display Section (always visible) -->
+        <div id="quotationSection" class="quotation-section">
+            <h2>Creation</h2>
+            <p id="noCreationQuotation" style="text-align: center; color: #999; padding: 20px;">
+                Generate a quotation to see it here.
+            </p>
+            
+            <!-- Quotation Header (hidden initially) -->
+            <div class="quotation-header" id="creationQuotationHeader" style="display: none;">
+                <div class="quote-header-top">
+                    <div style="display:flex; align-items:center;">
+                        <div class="logo-placeholder">
+                            <span id="logoText" style="display: block;">LOGO</span>
+                            <img id="logoImg" src="/logo.png" alt="Logo" style="display: none;">
+                        </div>
+                        <div class="company-info">
+                            <h3>DSC PIPES AND TUBES PVT LTD</h3>
+                            <p>REGD OFFICE: 7C, 7TH FLOOR, DOSHI TOWERS, NO:156</p>
+                            <p>P.H ROAD, KILAPUK, CHENNAI - 600 010</p>
+                            <p>EMAIL ID: info@dscpipes.com</p>
+                        </div>
+                    </div>
+                    <div class="quote-title">QUOTATION</div>
+                </div>
+
+                <div class="quote-meta">
+                    <div>
+                        <div class="meta-row"><span>CRM REF NO</span><input type="text" id="crmRefNo" class="header-editable" style="width: 140px;"></div>
+                        <div class="meta-row"><span>QUOTATION DATE</span><input type="text" id="quotationDate" class="header-editable" style="width: 140px;"></div>
+                        <div class="meta-row"><span>QUOTATION NO</span><input type="text" id="quotationNo" class="header-editable" style="width: 140px;"></div>
+                    </div>
+                    <div>
+                        <div class="meta-row"><span>PREPARED BY</span><input type="text" id="preparedBy" class="header-editable" style="width: 140px;"></div>
+                        <div class="meta-row"><span>CHECKED BY</span><input type="text" id="checkedBy" class="header-editable" style="width: 140px;"></div>
+                        <div class="meta-row"><span>KIND ATTN</span><input type="text" id="kindAttn" class="header-editable" style="width: 140px;"></div>
+                        <div class="meta-row"><span>CONTACT NUMBER</span><input type="text" id="mobileNumber" class="header-editable" style="width: 140px;"></div>
+                    </div>
+                </div>
+
+                <div class="bill-ship">
+                    <div><strong>Bill To</strong><br><input type="text" id="billTo" class="header-editable" style="width: 100%;"></div>
+                    <div><strong>Ship To</strong><br><input type="text" id="shipTo" class="header-editable" style="width: 100%;"></div>
+                </div>
+            </div>
+            
+            <!-- Quotation Table (hidden initially) -->
+            <table id="quotationTable" style="display: none;">
+                <thead>
+                    <tr>
+                        <th>S. NO</th>
+                        <th>ITEM & DESCRIPTION</th>
+                        <th>QTY PER MTRS</th>
+                        <th class="col-base-rate">BASE RATE</th>
+                        <th class="col-margin">MARGIN %</th>
+                        <th>RATE PER MTRS</th>
+                        <th>AMOUNT</th>
+                    </tr>
+                </thead>
+                <tbody id="quotationTableBody">
+                    <!-- Table rows will be inserted here by JavaScript -->
+                </tbody>
+            </table>
+            
+            <!-- Grand Total (hidden initially) -->
+            <div class="grand-total" id="creationGrandTotal" style="display: none;">
+                <span>Total: ₹<span id="grandTotal">0.00</span></span>
+            </div>
+
+            <hr class="terms-divider" id="termsDivider" style="display: none;">
+            <!-- Terms and Conditions -->
+            <div class="terms-box" id="termsBox" style="display: none;">
+                <h4>TERMS AND CONDITIONS</h4>
+                <textarea id="termsText" style="width:100%; min-height:160px; padding:6px 0; border:none; border-radius:0; font-family: inherit; font-size: 14px; background: transparent; outline: none;">
+1. GST: exclusive and rate of GST is 18% or 9% + 9%
+2. TCS: extra
+3. Delivery period: will be confirmed at the time of finalisation of order.
+4. Inspection: (a) Test certificates will be provided & inspection is mandatory before despatch. (b) No claim will be entertained once material is delivered. (c) Nature of inspection will be visual and dimensional if req (only for seamless) one sample per (H.NO / B.NO) per size can be provided. (d) Cutting charges and testing charges will be extra. Any other specific condition by you or your client / TPI is not acceptable to us
+5. Payment: immediate / L/C
+6. Special condition: any increase in prices by principle before despatch will be applicable to you
+7. Pipe length: will be either 4 to 7 mtrs (SRL) or 9 to 12.5 mtrs (DRL)
+8. Price basis: ex-godown
+9. Freight charge: extra
+10. Make: (a) For ERW/GI: Jindal, Surya Roshini, APL Apollo/Tata/any other ISI make (b) For seamless: MSL/JSL/ISMT/Importer/Rashni/MKK
+11. Price validity: 1 day from quotation date
+12. Imp condition: (1) After issuing P.O, payment or PDC to be released within 3 days & inspection has to be carried out within next 3 days, otherwise we are not responsible for shortage of material. (2) If any size is not available we may quote near by possible specification or size
+13. Pipe end: for ERW / seamless - plain end or bevelled end; for galvanised: SWS (thread end / screwed end) or plain end
+                </textarea>
+            </div>
+            
+            <!-- Approve Button (hidden initially) -->
+            <button class="approve-btn" id="creationApproveBtn" onclick="approveQuotation()" style="display: none;">
+                ✅ Create Quotation
+            </button>
+        </div>
+        
+        <!-- Approval Section (shows all approved quotations) -->
+        <div id="approvalSection" class="quotation-section">
+            <h2>Approval</h2>
+            <div id="approvedQuotationsContainer">
+                <!-- All approved quotations will be displayed here -->
+                <p id="noApprovedQuotations" style="text-align: center; color: #999; padding: 20px;">
+                    No quotations approved yet. Create and approve a quotation to see it here.
+                </p>
+            </div>
+        </div>
+
+        <!-- AI Response Section -->
+        <div id="aiResponseSection" class="quotation-section">
+            <h2>AI Response</h2>
+            <p style="color: #666; margin-bottom: 10px;">This shows what the AI returned and any errors.</p>
+            <div id="aiErrorBox" style="display:none; background:#ffebee; border:1px solid #f44336; color:#c62828; padding:10px; border-radius:4px; margin-bottom:10px;"></div>
+            <textarea id="aiRawOutput" style="width:100%; min-height:160px; padding:10px; border:1px solid #ddd; border-radius:4px; font-family: monospace;" placeholder="AI output will appear here..."></textarea>
+
+            <h3 style="margin-top:20px;">Talk to AI</h3>
+            <div id="aiChatLog" style="border:1px solid #ddd; border-radius:4px; padding:10px; min-height:80px; background:#fafafa; margin-bottom:10px;"></div>
+            <textarea id="aiChatInput" placeholder="Type your question about the AI output..." style="width:100%; min-height:60px; padding:10px; border:1px solid #ddd; border-radius:4px;"></textarea>
+            <button type="button" class="upload-btn" onclick="sendAiMessage()" style="margin-top:10px; width:100%;">💬 Ask AI</button>
+        </div>
+    </div>
+    
+    <!-- 
+        ============================================
+        JAVASCRIPT - This makes the page interactive
+        ============================================
+        JavaScript handles user actions and calculations
+    -->
+    
+    <script>
+        /*
+            ============================================
+            JAVASCRIPT EXPLANATION
+            ============================================
+            JavaScript is a programming language that runs in the browser.
+            It makes web pages interactive and can perform calculations.
+            
+            Variables store data (like numbers, text, etc.)
+            Functions are reusable blocks of code that do specific tasks
+        */
+        
+        /*
+            ============================================
+            API BASE URL
+            ============================================
+            Backend server URL - change if your server runs on different port
+        */
+        const API_BASE_URL = 'http://localhost:3000/api';
+        let lastAiRawOutput = '';
+
+        /*
+            ============================================
+            UPLOAD STATUS BANNER FUNCTION
+            ============================================
+            Shows a visible banner for upload results
+        */
+        function showUploadStatus(message, isError = false) {
+            const banner = document.getElementById('uploadStatusBanner');
+            if (!banner) {
+                return;
+            }
+            banner.style.display = 'block';
+            banner.textContent = message;
+            banner.style.backgroundColor = isError ? '#ffebee' : '#e8f5e9';
+            banner.style.color = isError ? '#c62828' : '#2e7d32';
+            banner.style.border = isError ? '1px solid #f44336' : '1px solid #4CAF50';
+        }
+
+        /*
+            ============================================
+            AI RESPONSE DISPLAY FUNCTIONS
+            ============================================
+        */
+        function updateAiResponseOutput(text) {
+            lastAiRawOutput = text || '';
+            const outputEl = document.getElementById('aiRawOutput');
+            if (outputEl) {
+                outputEl.value = text || '';
+            }
+            clearAiError();
+        }
+
+        function showAiError(message) {
+            const errorEl = document.getElementById('aiErrorBox');
+            if (errorEl) {
+                errorEl.style.display = 'block';
+                errorEl.textContent = message;
+            }
+        }
+
+        function clearAiError() {
+            const errorEl = document.getElementById('aiErrorBox');
+            if (errorEl) {
+                errorEl.style.display = 'none';
+                errorEl.textContent = '';
+            }
+        }
+
+        function appendChatMessage(role, text) {
+            const log = document.getElementById('aiChatLog');
+            if (!log) return;
+            const msg = document.createElement('div');
+            msg.style.marginBottom = '8px';
+            msg.innerHTML = `<strong>${role}:</strong> ${text}`;
+            log.appendChild(msg);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        async function sendAiMessage() {
+            const input = document.getElementById('aiChatInput');
+            const message = input.value.trim();
+            if (!message) {
+                return;
+            }
+            appendChatMessage('You', message);
+            input.value = '';
+
+            const instructions = localStorage.getItem('aiInstructions') || '';
+            try {
+                const response = await fetch(`${API_BASE_URL}/ai-chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message,
+                        instructions,
+                        context: lastAiRawOutput
+                    })
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error || 'AI chat failed');
+                }
+                appendChatMessage('AI', result.reply || '(no response)');
+            } catch (error) {
+                appendChatMessage('AI', `Error: ${error.message}`);
+            }
+        }
+        
+        /*
+            ============================================
+            UPLOAD RATE FILE FUNCTION
+            ============================================
+            Uploads Excel rate file to the backend
+        */
+        async function uploadRateFile() {
+            const fileInput = document.getElementById('rateFileUpload');
+            const files = fileInput.files;
+            const statusEl = document.getElementById('rateFileStatus');
+            
+            if (!files || files.length === 0) {
+                statusEl.textContent = 'Please select at least one file first';
+                statusEl.style.color = '#f44336';
+                showUploadStatus('Please select at least one file first.', true);
+                return;
+            }
+            
+            // Validate files before uploading
+            const validFiles = [];
+            const invalidFiles = [];
+            
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                const errors = [];
+                
+                // Check file type
+                const validExtensions = ['.xlsx', '.xls', '.pdf'];
+                const lastDotIndex = file.name.lastIndexOf('.');
+                let fileExt = '';
+                
+                if (lastDotIndex > 0 && lastDotIndex < file.name.length - 1) {
+                    fileExt = file.name.toLowerCase().substring(lastDotIndex);
+                }
+                
+                if (!fileExt || !validExtensions.includes(fileExt)) {
+                    errors.push(`Invalid file type${fileExt ? ' (' + fileExt + ')' : ' (no extension)'}. Only .xlsx, .xls, and .pdf files are allowed.`);
+                }
+                
+                // Check file size (10MB limit)
+                const maxSize = 10 * 1024 * 1024; // 10MB
+                if (file.size > maxSize) {
+                    errors.push(`File too large (${(file.size / 1024 / 1024).toFixed(2)}MB). Maximum size is 10MB.`);
+                }
+                
+                if (errors.length > 0) {
+                    invalidFiles.push({ name: file.name, errors: errors });
+                } else {
+                    validFiles.push(file);
+                }
+            }
+            
+            // Show errors for invalid files
+            if (invalidFiles.length > 0) {
+                let errorMsg = 'Cannot upload:\n';
+                invalidFiles.forEach(item => {
+                    errorMsg += `\n${item.name}:\n`;
+                    item.errors.forEach(err => errorMsg += `  - ${err}\n`);
+                });
+                alert(errorMsg);
+                statusEl.textContent = `${invalidFiles.length} file(s) have errors. See alert for details.`;
+                statusEl.style.color = '#f44336';
+                showUploadStatus(`${invalidFiles.length} file(s) have errors. See alert for details.`, true);
+                
+                // If no valid files, stop here
+                if (validFiles.length === 0) {
+                    return;
+                }
+            }
+            
+            // If no valid files after validation, stop
+            if (validFiles.length === 0) {
+                return;
+            }
+            
+            // Upload only valid files
+            const formData = new FormData();
+            for (let i = 0; i < validFiles.length; i++) {
+                formData.append('rateFiles', validFiles[i]);
+                console.log(`Adding file to upload: ${validFiles[i].name} (${validFiles[i].size} bytes)`);
+            }
+            
+            try {
+                statusEl.textContent = `Uploading ${validFiles.length} file(s)...`;
+                statusEl.style.color = '#666';
+                showUploadStatus(`Uploading ${validFiles.length} file(s)...`);
+                
+                console.log(`Uploading ${validFiles.length} file(s) to ${API_BASE_URL}/upload-rates`);
+                
+                const response = await fetch(`${API_BASE_URL}/upload-rates`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                console.log('Upload response status:', response.status);
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    let successMsg = `✓ Uploaded ${validFiles.length} file(s)`;
+                    if (invalidFiles.length > 0) {
+                        successMsg += ` (${invalidFiles.length} file(s) skipped due to errors)`;
+                    }
+                    if (result.errors && result.errors.length > 0) {
+                        successMsg += `\nServer errors: ${result.errors.map(e => e.filename + ': ' + e.error).join(', ')}`;
+                    }
+                    statusEl.textContent = successMsg;
+                    statusEl.style.color = '#4CAF50';
+                    showUploadStatus(successMsg);
+                    fileInput.value = '';
+                    checkCurrentFiles(); // Refresh status
+                    loadUploadedFiles(); // Refresh file list
+                } else {
+                    let errorMsg = `Error: ${result.error || 'Upload failed'}`;
+                    if (result.details) {
+                        errorMsg += `\nDetails: ${result.details}`;
+                    }
+                    if (result.errors && result.errors.length > 0) {
+                        errorMsg += `\nFile errors:\n`;
+                        result.errors.forEach(err => {
+                            errorMsg += `  - ${err.filename}: ${err.error}\n`;
+                        });
+                    }
+                    statusEl.textContent = errorMsg;
+                    statusEl.style.color = '#f44336';
+                    showUploadStatus(errorMsg, true);
+                    console.error('Upload failed:', result);
+                }
+            } catch (error) {
+                let errorMsg = `Error: ${error.message}`;
+                if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                    errorMsg = 'Cannot connect to server. Make sure the server is running (npm start).';
+                }
+                statusEl.textContent = errorMsg;
+                statusEl.style.color = '#f44336';
+                showUploadStatus(errorMsg, true);
+                console.error('Upload error:', error);
+                alert(`Upload failed: ${errorMsg}\n\nCheck the browser console (F12) for more details.`);
+            }
+        }
+        
+        /*
+            ============================================
+            SAVE INSTRUCTIONS FUNCTION
+            ============================================
+            Saves AI instructions as text (stored in localStorage)
+        */
+        async function saveInstructions() {
+            const instructionsText = document.getElementById('instructionsText').value.trim();
+            const statusEl = document.getElementById('instructionsStatus');
+            
+            if (!instructionsText) {
+                statusEl.textContent = 'Please enter instructions first';
+                statusEl.style.color = '#f44336';
+                return;
+            }
+            
+            try {
+                // Save to localStorage
+                localStorage.setItem('aiInstructions', instructionsText);
+                
+                statusEl.textContent = '✓ Instructions saved';
+                statusEl.style.color = '#4CAF50';
+            } catch (error) {
+                statusEl.textContent = `Error: ${error.message}`;
+                statusEl.style.color = '#f44336';
+            }
+        }
+        
+        /*
+            ============================================
+            LOAD INSTRUCTIONS FUNCTION
+            ============================================
+            Loads saved instructions from localStorage
+        */
+        function loadInstructions() {
+            const savedInstructions = localStorage.getItem('aiInstructions');
+            if (savedInstructions) {
+                document.getElementById('instructionsText').value = savedInstructions;
+                const statusEl = document.getElementById('instructionsStatus');
+                statusEl.textContent = '✓ Instructions loaded';
+                statusEl.style.color = '#4CAF50';
+            }
+        }
+        
+        /*
+            ============================================
+            DELETE RATE FILE FUNCTION
+            ============================================
+            Deletes an uploaded rate file
+        */
+        async function deleteRateFile(filename) {
+            if (!confirm(`Are you sure you want to delete "${filename}"?`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/delete-rate-file`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ filename: filename })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    // Refresh the file list
+                    loadUploadedFiles();
+                } else {
+                    alert(`Error: ${result.error}`);
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            }
+        }
+        
+        /*
+            ============================================
+            LOAD UPLOADED FILES FUNCTION
+            ============================================
+            Displays all uploaded rate files with delete option
+        */
+        async function loadUploadedFiles() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/current-rates`);
+                const data = await response.json();
+                
+                const filesListDiv = document.getElementById('uploadedFilesList');
+                
+                if (!data.hasFiles || data.count === 0) {
+                    filesListDiv.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">No files uploaded yet.</p>';
+                    return;
+                }
+                
+                let filesHTML = '<div style="display: grid; gap: 10px;">';
+                data.filenames.forEach((filename, index) => {
+                    filesHTML += `
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background-color: #f5f5f5; border-radius: 4px; border: 1px solid #ddd;">
+                            <span>📄 ${filename}</span>
+                            <button onclick="deleteRateFile('${filename}')" style="background-color: #f44336; color: white; border: none; padding: 5px 15px; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
+                        </div>
+                    `;
+                });
+                filesHTML += '</div>';
+                
+                filesListDiv.innerHTML = filesHTML;
+            } catch (error) {
+                console.error('Error loading files:', error);
+            }
+        }
+        
+        /*
+            ============================================
+            CHECK CURRENT FILES FUNCTION
+            ============================================
+            Checks which rate file and instructions are currently active
+        */
+        async function checkCurrentFiles() {
+            try {
+                // Check rate files
+                const rateResponse = await fetch(`${API_BASE_URL}/current-rates`);
+                const rateData = await rateResponse.json();
+                
+                if (rateData.hasFiles && rateData.count > 0) {
+                    const statusEl = document.getElementById('rateFileStatus');
+                    statusEl.textContent = `Current: ${rateData.count} file(s) - ${rateData.filenames.slice(0, 2).join(', ')}${rateData.count > 2 ? '...' : ''}`;
+                    statusEl.style.color = '#4CAF50';
+                }
+                
+                // Load instructions from localStorage
+                loadInstructions();
+            } catch (error) {
+                console.error('Error checking files:', error);
+            }
+        }
+        
+        /*
+            ============================================
+            AI EXTRACTION FUNCTION (REAL AI)
+            ============================================
+            Calls the backend API to extract quotation data using OpenAI
+        */
+        async function extractQuotationWithAI(emailContent, fileContent) {
+            /*
+                This function calls the backend API which uses OpenAI to extract quotation data.
+                
+                Parameters:
+                - emailContent: Text from the email textarea
+                - fileContent: Content from uploaded file (if any)
+                
+                Returns: Promise that resolves to an object with customer info and line items
+            */
+            
+            // Get instructions from localStorage
+            const instructions = localStorage.getItem('aiInstructions') || '';
+            
+            if (!instructions || instructions.trim() === '') {
+                throw new Error('No instructions provided. Please enter and save instructions first.');
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/generate-quotation`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        emailContent: emailContent,
+                        fileContent: fileContent,
+                        instructions: instructions
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    const errorMessage = errorData.error || 'Failed to generate quotation';
+                    const errorDetails = errorData.details ? ` | Details: ${errorData.details}` : '';
+                    showAiError(`${errorMessage}${errorDetails}`);
+                    throw new Error(`${errorMessage}${errorDetails}`);
+                }
+                
+                const quotationData = await response.json();
+                const aiRaw = quotationData?._ai?.raw || JSON.stringify(quotationData, null, 2);
+                updateAiResponseOutput(aiRaw);
+                return quotationData;
+                
+            } catch (error) {
+                console.error('Error calling AI API:', error);
+                showAiError(error.message);
+                throw error;
+            }
+        }
+        
+        /*
+            ============================================
+            MOCK AI FUNCTION (FALLBACK)
+            ============================================
+            This function is kept as a fallback if backend is not available.
+        */
+        function mockAIExtraction(emailContent, fileContent) {
+            /*
+                This function takes email content and file content as input
+                and returns structured data as if an AI analyzed it.
+                
+                Parameters:
+                - emailContent: Text from the email textarea
+                - fileContent: Content from uploaded file (if any)
+                
+                Returns: An object with customer info and line items
+            */
+            
+            // For now, we'll use sample data regardless of input
+            // In a real app, AI would analyze the content and extract actual values
+            
+            // Get today's date in a readable format
+            const today = new Date();
+            const dateString = today.toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+            });
+            
+            // Return structured data with sample values
+            return {
+                customerName: "ABC Construction Company",
+                projectName: "Office Building Renovation",
+                contactDetails: "john.smith@abcconstruction.com | Phone: (555) 123-4567",
+                quotationDate: dateString,
+                lineItems: [
+                    {
+                        originalDescription: "2 inch diameter PVC pipe, 10 feet length",
+                        identifiedPipeType: "PVC Pipe - 2 inch",
+                        quantity: "50",
+                        unitRate: "2500.00",
+                        marginPercent: "15",
+                        finalRate: "2875.00",
+                        lineTotal: "143750.00"
+                    },
+                    {
+                        originalDescription: "2 inch diameter PVC pipe, 8 feet length",
+                        identifiedPipeType: "PVC Pipe - 2 inch",
+                        quantity: "30",
+                        unitRate: "2000.00",
+                        marginPercent: "15",
+                        finalRate: "2300.00",
+                        lineTotal: "69000.00"
+                    },
+                    {
+                        originalDescription: "4 inch diameter steel pipe, standard grade",
+                        identifiedPipeType: "Steel Pipe - 4 inch",
+                        quantity: "30",
+                        unitRate: "8500.00",
+                        marginPercent: "20",
+                        finalRate: "10200.00",
+                        lineTotal: "306000.00"
+                    },
+                    {
+                        originalDescription: "4 inch diameter steel pipe, heavy duty",
+                        identifiedPipeType: "Steel Pipe - 4 inch",
+                        quantity: "20",
+                        unitRate: "9500.00",
+                        marginPercent: "20",
+                        finalRate: "11400.00",
+                        lineTotal: "228000.00"
+                    },
+                    {
+                        originalDescription: "1.5 inch copper pipe for plumbing",
+                        identifiedPipeType: "Copper Pipe - 1.5 inch",
+                        quantity: "75",
+                        unitRate: "4500.00",
+                        marginPercent: "18",
+                        finalRate: "5310.00",
+                        lineTotal: "398250.00"
+                    },
+                    {
+                        originalDescription: "3 inch HDPE pipe, industrial grade",
+                        identifiedPipeType: "HDPE Pipe - 3 inch",
+                        quantity: "40",
+                        unitRate: "6000.00",
+                        marginPercent: "12",
+                        finalRate: "6720.00",
+                        lineTotal: "268800.00"
+                    }
+                ]
+            };
+        }
+        
+        /*
+            ============================================
+            FILE READING FUNCTION
+            ============================================
+            This function reads the content of an uploaded file.
+            For text files, it reads the text directly.
+            For PDF/Word files, it would need special libraries (not included here).
+        */
+        function readFileContent(file) {
+            /*
+                This function reads a file and returns its content as text.
+                
+                Parameter:
+                - file: The file object from the file input
+                
+                Returns: A Promise that resolves with the file content
+            */
+            
+            return new Promise((resolve, reject) => {
+                // Check if file exists
+                if (!file) {
+                    resolve(""); // Return empty string if no file
+                    return;
+                }
+                
+                // Create a FileReader object (built into browsers)
+                const reader = new FileReader();
+                
+                // When file is read successfully
+                reader.onload = function(event) {
+                    resolve(event.target.result); // Return the file content
+                };
+                
+                // If there's an error reading the file
+                reader.onerror = function() {
+                    reject(new Error("Failed to read file"));
+                };
+                
+                // Read the file as text
+                // Note: For PDF/Word files, this will show binary data
+                // In a real app, you'd need special libraries to parse PDF/Word
+                reader.readAsText(file);
+            });
+        }
+        
+        /*
+            ============================================
+            MAIN FUNCTION: Generate Quotation
+            ============================================
+            This is the main function that runs when the button is clicked.
+            It coordinates all the steps to generate a quotation.
+        */
+        async function generateQuotation() {
+            /*
+                async function means this function can wait for things to complete
+                (like reading a file) before continuing
+            */
+            
+            try {
+                // Step 1: Get email content from textarea
+                const emailContent = document.getElementById('emailContent').value;
+                
+                // Step 2: Get uploaded file
+                const fileInput = document.getElementById('fileUpload');
+                const file = fileInput.files[0]; // Get first file (if any)
+                
+                // Step 3: Read file content (if file was uploaded)
+                let fileContent = "";
+                if (file) {
+                    fileContent = await readFileContent(file);
+                }
+                
+                // Step 4: Check if at least one input was provided
+                if (!emailContent.trim() && !fileContent.trim()) {
+                    // Show error message
+                    showError("Please provide either email content or upload a file.");
+                    return; // Stop here if no input
+                }
+                
+                // Hide any previous error messages
+                hideError();
+                
+                // Step 5: Call AI API to extract data
+                // Show loading message
+                showError("Processing with AI... Please wait.");
+                
+                const quotationData = await extractQuotationWithAI(emailContent, fileContent);
+                
+                // Hide loading message
+                hideError();
+                
+                // Step 6: Display the quotation
+                displayQuotation(quotationData);
+                
+            } catch (error) {
+                // If something goes wrong, show error message
+                showError("An error occurred: " + error.message);
+            }
+        }
+        
+        /*
+            ============================================
+            DISPLAY QUOTATION FUNCTION
+            ============================================
+            This function takes the quotation data and displays it on the page.
+            Groups items by pipe type and makes all fields editable.
+        */
+        function displayQuotation(data) {
+            /*
+                Parameter:
+                - data: The quotation data object from mockAIExtraction
+            */
+            
+            // Step 1: Fill in the header information (make editable)
+            document.getElementById('quotationDate').value = data.quotationDate;
+            document.getElementById('billTo').value = data.projectName || '';
+            document.getElementById('shipTo').value = data.shipTo || '';
+            document.getElementById('kindAttn').value = data.customerName || '';
+            
+            // Step 2: Get the table body element (where rows will be added)
+            const tableBody = document.getElementById('quotationTableBody');
+            
+            // Step 3: Clear any existing rows
+            tableBody.innerHTML = "";
+            
+            // Step 4: Group line items by pipe type
+            const groupedItems = {};
+            data.lineItems.forEach(function(item) {
+                const pipeType = item.identifiedPipeType;
+                if (!groupedItems[pipeType]) {
+                    groupedItems[pipeType] = [];
+                }
+                groupedItems[pipeType].push(item);
+            });
+            
+            // Step 5: Calculate grand total
+            let grandTotal = 0;
+            
+            // Helper: get standardized header label based on pipe type
+            function getPipeHeaderLabel(pipeType) {
+                const value = (pipeType || '').toLowerCase();
+                if (value.includes('seamless')) {
+                    return 'CS Seamless Pipe as per ASTM 106 Gr. B';
+                }
+                if (value.includes('gi') || value.includes('galvanized')) {
+                    return 'MS GI Pipe as per IS 1239/ 3589';
+                }
+                if (value.includes('erw')) {
+                    return 'MS ERW Pipe as per IS 1239/ 3589';
+                }
+                return pipeType || '';
+            }
+
+            // Step 6: Loop through each pipe type group
+            Object.keys(groupedItems).forEach(function(pipeType) {
+                const items = groupedItems[pipeType];
+                let typeSubtotal = 0;
+                
+                // Step 6a: Create header row for this pipe type
+                const headerRow = document.createElement('tr');
+                headerRow.className = 'pipe-type-header';
+                const headerLabel = getPipeHeaderLabel(pipeType);
+                headerRow.innerHTML = `
+                    <td colspan="7">
+                        <input type="text" class="editable-field" data-field="pipeTypeHeader" value="${headerLabel}">
+                    </td>
+                `;
+                tableBody.appendChild(headerRow);
+                
+                // Step 6b: Create rows for each item in this pipe type
+                items.forEach(function(item, index) {
+                    const row = document.createElement('tr');
+                    row.className = 'item-row';
+                    
+                    // Calculate line total (quantity × final rate)
+                    const lineTotal = parseFloat(item.quantity) * parseFloat(item.finalRate);
+                    grandTotal += lineTotal;
+                    
+                    // Create editable inputs for all fields (no pipe type column)
+                    row.innerHTML = `
+                        <td>${index + 1}</td>
+                        <td>
+                            <input type="text" 
+                                   class="editable-field" 
+                                   data-field="originalDescription"
+                                   data-pipe-type="${pipeType}"
+                                   data-row-index="${Object.keys(groupedItems).indexOf(pipeType)}-${index}"
+                                   value="${item.originalDescription}">
+                        </td>
+                        <td>
+                            <input type="number" 
+                                   class="editable-field" 
+                                   data-field="quantity"
+                                   data-pipe-type="${pipeType}"
+                                   data-row-index="${Object.keys(groupedItems).indexOf(pipeType)}-${index}"
+                                   value="${item.quantity}" 
+                                   min="0" 
+                                   step="1">
+                        </td>
+                        <td class="col-base-rate">
+                            ₹<input type="number" 
+                                   class="editable-field" 
+                                   data-field="unitRate"
+                                   data-pipe-type="${pipeType}"
+                                   data-row-index="${Object.keys(groupedItems).indexOf(pipeType)}-${index}"
+                                   value="${item.unitRate}" 
+                                   min="0" 
+                                   step="0.01" style="width: 80px;">
+                        </td>
+                        <td class="col-margin">
+                            <input type="number" 
+                                   class="editable-field" 
+                                   data-field="marginPercent"
+                                   data-pipe-type="${pipeType}"
+                                   data-row-index="${Object.keys(groupedItems).indexOf(pipeType)}-${index}"
+                                   value="${item.marginPercent || ''}" 
+                                   min="0" 
+                                   step="0.01" style="width: 60px;">
+                        </td>
+                        <td>₹<span class="rate-per-mtr" data-row-index="${Object.keys(groupedItems).indexOf(pipeType)}-${index}">${formatIndianNumber(parseFloat(item.finalRate || 0).toFixed(2))}</span></td>
+                        <td>₹<span class="line-total" data-row-index="${Object.keys(groupedItems).indexOf(pipeType)}-${index}">${formatIndianNumber(lineTotal.toFixed(2))}</span></td>
+                    `;
+                    
+                    tableBody.appendChild(row);
+                });
+            });
+            
+            // Step 7: Display grand total
+            document.getElementById('grandTotal').textContent = formatIndianNumber(grandTotal.toFixed(2));
+            
+            // Step 8: Hide the "no quotation" message
+            const noCreationMsg = document.getElementById('noCreationQuotation');
+            if (noCreationMsg) {
+                noCreationMsg.style.display = 'none';
+            }
+            
+            // Step 9: Show the quotation content (header, table, totals, approve button, terms)
+            document.getElementById('creationQuotationHeader').style.display = 'block';
+            document.getElementById('quotationTable').style.display = 'table';
+            document.getElementById('creationGrandTotal').style.display = 'block';
+            document.getElementById('creationApproveBtn').style.display = 'block';
+            document.getElementById('termsDivider').style.display = 'block';
+            document.getElementById('termsBox').style.display = 'block';
+            
+            // Step 10: Add event listeners to all editable fields for real-time calculation
+            attachCalculationListeners();
+            
+            // Step 11: Scroll to the quotation so user can see it
+            document.getElementById('quotationSection').scrollIntoView({ 
+                behavior: 'smooth' 
+            });
+        }
+        
+        /*
+            ============================================
+            ATTACH CALCULATION LISTENERS
+            ============================================
+            This function adds event listeners to all editable fields
+            so that when users change values, totals are recalculated automatically.
+        */
+        function attachCalculationListeners() {
+            /*
+                This function finds all editable fields and makes them recalculate
+                totals when their values change.
+            */
+            
+            // Get all editable input fields
+            const editableFields = document.querySelectorAll('.editable-field');
+            
+            // Add event listener to each field
+            editableFields.forEach(function(field) {
+                field.addEventListener('input', function() {
+                    // When any field changes, recalculate that row
+                    recalculateRow(this);
+                });
+                
+                field.addEventListener('change', function() {
+                    // Also recalculate on change (when user leaves the field)
+                    recalculateRow(this);
+                });
+            });
+        }
+        
+        /*
+            ============================================
+            RECALCULATE ROW FUNCTION
+            ============================================
+            This function recalculates the final rate, line total, subtotals, and grand total
+            when any field in a row is edited.
+        */
+        function recalculateRow(changedField) {
+            /*
+                Parameter:
+                - changedField: The input field that was changed
+            */
+            
+            // Get the row containing this field
+            const row = changedField.closest('tr');
+            if (!row || !row.classList.contains('item-row')) {
+                return; // Not an item row, skip
+            }
+            
+            // Get all fields in this row
+            const originalDescription = row.querySelector('[data-field="originalDescription"]').value;
+            const quantity = parseFloat(row.querySelector('[data-field="quantity"]').value) || 0;
+            const unitRate = parseFloat(row.querySelector('[data-field="unitRate"]').value) || 0;
+            const marginValue = row.querySelector('[data-field="marginPercent"]').value;
+            const marginPercent = marginValue === '' ? 0 : (parseFloat(marginValue) || 0);
+            
+            // Calculate final rate: unitRate × (1 + marginPercent/100)
+            const finalRate = unitRate * (1 + marginPercent / 100);
+            
+            // Update rate per meter display
+            const ratePerMtrSpan = row.querySelector('.rate-per-mtr');
+            if (ratePerMtrSpan) {
+                ratePerMtrSpan.textContent = formatIndianNumber(finalRate.toFixed(2));
+            }
+            
+            // Calculate line total: quantity × final rate
+            const lineTotal = quantity * finalRate;
+            
+            // Update the line total display
+            const lineTotalSpan = row.querySelector('.line-total');
+            lineTotalSpan.textContent = formatIndianNumber(lineTotal.toFixed(2));
+            
+            // Recalculate all subtotals and grand total
+            recalculateAllTotals();
+        }
+        
+        /*
+            ============================================
+            RECALCULATE ALL TOTALS FUNCTION
+            ============================================
+            This function recalculates the grand total
+            by going through all item rows and summing them up.
+        */
+        function recalculateAllTotals() {
+            /*
+                This function:
+                1. Finds all item rows
+                2. Calculates and updates grand total
+            */
+            
+            // Get all item rows
+            const itemRows = document.querySelectorAll('.item-row');
+            
+            let grandTotal = 0;
+            
+            // Calculate grand total from all rows
+            itemRows.forEach(function(row) {
+                // Get line total for this row
+                const lineTotalSpan = row.querySelector('.line-total');
+                const lineTotalText = lineTotalSpan.textContent.replace('₹', '').replace(/,/g, ''); // Remove all commas
+                const lineTotal = parseFloat(lineTotalText) || 0;
+                
+                // Add to grand total
+                grandTotal += lineTotal;
+            });
+            
+            // Update grand total
+            document.getElementById('grandTotal').textContent = formatIndianNumber(grandTotal.toFixed(2));
+        }
+
+        function setLogoSource() {
+            const logoImg = document.getElementById('logoImg');
+            const logoText = document.getElementById('logoText');
+            
+            if (!logoImg) {
+                return;
+            }
+
+            // Set up handlers BEFORE changing the src
+            logoImg.onload = function() {
+                // Image loaded successfully - show image, hide text
+                this.style.display = 'block';
+                if (logoText) {
+                    logoText.style.display = 'none';
+                }
+            };
+            
+            logoImg.onerror = function() {
+                // Image failed to load - hide image, show text
+                this.style.display = 'none';
+                if (logoText) {
+                    logoText.style.display = 'block';
+                }
+            };
+
+            // Now set the src (this will trigger onload or onerror)
+            const logoUrl = `${window.location.origin}/logo.png?v=${Date.now()}`;
+            logoImg.src = logoUrl;
+            logoImg.style.display = 'block'; // Make it visible so it can load
+        }
+
+        function toggleConfigSection() {
+            const content = document.getElementById('configContent');
+            const button = document.querySelector('.config-toggle-btn');
+            if (!content || !button) {
+                return;
+            }
+
+            const isHidden = content.style.display === 'none' || content.style.display === '';
+            content.style.display = isHidden ? 'block' : 'none';
+            button.textContent = isHidden ? 'Hide' : 'Show';
+        }
+
+        function normalizeTermsText(text) {
+            if (!text) {
+                return text;
+            }
+
+            const letters = text.replace(/[^A-Za-z]/g, '');
+            if (!letters) {
+                return text;
+            }
+
+            const upperCount = letters.replace(/[^A-Z]/g, '').length;
+            const upperRatio = upperCount / letters.length;
+            if (upperRatio < 0.6) {
+                return text;
+            }
+
+            return text.split('\n').map(line => {
+                const trimmed = line.trim();
+                if (!trimmed) {
+                    return '';
+                }
+
+                const match = trimmed.match(/^(\d+\.\s*)(.*)$/);
+                const body = (match ? match[2] : trimmed).toLowerCase();
+                const normalizedBody = body.charAt(0).toUpperCase() + body.slice(1);
+                return match ? (match[1] + normalizedBody) : normalizedBody;
+            }).join('\n');
+        }
+        
+        /*
+            ============================================
+            NORMALIZE NUMBER VALUE FUNCTION
+            ============================================
+            Helper function to fix floating-point precision issues
+            (e.g., 5 -> 4.99). Normalizes values that are very close
+            to whole numbers to the actual whole number.
+        */
+        function normalizeNumberValue(value) {
+            if (value === '' || value === null || value === undefined) {
+                return value;
+            }
+            const numValue = parseFloat(value);
+            if (isNaN(numValue)) {
+                return value; // Return as-is if not a number
+            }
+            // If the value is very close to a whole number (within 0.01), round it to the whole number
+            const rounded = Math.round(numValue);
+            if (Math.abs(numValue - rounded) < 0.01) {
+                return String(rounded);
+            }
+            // Otherwise, return the original value as a string
+            return String(value);
+        }
+        
+        /*
+            ============================================
+            APPROVE QUOTATION FUNCTION
+            ============================================
+            This function adds the quotation to the Approval section
+            and stores it in the approvedQuotations array.
+        */
+        function approveQuotation() {
+            /*
+                This function:
+                1. Gets all quotation data from the creation section
+                2. Creates a copy and adds it to the approved quotations array
+                3. Displays all approved quotations in the Approval section
+                4. Hides the creation section quotation
+            */
+            
+            // Get all quotation data
+            const quotationDate = document.getElementById('quotationDate').value;
+            const customerName = document.getElementById('kindAttn').value || '';
+            const projectName = document.getElementById('billTo').value || '';
+            const contactDetails = document.getElementById('mobileNumber').value || '';
+            const shipTo = document.getElementById('shipTo').value || '';
+            const crmRefNo = document.getElementById('crmRefNo') ? document.getElementById('crmRefNo').value : '';
+            const quotationNo = document.getElementById('quotationNo') ? document.getElementById('quotationNo').value : '';
+            const preparedBy = document.getElementById('preparedBy') ? document.getElementById('preparedBy').value : '';
+            const checkedBy = document.getElementById('checkedBy') ? document.getElementById('checkedBy').value : '';
+            const grandTotal = document.getElementById('grandTotal').textContent;
+            const termsTextRaw = document.getElementById('termsText') ? document.getElementById('termsText').value : '';
+            const termsText = normalizeTermsText(termsTextRaw);
+            if (document.getElementById('termsText') && termsText !== termsTextRaw) {
+                document.getElementById('termsText').value = termsText;
+            }
+            
+            // Get the table HTML - ensure all current input values are captured
+            const quotationTable = document.getElementById('quotationTable');
+            
+            // Clone the table first
+            const tableClone = quotationTable.cloneNode(true);
+            
+            // Update all cloned table input values to match current values from original
+            const originalTableInputs = quotationTable.querySelectorAll('input, textarea');
+            originalTableInputs.forEach((originalInput) => {
+                let currentValue = originalInput.value;
+                
+                // Try to find matching input in clone by data attributes or position
+                let clonedInput = null;
+                
+                // First try to match by data attributes if they exist
+                if (originalInput.hasAttribute('data-field') && originalInput.hasAttribute('data-row-index')) {
+                    clonedInput = tableClone.querySelector(
+                        `input[data-field="${originalInput.getAttribute('data-field')}"][data-row-index="${originalInput.getAttribute('data-row-index')}"]`
+                    );
+                } else if (originalInput.id) {
+                    clonedInput = tableClone.querySelector(`#${originalInput.id}`);
+                }
+                
+                // If no match by attributes, try to match by type and position
+                if (!clonedInput) {
+                    const allClonedInputs = tableClone.querySelectorAll('input, textarea');
+                    const originalIndex = Array.from(originalTableInputs).indexOf(originalInput);
+                    if (allClonedInputs[originalIndex]) {
+                        clonedInput = allClonedInputs[originalIndex];
+                    }
+                }
+                
+                if (clonedInput) {
+                    // For number inputs, preserve the exact string value to avoid precision issues
+                    if (originalInput.type === 'number') {
+                        // Normalize the value to fix floating-point precision issues (e.g., 5 -> 4.99)
+                        let exactValue = normalizeNumberValue(currentValue);
+                        
+                        // Set both value property and attribute
+                        clonedInput.value = exactValue;
+                        clonedInput.setAttribute('value', exactValue);
+                    } else {
+                        clonedInput.value = currentValue;
+                        // Set the value attribute so it's preserved in outerHTML
+                        clonedInput.setAttribute('value', currentValue);
+                        // For textarea, also update the text content
+                        if (originalInput.tagName === 'TEXTAREA') {
+                            clonedInput.textContent = currentValue;
+                        }
+                    }
+                }
+            });
+            
+            // Get the header - ensure all current input values are captured
+            const quotationHeader = document.getElementById('creationQuotationHeader');
+            
+            // Clone the header first
+            const headerClone = quotationHeader.cloneNode(true);
+            headerClone.style.display = 'block'; // Make sure it's visible in the clone
+            
+            // Update all cloned header input values to match current values from original
+            const originalHeaderInputs = quotationHeader.querySelectorAll('input, textarea');
+            originalHeaderInputs.forEach((originalInput) => {
+                const currentValue = originalInput.value;
+                
+                // Try to find matching input in clone by ID (most reliable for header inputs)
+                let clonedInput = null;
+                
+                if (originalInput.id) {
+                    clonedInput = headerClone.querySelector(`#${originalInput.id}`);
+                }
+                
+                // If no match by ID, try to match by type and position
+                if (!clonedInput) {
+                    const allClonedInputs = headerClone.querySelectorAll('input, textarea');
+                    const originalIndex = Array.from(originalHeaderInputs).indexOf(originalInput);
+                    if (allClonedInputs[originalIndex]) {
+                        clonedInput = allClonedInputs[originalIndex];
+                    }
+                }
+                
+                if (clonedInput) {
+                    clonedInput.value = currentValue;
+                    // Set the value attribute so it's preserved in outerHTML
+                    clonedInput.setAttribute('value', currentValue);
+                    // For textarea, also update the text content
+                    if (originalInput.tagName === 'TEXTAREA') {
+                        clonedInput.textContent = currentValue;
+                    }
+                }
+            });
+            
+            // Create quotation object to store
+            const quotationData = {
+                id: Date.now(), // Unique ID based on timestamp
+                customerName: customerName,
+                projectName: projectName,
+                contactDetails: contactDetails,
+                quotationDate: quotationDate,
+                grandTotal: grandTotal,
+                tableHTML: tableClone.outerHTML,
+                headerHTML: headerClone.outerHTML, // Store full header HTML with current values
+                termsText: termsText,
+                shipTo: shipTo,
+                crmRefNo: crmRefNo,
+                quotationNo: quotationNo,
+                preparedBy: preparedBy,
+                checkedBy: checkedBy
+            };
+            
+            // Add to approved quotations array (not saved yet - needs approval)
+            const quotationWithStatus = {
+                ...quotationData,
+                saved: false  // Not approved yet - will show full content with Approve button
+            };
+            approvedQuotations.push(quotationWithStatus);
+            
+            // Automatically save all quotations to localStorage (including unapproved ones)
+            saveToLocalStorage();
+            
+            // Clear the Creation section (quotation disappears from Creation)
+            clearCreationSection();
+            
+            // Display all approved quotations
+            displayAllApprovedQuotations();
+            
+            // Scroll to Approval section
+            document.getElementById('approvalSection').scrollIntoView({ 
+                behavior: 'smooth' 
+            });
+        }
+        
+        /*
+            ============================================
+            DISPLAY ALL APPROVED QUOTATIONS FUNCTION
+            ============================================
+            This function displays all approved quotations in the Approval section.
+        */
+        function displayAllApprovedQuotations() {
+            /*
+                This function loops through all approved quotations
+                and displays them in the Approval section.
+            */
+            
+            const container = document.getElementById('approvedQuotationsContainer');
+            
+            // If no quotations, show message
+            if (approvedQuotations.length === 0) {
+                container.innerHTML = `
+                    <p id="noApprovedQuotations" style="text-align: center; color: #999; padding: 20px;">
+                        No quotations approved yet. Create and approve a quotation to see it here.
+                    </p>
+                `;
+                return;
+            }
+            
+            // Hide the "no quotations" message
+            const noQuotationsMsg = document.getElementById('noApprovedQuotations');
+            if (noQuotationsMsg) {
+                noQuotationsMsg.style.display = 'none';
+            }
+            
+            // Build HTML for all approved quotations
+            let allQuotationsHTML = '';
+            
+            // Show all quotations as collapsible folders
+            approvedQuotations.slice().reverse().forEach(function(quotation, index) {
+                const quotationNumber = approvedQuotations.length - index;
+                const contactNumber = extractContactNumber(quotation.contactDetails);
+                let folderName = quotation.customerName;
+                if (contactNumber) {
+                    folderName += ` (${contactNumber})`;
+                }
+                
+                // Show APPROVED badge only if saved, with checked by name
+                const checkedByName = quotation.checkedBy ? ` - ${quotation.checkedBy}` : '';
+                const approvedBadgeHTML = quotation.saved 
+                    ? `<span class="saved-badge">APPROVED${checkedByName}</span>` 
+                    : '';
+                
+                // Show Approve button only if not saved yet
+                const approveButtonHTML = quotation.saved 
+                    ? '' 
+                    : `<button class="save-btn" onclick="saveQuotation(${quotation.id})">✅ Approve</button>`;
+                
+                const downloadButtonHTML = `<button class="save-btn" onclick="downloadQuotationPdf(${quotation.id})">⬇️ Download PDF</button>`;
+
+                allQuotationsHTML += `
+                    <div class="quotation-folder" id="folder-${quotation.id}">
+                        <div class="quotation-folder-header" onclick="toggleQuotationFolder(${quotation.id})">
+                            <span>
+                                <span class="folder-icon">📁</span>
+                                ${folderName}
+                                ${approvedBadgeHTML}
+                            </span>
+                            <span class="folder-toggle-icon">▶</span>
+                        </div>
+                        <div class="quotation-folder-content" id="folder-content-${quotation.id}">
+                            ${quotation.headerHTML || ''}
+                            ${quotation.tableHTML}
+                            <div class="grand-total">
+                                <span>Total: ₹${quotation.grandTotal}</span>
+                            </div>
+                            ${quotation.termsText ? `<hr class="terms-divider"><div class="terms-box"><h4>TERMS AND CONDITIONS</h4><div style="white-space: pre-wrap; font-size: 14px;">${quotation.termsText}</div></div>` : ''}
+                            <div style="margin-top: 10px; display: flex; gap: 10px;">
+                                ${approveButtonHTML}
+                                ${downloadButtonHTML}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            // Update the container
+            container.innerHTML = allQuotationsHTML;
+            
+            // Attach event listeners to all editable fields in Approval section
+            attachApprovalSectionListeners();
+        }
+        
+        /*
+            ============================================
+            ATTACH APPROVAL SECTION LISTENERS FUNCTION
+            ============================================
+            This function adds event listeners to all editable fields in the Approval section
+            so that manual changes are automatically saved.
+        */
+        function attachApprovalSectionListeners() {
+            /*
+                This function:
+                1. Finds all editable inputs in Approval section quotations
+                2. Adds change listeners to update quotation data
+                3. Auto-saves to localStorage when changes are made
+            */
+            
+            // Find all quotation folders in Approval section
+            const quotationFolders = document.querySelectorAll('#approvedQuotationsContainer .quotation-folder');
+            
+            quotationFolders.forEach(function(folder) {
+                // Get quotation ID from folder ID (format: folder-1234567890)
+                const folderId = folder.id;
+                const quotationId = parseInt(folderId.replace('folder-', ''));
+                
+                // Find all inputs and textareas in this quotation
+                const inputs = folder.querySelectorAll('input, textarea');
+                
+                inputs.forEach(function(input) {
+                    // Remove any existing listeners to avoid duplicates
+                    const newInput = input.cloneNode(true);
+                    input.parentNode.replaceChild(newInput, input);
+                    
+                    // For number inputs, recalculate totals on blur (for display only, not saved until Approve)
+                    if (newInput.type === 'number') {
+                        newInput.addEventListener('blur', function() {
+                            // Recalculate totals for display (not saved until Approve is clicked)
+                            if (newInput.getAttribute('data-field') === 'quantity' || 
+                                newInput.getAttribute('data-field') === 'unitRate' || 
+                                newInput.getAttribute('data-field') === 'marginPercent') {
+                                recalculateApprovalQuotationTotals(quotationId, false); // false = don't save
+                            }
+                        });
+                    }
+                });
+            });
+        }
+        
+        /*
+            ============================================
+            UPDATE QUOTATION FROM APPROVAL SECTION
+            ============================================
+            This function updates the quotation object when changes are made in Approval section.
+        */
+        function updateQuotationFromApprovalSection(quotationId, changedInput) {
+            /*
+                Parameters:
+                - quotationId: The ID of the quotation being edited
+                - changedInput: The input element that was changed
+            */
+            
+            // Find the quotation in the array
+            const quotationIndex = approvedQuotations.findIndex(function(q) {
+                return q.id === quotationId;
+            });
+            
+            if (quotationIndex === -1) {
+                return; // Quotation not found
+            }
+            
+            const quotation = approvedQuotations[quotationIndex];
+            
+            // Get the folder content element
+            const folderContent = document.getElementById('folder-content-' + quotationId);
+            if (!folderContent) {
+                return;
+            }
+            
+            // First, ensure all input values in the folder content are current
+            const allInputs = folderContent.querySelectorAll('input, textarea');
+            allInputs.forEach(function(input) {
+                // For number inputs, preserve exact value
+                if (input.type === 'number') {
+                    input.setAttribute('value', input.value);
+                } else {
+                    input.setAttribute('value', input.value);
+                }
+                // For textarea, also update text content
+                if (input.tagName === 'TEXTAREA') {
+                    input.textContent = input.value;
+                }
+            });
+            
+            // Now clone the folder content with updated values
+            const updatedContent = folderContent.cloneNode(true);
+            
+            // Update header HTML
+            const headerElement = updatedContent.querySelector('.quotation-header');
+            if (headerElement) {
+                quotation.headerHTML = headerElement.outerHTML;
+            }
+            
+            // Update table HTML
+            const tableElement = updatedContent.querySelector('table');
+            if (tableElement) {
+                quotation.tableHTML = tableElement.outerHTML;
+            }
+            
+            // Update terms text if it's a terms field
+            if (changedInput.id === 'termsText' || changedInput.closest('.terms-box')) {
+                const termsElement = updatedContent.querySelector('.terms-box');
+                if (termsElement) {
+                    quotation.termsText = termsElement.textContent || termsElement.innerText;
+                }
+            }
+            
+            // Update specific fields based on input
+            const fieldName = changedInput.getAttribute('data-field');
+            const inputId = changedInput.id;
+            
+            if (inputId === 'crmRefNo') {
+                quotation.crmRefNo = changedInput.value;
+            } else if (inputId === 'quotationNo') {
+                quotation.quotationNo = changedInput.value;
+            } else if (inputId === 'quotationDate') {
+                quotation.quotationDate = changedInput.value;
+            } else if (inputId === 'preparedBy') {
+                quotation.preparedBy = changedInput.value;
+            } else if (inputId === 'checkedBy') {
+                quotation.checkedBy = changedInput.value;
+            } else if (inputId === 'kindAttn') {
+                quotation.customerName = changedInput.value;
+            } else if (inputId === 'mobileNumber') {
+                quotation.contactDetails = changedInput.value;
+            } else if (inputId === 'billTo') {
+                quotation.projectName = changedInput.value;
+            } else if (inputId === 'shipTo') {
+                quotation.shipTo = changedInput.value;
+            }
+            
+            // Save to localStorage
+            saveToLocalStorage();
+        }
+        
+        /*
+            ============================================
+            RECALCULATE APPROVAL QUOTATION TOTALS
+            ============================================
+            This function recalculates totals for a quotation in the Approval section.
+        */
+        function recalculateApprovalQuotationTotals(quotationId, shouldSave) {
+            /*
+                Parameters:
+                - quotationId: The ID of the quotation to recalculate
+                - shouldSave: Whether to save to localStorage (default: false)
+            */
+            
+            if (shouldSave === undefined) {
+                shouldSave = false;
+            }
+            
+            const folderContent = document.getElementById('folder-content-' + quotationId);
+            if (!folderContent) {
+                return;
+            }
+            
+            // Find all item rows in this quotation
+            const itemRows = folderContent.querySelectorAll('.item-row');
+            let grandTotal = 0;
+            
+            itemRows.forEach(function(row) {
+                const quantity = parseFloat(row.querySelector('[data-field="quantity"]')?.value || 0);
+                const unitRate = parseFloat(row.querySelector('[data-field="unitRate"]')?.value || 0);
+                const marginValue = row.querySelector('[data-field="marginPercent"]')?.value || '';
+                const marginPercent = marginValue === '' ? 0 : (parseFloat(marginValue) || 0);
+                
+                // Calculate final rate
+                const finalRate = unitRate * (1 + marginPercent / 100);
+                
+                // Calculate line total
+                const lineTotal = quantity * finalRate;
+                
+                // Update displays
+                const ratePerMtrSpan = row.querySelector('.rate-per-mtr');
+                if (ratePerMtrSpan) {
+                    ratePerMtrSpan.textContent = formatIndianNumber(finalRate.toFixed(2));
+                }
+                
+                const lineTotalSpan = row.querySelector('.line-total');
+                if (lineTotalSpan) {
+                    lineTotalSpan.textContent = formatIndianNumber(lineTotal.toFixed(2));
+                }
+                
+                grandTotal += lineTotal;
+            });
+            
+            // Update grand total
+            const grandTotalElement = folderContent.querySelector('.grand-total span');
+            if (grandTotalElement) {
+                grandTotalElement.textContent = `Total: ₹${formatIndianNumber(grandTotal.toFixed(2))}`;
+            }
+            
+            // Update the quotation object (only save if shouldSave is true)
+            const quotationIndex = approvedQuotations.findIndex(function(q) {
+                return q.id === quotationId;
+            });
+            
+            if (quotationIndex !== -1) {
+                approvedQuotations[quotationIndex].grandTotal = formatIndianNumber(grandTotal.toFixed(2));
+                if (shouldSave) {
+                    saveToLocalStorage();
+                }
+            }
+        }
+        
+        /*
+            ============================================
+            CLEAR CREATION SECTION FUNCTION
+            ============================================
+            This function clears the Creation section after quotation is approved.
+        */
+        function clearCreationSection() {
+            /*
+                This function:
+                1. Hides the quotation content in Creation section
+                2. Shows the "no quotation" message
+                3. Clears all input fields
+            */
+            
+            // Hide quotation content
+            document.getElementById('creationQuotationHeader').style.display = 'none';
+            document.getElementById('quotationTable').style.display = 'none';
+            document.getElementById('creationGrandTotal').style.display = 'none';
+            document.getElementById('creationApproveBtn').style.display = 'none';
+            document.getElementById('termsDivider').style.display = 'none';
+            document.getElementById('termsBox').style.display = 'none';
+            
+            // Show "no quotation" message
+            const noCreationMsg = document.getElementById('noCreationQuotation');
+            if (noCreationMsg) {
+                noCreationMsg.style.display = 'block';
+            }
+            
+            // Clear all header input fields
+            document.getElementById('quotationDate').value = '';
+            document.getElementById('billTo').value = '';
+            document.getElementById('shipTo').value = '';
+            document.getElementById('kindAttn').value = '';
+            document.getElementById('emailContent').value = '';
+            document.getElementById('fileUpload').value = '';
+            document.getElementById('crmRefNo').value = '';
+            document.getElementById('quotationNo').value = '';
+            document.getElementById('preparedBy').value = '';
+            document.getElementById('checkedBy').value = '';
+            document.getElementById('mobileNumber').value = '';
+            
+            // Clear terms and conditions
+            if (document.getElementById('termsText')) {
+                document.getElementById('termsText').value = '';
+            }
+            
+            // Clear table body
+            document.getElementById('quotationTableBody').innerHTML = '';
+            document.getElementById('grandTotal').textContent = '0.00';
+        }
+        
+        /*
+            ============================================
+            EXTRACT CONTACT NUMBER FUNCTION
+            ============================================
+            This function extracts the contact number from contact details string.
+        */
+        function extractContactNumber(contactDetails) {
+            /*
+                Parameter:
+                - contactDetails: String containing contact information
+                
+                Returns: Contact number if found, or empty string
+            */
+            
+            // Try to find phone number patterns
+            // Common patterns: Phone: (555) 123-4567, Phone: 555-123-4567, Tel: 5551234567, etc.
+            const phonePatterns = [
+                /Phone:\s*\(?(\d{3})\)?\s*[-.]?\s*(\d{3})[-.]?\s*(\d{4})/i,
+                /Tel:\s*\(?(\d{3})\)?\s*[-.]?\s*(\d{3})[-.]?\s*(\d{4})/i,
+                /Mobile:\s*\(?(\d{3})\)?\s*[-.]?\s*(\d{3})[-.]?\s*(\d{4})/i,
+                /(\d{3})[-.]?\s*(\d{3})[-.]?\s*(\d{4})/ // Generic pattern
+            ];
+            
+            for (let pattern of phonePatterns) {
+                const match = contactDetails.match(pattern);
+                if (match) {
+                    // Format as (XXX) XXX-XXXX
+                    return `(${match[1]}) ${match[2]}-${match[3]}`;
+                }
+            }
+            
+            // If no phone number found, try to extract any number sequence
+            const numberMatch = contactDetails.match(/\d{10,}/);
+            if (numberMatch) {
+                return numberMatch[0];
+            }
+            
+            // Return empty string if no number found
+            return '';
+        }
+        
+        /*
+            ============================================
+            INDIAN NUMBER FORMATTING FUNCTION
+            ============================================
+            This function formats numbers with Indian numbering system (lakhs, crores).
+            Example: 1234567 -> 12,34,567
+        */
+        function formatIndianNumber(num) {
+            /*
+                Parameter:
+                - num: Number or string to format
+                
+                Returns: Formatted string with Indian comma placement
+            */
+            
+            // Convert to number and handle decimals
+            const number = parseFloat(num) || 0;
+            const parts = number.toFixed(2).split('.');
+            const integerPart = parts[0];
+            const decimalPart = parts[1];
+            
+            // Format integer part with Indian numbering system
+            // After the first 3 digits from right, commas every 2 digits
+            let formatted = '';
+            const reversed = integerPart.split('').reverse();
+            
+            for (let i = 0; i < reversed.length; i++) {
+                if (i > 0 && i === 3) {
+                    formatted = ',' + formatted; // First comma after 3 digits
+                } else if (i > 3 && (i - 3) % 2 === 0) {
+                    formatted = ',' + formatted; // Then commas every 2 digits
+                }
+                formatted = reversed[i] + formatted;
+            }
+            
+            // Add decimal part if exists
+            return formatted + (decimalPart ? '.' + decimalPart : '');
+        }
+        
+        /*
+            ============================================
+            PARSE TABLE DATA FUNCTION
+            ============================================
+            This function extracts line item data from the table HTML.
+        */
+        function parseTableData(tableHTML) {
+            /*
+                Parameter:
+                - tableHTML: HTML string of the quotation table
+                
+                Returns: Array of line item objects
+            */
+            
+            // Create a temporary DOM element to parse HTML
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = tableHTML;
+            
+            const lineItems = [];
+            const rows = tempDiv.querySelectorAll('.item-row');
+            
+            rows.forEach(function(row) {
+                const size = row.querySelector('[data-field="originalDescription"]')?.value || '';
+                const quantity = row.querySelector('[data-field="quantity"]')?.value || '';
+                const unitRate = row.querySelector('[data-field="unitRate"]')?.value || '';
+                const marginPercent = row.querySelector('[data-field="marginPercent"]')?.value || '';
+                const finalRate = row.querySelector('[data-field="finalRate"]')?.value || '';
+                const lineTotal = row.querySelector('.line-total')?.textContent.replace('₹', '').trim() || '';
+                
+                lineItems.push({
+                    size: size,
+                    quantity: quantity,
+                    unitRate: unitRate,
+                    marginPercent: marginPercent,
+                    finalRate: finalRate,
+                    lineTotal: lineTotal
+                });
+            });
+            
+            return lineItems;
+        }
+        
+        /*
+            ============================================
+            SAVE QUOTATION FUNCTION
+            ============================================
+            This function saves a quotation to localStorage (as a file).
+            Saved quotations appear as folders that can be opened.
+        */
+        function saveQuotation(quotationId) {
+            /*
+                Parameter:
+                - quotationId: The unique ID of the quotation to save
+                
+                This function:
+                1. Captures all current values from the Approval section
+                2. Updates the quotation object with all changes
+                3. Marks quotation as saved
+                4. Saves to localStorage
+                5. Updates display to show as folder
+            */
+            
+            // Find the quotation in the array
+            const quotationIndex = approvedQuotations.findIndex(function(q) {
+                return q.id === quotationId;
+            });
+            
+            if (quotationIndex === -1) {
+                alert('Quotation not found!');
+                return;
+            }
+            
+            const quotation = approvedQuotations[quotationIndex];
+            
+            // Get the folder content element
+            const folderContent = document.getElementById('folder-content-' + quotationId);
+            if (folderContent) {
+                // Ensure all input values are current before capturing
+                const allInputs = folderContent.querySelectorAll('input, textarea');
+                allInputs.forEach(function(input) {
+                    // For number inputs, normalize the value to fix precision issues
+                    if (input.type === 'number') {
+                        const normalizedValue = normalizeNumberValue(input.value);
+                        input.value = normalizedValue;
+                        input.setAttribute('value', normalizedValue);
+                    } else {
+                        input.setAttribute('value', input.value);
+                    }
+                    // For textarea, also update text content
+                    if (input.tagName === 'TEXTAREA') {
+                        input.textContent = input.value;
+                    }
+                });
+                
+                // Recalculate totals to ensure grand total is current
+                recalculateApprovalQuotationTotals(quotationId, false);
+                
+                // Clone the folder content with updated values
+                const updatedContent = folderContent.cloneNode(true);
+                
+                // Update header HTML with current values
+                const headerElement = updatedContent.querySelector('.quotation-header');
+                if (headerElement) {
+                    quotation.headerHTML = headerElement.outerHTML;
+                }
+                
+                // Update table HTML with current values
+                const tableElement = updatedContent.querySelector('table');
+                if (tableElement) {
+                    quotation.tableHTML = tableElement.outerHTML;
+                }
+                
+                // Update specific fields from header inputs
+                const headerInputs = folderContent.querySelectorAll('.quotation-header input');
+                headerInputs.forEach(function(input) {
+                    const inputId = input.id;
+                    if (inputId === 'crmRefNo') {
+                        quotation.crmRefNo = input.value;
+                    } else if (inputId === 'quotationNo') {
+                        quotation.quotationNo = input.value;
+                    } else if (inputId === 'quotationDate') {
+                        quotation.quotationDate = input.value;
+                    } else if (inputId === 'preparedBy') {
+                        quotation.preparedBy = input.value;
+                    } else if (inputId === 'checkedBy') {
+                        quotation.checkedBy = input.value;
+                    } else if (inputId === 'kindAttn') {
+                        quotation.customerName = input.value;
+                    } else if (inputId === 'mobileNumber') {
+                        quotation.contactDetails = input.value;
+                    } else if (inputId === 'billTo') {
+                        quotation.projectName = input.value;
+                    } else if (inputId === 'shipTo') {
+                        quotation.shipTo = input.value;
+                    }
+                });
+                
+                // Update grand total from the display
+                const grandTotalElement = folderContent.querySelector('.grand-total span');
+                if (grandTotalElement) {
+                    const grandTotalText = grandTotalElement.textContent.replace('Total: ₹', '').replace(/,/g, '');
+                    quotation.grandTotal = grandTotalText;
+                }
+            }
+            
+            // Mark quotation as saved (now it's approved)
+            quotation.saved = true;
+            
+            // Save all quotations to localStorage (including this newly approved one with all updates)
+            saveToLocalStorage();
+            
+            // Update the display to show saved status (as folder)
+            displayAllApprovedQuotations();
+            
+            // Scroll to the saved quotation folder
+            const folderElement = document.getElementById('folder-' + quotationId);
+            if (folderElement) {
+                folderElement.scrollIntoView({ 
+                    behavior: 'smooth',
+                    block: 'center'
+                });
+            }
+            
+            // Show confirmation
+            const contactNumber = extractContactNumber(approvedQuotations[quotationIndex].contactDetails);
+            let filename = approvedQuotations[quotationIndex].customerName.trim();
+            if (contactNumber) {
+                filename += ` (${contactNumber})`;
+            }
+            alert(`Quotation saved as file: ${filename}`);
+        }
+
+        /*
+            ============================================
+            DOWNLOAD QUOTATION AS PDF
+            ============================================
+            Opens a print window with base rate and margin columns hidden.
+        */
+        async function downloadQuotationPdf(quotationId) {
+            const quotation = approvedQuotations.find(q => q.id === quotationId);
+            if (!quotation) {
+                alert('Quotation not found');
+                return;
+            }
+
+            const { jsPDF } = window.jspdf || {};
+            if (!jsPDF || !window.html2canvas) {
+                alert('PDF libraries not loaded. Please refresh and try again.');
+                return;
+            }
+
+            // Build a hidden container for PDF rendering
+            const wrapper = document.createElement('div');
+            wrapper.style.position = 'fixed';
+            wrapper.style.left = '-9999px';
+            wrapper.style.top = '0';
+            wrapper.style.width = '794px';
+            wrapper.style.padding = '20px';
+            wrapper.style.fontFamily = 'Arial, sans-serif';
+            wrapper.style.color = '#333';
+
+            const termsText = normalizeTermsText((quotation.termsText || '').trim());
+            const termsHtml = termsText
+                ? `<hr style="margin-top:22px;border:0;border-top:1px solid #ddd;">
+                   <div style="margin-top:12px;font-size:14px;white-space:pre-wrap;"><strong style="font-size:15px;display:block;margin-bottom:8px;">TERMS AND CONDITIONS</strong>${termsText}</div>`
+                : '';
+
+            const logoImg = document.querySelector('.logo-placeholder img');
+            let logoSrc = 'logo.png';
+            if (logoImg && logoImg.getAttribute('src')) {
+                logoSrc = logoImg.getAttribute('src');
+            }
+            try {
+                logoSrc = new URL(logoSrc, window.location.href).toString();
+            } catch (error) {
+                // Keep as-is if URL construction fails
+            }
+
+            wrapper.innerHTML = `
+                <div class="quote-header-top" style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #3b3f79;padding-bottom:10px;margin-bottom:12px;">
+                    <div style="display:flex;align-items:center;">
+                        <div style="width:80px;height:80px;display:flex;align-items:center;justify-content:center;overflow:hidden;">
+                            <img src="${logoSrc}" style="max-width:100%;max-height:100%;" onerror="this.style.display='none'">
+                        </div>
+                        <div style="margin-left:16px;">
+                            <h3 style="margin:0;font-size:18px;">DSC PIPES AND TUBES PVT LTD</h3>
+                            <p style="margin:2px 0;font-size:12px;">REGD OFFICE: 7C, 7TH FLOOR, DOSHI TOWERS, NO:156</p>
+                            <p style="margin:2px 0;font-size:12px;">P.H ROAD, KILAPUK, CHENNAI - 600 010</p>
+                            <p style="margin:2px 0;font-size:12px;">EMAIL ID: info@dscpipes.com</p>
+                        </div>
+                    </div>
+                    <div style="font-size:24px;font-weight:bold;color:#3b3f79;">QUOTATION</div>
+                </div>
+
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:12px;margin-bottom:12px;">
+                    <div>
+                        <div style="display:flex;justify-content:space-between;"><span>CRM REF NO</span><span>${quotation.crmRefNo || ''}</span></div>
+                        <div style="display:flex;justify-content:space-between;"><span>QUOTATION DATE</span><span>${quotation.quotationDate || ''}</span></div>
+                        <div style="display:flex;justify-content:space-between;"><span>QUOTATION NO</span><span>${quotation.quotationNo || ''}</span></div>
+                    </div>
+                    <div>
+                        <div style="display:flex;justify-content:space-between;"><span>PREPARED BY</span><span>${quotation.preparedBy || ''}</span></div>
+                        <div style="display:flex;justify-content:space-between;"><span>CHECKED BY</span><span>${quotation.checkedBy || ''}</span></div>
+                        <div style="display:flex;justify-content:space-between;"><span>KIND ATTN</span><span>${quotation.customerName || ''}</span></div>
+                        <div style="display:flex;justify-content:space-between;"><span>CONTACT NUMBER</span><span>${quotation.contactDetails || ''}</span></div>
+                    </div>
+                </div>
+
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;border-top:1px solid #ddd;padding-top:10px;font-size:12px;">
+                    <div><strong>Bill To</strong><br>${quotation.projectName || ''}</div>
+                    <div><strong>Ship To</strong><br>${quotation.shipTo || ''}</div>
+                </div>
+
+                <div id="pdfTable">${quotation.tableHTML || ''}</div>
+
+                <div style="margin-top:20px;padding:12px;background:#3b3f79;color:#fff;text-align:right;">Total: ₹${quotation.grandTotal || '0.00'}</div>
+
+                ${termsHtml}
+            `;
+
+            document.body.appendChild(wrapper);
+
+            // Replace inputs with text and remove base rate + margin columns
+            wrapper.querySelectorAll('input').forEach(input => {
+                const span = document.createElement('span');
+                span.textContent = input.value || '';
+                input.replaceWith(span);
+            });
+            wrapper.querySelectorAll('.col-base-rate, .col-margin').forEach(el => el.remove());
+            
+            // Inline images to avoid canvas tainting
+            const inlineImages = async (container) => {
+                const images = Array.from(container.querySelectorAll('img'));
+                await Promise.all(images.map(async (img) => {
+                    const src = img.getAttribute('src') || '';
+                    if (!src || src.startsWith('data:')) {
+                        return;
+                    }
+                    try {
+                        const response = await fetch(src, { mode: 'cors' });
+                        const blob = await response.blob();
+                        const dataUrl = await new Promise((resolve, reject) => {
+                            const reader = new FileReader();
+                            reader.onload = () => resolve(reader.result);
+                            reader.onerror = reject;
+                            reader.readAsDataURL(blob);
+                        });
+                        img.setAttribute('src', dataUrl);
+                    } catch (error) {
+                        img.remove();
+                    }
+                }));
+            };
+
+            const waitForImages = async (container) => {
+                const images = Array.from(container.querySelectorAll('img'));
+                await Promise.all(images.map(img => new Promise(resolve => {
+                    if (img.complete) {
+                        resolve();
+                    } else {
+                        img.onload = resolve;
+                        img.onerror = resolve;
+                    }
+                })));
+            };
+
+            await inlineImages(wrapper);
+            await waitForImages(wrapper);
+
+            const canvas = await window.html2canvas(wrapper, {
+                scale: 2,
+                useCORS: true,
+                backgroundColor: '#ffffff'
+            });
+
+            const imgData = canvas.toDataURL('image/png');
+            const pdf = new jsPDF('p', 'pt', 'a4');
+            const pageWidth = pdf.internal.pageSize.getWidth();
+            const pageHeight = pdf.internal.pageSize.getHeight();
+
+            const imgWidth = pageWidth - 40;
+            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+            pdf.addImage(imgData, 'PNG', 20, 20, imgWidth, imgHeight);
+            const filename = `Quotation-${quotation.customerName || 'Customer'}.pdf`;
+            pdf.save(filename);
+            document.body.removeChild(wrapper);
+        }
+        
+        /*
+            ============================================
+            TOGGLE QUOTATION FOLDER FUNCTION
+            ============================================
+            This function opens/closes a saved quotation folder.
+        */
+        function toggleQuotationFolder(quotationId) {
+            /*
+                Parameter:
+                - quotationId: The unique ID of the quotation folder to toggle
+            */
+            
+            const folderContent = document.getElementById('folder-content-' + quotationId);
+            const toggleIcon = document.querySelector(`#folder-${quotationId} .folder-toggle-icon`);
+            
+            if (!folderContent || !toggleIcon) {
+                return;
+            }
+            
+            // Toggle the content visibility
+            if (folderContent.classList.contains('show')) {
+                // Close the folder
+                folderContent.classList.remove('show');
+                toggleIcon.classList.remove('open');
+            } else {
+                // Open the folder
+                folderContent.classList.add('show');
+                toggleIcon.classList.add('open');
+            }
+        }
+
+        // Ensure logo loads correctly on localhost
+        document.addEventListener('DOMContentLoaded', setLogoSource);
+        
+        /*
+            ============================================
+            SAVE TO LOCALSTORAGE FUNCTION
+            ============================================
+            This function saves all saved quotations to browser's localStorage.
+        */
+        function saveToLocalStorage() {
+            /*
+                This function saves ALL quotations to localStorage
+                (both approved and unapproved) so they persist across page refreshes.
+            */
+            
+            try {
+                // Save all quotations, not just approved ones
+                localStorage.setItem('savedQuotations', JSON.stringify(approvedQuotations));
+            } catch (error) {
+                console.error('Error saving to localStorage:', error);
+            }
+        }
+        
+        /*
+            ============================================
+            LOAD FROM LOCALSTORAGE FUNCTION
+            ============================================
+            This function loads saved quotations from localStorage on page load.
+        */
+        function loadFromLocalStorage() {
+            /*
+                This function loads saved quotations from localStorage
+                and adds them to the approvedQuotations array.
+            */
+            
+            try {
+                const savedData = localStorage.getItem('savedQuotations');
+                if (savedData) {
+                    const allQuotations = JSON.parse(savedData);
+                    // Add all quotations to the array, preserving their saved status
+                    allQuotations.forEach(function(quotation) {
+                        // Preserve the saved status from localStorage (don't force it to true)
+                        // If saved property doesn't exist, default to false
+                        if (quotation.saved === undefined) {
+                            quotation.saved = false;
+                        }
+                        approvedQuotations.push(quotation);
+                    });
+                    
+                    // Display them if there are any
+                    if (allQuotations.length > 0) {
+                        displayAllApprovedQuotations();
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading from localStorage:', error);
+            }
+        }
+        
+        /*
+            ============================================
+            ERROR HANDLING FUNCTIONS
+            ============================================
+            These functions show and hide error messages
+        */
+        function showError(message) {
+            /*
+                Shows an error message to the user
+                
+                Parameter:
+                - message: The error text to display
+            */
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.textContent = message;
+            errorDiv.classList.add('show');
+        }
+        
+        function hideError() {
+            /*
+                Hides the error message
+            */
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.classList.remove('show');
+        }
+        
+        /*
+            ============================================
+            GLOBAL VARIABLES
+            ============================================
+            Store all approved quotations in an array
+        */
+        
+        // Array to store all approved quotations
+        let approvedQuotations = [];
+        
+        /*
+            ============================================
+            INITIALIZATION
+            ============================================
+            Code that runs when the page loads
+        */
+        
+        // This code runs when the page finishes loading
+        console.log("Quotation Generator loaded successfully!");
+        
+        // Load saved quotations from localStorage
+        loadFromLocalStorage();
+        
+        // Load instructions from localStorage
+        loadInstructions();
+        
+        // Load and display uploaded files
+        loadUploadedFiles();
+        
+        // Check current rate files status
+        checkCurrentFiles();
+    </script>
+</body>
+</html>
+
