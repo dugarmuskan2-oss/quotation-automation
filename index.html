@@ -774,7 +774,8 @@
             ============================================
             Backend server URL - change if your server runs on different port
         */
-        const API_BASE_URL = 'http://localhost:3000/api';
+        // Automatically detect API URL based on current location (works on localhost and Vercel)
+        const API_BASE_URL = window.location.origin + '/api';
         let lastAiRawOutput = '';
 
         /*
