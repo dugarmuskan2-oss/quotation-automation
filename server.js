@@ -32,14 +32,18 @@ const uploadsDir = path.join(baseDir, 'uploads');
 const ratesDir = path.join(uploadsDir, 'rates');
 const instructionsDir = path.join(uploadsDir, 'instructions');
 
-// Only create directories if not on Vercel (Vercel's /tmp might already exist)
-if (!isVercelEnv) {
-    [uploadsDir, ratesDir, instructionsDir].forEach(dir => {
+// Create directories (they need to exist for multer to work)
+// On Vercel, /tmp exists but subdirectories need to be created
+[uploadsDir, ratesDir, instructionsDir].forEach(dir => {
+    try {
         if (!fs.existsSync(dir)) {
             fs.mkdirSync(dir, { recursive: true });
         }
-    });
-}
+    } catch (error) {
+        console.error(`Error creating directory ${dir}:`, error);
+        // Continue anyway - multer might handle it
+    }
+});
 
 // Initialize OpenAI
 const openai = new OpenAI({
@@ -185,9 +189,14 @@ function excelToTxtFiles(filePath) {
         const baseName = path.basename(filePath, path.extname(filePath));
         const tempDir = path.join(baseDir, 'uploads', 'temp');
 
-        // Only create temp directory if not on Vercel
-        if (!isVercelEnv && !fs.existsSync(tempDir)) {
-            fs.mkdirSync(tempDir, { recursive: true });
+        // Create temp directory if it doesn't exist
+        try {
+            if (!fs.existsSync(tempDir)) {
+                fs.mkdirSync(tempDir, { recursive: true });
+            }
+        } catch (error) {
+            console.error(`Error creating temp directory ${tempDir}:`, error);
+            // Continue anyway
         }
 
         workbook.SheetNames.forEach((sheetName, index) => {
@@ -592,6 +601,23 @@ app.post('/api/ai-chat', async (req, res) => {
             details: error.message
         });
     }
+});
+
+// Error handling middleware - must be after all routes
+app.use((err, req, res, next) => {
+    console.error('Unhandled error:', err);
+    res.status(500).json({
+        error: 'Internal Server Error',
+        details: process.env.NODE_ENV === 'development' ? err.message : 'An error occurred'
+    });
+});
+
+// 404 handler for undefined routes
+app.use((req, res) => {
+    res.status(404).json({
+        error: 'Not Found',
+        message: `Route ${req.method} ${req.path} not found`
+    });
 });
 
 // Export app for Vercel serverless functions
