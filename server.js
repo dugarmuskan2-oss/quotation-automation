@@ -586,9 +586,14 @@ app.post('/api/ai-chat', async (req, res) => {
     }
 });
 
-// Start server
-app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-    console.log(`Make sure to set OPENAI_API_KEY in .env file`);
-});
+// Export app for Vercel serverless functions
+module.exports = app;
+
+// Start server only when running locally (not on Vercel)
+if (process.env.VERCEL !== '1') {
+    app.listen(PORT, () => {
+        console.log(`Server running on http://localhost:${PORT}`);
+        console.log(`Make sure to set OPENAI_API_KEY in .env file`);
+    });
+}
 
