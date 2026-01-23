@@ -777,6 +777,26 @@
         // Automatically detect API URL based on current location (works on localhost and Vercel)
         const API_BASE_URL = window.location.origin + '/api';
         let lastAiRawOutput = '';
+        
+        /*
+            ============================================
+            SAFE JSON PARSER HELPER FUNCTION
+            ============================================
+            Safely parses response as JSON, handling both JSON and non-JSON responses
+        */
+        async function safeJsonParse(response) {
+            const contentType = response.headers.get('content-type') || '';
+            if (contentType.includes('application/json')) {
+                return await response.json();
+            } else {
+                // Server returned non-JSON (likely an error page)
+                const text = await response.text();
+                return {
+                    error: text || `Server error (Status: ${response.status})`,
+                    details: 'Server returned non-JSON response. This usually means the API endpoint is not found or the server is not running.'
+                };
+            }
+        }
 
         /*
             ============================================
@@ -856,7 +876,7 @@
                         context: lastAiRawOutput
                     })
                 });
-                const result = await response.json();
+                const result = await safeJsonParse(response);
                 if (!response.ok) {
                     throw new Error(result.error || 'AI chat failed');
                 }
@@ -962,7 +982,8 @@
                 
                 console.log('Upload response status:', response.status);
                 
-                const result = await response.json();
+                // Handle both JSON and non-JSON responses
+                const result = await safeJsonParse(response);
                 
                 if (response.ok) {
                     let successMsg = `✓ Uploaded ${validFiles.length} file(s)`;
@@ -1071,7 +1092,7 @@
                     body: JSON.stringify({ filename: filename })
                 });
                 
-                const result = await response.json();
+                const result = await safeJsonParse(response);
                 
                 if (response.ok) {
                     // Refresh the file list
@@ -1093,7 +1114,7 @@
         async function loadUploadedFiles() {
             try {
                 const response = await fetch(`${API_BASE_URL}/current-rates`);
-                const data = await response.json();
+                const data = await safeJsonParse(response);
                 
                 const filesListDiv = document.getElementById('uploadedFilesList');
                 
@@ -1181,15 +1202,14 @@
                     })
                 });
                 
+                const quotationData = await safeJsonParse(response);
+                
                 if (!response.ok) {
-                    const errorData = await response.json();
-                    const errorMessage = errorData.error || 'Failed to generate quotation';
-                    const errorDetails = errorData.details ? ` | Details: ${errorData.details}` : '';
+                    const errorMessage = quotationData.error || 'Failed to generate quotation';
+                    const errorDetails = quotationData.details ? ` | Details: ${quotationData.details}` : '';
                     showAiError(`${errorMessage}${errorDetails}`);
                     throw new Error(`${errorMessage}${errorDetails}`);
                 }
-                
-                const quotationData = await response.json();
                 const aiRaw = quotationData?._ai?.raw || JSON.stringify(quotationData, null, 2);
                 updateAiResponseOutput(aiRaw);
                 return quotationData;
