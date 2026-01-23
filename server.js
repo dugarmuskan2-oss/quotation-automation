@@ -24,15 +24,22 @@ app.use(express.static('public')); // Serve static files if needed
 app.use(express.static(__dirname)); // Serve root files like index.html/logo.png
 
 // Ensure upload directories exist
-const uploadsDir = path.join(__dirname, 'uploads');
+// On Vercel, use /tmp directory (writable), otherwise use project directory
+const isVercelEnv = process.env.VERCEL === '1' || process.env.VERCEL_ENV || process.env.VERCEL_URL;
+const baseDir = isVercelEnv ? '/tmp' : __dirname;
+
+const uploadsDir = path.join(baseDir, 'uploads');
 const ratesDir = path.join(uploadsDir, 'rates');
 const instructionsDir = path.join(uploadsDir, 'instructions');
 
-[uploadsDir, ratesDir, instructionsDir].forEach(dir => {
-    if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-    }
-});
+// Only create directories if not on Vercel (Vercel's /tmp might already exist)
+if (!isVercelEnv) {
+    [uploadsDir, ratesDir, instructionsDir].forEach(dir => {
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+    });
+}
 
 // Initialize OpenAI
 const openai = new OpenAI({
@@ -176,9 +183,10 @@ function excelToTxtFiles(filePath) {
     try {
         const workbook = XLSX.readFile(filePath);
         const baseName = path.basename(filePath, path.extname(filePath));
-        const tempDir = path.join(__dirname, 'uploads', 'temp');
+        const tempDir = path.join(baseDir, 'uploads', 'temp');
 
-        if (!fs.existsSync(tempDir)) {
+        // Only create temp directory if not on Vercel
+        if (!isVercelEnv && !fs.existsSync(tempDir)) {
             fs.mkdirSync(tempDir, { recursive: true });
         }
 

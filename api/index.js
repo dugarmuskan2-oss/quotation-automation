@@ -7,8 +7,9 @@
 */
 
 // Import the Express app from server.js
+// The app is already exported from server.js and won't start listening on Vercel
 const app = require('../server.js');
 
-// Export as serverless function handler
+// Export the app - Vercel will handle it as a serverless function
 module.exports = app;
 
