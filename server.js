@@ -604,20 +604,29 @@ app.post('/api/upload-rates', upload.array('rateFiles', 10), async (req, res) =>
                                      path.join(ratesDir, savedFileName);
                         
                         // Ensure we have a proper Buffer (not a stream)
-                        // Create a fresh Buffer copy to avoid any stream-like objects
+                        // Multer's buffer might have stream-like properties, so convert to plain Buffer
+                        // Method: Convert to Uint8Array first (strips all methods), then to Buffer
                         let fileBuffer;
                         if (Buffer.isBuffer(file.buffer)) {
-                            // If it's already a Buffer, create a copy to ensure it's not a view
-                            fileBuffer = Buffer.from(file.buffer);
+                            // Convert to Uint8Array to strip any stream methods, then back to Buffer
+                            const uint8 = new Uint8Array(file.buffer);
+                            fileBuffer = Buffer.from(uint8);
                         } else if (file.buffer instanceof Uint8Array) {
-                            // Convert Uint8Array to Buffer
+                            // Already a Uint8Array, convert to Buffer
                             fileBuffer = Buffer.from(file.buffer);
                         } else {
-                            // Fallback: try to convert whatever it is to a Buffer
-                            fileBuffer = Buffer.from(file.buffer);
+                            // Fallback: try to get raw bytes
+                            try {
+                                const uint8 = new Uint8Array(file.buffer);
+                                fileBuffer = Buffer.from(uint8);
+                            } catch (e) {
+                                // Last resort: convert to array
+                                const arr = Array.from(file.buffer);
+                                fileBuffer = Buffer.from(arr);
+                            }
                         }
                         
-                        // Upload to OpenAI
+                        // Upload to OpenAI using the same format as generate-quotation endpoint
                         const openAiFile = await openai.files.create({
                             file: {
                                 data: fileBuffer,
