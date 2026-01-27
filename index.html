@@ -592,6 +592,16 @@
                         <p id="instructionsStatus" style="margin-top: 8px; font-size: 12px; color: #666;"></p>
                     </div>
                 </div>
+
+                <!-- Terms & Conditions (Configuration) -->
+                <div style="margin-bottom: 20px;">
+                    <label for="termsConfigText">Terms & Conditions (default for all quotations):</label>
+                    <textarea id="termsConfigText" placeholder="Enter default terms and conditions..." style="width: 100%; min-height: 140px; padding: 8px; margin-top: 8px; border: 2px solid #ddd; border-radius: 4px; font-family: inherit;"></textarea>
+                    <button class="upload-btn" onclick="saveTermsConfig()" style="margin-top: 10px; width: 100%;">
+                        💾 Save Terms & Conditions
+                    </button>
+                    <p id="termsConfigStatus" style="margin-top: 8px; font-size: 12px; color: #666;"></p>
+                </div>
                 
                 <!-- Uploaded Files Management Section -->
                 <div class="input-section" id="filesManagementSection" style="margin-top: 30px;">
@@ -681,10 +691,14 @@
                         <th style="width: 50px;"></th>
                         <th>S. NO</th>
                         <th>ITEM & DESCRIPTION</th>
-                        <th>QTY PER MTRS</th>
+                        <th>
+                            <input type="text" class="editable-field" data-field="quantityHeader" value="Quantity in Mtrs" style="width: 140px; border: none; background: transparent; font-weight: bold; text-align: center;">
+                        </th>
                         <th class="col-base-rate">BASE RATE</th>
                         <th class="col-margin">MARGIN %</th>
-                        <th>RATE PER MTRS</th>
+                        <th>
+                            <input type="text" class="editable-field" data-field="rateHeader" value="Rate per mtr" style="width: 120px; border: none; background: transparent; font-weight: bold; text-align: center;">
+                        </th>
                         <th>AMOUNT</th>
                     </tr>
                 </thead>
@@ -712,7 +726,7 @@
 7. Pipe length: will be either 4 to 7 mtrs (SRL) or 9 to 12.5 mtrs (DRL)
 8. Price basis: ex-godown
 9. Freight charge: extra
-10. Make: (a) For ERW/GI: Jindal, Surya Roshini, APL Apollo/Tata/any other ISI make (b) For seamless: MSL/JSL/ISMT/Importer/Rashni/MKK
+10. Make: (a) For ERW/GI: Jindal, Surya Roshini, APL Apollo/Tata/any other ISI make (b) For seamless: MSL/JSL/ISMT/Importer/Rashmi/MKK
 11. Price validity: 1 day from quotation date
 12. Imp condition: (1) After issuing P.O, payment or PDC to be released within 3 days & inspection has to be carried out within next 3 days, otherwise we are not responsible for shortage of material. (2) If any size is not available we may quote near by possible specification or size
 13. Pipe end: for ERW / seamless - plain end or bevelled end; for galvanised: SWS (thread end / screwed end) or plain end
@@ -1548,10 +1562,10 @@
                     
                     // Create editable inputs for all fields (no pipe type column)
                     row.innerHTML = `
-                        <td style="text-align: center; vertical-align: middle; padding: 5px;">
+                        <td class="actions-cell" style="text-align: center; vertical-align: middle; padding: 5px;">
                             <div style="display: flex; flex-direction: column; align-items: center; gap: 5px;">
-                                <button onclick="addRow('${pipeType}')" title="Add row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">➕</button>
-                                <button onclick="deleteRow('${rowId}')" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">➖</button>
+                                <button class="row-action-btn row-action-add" onclick="addRow('${pipeType}')" title="Add row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">➕</button>
+                                <button class="row-action-btn row-action-delete" onclick="deleteRow('${rowId}')" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">➖</button>
                             </div>
                         </td>
                         <td class="row-number">${index + 1}</td>
@@ -1833,7 +1847,7 @@
                     const headerRow = document.createElement('tr');
                     headerRow.className = 'pipe-type-header';
                     headerRow.innerHTML = `
-                        <td colspan="8">
+                        <td colspan="9">
                             <input type="text" class="editable-field" data-field="pipeTypeHeader" value="Default">
                         </td>
                     `;
@@ -1851,10 +1865,10 @@
             const rowNumber = document.querySelectorAll('.item-row').length + 1;
             
             row.innerHTML = `
-                <td style="text-align: center; vertical-align: middle; padding: 5px;">
+                <td class="actions-cell" style="text-align: center; vertical-align: middle; padding: 5px;">
                     <div style="display: flex; flex-direction: column; align-items: center; gap: 5px;">
-                        <button onclick="addRow('${pipeType}')" title="Add row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">➕</button>
-                        <button onclick="deleteRow('${rowId}')" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">➖</button>
+                        <button class="row-action-btn row-action-add" onclick="addRow('${pipeType}')" title="Add row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">➕</button>
+                        <button class="row-action-btn row-action-delete" onclick="deleteRow('${rowId}')" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">➖</button>
                     </div>
                 </td>
                 <td class="row-number">${rowNumber}</td>
@@ -1983,6 +1997,56 @@
                 return match ? (match[1] + normalizedBody) : normalizedBody;
             }).join('\n');
         }
+
+        /*
+            ============================================
+            TERMS CONFIG (GLOBAL DEFAULT)
+            ============================================
+            Save terms in config and apply to all quotations.
+        */
+        function saveTermsConfig() {
+            try {
+                const termsConfigInput = document.getElementById('termsConfigText');
+                const statusEl = document.getElementById('termsConfigStatus');
+                if (!termsConfigInput) return;
+
+                const rawText = termsConfigInput.value || '';
+                const normalized = normalizeTermsText(rawText);
+                termsConfigInput.value = normalized;
+
+                // Update creation section terms textarea
+                const creationTerms = document.getElementById('termsText');
+                if (creationTerms) {
+                    creationTerms.value = normalized;
+                }
+
+                // Save to localStorage as fallback for config default
+                localStorage.setItem('termsConfigText', normalized);
+
+                if (statusEl) {
+                    statusEl.textContent = 'Terms saved and applied to all quotations.';
+                }
+            } catch (error) {
+                console.error('Error saving terms config:', error);
+                const statusEl = document.getElementById('termsConfigStatus');
+                if (statusEl) {
+                    statusEl.textContent = 'Failed to save terms.';
+                }
+            }
+        }
+
+        function loadTermsConfig() {
+            const termsConfigInput = document.getElementById('termsConfigText');
+            if (!termsConfigInput) return;
+            const saved = localStorage.getItem('termsConfigText');
+            if (saved) {
+                termsConfigInput.value = saved;
+                const creationTerms = document.getElementById('termsText');
+                if (creationTerms) {
+                    creationTerms.value = saved;
+                }
+            }
+        }
         
         /*
             ============================================
@@ -2016,7 +2080,7 @@
             This function adds the quotation to the Approval section
             and stores it in the approvedQuotations array.
         */
-        function approveQuotation() {
+        async function approveQuotation() {
             /*
                 This function:
                 1. Gets all quotation data from the creation section
@@ -2159,8 +2223,8 @@
             };
             approvedQuotations.push(quotationWithStatus);
             
-            // Automatically save all quotations to localStorage (including unapproved ones)
-            saveToLocalStorage();
+            // Save to server so it appears on other devices
+            queueQuotationSave(quotationWithStatus);
             
             // Clear the Creation section (quotation disappears from Creation)
             clearCreationSection();
@@ -2292,20 +2356,56 @@
                 // Find the table in this quotation
                 const table = folderContent.querySelector('table');
                 if (table) {
-                    // Check if table header has Actions column, if not add it
+                    // Check if table header has Actions column on the left, if not add it
                     const headerRow = table.querySelector('thead tr');
-                    if (headerRow && !headerRow.querySelector('th:last-child')?.textContent.includes('ACTIONS')) {
-                        const actionsHeader = document.createElement('th');
-                        actionsHeader.textContent = 'ACTIONS';
-                        actionsHeader.style.width = '80px';
-                        headerRow.appendChild(actionsHeader);
+                    if (headerRow) {
+                        const firstHeader = headerRow.querySelector('th:first-child');
+                        // Check if first column is not the actions column
+                        if (!firstHeader || firstHeader.textContent.trim() !== '') {
+                            const actionsHeader = document.createElement('th');
+                            actionsHeader.style.width = '50px';
+                            headerRow.insertBefore(actionsHeader, headerRow.firstChild);
+                        }
+                        // Remove any old ACTIONS column(s) if they exist
+                        const headers = Array.from(headerRow.querySelectorAll('th'));
+                        const actionIndexes = headers
+                            .map((th, idx) => ({ th, idx }))
+                            .filter(({ th }) => th.textContent.includes('ACTIONS'))
+                            .map(({ idx }) => idx)
+                            .sort((a, b) => b - a);
+                        if (actionIndexes.length > 0) {
+                            actionIndexes.forEach(index => {
+                                const th = headerRow.querySelectorAll('th')[index];
+                                if (th) th.remove();
+                            });
+                            // Remove corresponding cells from each row
+                            table.querySelectorAll('tbody tr').forEach(row => {
+                                actionIndexes.forEach(index => {
+                                    const cell = row.querySelectorAll('td')[index];
+                                    if (cell) cell.remove();
+                                });
+                            });
+                        }
+
+                        // Ensure quantity/rate headers are editable and use new labels
+                        const headerCells = Array.from(headerRow.querySelectorAll('th'));
+                        headerCells.forEach(th => {
+                            const text = (th.textContent || '').trim().toLowerCase();
+                            if ((text.includes('qty') || text.includes('quantity')) && !th.querySelector('input')) {
+                                th.innerHTML = `<input type="text" class="editable-field" data-field="quantityHeader" value="Quantity in Mtrs" style="width: 140px; border: none; background: transparent; font-weight: bold; text-align: center;">`;
+                            }
+                            if (text.includes('rate per') && !th.querySelector('input')) {
+                                th.innerHTML = `<input type="text" class="editable-field" data-field="rateHeader" value="Rate per mtr" style="width: 120px; border: none; background: transparent; font-weight: bold; text-align: center;">`;
+                            }
+                        });
                     }
                     
                     // Update pipe type headers colspan
                     const pipeHeaders = table.querySelectorAll('.pipe-type-header td[colspan]');
                     pipeHeaders.forEach(header => {
-                        if (parseInt(header.getAttribute('colspan')) === 7) {
-                            header.setAttribute('colspan', '8');
+                        const currentColspan = parseInt(header.getAttribute('colspan')) || 8;
+                        if (currentColspan === 8) {
+                            header.setAttribute('colspan', '9');
                         }
                     });
                     
@@ -2317,20 +2417,37 @@
                             row.id = `approval-row-${quotationId}-${Date.now()}-${index}`;
                         }
                         
-                        // Check if row already has delete button
-                        if (!row.querySelector('.delete-row-btn')) {
-                            // Add delete button
-                            const actionsCell = document.createElement('td');
-                            const deleteBtn = document.createElement('button');
-                            deleteBtn.className = 'delete-row-btn';
-                            deleteBtn.textContent = '🗑️';
-                            deleteBtn.title = 'Delete row';
-                            deleteBtn.style.cssText = 'background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;';
-                            deleteBtn.onclick = function() {
-                                deleteApprovalRow(quotationId, row.id);
-                            };
-                            actionsCell.appendChild(deleteBtn);
-                            row.appendChild(actionsCell);
+                        // Get pipe type for this row
+                        const pipeType = row.getAttribute('data-pipe-type') || 'Default';
+                        
+                        // Check if row already has actions column with plus/minus buttons
+                        const firstCell = row.querySelector('td:first-child');
+                        const hasActionButtons = firstCell && firstCell.querySelector('.row-action-btn');
+                        if (!hasActionButtons) {
+                            // Remove any old actions cell on the right
+                            const rightActionsCell = row.querySelector('td:last-child');
+                            if (rightActionsCell && rightActionsCell.querySelector('.delete-row-btn')) {
+                                rightActionsCell.remove();
+                            }
+                            
+                            const actionsHtml = `
+                                <div style="display: flex; flex-direction: column; align-items: center; gap: 5px;">
+                                    <button class="row-action-btn row-action-add" onclick="addApprovalRow(${quotationId})" title="Add row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">➕</button>
+                                    <button class="row-action-btn row-action-delete" onclick="deleteApprovalRow(${quotationId}, '${row.id}')" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">➖</button>
+                                </div>
+                            `;
+                            
+                            if (!firstCell || firstCell.classList.contains('row-number')) {
+                                const actionsCell = document.createElement('td');
+                                actionsCell.className = 'actions-cell';
+                                actionsCell.style.cssText = 'text-align: center; vertical-align: middle; padding: 5px;';
+                                actionsCell.innerHTML = actionsHtml;
+                                row.insertBefore(actionsCell, row.firstChild);
+                            } else {
+                                firstCell.className = 'actions-cell';
+                                firstCell.style.cssText = 'text-align: center; vertical-align: middle; padding: 5px;';
+                                firstCell.innerHTML = actionsHtml;
+                            }
                         }
                         
                         // Make rate-per-mtr editable if it's a span
@@ -2348,9 +2465,11 @@
                             ratePerMtrSpan.parentNode.replaceChild(input, ratePerMtrSpan);
                         }
                         
-                        // Update row number
-                        const rowNumberCell = row.querySelector('td:first-child');
-                        if (rowNumberCell && !rowNumberCell.classList.contains('row-number')) {
+                        // Update row number (should be second cell now, after actions)
+                        const rowNumberCell = row.querySelector('td:nth-child(2)');
+                        if (rowNumberCell && rowNumberCell.classList.contains('row-number')) {
+                            rowNumberCell.textContent = index + 1;
+                        } else if (rowNumberCell && !rowNumberCell.classList.contains('row-number')) {
                             rowNumberCell.classList.add('row-number');
                             rowNumberCell.textContent = index + 1;
                         }
@@ -2364,26 +2483,10 @@
                         });
                     });
                     
-                    // Add Add Row button if it doesn't exist
+                    // Remove Add Row button if it exists (no longer needed - using plus icons in rows)
                     const existingAddBtn = folderContent.querySelector('.add-row-btn-approval');
-                    if (!existingAddBtn && itemRows.length > 0) {
-                        const addRowDiv = document.createElement('div');
-                        addRowDiv.style.cssText = 'margin-top: 10px; text-align: right;';
-                        addRowDiv.className = 'add-row-btn-approval';
-                        const addBtn = document.createElement('button');
-                        addBtn.textContent = '➕ Add Row';
-                        addBtn.style.cssText = 'background: #4CAF50; color: white; border: none; padding: 8px 16px; cursor: pointer; border-radius: 4px; font-size: 14px;';
-                        addBtn.onclick = function() {
-                            addApprovalRow(quotationId);
-                        };
-                        addRowDiv.appendChild(addBtn);
-                        // Insert before grand total
-                        const grandTotal = folderContent.querySelector('.grand-total');
-                        if (grandTotal) {
-                            grandTotal.parentNode.insertBefore(addRowDiv, grandTotal);
-                        } else {
-                            folderContent.appendChild(addRowDiv);
-                        }
+                    if (existingAddBtn) {
+                        existingAddBtn.remove();
                     }
                 }
             });
@@ -2467,6 +2570,12 @@
             const rowNumber = existingRows.length + 1;
             
             row.innerHTML = `
+                <td class="actions-cell" style="text-align: center; vertical-align: middle; padding: 5px;">
+                    <div style="display: flex; flex-direction: column; align-items: center; gap: 5px;">
+                        <button class="row-action-btn row-action-add" onclick="addApprovalRow(${quotationId})" title="Add row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">➕</button>
+                        <button class="row-action-btn row-action-delete" onclick="deleteApprovalRow(${quotationId}, '${rowId}')" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">➖</button>
+                    </div>
+                </td>
                 <td class="row-number">${rowNumber}</td>
                 <td>
                     <input type="text" 
@@ -2515,9 +2624,6 @@
                            min="0" 
                            step="0.01" style="width: 100px;"></td>
                 <td>₹<span class="line-total" data-row-id="${rowId}">0.00</span></td>
-                <td>
-                    <button class="delete-row-btn" onclick="deleteApprovalRow(${quotationId}, '${rowId}')" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
-                </td>
             `;
             
             tbody.appendChild(row);
@@ -2625,8 +2731,8 @@
                 quotation.shipTo = changedInput.value;
             }
             
-            // Save to localStorage
-            saveToLocalStorage();
+            // Save to server (debounced)
+            queueQuotationSave(quotation);
         }
         
         /*
@@ -2712,7 +2818,7 @@
             if (quotationIndex !== -1) {
                 approvedQuotations[quotationIndex].grandTotal = formatIndianNumber(grandTotal.toFixed(2));
                 if (shouldSave) {
-                    saveToLocalStorage();
+                    queueQuotationSave(approvedQuotations[quotationIndex]);
                 }
             }
         }
@@ -2996,8 +3102,8 @@
             // Mark quotation as saved (now it's approved)
             quotation.saved = true;
             
-            // Save all quotations to localStorage (including this newly approved one with all updates)
-            saveToLocalStorage();
+            // Save updated quotation to server
+            queueQuotationSave(quotation);
             
             // Update the display to show saved status (as folder)
             displayAllApprovedQuotations();
@@ -3118,6 +3224,52 @@
             });
             wrapper.querySelectorAll('.col-base-rate, .col-margin').forEach(el => el.remove());
             
+            // Remove action buttons/column for PDF output
+            const pdfTable = wrapper.querySelector('#pdfTable table');
+            if (pdfTable) {
+                const headerRow = pdfTable.querySelector('thead tr');
+                let actionIndexes = [];
+                if (headerRow) {
+                    const firstHeader = headerRow.querySelector('th:first-child');
+                    if (firstHeader && firstHeader.textContent.trim() === '') {
+                        firstHeader.remove();
+                    }
+                    const headers = Array.from(headerRow.querySelectorAll('th'));
+                    actionIndexes = headers
+                        .map((th, idx) => ({ th, idx }))
+                        .filter(({ th }) => th.textContent.includes('ACTIONS'))
+                        .map(({ idx }) => idx)
+                        .sort((a, b) => b - a);
+                    if (actionIndexes.length > 0) {
+                        actionIndexes.forEach(index => {
+                            const th = headerRow.querySelectorAll('th')[index];
+                            if (th) th.remove();
+                        });
+                    }
+                }
+                
+                pdfTable.querySelectorAll('tbody tr').forEach(row => {
+                    const firstCell = row.querySelector('td:first-child');
+                    if (firstCell && (firstCell.classList.contains('actions-cell') || firstCell.querySelector('.row-action-btn') || firstCell.querySelector('button'))) {
+                        firstCell.remove();
+                    }
+                    if (actionIndexes.length > 0) {
+                        actionIndexes.forEach(index => {
+                            const cell = row.querySelectorAll('td')[index];
+                            if (cell) cell.remove();
+                        });
+                    }
+                });
+                
+                // Sync pipe-type header colspan to visible column count
+                if (headerRow) {
+                    const visibleCols = headerRow.querySelectorAll('th').length;
+                    pdfTable.querySelectorAll('.pipe-type-header td[colspan]').forEach(cell => {
+                        cell.setAttribute('colspan', String(visibleCols));
+                    });
+                }
+            }
+            
             // Inline images to avoid canvas tainting
             const inlineImages = async (container) => {
                 const images = Array.from(container.querySelectorAll('img'));
@@ -3213,9 +3365,75 @@
         
         /*
             ============================================
-            SAVE TO LOCALSTORAGE FUNCTION
+            SERVER STORAGE (DYNAMODB)
             ============================================
-            This function saves all saved quotations to browser's localStorage.
+            These functions save/load quotations from the server so they are
+            visible across all browsers/devices. localStorage is used as a fallback.
+        */
+        const quotationSaveTimers = new Map();
+        
+        async function saveQuotationToServer(quotation) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/save-quotation`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ quotation })
+                });
+                const result = await safeJsonParse(response);
+                if (!response.ok) {
+                    throw new Error(result.error || 'Failed to save quotation to server');
+                }
+                return true;
+            } catch (error) {
+                console.error('Error saving quotation to server:', error);
+                // Fallback to localStorage so data isn't lost
+                saveToLocalStorage();
+                return false;
+            }
+        }
+        
+        function queueQuotationSave(quotation) {
+            if (!quotation || !quotation.id) return;
+            const existing = quotationSaveTimers.get(quotation.id);
+            if (existing) {
+                clearTimeout(existing);
+            }
+            const timeout = setTimeout(() => {
+                saveQuotationToServer(quotation);
+            }, 500);
+            quotationSaveTimers.set(quotation.id, timeout);
+        }
+        
+        async function loadFromServer() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/quotations`);
+                const result = await safeJsonParse(response);
+                if (!response.ok) {
+                    throw new Error(result.error || 'Failed to load quotations from server');
+                }
+                const quotations = Array.isArray(result.quotations) ? result.quotations : [];
+                approvedQuotations = [];
+                quotations.forEach(function(quotation) {
+                    if (quotation.saved === undefined) {
+                        quotation.saved = false;
+                    }
+                    approvedQuotations.push(quotation);
+                });
+                if (approvedQuotations.length > 0) {
+                    displayAllApprovedQuotations();
+                }
+            } catch (error) {
+                console.error('Error loading quotations from server:', error);
+                // Fallback to localStorage
+                loadFromLocalStorage();
+            }
+        }
+
+        /*
+            ============================================
+            SAVE TO LOCALSTORAGE FUNCTION (FALLBACK)
+            ============================================
+            This function saves all quotations to browser's localStorage as backup.
         */
         function saveToLocalStorage() {
             /*
@@ -3313,8 +3531,11 @@
         // This code runs when the page finishes loading
         console.log("Quotation Generator loaded successfully!");
         
-        // Load saved quotations from localStorage
-        loadFromLocalStorage();
+        // Load saved quotations from server (DynamoDB)
+        loadFromServer();
+        
+        // Load default terms from configuration
+        loadTermsConfig();
         
         // Load instructions from localStorage
         loadInstructions();
