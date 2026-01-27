@@ -21,6 +21,8 @@ let storageClient = null;
 let bucket = null;
 let s3Client = null;
 let s3BucketName = null;
+let ddbDocClient = null;
+let ddbTableName = null;
 
 const useGoogleCloud = !!(process.env.GOOGLE_CLOUD_BUCKET_NAME || process.env.GOOGLE_CLOUD_CREDENTIALS);
 const useAWS = !!(process.env.AWS_S3_BUCKET_NAME && process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY);
@@ -74,6 +76,27 @@ if (useAWS) {
         console.log(`AWS S3 initialized successfully (bucket: ${s3BucketName})`);
     } catch (error) {
         console.warn('AWS S3 not available, using local storage:', error.message);
+    }
+}
+
+// Initialize DynamoDB (if configured)
+if (useAWS && process.env.DYNAMODB_TABLE) {
+    try {
+        const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+        const { DynamoDBDocumentClient } = require('@aws-sdk/lib-dynamodb');
+        const region = process.env.AWS_REGION || 'us-east-1';
+        const ddbClient = new DynamoDBClient({
+            region,
+            credentials: {
+                accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+                secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+            }
+        });
+        ddbDocClient = DynamoDBDocumentClient.from(ddbClient);
+        ddbTableName = process.env.DYNAMODB_TABLE;
+        console.log(`DynamoDB initialized successfully (table: ${ddbTableName})`);
+    } catch (error) {
+        console.warn('DynamoDB not available, using localStorage only:', error.message);
     }
 }
 
@@ -404,11 +427,17 @@ async function listFilesFromS3(folder = 'rates') {
         return [];
     }
     
-    return response.Contents.map(item => ({
-        name: item.Key.split('/').pop(), // Get just the filename
-        path: item.Key,
-        time: item.LastModified ? item.LastModified.getTime() : Date.now()
-    }));
+    return response.Contents
+        .filter(item => {
+            const filename = item.Key.split('/').pop();
+            // Hide the rate index file from UI listings
+            return filename && filename.toLowerCase() !== 'index.json';
+        })
+        .map(item => ({
+            name: item.Key.split('/').pop(), // Get just the filename
+            path: item.Key,
+            time: item.LastModified ? item.LastModified.getTime() : Date.now()
+        }));
 }
 
 async function readFileFromS3(filePath) {
@@ -901,6 +930,64 @@ app.get('/api/get-instructions', async (req, res) => {
     }
 });
 
+// Save quotation to DynamoDB (shared across devices)
+app.post('/api/save-quotation', async (req, res) => {
+    try {
+        if (!ddbDocClient || !ddbTableName) {
+            return res.status(500).json({ error: 'DynamoDB not configured. Set DYNAMODB_TABLE in environment variables.' });
+        }
+        const { quotation } = req.body || {};
+        if (!quotation || !quotation.id) {
+            return res.status(400).json({ error: 'Quotation with id is required' });
+        }
+        const { PutCommand } = require('@aws-sdk/lib-dynamodb');
+        const now = new Date().toISOString();
+        const updatedQuotation = {
+            ...quotation,
+            createdAt: quotation.createdAt || now,
+            updatedAt: now
+        };
+        const item = {
+            id: String(updatedQuotation.id),
+            updatedAt: updatedQuotation.updatedAt,
+            createdAt: updatedQuotation.createdAt,
+            data: updatedQuotation
+        };
+        await ddbDocClient.send(new PutCommand({
+            TableName: ddbTableName,
+            Item: item
+        }));
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error saving quotation:', error);
+        res.status(500).json({ error: 'Failed to save quotation', details: error.message });
+    }
+});
+
+// Get all quotations from DynamoDB
+app.get('/api/quotations', async (req, res) => {
+    try {
+        if (!ddbDocClient || !ddbTableName) {
+            return res.status(500).json({ error: 'DynamoDB not configured. Set DYNAMODB_TABLE in environment variables.' });
+        }
+        const { ScanCommand } = require('@aws-sdk/lib-dynamodb');
+        const result = await ddbDocClient.send(new ScanCommand({
+            TableName: ddbTableName
+        }));
+        const items = result.Items || [];
+        const quotations = items.map(item => item.data || item).filter(Boolean);
+        quotations.sort((a, b) => {
+            const aTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
+            const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
+            return bTime - aTime;
+        });
+        res.json({ quotations });
+    } catch (error) {
+        console.error('Error loading quotations:', error);
+        res.status(500).json({ error: 'Failed to load quotations', details: error.message });
+    }
+});
+
 // Main API: Generate quotation using OpenAI
 app.post('/api/generate-quotation', async (req, res) => {
     try {
@@ -1151,17 +1238,9 @@ Extract all pipe information from the enquiry, match with rates from the uploade
             temperature: 0.3
         });
         
-        // Clean up uploaded files after use
-        for (const fileId of uploadedFileIds) {
-            try {
-                await openai.files.del(fileId);
-                console.log(`Deleted temporary file ${fileId} from OpenAI`);
-            } catch (error) {
-                console.error(`Error deleting file ${fileId}:`, error);
-            }
-        }
-
-        // No temp files to clean up (PDFs are used directly)
+        // NOTE: Do NOT delete OpenAI files here.
+        // We reuse file IDs from the index to avoid re-uploading.
+        // Deletion is handled only when a rate file is deleted via /api/delete-rate-file.
         
         // Parse response
         const responseText =
