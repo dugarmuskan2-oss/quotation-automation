@@ -447,6 +447,99 @@ async function saveInstructionsToS3(content) {
     await uploadToS3(Buffer.from(content, 'utf8'), 'instructions.txt', '');
 }
 
+// ===============================
+// RATE FILE INDEX (JSON MAPPING)
+// ===============================
+// Stores mapping between S3 files and OpenAI file IDs
+// Format: [{ s3Key, openaiFileId, originalName, createdAt }, ...]
+
+async function loadRateIndex() {
+    // Returns an array of mappings
+    try {
+        if (useAWS && s3Client) {
+            // Try to read index from S3
+            try {
+                const buffer = await readFileFromS3('rates/index.json');
+                const text = buffer.toString('utf8');
+                const data = JSON.parse(text);
+                if (Array.isArray(data)) {
+                    return data;
+                }
+            } catch (error) {
+                // File doesn't exist yet or parse error - return empty array
+                if (error.name !== 'NoSuchKey' && error.$metadata?.httpStatusCode !== 404) {
+                    console.warn('loadRateIndex: parse error, returning empty index:', error.message);
+                }
+            }
+            return [];
+        } else if (useGoogleCloud && bucket) {
+            // Try to read from GCS
+            try {
+                const buffer = await readFileFromGCS('rates/index.json');
+                const text = buffer.toString('utf8');
+                const data = JSON.parse(text);
+                if (Array.isArray(data)) {
+                    return data;
+                }
+            } catch (error) {
+                if (error.code !== 404) {
+                    console.warn('loadRateIndex: parse error, returning empty index:', error.message);
+                }
+            }
+            return [];
+        } else {
+            // Fallback: local file
+            const indexPath = path.join(baseDir, 'rates-index.json');
+            if (fs.existsSync(indexPath)) {
+                const text = fs.readFileSync(indexPath, 'utf8');
+                const data = JSON.parse(text);
+                return Array.isArray(data) ? data : [];
+            }
+            return [];
+        }
+    } catch (error) {
+        // If any error, treat as empty index
+        console.warn('loadRateIndex: returning empty index due to error:', error.message);
+        return [];
+    }
+}
+
+async function saveRateIndex(index) {
+    const json = JSON.stringify(index, null, 2);
+    if (useAWS && s3Client) {
+        // Save index to S3 under rates/index.json
+        await uploadToS3(Buffer.from(json, 'utf8'), 'index.json', 'rates');
+    } else if (useGoogleCloud && bucket) {
+        // Save index to GCS
+        await uploadToGCS(Buffer.from(json, 'utf8'), 'index.json', 'rates');
+    } else {
+        // Save locally
+        const indexPath = path.join(baseDir, 'rates-index.json');
+        fs.writeFileSync(indexPath, json, 'utf8');
+    }
+}
+
+// Add or update a mapping { s3Key, openaiFileId, originalName, createdAt }
+async function addRateMapping(mapping) {
+    const index = await loadRateIndex();
+    // Remove any existing entry with same s3Key (update case)
+    const filtered = index.filter(m => m.s3Key !== mapping.s3Key);
+    filtered.push(mapping);
+    await saveRateIndex(filtered);
+}
+
+// Remove mapping by S3 key
+async function removeRateMappingByS3Key(s3Key) {
+    const index = await loadRateIndex();
+    const filtered = index.filter(m => m.s3Key !== s3Key);
+    await saveRateIndex(filtered);
+}
+
+// Get all mappings
+async function getAllRateMappings() {
+    return await loadRateIndex();
+}
+
 // API Routes
 
 // Health check
@@ -503,6 +596,52 @@ app.post('/api/upload-rates', upload.array('rateFiles', 10), async (req, res) =>
                     savedFileName = file.filename;
                 }
                 
+                // For PDF files, also upload to OpenAI and save mapping
+                if (fileExt === '.pdf') {
+                    try {
+                        const s3Key = useAWS && s3Client ? `rates/${savedFileName}` : 
+                                     useGoogleCloud && bucket ? `rates/${savedFileName}` : 
+                                     path.join(ratesDir, savedFileName);
+                        
+                        // Ensure we have a proper Buffer (not a stream)
+                        // Create a fresh Buffer copy to avoid any stream-like objects
+                        let fileBuffer;
+                        if (Buffer.isBuffer(file.buffer)) {
+                            // If it's already a Buffer, create a copy to ensure it's not a view
+                            fileBuffer = Buffer.from(file.buffer);
+                        } else if (file.buffer instanceof Uint8Array) {
+                            // Convert Uint8Array to Buffer
+                            fileBuffer = Buffer.from(file.buffer);
+                        } else {
+                            // Fallback: try to convert whatever it is to a Buffer
+                            fileBuffer = Buffer.from(file.buffer);
+                        }
+                        
+                        // Upload to OpenAI
+                        const openAiFile = await openai.files.create({
+                            file: {
+                                data: fileBuffer,
+                                name: savedFileName
+                            },
+                            purpose: 'assistants'
+                        });
+                        
+                        // Save mapping to index
+                        await addRateMapping({
+                            s3Key: s3Key,
+                            openaiFileId: openAiFile.id,
+                            originalName: file.originalname,
+                            createdAt: new Date().toISOString()
+                        });
+                        
+                        console.log(`Uploaded ${savedFileName} to OpenAI (ID: ${openAiFile.id}) and saved mapping`);
+                    } catch (openAiError) {
+                        console.error(`Error uploading ${savedFileName} to OpenAI:`, openAiError);
+                        // Continue anyway - file is in S3, just not in OpenAI yet
+                        // It will be uploaded on next quotation generation
+                    }
+                }
+                
                 results.push({
                     filename: savedFileName,
                     originalName: file.originalname,
@@ -556,6 +695,46 @@ app.post('/api/delete-rate-file', async (req, res) => {
             return res.status(400).json({ error: 'Filename required' });
         }
         
+        // Determine S3 key based on storage type
+        let s3Key;
+        if (useGoogleCloud && bucket) {
+            s3Key = `rates/${filename}`;
+        } else if (useAWS && s3Client) {
+            s3Key = `rates/${filename}`;
+        } else {
+            s3Key = path.join(ratesDir, filename);
+        }
+        
+        // Check if this file has a mapping in the index (for PDFs)
+        // If so, delete from OpenAI and remove from index
+        try {
+            const index = await loadRateIndex();
+            const mapping = index.find(m => {
+                // Match by filename (handle different path formats)
+                const mappingFilename = m.s3Key.split('/').pop();
+                return mappingFilename === filename;
+            });
+            
+            if (mapping && mapping.openaiFileId) {
+                try {
+                    // Delete from OpenAI
+                    await openai.files.del(mapping.openaiFileId);
+                    console.log(`Deleted file ${filename} from OpenAI (ID: ${mapping.openaiFileId})`);
+                } catch (openAiError) {
+                    console.warn(`Failed to delete OpenAI file ${mapping.openaiFileId}:`, openAiError.message);
+                    // Continue anyway - we'll still delete from S3 and index
+                }
+                
+                // Remove from index
+                await removeRateMappingByS3Key(mapping.s3Key);
+                console.log(`Removed mapping for ${filename} from index`);
+            }
+        } catch (indexError) {
+            console.warn('Could not load/update rate index during delete:', indexError.message);
+            // Continue with S3/local delete anyway
+        }
+        
+        // Delete from storage (S3/GCS/local)
         if (useGoogleCloud && bucket) {
             // Delete from Google Cloud Storage
             const filePath = `rates/${filename}`;
@@ -719,90 +898,140 @@ app.post('/api/generate-quotation', async (req, res) => {
             return res.status(400).json({ error: 'No instructions provided. Please enter instructions first.' });
         }
         
-        // Get all rate files (from GCS or local storage)
-        let rateFiles = [];
-        
-        if (useGoogleCloud && bucket) {
-            // Get files from Google Cloud Storage
-            const gcsFiles = await listFilesFromGCS('rates');
-            rateFiles = gcsFiles.map(f => ({
-                name: f.name,
-                path: f.path,
-                storageType: 'gcs'
-            }));
-        } else if (useAWS && s3Client) {
-            // Get files from AWS S3
-            const s3Files = await listFilesFromS3('rates');
-            rateFiles = s3Files.map(f => ({
-                name: f.name,
-                path: f.path,
-                storageType: 's3'
-            }));
-        } else {
-            // Get files from local storage
-            const localFiles = getAllFiles(ratesDir);
-            rateFiles = localFiles.map(filePath => ({
-                name: path.basename(filePath),
-                path: filePath,
-                storageType: 'local'
-            }));
-        }
-        
-        if (rateFiles.length === 0) {
-            return res.status(400).json({ error: 'No rate files uploaded. Please upload rate files first.' });
-        }
-        
         // Prepare content for OpenAI
         const enquiryText = emailContent || fileContent || '';
         
-        // Upload PDF rate files directly to OpenAI Files API
-        const uploadedFileIds = [];
-        const uploadedFileNames = [];
-        const tempTxtFiles = [];
+        // Try to use existing OpenAI file IDs from the rate index (fast path - no S3 read, no upload)
+        let uploadedFileIds = [];
+        let uploadedFileNames = [];
         
-        for (const rateFile of rateFiles) {
-            try {
-                const fileName = rateFile.name;
-                const fileExt = path.extname(fileName).toLowerCase();
-
-                if (fileExt !== '.pdf') {
-                    console.log(`Skipping non-PDF file: ${fileName}`);
-                    continue;
-                }
-
-                // Read file from cloud storage or local storage
-                let fileBuffer;
-                if (rateFile.storageType === 'gcs') {
-                    fileBuffer = await readFileFromGCS(rateFile.path);
-                } else if (rateFile.storageType === 's3') {
-                    fileBuffer = await readFileFromS3(rateFile.path);
-                } else {
-                    fileBuffer = fs.readFileSync(rateFile.path);
-                }
-
-                // Create a stream from buffer for OpenAI
-                const fileStream = Readable.from(fileBuffer);
-                
-                const file = await openai.files.create({
-                    file: fileStream,
-                    purpose: 'assistants'
-                });
-
-                uploadedFileIds.push(file.id);
-                uploadedFileNames.push(fileName);
-                console.log(`Uploaded ${fileName} to OpenAI as file ID: ${file.id}`);
-            } catch (error) {
-                console.error(`Error uploading file ${rateFile.name} to OpenAI:`, error);
-                // Continue with other files even if one fails
+        try {
+            const mappings = await getAllRateMappings();
+            if (mappings && mappings.length > 0) {
+                uploadedFileIds = mappings.map(m => m.openaiFileId);
+                uploadedFileNames = mappings.map(m => m.originalName || m.s3Key.split('/').pop());
+                console.log(`Using ${uploadedFileIds.length} rate file(s) from index (no upload needed)`);
             }
-        }
-
-        if (uploadedFileIds.length === 0) {
-            return res.status(400).json({ error: 'No PDF rate files found. Please upload PDF rate files.' });
+        } catch (indexError) {
+            console.warn('Failed to load rate index, will fall back to uploading from storage:', indexError.message);
         }
         
+        // If no mappings found, fall back to reading from S3/local and uploading to OpenAI
+        // This also builds the index for next time
         if (uploadedFileIds.length === 0) {
-            return res.status(500).json({ error: 'Failed to upload rate files to OpenAI' });
+            console.log('Rate index empty, falling back to reading from storage and uploading to OpenAI...');
+            
+            // Get all rate files (from cloud storage or local storage)
+            let rateFiles = [];
+            
+            if (useGoogleCloud && bucket) {
+                // Get files from Google Cloud Storage
+                const gcsFiles = await listFilesFromGCS('rates');
+                rateFiles = gcsFiles.map(f => ({
+                    name: f.name,
+                    path: f.path,
+                    storageType: 'gcs'
+                }));
+            } else if (useAWS && s3Client) {
+                // Get files from AWS S3
+                const s3Files = await listFilesFromS3('rates');
+                rateFiles = s3Files.map(f => ({
+                    name: f.name,
+                    path: f.path,
+                    storageType: 's3'
+                }));
+            } else {
+                // Get files from local storage
+                const localFiles = getAllFiles(ratesDir);
+                rateFiles = localFiles.map(filePath => ({
+                    name: path.basename(filePath),
+                    path: filePath,
+                    storageType: 'local'
+                }));
+            }
+            
+            if (rateFiles.length === 0) {
+                return res.status(400).json({ error: 'No rate files uploaded. Please upload rate files first.' });
+            }
+            
+            // Upload PDF rate files to OpenAI and build index
+            let pdfFilesFound = 0;
+            let pdfFilesUploaded = 0;
+            const uploadErrors = [];
+            
+            for (const rateFile of rateFiles) {
+                try {
+                    const fileName = rateFile.name;
+                    const fileExt = path.extname(fileName).toLowerCase();
+
+                    if (fileExt !== '.pdf') {
+                        console.log(`Skipping non-PDF file: ${fileName} (extension: ${fileExt})`);
+                        continue;
+                    }
+
+                    pdfFilesFound++;
+                    console.log(`Processing PDF file: ${fileName}`);
+
+                    // Read file from cloud storage or local storage
+                    let fileBuffer;
+                    if (rateFile.storageType === 'gcs') {
+                        fileBuffer = await readFileFromGCS(rateFile.path);
+                    } else if (rateFile.storageType === 's3') {
+                        fileBuffer = await readFileFromS3(rateFile.path);
+                    } else {
+                        fileBuffer = fs.readFileSync(rateFile.path);
+                    }
+
+                    console.log(`Read file ${fileName} from storage (${fileBuffer.length} bytes)`);
+
+                    // Upload buffer directly to OpenAI Files API
+                    const file = await openai.files.create({
+                        file: {
+                            data: fileBuffer,
+                            name: fileName
+                        },
+                        purpose: 'assistants'
+                    });
+
+                    uploadedFileIds.push(file.id);
+                    uploadedFileNames.push(fileName);
+                    pdfFilesUploaded++;
+                    console.log(`Uploaded ${fileName} to OpenAI as file ID: ${file.id}`);
+
+                    // Save mapping to index for future use
+                    const s3Key = rateFile.path; // Already includes 'rates/' prefix for cloud storage
+                    await addRateMapping({
+                        s3Key: s3Key,
+                        openaiFileId: file.id,
+                        originalName: fileName,
+                        createdAt: new Date().toISOString()
+                    });
+                } catch (error) {
+                    console.error(`Error uploading file ${rateFile.name} to OpenAI:`, error);
+                    uploadErrors.push({
+                        filename: rateFile.name,
+                        error: error.message
+                    });
+                    // Continue with other files even if one fails
+                }
+            }
+
+            if (uploadedFileIds.length === 0) {
+                let errorMessage = 'No PDF rate files found. Please upload PDF rate files.';
+                if (rateFiles.length > 0) {
+                    const nonPdfCount = rateFiles.length - pdfFilesFound;
+                    errorMessage += ` Found ${rateFiles.length} file(s) in storage, but ${pdfFilesFound} PDF file(s) found.`;
+                    if (pdfFilesFound > 0 && pdfFilesUploaded === 0) {
+                        errorMessage += ' All PDF uploads to OpenAI failed.';
+                        if (uploadErrors.length > 0) {
+                            errorMessage += ` Errors: ${uploadErrors.map(e => `${e.filename}: ${e.error}`).join('; ')}`;
+                        }
+                    } else if (pdfFilesFound === 0) {
+                        errorMessage += ' No PDF files found (only Excel or other file types).';
+                    }
+                }
+                return res.status(400).json({ error: errorMessage });
+            }
         }
         
         // Prepare input for Responses API with file references
