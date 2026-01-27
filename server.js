@@ -1052,14 +1052,27 @@ app.post('/api/generate-quotation', async (req, res) => {
                     console.error(`Error uploading file ${rateFile.name} to OpenAI:`, error);
                     
                     // Provide helpful error message for file size issues
-                    let errorMessage = error.message;
-                    const fileSizeMB = fileBuffer ? (fileBuffer.length / (1024 * 1024)).toFixed(2) : 'unknown';
+                    let errorMessage = error.message || 'Unknown error';
+                    let fileSizeMB = 'unknown';
+                    
+                    // Safely get file size if fileBuffer exists
+                    try {
+                        if (typeof fileBuffer !== 'undefined' && fileBuffer && fileBuffer.length) {
+                            fileSizeMB = (fileBuffer.length / (1024 * 1024)).toFixed(2);
+                        }
+                    } catch (e) {
+                        // Ignore errors getting file size
+                    }
                     
                     if (error.status === 413 || error.message.includes('413') || error.message.includes('capacity limit') || error.message.includes('too large') || error.message.includes('exceeds the capacity')) {
                         errorMessage = `File too large: ${fileSizeMB} MB. OpenAI's file size limit may be lower than expected. Please compress the PDF to under 50 MB or split it into smaller files.`;
                     } else {
-                        // Include file size in error for debugging
-                        errorMessage = `${error.message} (File size: ${fileSizeMB} MB)`;
+                        // Include file size in error for debugging if available
+                        if (fileSizeMB !== 'unknown') {
+                            errorMessage = `${error.message} (File size: ${fileSizeMB} MB)`;
+                        } else {
+                            errorMessage = error.message;
+                        }
                     }
                     
                     uploadErrors.push({
