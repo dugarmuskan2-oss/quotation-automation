@@ -1020,49 +1020,33 @@ app.post('/api/generate-quotation', async (req, res) => {
             console.warn('Failed to load rate index, will fall back to uploading from storage:', indexError.message);
         }
         
-        // If no mappings found, fall back to reading from S3/local and uploading to OpenAI
-        // This also builds the index for next time
-        if (uploadedFileIds.length === 0) {
-            console.log('Rate index empty, falling back to reading from storage and uploading to OpenAI...');
-            
+        // Helper: upload rate files from storage to OpenAI and build index
+        async function uploadFromStorageAndBuildIndex() {
+            console.log('Rate index empty or invalid, falling back to reading from storage and uploading to OpenAI...');
             // Get all rate files (from cloud storage or local storage)
             let rateFiles = [];
-            
             if (useGoogleCloud && bucket) {
-                // Get files from Google Cloud Storage
                 const gcsFiles = await listFilesFromGCS('rates');
-                rateFiles = gcsFiles.map(f => ({
-                    name: f.name,
-                    path: f.path,
-                    storageType: 'gcs'
-                }));
+                rateFiles = gcsFiles.map(f => ({ name: f.name, path: f.path, storageType: 'gcs' }));
             } else if (useAWS && s3Client) {
-                // Get files from AWS S3
                 const s3Files = await listFilesFromS3('rates');
-                rateFiles = s3Files.map(f => ({
-                    name: f.name,
-                    path: f.path,
-                    storageType: 's3'
-                }));
+                rateFiles = s3Files.map(f => ({ name: f.name, path: f.path, storageType: 's3' }));
             } else {
-                // Get files from local storage
                 const localFiles = getAllFiles(ratesDir);
-                rateFiles = localFiles.map(filePath => ({
-                    name: path.basename(filePath),
-                    path: filePath,
-                    storageType: 'local'
-                }));
+                rateFiles = localFiles.map(filePath => ({ name: path.basename(filePath), path: filePath, storageType: 'local' }));
             }
-            
+
             if (rateFiles.length === 0) {
-                return res.status(400).json({ error: 'No rate files uploaded. Please upload rate files first.' });
+                throw new Error('No rate files uploaded. Please upload rate files first.');
             }
-            
+
             // Upload PDF rate files to OpenAI and build index
             let pdfFilesFound = 0;
             let pdfFilesUploaded = 0;
             const uploadErrors = [];
-            
+            const newFileIds = [];
+            const newFileNames = [];
+
             for (const rateFile of rateFiles) {
                 try {
                     const fileName = rateFile.name;
@@ -1119,8 +1103,8 @@ app.post('/api/generate-quotation', async (req, res) => {
                         purpose: 'assistants'
                     });
 
-                    uploadedFileIds.push(file.id);
-                    uploadedFileNames.push(fileName);
+                    newFileIds.push(file.id);
+                    newFileNames.push(fileName);
                     pdfFilesUploaded++;
                     console.log(`Uploaded ${fileName} to OpenAI as file ID: ${file.id}`);
 
@@ -1159,15 +1143,12 @@ app.post('/api/generate-quotation', async (req, res) => {
                         }
                     }
                     
-                    uploadErrors.push({
-                        filename: rateFile.name,
-                        error: errorMessage
-                    });
+                    uploadErrors.push({ filename: rateFile.name, error: errorMessage });
                     // Continue with other files even if one fails
                 }
             }
 
-            if (uploadedFileIds.length === 0) {
+            if (newFileIds.length === 0) {
                 let errorMessage = 'No PDF rate files found. Please upload PDF rate files.';
                 if (rateFiles.length > 0) {
                     const nonPdfCount = rateFiles.length - pdfFilesFound;
@@ -1181,7 +1162,20 @@ app.post('/api/generate-quotation', async (req, res) => {
                         errorMessage += ' No PDF files found (only Excel or other file types).';
                     }
                 }
-                return res.status(400).json({ error: errorMessage });
+                throw new Error(errorMessage);
+            }
+            return { uploadedFileIds: newFileIds, uploadedFileNames: newFileNames };
+        }
+
+        // If no mappings found, fall back to reading from storage and uploading to OpenAI
+        // This also builds the index for next time
+        if (uploadedFileIds.length === 0) {
+            try {
+                const result = await uploadFromStorageAndBuildIndex();
+                uploadedFileIds = result.uploadedFileIds;
+                uploadedFileNames = result.uploadedFileNames;
+            } catch (fallbackError) {
+                return res.status(400).json({ error: fallbackError.message });
             }
         }
         
@@ -1229,14 +1223,57 @@ Extract all pipe information from the enquiry, match with rates from the uploade
         ];
 
         // Call OpenAI Responses API (supports input_file)
-        const completion = await openai.responses.create({
-            model: 'gpt-5.2',
-            input: input,
-            text: {
-                format: { type: 'json_object' }
-            },
-            temperature: 0.3
-        });
+        let completion;
+        try {
+            completion = await openai.responses.create({
+                model: 'gpt-5.2',
+                input: input,
+                text: {
+                    format: { type: 'json_object' }
+                },
+                temperature: 0.3
+            });
+        } catch (error) {
+            // If OpenAI file IDs are missing, rebuild from storage and retry once
+            const isMissingFiles = (error.status === 404) || (error.message && error.message.includes('were not found'));
+            if (isMissingFiles) {
+                console.warn('OpenAI file IDs missing. Rebuilding from storage and retrying...');
+                try {
+                    const result = await uploadFromStorageAndBuildIndex();
+                    uploadedFileIds = result.uploadedFileIds;
+                    uploadedFileNames = result.uploadedFileNames;
+
+                    const retryInput = [
+                        {
+                            role: 'system',
+                            content: instructions || 'You are a quotation extraction assistant. Extract pipe information from enquiries and match them with rates from the provided Excel rate files. Read the Excel files directly to find the correct rates.'
+                        },
+                        {
+                            role: 'user',
+                            content: [
+                                { type: 'input_text', text: promptText },
+                                ...uploadedFileIds.map(fileId => ({
+                                    type: 'input_file',
+                                    file_id: fileId
+                                }))
+                            ]
+                        }
+                    ];
+                    completion = await openai.responses.create({
+                        model: 'gpt-5.2',
+                        input: retryInput,
+                        text: {
+                            format: { type: 'json_object' }
+                        },
+                        temperature: 0.3
+                    });
+                } catch (retryError) {
+                    throw retryError;
+                }
+            } else {
+                throw error;
+            }
+        }
         
         // NOTE: Do NOT delete OpenAI files here.
         // We reuse file IDs from the index to avoid re-uploading.
