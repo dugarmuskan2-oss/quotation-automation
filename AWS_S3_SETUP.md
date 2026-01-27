@@ -185,4 +185,3 @@ For a small application, costs are typically **under $1-5/month**.
 
 - AWS S3 Documentation: https://docs.aws.amazon.com/s3/
 - AWS Support: https://aws.amazon.com/support/
-

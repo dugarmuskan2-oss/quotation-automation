@@ -623,6 +623,18 @@ app.post('/api/upload-rates', upload.array('rateFiles', 10), async (req, res) =>
                         // Final clean buffer (already clean from concat, but double-check)
                         const cleanBuffer = Buffer.concat([fileBuffer]);
                         
+                        // Log file size for debugging
+                        const fileSizeMB = cleanBuffer.length / (1024 * 1024);
+                        const fileSizeBytes = cleanBuffer.length;
+                        console.log(`Attempting to upload ${savedFileName} to OpenAI (${fileSizeMB.toFixed(2)} MB / ${fileSizeBytes} bytes)`);
+                        console.log(`Buffer type: ${cleanBuffer.constructor.name}, isBuffer: ${Buffer.isBuffer(cleanBuffer)}`);
+                        
+                        // Don't block - let OpenAI reject if too large, but log the size for debugging
+                        // OpenAI's limit appears to be around 50-100 MB based on 413 errors
+                        if (fileSizeMB > 100) {
+                            console.warn(`WARNING: File ${savedFileName} is ${fileSizeMB.toFixed(2)} MB - may exceed OpenAI's limit`);
+                        }
+                        
                         // Upload to OpenAI using the same format as generate-quotation endpoint
                         const openAiFile = await openai.files.create({
                             file: {
@@ -989,11 +1001,35 @@ app.post('/api/generate-quotation', async (req, res) => {
                     }
 
                     console.log(`Read file ${fileName} from storage (${fileBuffer.length} bytes)`);
+                    console.log(`Storage type: ${rateFile.storageType}, Path: ${rateFile.path}`);
+
+                    // Log file size for debugging
+                    const fileSizeMB = fileBuffer.length / (1024 * 1024);
+                    const fileSizeBytes = fileBuffer.length;
+                    console.log(`Attempting to upload ${fileName} to OpenAI (${fileSizeMB.toFixed(2)} MB / ${fileSizeBytes} bytes)`);
+                    console.log(`Buffer type: ${fileBuffer.constructor.name}, isBuffer: ${Buffer.isBuffer(fileBuffer)}`);
+                    
+                    // If file is very large, log a warning
+                    if (fileSizeMB > 50) {
+                        console.warn(`⚠️ Large file detected: ${fileSizeMB.toFixed(2)} MB. This may exceed OpenAI's limits.`);
+                    }
+
+                    // Don't block - let OpenAI reject if too large, but log the size for debugging
+                    // OpenAI's limit appears to be around 50-100 MB based on 413 errors
+                    if (fileSizeMB > 100) {
+                        console.warn(`WARNING: File ${fileName} is ${fileSizeMB.toFixed(2)} MB - may exceed OpenAI's limit`);
+                    }
+
+                    // Ensure buffer is completely clean (strip any stream-like properties)
+                    // This is important when reading from S3 - the buffer might have inherited properties
+                    // that confuse the OpenAI SDK, even if the actual size is small
+                    const cleanBuffer = Buffer.concat([fileBuffer]);
+                    console.log(`Clean buffer created: ${cleanBuffer.length} bytes (${(cleanBuffer.length / (1024 * 1024)).toFixed(2)} MB)`);
 
                     // Upload buffer directly to OpenAI Files API
                     const file = await openai.files.create({
                         file: {
-                            data: fileBuffer,
+                            data: cleanBuffer,
                             name: fileName
                         },
                         purpose: 'assistants'
@@ -1014,9 +1050,21 @@ app.post('/api/generate-quotation', async (req, res) => {
                     });
                 } catch (error) {
                     console.error(`Error uploading file ${rateFile.name} to OpenAI:`, error);
+                    
+                    // Provide helpful error message for file size issues
+                    let errorMessage = error.message;
+                    const fileSizeMB = fileBuffer ? (fileBuffer.length / (1024 * 1024)).toFixed(2) : 'unknown';
+                    
+                    if (error.status === 413 || error.message.includes('413') || error.message.includes('capacity limit') || error.message.includes('too large') || error.message.includes('exceeds the capacity')) {
+                        errorMessage = `File too large: ${fileSizeMB} MB. OpenAI's file size limit may be lower than expected. Please compress the PDF to under 50 MB or split it into smaller files.`;
+                    } else {
+                        // Include file size in error for debugging
+                        errorMessage = `${error.message} (File size: ${fileSizeMB} MB)`;
+                    }
+                    
                     uploadErrors.push({
                         filename: rateFile.name,
-                        error: error.message
+                        error: errorMessage
                     });
                     // Continue with other files even if one fails
                 }

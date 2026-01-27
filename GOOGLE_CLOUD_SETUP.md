@@ -104,4 +104,3 @@ For Vercel, you need to add the service account key as an environment variable:
 - Keep your service account key secure
 - Consider using different keys for development and production
 
-

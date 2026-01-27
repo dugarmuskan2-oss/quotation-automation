@@ -678,6 +678,7 @@
             <table id="quotationTable" style="display: none;">
                 <thead>
                     <tr>
+                        <th style="width: 50px;"></th>
                         <th>S. NO</th>
                         <th>ITEM & DESCRIPTION</th>
                         <th>QTY PER MTRS</th>
@@ -685,18 +686,12 @@
                         <th class="col-margin">MARGIN %</th>
                         <th>RATE PER MTRS</th>
                         <th>AMOUNT</th>
-                        <th style="width: 80px;">ACTIONS</th>
                     </tr>
                 </thead>
                 <tbody id="quotationTableBody">
                     <!-- Table rows will be inserted here by JavaScript -->
                 </tbody>
             </table>
-            
-            <!-- Add Row Button -->
-            <div style="margin-top: 10px; text-align: right;">
-                <button onclick="addRow()" style="background: #4CAF50; color: white; border: none; padding: 8px 16px; cursor: pointer; border-radius: 4px; font-size: 14px;">➕ Add Row</button>
-            </div>
             
             <!-- Grand Total (hidden initially) -->
             <div class="grand-total" id="creationGrandTotal" style="display: none;">
@@ -1531,7 +1526,7 @@
                 headerRow.className = 'pipe-type-header';
                 const headerLabel = getPipeHeaderLabel(pipeType);
                 headerRow.innerHTML = `
-                    <td colspan="8">
+                    <td colspan="9">
                         <input type="text" class="editable-field" data-field="pipeTypeHeader" value="${headerLabel}">
                     </td>
                 `;
@@ -1553,6 +1548,12 @@
                     
                     // Create editable inputs for all fields (no pipe type column)
                     row.innerHTML = `
+                        <td style="text-align: center; vertical-align: middle; padding: 5px;">
+                            <div style="display: flex; flex-direction: column; align-items: center; gap: 5px;">
+                                <button onclick="addRow('${pipeType}')" title="Add row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">➕</button>
+                                <button onclick="deleteRow('${rowId}')" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">➖</button>
+                            </div>
+                        </td>
                         <td class="row-number">${index + 1}</td>
                         <td>
                             <input type="text" 
@@ -1601,9 +1602,6 @@
                                    min="0" 
                                    step="0.01" style="width: 100px;"></td>
                         <td>₹<span class="line-total" data-row-id="${rowId}">${formatIndianNumber(lineTotal.toFixed(2))}</span></td>
-                        <td>
-                            <button class="delete-row-btn" onclick="deleteRow('${rowId}')" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
-                        </td>
                     `;
                     
                     tableBody.appendChild(row);
@@ -1853,6 +1851,12 @@
             const rowNumber = document.querySelectorAll('.item-row').length + 1;
             
             row.innerHTML = `
+                <td style="text-align: center; vertical-align: middle; padding: 5px;">
+                    <div style="display: flex; flex-direction: column; align-items: center; gap: 5px;">
+                        <button onclick="addRow('${pipeType}')" title="Add row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">➕</button>
+                        <button onclick="deleteRow('${rowId}')" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">➖</button>
+                    </div>
+                </td>
                 <td class="row-number">${rowNumber}</td>
                 <td>
                     <input type="text" 
@@ -1901,9 +1905,6 @@
                            min="0" 
                            step="0.01" style="width: 100px;"></td>
                 <td>₹<span class="line-total" data-row-id="${rowId}">0.00</span></td>
-                <td>
-                    <button class="delete-row-btn" onclick="deleteRow('${rowId}')" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
-                </td>
             `;
             
             tableBody.appendChild(row);
