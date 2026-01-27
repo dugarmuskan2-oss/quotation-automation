@@ -8,6 +8,7 @@
 const express = require('express');
 const multer = require('multer');
 const OpenAI = require('openai');
+const { toFile } = require('openai/uploads');
 const fs = require('fs');
 const path = require('path');
 const cors = require('cors');
@@ -635,12 +636,10 @@ app.post('/api/upload-rates', upload.array('rateFiles', 10), async (req, res) =>
                             console.warn(`WARNING: File ${savedFileName} is ${fileSizeMB.toFixed(2)} MB - may exceed OpenAI's limit`);
                         }
                         
-                        // Upload to OpenAI using the same format as generate-quotation endpoint
+                        // Upload to OpenAI using a File object to avoid SDK payload issues
+                        const openAiUploadFile = await toFile(cleanBuffer, savedFileName, { type: 'application/pdf' });
                         const openAiFile = await openai.files.create({
-                            file: {
-                                data: cleanBuffer,
-                                name: savedFileName
-                            },
+                            file: openAiUploadFile,
                             purpose: 'assistants'
                         });
                         
@@ -1026,12 +1025,10 @@ app.post('/api/generate-quotation', async (req, res) => {
                     const cleanBuffer = Buffer.concat([fileBuffer]);
                     console.log(`Clean buffer created: ${cleanBuffer.length} bytes (${(cleanBuffer.length / (1024 * 1024)).toFixed(2)} MB)`);
 
-                    // Upload buffer directly to OpenAI Files API
+                    // Upload to OpenAI using a File object to avoid SDK payload issues
+                    const openAiUploadFile = await toFile(cleanBuffer, fileName, { type: 'application/pdf' });
                     const file = await openai.files.create({
-                        file: {
-                            data: cleanBuffer,
-                            name: fileName
-                        },
+                        file: openAiUploadFile,
                         purpose: 'assistants'
                     });
 
