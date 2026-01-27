@@ -16,7 +16,9 @@
     "openai": "^4.20.1",
     "dotenv": "^16.3.1",
     "cors": "^2.8.5",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "@google-cloud/storage": "^7.7.0",
+    "@aws-sdk/client-s3": "^3.490.0"
   }
 }
 

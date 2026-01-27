@@ -123,3 +123,4 @@ Quotation Automation/
 - Saved quotations are stored in browser localStorage
 - Excel files are sent directly to OpenAI (no parsing needed)
 
+

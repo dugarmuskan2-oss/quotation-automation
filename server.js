@@ -12,7 +12,69 @@ const fs = require('fs');
 const path = require('path');
 const cors = require('cors');
 const XLSX = require('xlsx');
+const { Readable } = require('stream');
 require('dotenv').config();
+
+// Cloud Storage Configuration (Google Cloud or AWS S3)
+let storageClient = null;
+let bucket = null;
+let s3Client = null;
+let s3BucketName = null;
+
+const useGoogleCloud = !!(process.env.GOOGLE_CLOUD_BUCKET_NAME || process.env.GOOGLE_CLOUD_CREDENTIALS);
+const useAWS = !!(process.env.AWS_S3_BUCKET_NAME && process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY);
+
+// Initialize Google Cloud Storage (if configured)
+if (useGoogleCloud) {
+    try {
+        const { Storage } = require('@google-cloud/storage');
+        
+        // Initialize Google Cloud Storage
+        let credentials = null;
+        if (process.env.GOOGLE_CLOUD_CREDENTIALS) {
+            // For Vercel - credentials are in environment variable as JSON string
+            credentials = JSON.parse(process.env.GOOGLE_CLOUD_CREDENTIALS);
+        } else if (process.env.GOOGLE_CLOUD_KEY_FILE) {
+            // For local - credentials are in a file
+            const keyPath = path.join(__dirname, process.env.GOOGLE_CLOUD_KEY_FILE);
+            if (fs.existsSync(keyPath)) {
+                credentials = JSON.parse(fs.readFileSync(keyPath, 'utf8'));
+            }
+        }
+        
+        if (credentials) {
+            storageClient = new Storage({
+                projectId: process.env.GOOGLE_CLOUD_PROJECT_ID || credentials.project_id,
+                credentials: credentials
+            });
+            bucket = storageClient.bucket(process.env.GOOGLE_CLOUD_BUCKET_NAME);
+            console.log('Google Cloud Storage initialized successfully');
+        } else {
+            console.warn('Google Cloud Storage credentials not found, using local storage');
+        }
+    } catch (error) {
+        console.warn('Google Cloud Storage not available, using local storage:', error.message);
+    }
+}
+
+// Initialize AWS S3 (if configured)
+if (useAWS) {
+    try {
+        const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
+        
+        s3Client = new S3Client({
+            region: process.env.AWS_REGION || 'us-east-1',
+            credentials: {
+                accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+                secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+            }
+        });
+        s3BucketName = process.env.AWS_S3_BUCKET_NAME;
+        console.log(`AWS S3 initialized successfully (bucket: ${s3BucketName})`);
+    } catch (error) {
+        console.warn('AWS S3 not available, using local storage:', error.message);
+    }
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -51,27 +113,35 @@ const openai = new OpenAI({
 });
 
 // Configure multer for file uploads
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        if (file.fieldname === 'rateFile' || file.fieldname === 'rateFiles') {
-            cb(null, ratesDir);
-        } else if (file.fieldname === 'instructionsFile') {
-            cb(null, instructionsDir);
-        } else {
-            cb(null, uploadsDir);
+// Use memory storage if cloud storage (Google Cloud or AWS S3) is enabled, otherwise use disk storage
+let multerStorage;
+if ((useGoogleCloud && bucket) || (useAWS && s3Client)) {
+    // Memory storage - files will be uploaded to cloud storage
+    multerStorage = multer.memoryStorage();
+} else {
+    // Disk storage - files saved locally
+    multerStorage = multer.diskStorage({
+        destination: function (req, file, cb) {
+            if (file.fieldname === 'rateFile' || file.fieldname === 'rateFiles') {
+                cb(null, ratesDir);
+            } else if (file.fieldname === 'instructionsFile') {
+                cb(null, instructionsDir);
+            } else {
+                cb(null, uploadsDir);
+            }
+        },
+        filename: function (req, file, cb) {
+            // Keep original filename with timestamp
+            const timestamp = Date.now();
+            const ext = path.extname(file.originalname);
+            const name = path.basename(file.originalname, ext);
+            cb(null, `${name}_${timestamp}${ext}`);
         }
-    },
-    filename: function (req, file, cb) {
-        // Keep original filename with timestamp
-        const timestamp = Date.now();
-        const ext = path.extname(file.originalname);
-        const name = path.basename(file.originalname, ext);
-        cb(null, `${name}_${timestamp}${ext}`);
-    }
-});
+    });
+}
 
 const upload = multer({ 
-    storage: storage,
+    storage: multerStorage,
     limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
 });
 
@@ -214,6 +284,169 @@ function excelToTxtFiles(filePath) {
     return txtFilePaths;
 }
 
+// Google Cloud Storage Helper Functions
+async function uploadToGCS(fileBuffer, fileName, folder = 'rates') {
+    if (!bucket) {
+        throw new Error('Google Cloud Storage not configured');
+    }
+    
+    const filePath = `${folder}/${fileName}`;
+    const file = bucket.file(filePath);
+    
+    await file.save(fileBuffer, {
+        metadata: {
+            contentType: 'application/octet-stream'
+        }
+    });
+    
+    return filePath;
+}
+
+async function deleteFromGCS(filePath) {
+    if (!bucket) {
+        throw new Error('Google Cloud Storage not configured');
+    }
+    
+    const file = bucket.file(filePath);
+    await file.delete();
+}
+
+async function listFilesFromGCS(folder = 'rates') {
+    if (!bucket) {
+        return [];
+    }
+    
+    const [files] = await bucket.getFiles({ prefix: `${folder}/` });
+    return files.map(file => ({
+        name: file.name.split('/').pop(), // Get just the filename
+        path: file.name,
+        time: file.metadata.updated ? new Date(file.metadata.updated).getTime() : Date.now()
+    }));
+}
+
+async function readFileFromGCS(filePath) {
+    if (!bucket) {
+        throw new Error('Google Cloud Storage not configured');
+    }
+    
+    const file = bucket.file(filePath);
+    const [buffer] = await file.download();
+    return buffer;
+}
+
+async function readInstructionsFromGCS() {
+    try {
+        const buffer = await readFileFromGCS('instructions.txt');
+        return buffer.toString('utf8');
+    } catch (error) {
+        if (error.code === 404) {
+            return null; // File doesn't exist
+        }
+        throw error;
+    }
+}
+
+async function saveInstructionsToGCS(content) {
+    await uploadToGCS(Buffer.from(content, 'utf8'), 'instructions.txt', '');
+}
+
+// AWS S3 Helper Functions
+async function uploadToS3(fileBuffer, fileName, folder = 'rates') {
+    if (!s3Client || !s3BucketName) {
+        throw new Error('AWS S3 not configured');
+    }
+    
+    const { PutObjectCommand } = require('@aws-sdk/client-s3');
+    const filePath = folder ? `${folder}/${fileName}` : fileName;
+    
+    const command = new PutObjectCommand({
+        Bucket: s3BucketName,
+        Key: filePath,
+        Body: fileBuffer,
+        ContentType: 'application/octet-stream'
+    });
+    
+    await s3Client.send(command);
+    return filePath;
+}
+
+async function deleteFromS3(filePath) {
+    if (!s3Client || !s3BucketName) {
+        throw new Error('AWS S3 not configured');
+    }
+    
+    const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
+    const command = new DeleteObjectCommand({
+        Bucket: s3BucketName,
+        Key: filePath
+    });
+    
+    await s3Client.send(command);
+}
+
+async function listFilesFromS3(folder = 'rates') {
+    if (!s3Client || !s3BucketName) {
+        return [];
+    }
+    
+    const { ListObjectsV2Command } = require('@aws-sdk/client-s3');
+    const prefix = folder ? `${folder}/` : '';
+    
+    const command = new ListObjectsV2Command({
+        Bucket: s3BucketName,
+        Prefix: prefix
+    });
+    
+    const response = await s3Client.send(command);
+    
+    if (!response.Contents) {
+        return [];
+    }
+    
+    return response.Contents.map(item => ({
+        name: item.Key.split('/').pop(), // Get just the filename
+        path: item.Key,
+        time: item.LastModified ? item.LastModified.getTime() : Date.now()
+    }));
+}
+
+async function readFileFromS3(filePath) {
+    if (!s3Client || !s3BucketName) {
+        throw new Error('AWS S3 not configured');
+    }
+    
+    const { GetObjectCommand } = require('@aws-sdk/client-s3');
+    const command = new GetObjectCommand({
+        Bucket: s3BucketName,
+        Key: filePath
+    });
+    
+    const response = await s3Client.send(command);
+    const chunks = [];
+    
+    for await (const chunk of response.Body) {
+        chunks.push(chunk);
+    }
+    
+    return Buffer.concat(chunks);
+}
+
+async function readInstructionsFromS3() {
+    try {
+        const buffer = await readFileFromS3('instructions.txt');
+        return buffer.toString('utf8');
+    } catch (error) {
+        if (error.name === 'NoSuchKey' || error.$metadata?.httpStatusCode === 404) {
+            return null; // File doesn't exist
+        }
+        throw error;
+    }
+}
+
+async function saveInstructionsToS3(content) {
+    await uploadToS3(Buffer.from(content, 'utf8'), 'instructions.txt', '');
+}
+
 // API Routes
 
 // Health check
@@ -222,7 +455,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Upload rate files (Excel) - Multiple files allowed
-app.post('/api/upload-rates', upload.array('rateFiles', 10), (req, res) => {
+app.post('/api/upload-rates', upload.array('rateFiles', 10), async (req, res) => {
     try {
         if (!req.files || req.files.length === 0) {
             return res.status(400).json({ error: 'No files uploaded' });
@@ -231,7 +464,7 @@ app.post('/api/upload-rates', upload.array('rateFiles', 10), (req, res) => {
         const results = [];
         const errors = [];
         
-        req.files.forEach((file, index) => {
+        for (const file of req.files) {
             try {
                 // Additional validation
                 const validExtensions = ['.xlsx', '.xls', '.pdf'];
@@ -242,17 +475,36 @@ app.post('/api/upload-rates', upload.array('rateFiles', 10), (req, res) => {
                         filename: file.originalname,
                         error: `Invalid file type: ${fileExt}. Only .xlsx, .xls, and .pdf files are allowed.`
                     });
-                    // Delete the uploaded file
-                    try {
-                        fs.unlinkSync(file.path);
-                    } catch (unlinkError) {
-                        console.error(`Error deleting invalid file ${file.path}:`, unlinkError);
-                    }
-                    return;
+                    continue;
+                }
+                
+                let savedFileName;
+                
+                if (useGoogleCloud && bucket) {
+                    // Upload to Google Cloud Storage
+                    const timestamp = Date.now();
+                    const ext = path.extname(file.originalname);
+                    const name = path.basename(file.originalname, ext);
+                    savedFileName = `${name}_${timestamp}${ext}`;
+                    
+                    // file.buffer is available when using memory storage
+                    await uploadToGCS(file.buffer, savedFileName, 'rates');
+                } else if (useAWS && s3Client) {
+                    // Upload to AWS S3
+                    const timestamp = Date.now();
+                    const ext = path.extname(file.originalname);
+                    const name = path.basename(file.originalname, ext);
+                    savedFileName = `${name}_${timestamp}${ext}`;
+                    
+                    // file.buffer is available when using memory storage
+                    await uploadToS3(file.buffer, savedFileName, 'rates');
+                } else {
+                    // Local storage - file already saved by multer
+                    savedFileName = file.filename;
                 }
                 
                 results.push({
-                    filename: file.filename,
+                    filename: savedFileName,
                     originalName: file.originalname,
                     size: file.size
                 });
@@ -261,16 +513,16 @@ app.post('/api/upload-rates', upload.array('rateFiles', 10), (req, res) => {
                     filename: file.originalname || 'Unknown',
                     error: fileError.message
                 });
-                // Try to clean up
+                // Try to clean up local file if it exists
                 try {
-                    if (file.path) {
+                    if (file.path && fs.existsSync(file.path)) {
                         fs.unlinkSync(file.path);
                     }
                 } catch (unlinkError) {
                     // Ignore cleanup errors
                 }
             }
-        });
+        }
         
         if (results.length === 0 && errors.length > 0) {
             return res.status(400).json({ 
@@ -296,7 +548,7 @@ app.post('/api/upload-rates', upload.array('rateFiles', 10), (req, res) => {
 });
 
 // Delete rate file
-app.post('/api/delete-rate-file', (req, res) => {
+app.post('/api/delete-rate-file', async (req, res) => {
     try {
         const { filename } = req.body;
         
@@ -304,15 +556,40 @@ app.post('/api/delete-rate-file', (req, res) => {
             return res.status(400).json({ error: 'Filename required' });
         }
         
-        const filePath = path.join(ratesDir, filename);
-        
-        // Check if file exists
-        if (!fs.existsSync(filePath)) {
-            return res.status(404).json({ error: 'File not found' });
+        if (useGoogleCloud && bucket) {
+            // Delete from Google Cloud Storage
+            const filePath = `rates/${filename}`;
+            try {
+                await deleteFromGCS(filePath);
+            } catch (error) {
+                if (error.code === 404) {
+                    return res.status(404).json({ error: 'File not found' });
+                }
+                throw error;
+            }
+        } else if (useAWS && s3Client) {
+            // Delete from AWS S3
+            const filePath = `rates/${filename}`;
+            try {
+                await deleteFromS3(filePath);
+            } catch (error) {
+                if (error.name === 'NoSuchKey' || error.$metadata?.httpStatusCode === 404) {
+                    return res.status(404).json({ error: 'File not found' });
+                }
+                throw error;
+            }
+        } else {
+            // Delete from local storage
+            const filePath = path.join(ratesDir, filename);
+            
+            // Check if file exists
+            if (!fs.existsSync(filePath)) {
+                return res.status(404).json({ error: 'File not found' });
+            }
+            
+            // Delete the file
+            fs.unlinkSync(filePath);
         }
-        
-        // Delete the file
-        fs.unlinkSync(filePath);
         
         res.json({ 
             success: true, 
@@ -325,19 +602,32 @@ app.post('/api/delete-rate-file', (req, res) => {
 });
 
 // Get current rate files info
-app.get('/api/current-rates', (req, res) => {
+app.get('/api/current-rates', async (req, res) => {
     try {
-        const allFiles = getAllFiles(ratesDir);
-        if (allFiles.length === 0) {
-            return res.json({ hasFiles: false, filenames: [], count: 0 });
+        let filenames = [];
+        
+        if (useGoogleCloud && bucket) {
+            // Get files from Google Cloud Storage
+            const files = await listFilesFromGCS('rates');
+            filenames = files.map(f => f.name);
+        } else if (useAWS && s3Client) {
+            // Get files from AWS S3
+            const files = await listFilesFromS3('rates');
+            filenames = files.map(f => f.name);
+        } else {
+            // Get files from local storage
+            const allFiles = getAllFiles(ratesDir);
+            filenames = allFiles.map(filePath => path.basename(filePath));
         }
         
-        const filenames = allFiles.map(filePath => path.basename(filePath));
+        if (filenames.length === 0) {
+            return res.json({ hasFiles: false, filenames: [], count: 0 });
+        }
         
         res.json({ 
             hasFiles: true, 
             filenames: filenames,
-            count: allFiles.length
+            count: filenames.length
         });
     } catch (error) {
         console.error('Error getting rate files info:', error);
@@ -345,14 +635,74 @@ app.get('/api/current-rates', (req, res) => {
     }
 });
 
-// Get current instructions (from request body, stored in localStorage on frontend)
-app.post('/api/get-instructions', (req, res) => {
-    // Instructions are now stored in browser localStorage
-    // This endpoint is kept for compatibility but returns empty
-    res.json({ 
-        hasFile: false,
-        content: null
-    });
+// Save instructions to server (shared across all users/devices)
+app.post('/api/save-instructions', express.json(), async (req, res) => {
+    try {
+        const { instructions } = req.body;
+        
+        if (!instructions) {
+            return res.status(400).json({ error: 'Instructions text is required' });
+        }
+        
+        if (useGoogleCloud && bucket) {
+            // Save to Google Cloud Storage
+            await saveInstructionsToGCS(instructions);
+        } else if (useAWS && s3Client) {
+            // Save to AWS S3
+            await saveInstructionsToS3(instructions);
+        } else {
+            // Save to local file
+            const instructionsFile = path.join(baseDir, 'instructions.txt');
+            fs.writeFileSync(instructionsFile, instructions, 'utf8');
+        }
+        
+        res.json({ 
+            success: true,
+            message: 'Instructions saved successfully'
+        });
+    } catch (error) {
+        console.error('Error saving instructions:', error);
+        res.status(500).json({ 
+            error: 'Failed to save instructions',
+            details: error.message
+        });
+    }
+});
+
+// Get instructions from server (shared across all users/devices)
+app.get('/api/get-instructions', async (req, res) => {
+    try {
+        let content = null;
+        let hasFile = false;
+        
+        if (useGoogleCloud && bucket) {
+            // Get from Google Cloud Storage
+            content = await readInstructionsFromGCS();
+            hasFile = content !== null;
+        } else if (useAWS && s3Client) {
+            // Get from AWS S3
+            content = await readInstructionsFromS3();
+            hasFile = content !== null;
+        } else {
+            // Get from local file
+            const instructionsFile = path.join(baseDir, 'instructions.txt');
+            if (fs.existsSync(instructionsFile)) {
+                content = fs.readFileSync(instructionsFile, 'utf8');
+                hasFile = true;
+            }
+        }
+        
+        res.json({ 
+            hasFile: hasFile,
+            content: content || ''
+        });
+    } catch (error) {
+        console.error('Error getting instructions:', error);
+        res.status(500).json({ 
+            error: 'Failed to get instructions',
+            details: error.message
+        });
+    }
 });
 
 // Main API: Generate quotation using OpenAI
@@ -369,10 +719,36 @@ app.post('/api/generate-quotation', async (req, res) => {
             return res.status(400).json({ error: 'No instructions provided. Please enter instructions first.' });
         }
         
-        // Get all rate files
-        const rateFilePaths = getAllFiles(ratesDir);
+        // Get all rate files (from GCS or local storage)
+        let rateFiles = [];
         
-        if (rateFilePaths.length === 0) {
+        if (useGoogleCloud && bucket) {
+            // Get files from Google Cloud Storage
+            const gcsFiles = await listFilesFromGCS('rates');
+            rateFiles = gcsFiles.map(f => ({
+                name: f.name,
+                path: f.path,
+                storageType: 'gcs'
+            }));
+        } else if (useAWS && s3Client) {
+            // Get files from AWS S3
+            const s3Files = await listFilesFromS3('rates');
+            rateFiles = s3Files.map(f => ({
+                name: f.name,
+                path: f.path,
+                storageType: 's3'
+            }));
+        } else {
+            // Get files from local storage
+            const localFiles = getAllFiles(ratesDir);
+            rateFiles = localFiles.map(filePath => ({
+                name: path.basename(filePath),
+                path: filePath,
+                storageType: 'local'
+            }));
+        }
+        
+        if (rateFiles.length === 0) {
             return res.status(400).json({ error: 'No rate files uploaded. Please upload rate files first.' });
         }
         
@@ -384,17 +760,29 @@ app.post('/api/generate-quotation', async (req, res) => {
         const uploadedFileNames = [];
         const tempTxtFiles = [];
         
-        for (const rateFilePath of rateFilePaths) {
+        for (const rateFile of rateFiles) {
             try {
-                const fileName = path.basename(rateFilePath);
-                const fileExt = path.extname(rateFilePath).toLowerCase();
+                const fileName = rateFile.name;
+                const fileExt = path.extname(fileName).toLowerCase();
 
                 if (fileExt !== '.pdf') {
                     console.log(`Skipping non-PDF file: ${fileName}`);
                     continue;
                 }
 
-                const fileStream = fs.createReadStream(rateFilePath);
+                // Read file from cloud storage or local storage
+                let fileBuffer;
+                if (rateFile.storageType === 'gcs') {
+                    fileBuffer = await readFileFromGCS(rateFile.path);
+                } else if (rateFile.storageType === 's3') {
+                    fileBuffer = await readFileFromS3(rateFile.path);
+                } else {
+                    fileBuffer = fs.readFileSync(rateFile.path);
+                }
+
+                // Create a stream from buffer for OpenAI
+                const fileStream = Readable.from(fileBuffer);
+                
                 const file = await openai.files.create({
                     file: fileStream,
                     purpose: 'assistants'
@@ -404,7 +792,7 @@ app.post('/api/generate-quotation', async (req, res) => {
                 uploadedFileNames.push(fileName);
                 console.log(`Uploaded ${fileName} to OpenAI as file ID: ${file.id}`);
             } catch (error) {
-                console.error(`Error uploading file ${rateFilePath} to OpenAI:`, error);
+                console.error(`Error uploading file ${rateFile.name} to OpenAI:`, error);
                 // Continue with other files even if one fails
             }
         }

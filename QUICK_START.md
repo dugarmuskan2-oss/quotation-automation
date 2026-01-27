@@ -57,3 +57,4 @@ Double-click `index.html` to open in your browser.
 
 **"Failed to generate quotation"** → Check OpenAI API key in `.env` file
 
+

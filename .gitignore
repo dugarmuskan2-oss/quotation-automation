@@ -3,4 +3,6 @@ node_modules/
 uploads/
 *.log
 .DS_Store
+*-service-account*.json
+google-cloud-key.json
 

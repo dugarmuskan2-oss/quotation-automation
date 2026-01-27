@@ -685,12 +685,18 @@
                         <th class="col-margin">MARGIN %</th>
                         <th>RATE PER MTRS</th>
                         <th>AMOUNT</th>
+                        <th style="width: 80px;">ACTIONS</th>
                     </tr>
                 </thead>
                 <tbody id="quotationTableBody">
                     <!-- Table rows will be inserted here by JavaScript -->
                 </tbody>
             </table>
+            
+            <!-- Add Row Button -->
+            <div style="margin-top: 10px; text-align: right;">
+                <button onclick="addRow()" style="background: #4CAF50; color: white; border: none; padding: 8px 16px; cursor: pointer; border-radius: 4px; font-size: 14px;">➕ Add Row</button>
+            </div>
             
             <!-- Grand Total (hidden initially) -->
             <div class="grand-total" id="creationGrandTotal" style="display: none;">
@@ -1032,7 +1038,7 @@
             ============================================
             SAVE INSTRUCTIONS FUNCTION
             ============================================
-            Saves AI instructions as text (stored in localStorage)
+            Saves AI instructions to server (shared across all devices)
         */
         async function saveInstructions() {
             const instructionsText = document.getElementById('instructionsText').value.trim();
@@ -1045,14 +1051,33 @@
             }
             
             try {
-                // Save to localStorage
-                localStorage.setItem('aiInstructions', instructionsText);
+                statusEl.textContent = 'Saving...';
+                statusEl.style.color = '#666';
                 
-                statusEl.textContent = '✓ Instructions saved';
-                statusEl.style.color = '#4CAF50';
+                // Save to server (shared across all devices)
+                const response = await fetch(`${API_BASE_URL}/save-instructions`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ instructions: instructionsText })
+                });
+                
+                const result = await safeJsonParse(response);
+                
+                if (response.ok) {
+                    // Also save to localStorage as backup
+                    localStorage.setItem('aiInstructions', instructionsText);
+                    
+                    statusEl.textContent = '✓ Instructions saved (shared with all devices)';
+                    statusEl.style.color = '#4CAF50';
+                } else {
+                    throw new Error(result.error || 'Failed to save instructions');
+                }
             } catch (error) {
                 statusEl.textContent = `Error: ${error.message}`;
                 statusEl.style.color = '#f44336';
+                console.error('Error saving instructions:', error);
             }
         }
         
@@ -1060,15 +1085,43 @@
             ============================================
             LOAD INSTRUCTIONS FUNCTION
             ============================================
-            Loads saved instructions from localStorage
+            Loads saved instructions from server (shared across all devices)
+            Falls back to localStorage if server fails
         */
-        function loadInstructions() {
-            const savedInstructions = localStorage.getItem('aiInstructions');
-            if (savedInstructions) {
-                document.getElementById('instructionsText').value = savedInstructions;
-                const statusEl = document.getElementById('instructionsStatus');
-                statusEl.textContent = '✓ Instructions loaded';
-                statusEl.style.color = '#4CAF50';
+        async function loadInstructions() {
+            try {
+                // Try to load from server first (shared across devices)
+                const response = await fetch(`${API_BASE_URL}/get-instructions`);
+                const result = await safeJsonParse(response);
+                
+                if (response.ok && result.hasFile && result.content) {
+                    document.getElementById('instructionsText').value = result.content;
+                    // Also update localStorage as backup
+                    localStorage.setItem('aiInstructions', result.content);
+                    const statusEl = document.getElementById('instructionsStatus');
+                    if (statusEl) {
+                        statusEl.textContent = '✓ Instructions loaded from server';
+                        statusEl.style.color = '#4CAF50';
+                    }
+                } else {
+                    // Fallback to localStorage if server doesn't have instructions
+                    const savedInstructions = localStorage.getItem('aiInstructions');
+                    if (savedInstructions) {
+                        document.getElementById('instructionsText').value = savedInstructions;
+                        const statusEl = document.getElementById('instructionsStatus');
+                        if (statusEl) {
+                            statusEl.textContent = 'Instructions loaded from local storage';
+                            statusEl.style.color = '#999';
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading instructions from server:', error);
+                // Fallback to localStorage
+                const savedInstructions = localStorage.getItem('aiInstructions');
+                if (savedInstructions) {
+                    document.getElementById('instructionsText').value = savedInstructions;
+                }
             }
         }
         
@@ -1478,7 +1531,7 @@
                 headerRow.className = 'pipe-type-header';
                 const headerLabel = getPipeHeaderLabel(pipeType);
                 headerRow.innerHTML = `
-                    <td colspan="7">
+                    <td colspan="8">
                         <input type="text" class="editable-field" data-field="pipeTypeHeader" value="${headerLabel}">
                     </td>
                 `;
@@ -1493,15 +1546,20 @@
                     const lineTotal = parseFloat(item.quantity) * parseFloat(item.finalRate);
                     grandTotal += lineTotal;
                     
+                    // Generate unique row ID
+                    const rowId = `row-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                    row.id = rowId;
+                    row.setAttribute('data-pipe-type', pipeType);
+                    
                     // Create editable inputs for all fields (no pipe type column)
                     row.innerHTML = `
-                        <td>${index + 1}</td>
+                        <td class="row-number">${index + 1}</td>
                         <td>
                             <input type="text" 
                                    class="editable-field" 
                                    data-field="originalDescription"
                                    data-pipe-type="${pipeType}"
-                                   data-row-index="${Object.keys(groupedItems).indexOf(pipeType)}-${index}"
+                                   data-row-id="${rowId}"
                                    value="${item.originalDescription}">
                         </td>
                         <td>
@@ -1509,7 +1567,7 @@
                                    class="editable-field" 
                                    data-field="quantity"
                                    data-pipe-type="${pipeType}"
-                                   data-row-index="${Object.keys(groupedItems).indexOf(pipeType)}-${index}"
+                                   data-row-id="${rowId}"
                                    value="${item.quantity}" 
                                    min="0" 
                                    step="1">
@@ -1519,7 +1577,7 @@
                                    class="editable-field" 
                                    data-field="unitRate"
                                    data-pipe-type="${pipeType}"
-                                   data-row-index="${Object.keys(groupedItems).indexOf(pipeType)}-${index}"
+                                   data-row-id="${rowId}"
                                    value="${item.unitRate}" 
                                    min="0" 
                                    step="0.01" style="width: 80px;">
@@ -1529,16 +1587,29 @@
                                    class="editable-field" 
                                    data-field="marginPercent"
                                    data-pipe-type="${pipeType}"
-                                   data-row-index="${Object.keys(groupedItems).indexOf(pipeType)}-${index}"
+                                   data-row-id="${rowId}"
                                    value="${item.marginPercent || ''}" 
                                    min="0" 
                                    step="0.01" style="width: 60px;">
                         </td>
-                        <td>₹<span class="rate-per-mtr" data-row-index="${Object.keys(groupedItems).indexOf(pipeType)}-${index}">${formatIndianNumber(parseFloat(item.finalRate || 0).toFixed(2))}</span></td>
-                        <td>₹<span class="line-total" data-row-index="${Object.keys(groupedItems).indexOf(pipeType)}-${index}">${formatIndianNumber(lineTotal.toFixed(2))}</span></td>
+                        <td>₹<input type="number" 
+                                   class="editable-field rate-per-mtr" 
+                                   data-field="finalRate"
+                                   data-pipe-type="${pipeType}"
+                                   data-row-id="${rowId}"
+                                   value="${parseFloat(item.finalRate || 0).toFixed(2)}" 
+                                   min="0" 
+                                   step="0.01" style="width: 100px;"></td>
+                        <td>₹<span class="line-total" data-row-id="${rowId}">${formatIndianNumber(lineTotal.toFixed(2))}</span></td>
+                        <td>
+                            <button class="delete-row-btn" onclick="deleteRow('${rowId}')" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
+                        </td>
                     `;
                     
                     tableBody.appendChild(row);
+                    
+                    // Attach event listeners for recalculation
+                    attachRowEventListeners(row);
                 });
             });
             
@@ -1618,19 +1689,26 @@
             }
             
             // Get all fields in this row
-            const originalDescription = row.querySelector('[data-field="originalDescription"]').value;
-            const quantity = parseFloat(row.querySelector('[data-field="quantity"]').value) || 0;
-            const unitRate = parseFloat(row.querySelector('[data-field="unitRate"]').value) || 0;
-            const marginValue = row.querySelector('[data-field="marginPercent"]').value;
+            const quantity = parseFloat(row.querySelector('[data-field="quantity"]')?.value || 0) || 0;
+            const unitRate = parseFloat(row.querySelector('[data-field="unitRate"]')?.value || 0) || 0;
+            const marginValue = row.querySelector('[data-field="marginPercent"]')?.value || '';
             const marginPercent = marginValue === '' ? 0 : (parseFloat(marginValue) || 0);
             
-            // Calculate final rate: unitRate × (1 + marginPercent/100)
-            const finalRate = unitRate * (1 + marginPercent / 100);
+            // Check if finalRate was edited directly
+            const finalRateInput = row.querySelector('[data-field="finalRate"]');
+            const fieldChanged = changedField.getAttribute('data-field');
             
-            // Update rate per meter display
-            const ratePerMtrSpan = row.querySelector('.rate-per-mtr');
-            if (ratePerMtrSpan) {
-                ratePerMtrSpan.textContent = formatIndianNumber(finalRate.toFixed(2));
+            let finalRate;
+            if (fieldChanged === 'finalRate') {
+                // User edited finalRate directly - use that value
+                finalRate = parseFloat(changedField.value || 0) || 0;
+            } else {
+                // Calculate final rate from unitRate and margin
+                finalRate = unitRate * (1 + marginPercent / 100);
+                // Update the finalRate input if it exists
+                if (finalRateInput) {
+                    finalRateInput.value = finalRate.toFixed(2);
+                }
             }
             
             // Calculate line total: quantity × final rate
@@ -1638,7 +1716,9 @@
             
             // Update the line total display
             const lineTotalSpan = row.querySelector('.line-total');
-            lineTotalSpan.textContent = formatIndianNumber(lineTotal.toFixed(2));
+            if (lineTotalSpan) {
+                lineTotalSpan.textContent = formatIndianNumber(lineTotal.toFixed(2));
+            }
             
             // Recalculate all subtotals and grand total
             recalculateAllTotals();
@@ -1676,6 +1756,159 @@
             
             // Update grand total
             document.getElementById('grandTotal').textContent = formatIndianNumber(grandTotal.toFixed(2));
+        }
+        
+        /*
+            ============================================
+            ATTACH ROW EVENT LISTENERS FUNCTION
+            ============================================
+            Attaches event listeners to a row for recalculation
+        */
+        function attachRowEventListeners(row) {
+            const editableFields = row.querySelectorAll('.editable-field');
+            editableFields.forEach(function(field) {
+                field.addEventListener('input', function() {
+                    recalculateRow(this);
+                });
+                field.addEventListener('blur', function() {
+                    recalculateRow(this);
+                });
+            });
+        }
+        
+        /*
+            ============================================
+            DELETE ROW FUNCTION
+            ============================================
+            Deletes a row from the table and recalculates totals
+        */
+        function deleteRow(rowId) {
+            const row = document.getElementById(rowId);
+            if (!row || !row.classList.contains('item-row')) {
+                return;
+            }
+            
+            if (confirm('Are you sure you want to delete this row?')) {
+                row.remove();
+                updateRowNumbers();
+                recalculateAllTotals();
+            }
+        }
+        
+        /*
+            ============================================
+            UPDATE ROW NUMBERS FUNCTION
+            ============================================
+            Updates the serial numbers in the table after row deletion
+        */
+        function updateRowNumbers() {
+            const itemRows = document.querySelectorAll('.item-row');
+            itemRows.forEach(function(row, index) {
+                const rowNumberCell = row.querySelector('.row-number');
+                if (rowNumberCell) {
+                    rowNumberCell.textContent = index + 1;
+                }
+            });
+        }
+        
+        /*
+            ============================================
+            ADD ROW FUNCTION
+            ============================================
+            Adds a new empty row to the table
+        */
+        function addRow(pipeType = null) {
+            const tableBody = document.getElementById('quotationTableBody');
+            if (!tableBody) {
+                return;
+            }
+            
+            // If no pipe type specified, use the last pipe type or create a default one
+            if (!pipeType) {
+                const existingRows = document.querySelectorAll('.item-row');
+                if (existingRows.length > 0) {
+                    const lastRow = existingRows[existingRows.length - 1];
+                    pipeType = lastRow.getAttribute('data-pipe-type') || 'Default';
+                } else {
+                    pipeType = 'Default';
+                    // Create a header row if it doesn't exist
+                    const headerRow = document.createElement('tr');
+                    headerRow.className = 'pipe-type-header';
+                    headerRow.innerHTML = `
+                        <td colspan="8">
+                            <input type="text" class="editable-field" data-field="pipeTypeHeader" value="Default">
+                        </td>
+                    `;
+                    tableBody.appendChild(headerRow);
+                }
+            }
+            
+            // Create new row
+            const row = document.createElement('tr');
+            row.className = 'item-row';
+            const rowId = `row-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            row.id = rowId;
+            row.setAttribute('data-pipe-type', pipeType);
+            
+            const rowNumber = document.querySelectorAll('.item-row').length + 1;
+            
+            row.innerHTML = `
+                <td class="row-number">${rowNumber}</td>
+                <td>
+                    <input type="text" 
+                           class="editable-field" 
+                           data-field="originalDescription"
+                           data-pipe-type="${pipeType}"
+                           data-row-id="${rowId}"
+                           value="" placeholder="Enter description">
+                </td>
+                <td>
+                    <input type="number" 
+                           class="editable-field" 
+                           data-field="quantity"
+                           data-pipe-type="${pipeType}"
+                           data-row-id="${rowId}"
+                           value="0" 
+                           min="0" 
+                           step="1">
+                </td>
+                <td class="col-base-rate">
+                    ₹<input type="number" 
+                           class="editable-field" 
+                           data-field="unitRate"
+                           data-pipe-type="${pipeType}"
+                           data-row-id="${rowId}"
+                           value="0" 
+                           min="0" 
+                           step="0.01" style="width: 80px;">
+                </td>
+                <td class="col-margin">
+                    <input type="number" 
+                           class="editable-field" 
+                           data-field="marginPercent"
+                           data-pipe-type="${pipeType}"
+                           data-row-id="${rowId}"
+                           value="" 
+                           min="0" 
+                           step="0.01" style="width: 60px;">
+                </td>
+                <td>₹<input type="number" 
+                           class="editable-field rate-per-mtr" 
+                           data-field="finalRate"
+                           data-pipe-type="${pipeType}"
+                           data-row-id="${rowId}"
+                           value="0.00" 
+                           min="0" 
+                           step="0.01" style="width: 100px;"></td>
+                <td>₹<span class="line-total" data-row-id="${rowId}">0.00</span></td>
+                <td>
+                    <button class="delete-row-btn" onclick="deleteRow('${rowId}')" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
+                </td>
+            `;
+            
+            tableBody.appendChild(row);
+            attachRowEventListeners(row);
+            recalculateAllTotals();
         }
 
         function setLogoSource() {
@@ -2039,8 +2272,9 @@
             /*
                 This function:
                 1. Finds all editable inputs in Approval section quotations
-                2. Adds change listeners to update quotation data
-                3. Auto-saves to localStorage when changes are made
+                2. Adds delete buttons and makes rate-per-mtr editable
+                3. Adds Add Row buttons
+                4. Adds change listeners to update quotation data
             */
             
             // Find all quotation folders in Approval section
@@ -2051,27 +2285,251 @@
                 const folderId = folder.id;
                 const quotationId = parseInt(folderId.replace('folder-', ''));
                 
-                // Find all inputs and textareas in this quotation
-                const inputs = folder.querySelectorAll('input, textarea');
+                const folderContent = folder.querySelector('.quotation-folder-content');
+                if (!folderContent) return;
                 
-                inputs.forEach(function(input) {
-                    // Remove any existing listeners to avoid duplicates
-                    const newInput = input.cloneNode(true);
-                    input.parentNode.replaceChild(newInput, input);
-                    
-                    // For number inputs, recalculate totals on blur (for display only, not saved until Approve)
-                    if (newInput.type === 'number') {
-                        newInput.addEventListener('blur', function() {
-                            // Recalculate totals for display (not saved until Approve is clicked)
-                            if (newInput.getAttribute('data-field') === 'quantity' || 
-                                newInput.getAttribute('data-field') === 'unitRate' || 
-                                newInput.getAttribute('data-field') === 'marginPercent') {
-                                recalculateApprovalQuotationTotals(quotationId, false); // false = don't save
-                            }
-                        });
+                // Find the table in this quotation
+                const table = folderContent.querySelector('table');
+                if (table) {
+                    // Check if table header has Actions column, if not add it
+                    const headerRow = table.querySelector('thead tr');
+                    if (headerRow && !headerRow.querySelector('th:last-child')?.textContent.includes('ACTIONS')) {
+                        const actionsHeader = document.createElement('th');
+                        actionsHeader.textContent = 'ACTIONS';
+                        actionsHeader.style.width = '80px';
+                        headerRow.appendChild(actionsHeader);
                     }
+                    
+                    // Update pipe type headers colspan
+                    const pipeHeaders = table.querySelectorAll('.pipe-type-header td[colspan]');
+                    pipeHeaders.forEach(header => {
+                        if (parseInt(header.getAttribute('colspan')) === 7) {
+                            header.setAttribute('colspan', '8');
+                        }
+                    });
+                    
+                    // Process each item row
+                    const itemRows = table.querySelectorAll('.item-row');
+                    itemRows.forEach(function(row, index) {
+                        // Generate row ID if it doesn't have one
+                        if (!row.id) {
+                            row.id = `approval-row-${quotationId}-${Date.now()}-${index}`;
+                        }
+                        
+                        // Check if row already has delete button
+                        if (!row.querySelector('.delete-row-btn')) {
+                            // Add delete button
+                            const actionsCell = document.createElement('td');
+                            const deleteBtn = document.createElement('button');
+                            deleteBtn.className = 'delete-row-btn';
+                            deleteBtn.textContent = '🗑️';
+                            deleteBtn.title = 'Delete row';
+                            deleteBtn.style.cssText = 'background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;';
+                            deleteBtn.onclick = function() {
+                                deleteApprovalRow(quotationId, row.id);
+                            };
+                            actionsCell.appendChild(deleteBtn);
+                            row.appendChild(actionsCell);
+                        }
+                        
+                        // Make rate-per-mtr editable if it's a span
+                        const ratePerMtrSpan = row.querySelector('.rate-per-mtr');
+                        if (ratePerMtrSpan && ratePerMtrSpan.tagName === 'SPAN') {
+                            const currentValue = ratePerMtrSpan.textContent.replace('₹', '').replace(/,/g, '');
+                            const input = document.createElement('input');
+                            input.type = 'number';
+                            input.className = 'editable-field rate-per-mtr';
+                            input.setAttribute('data-field', 'finalRate');
+                            input.value = currentValue;
+                            input.min = '0';
+                            input.step = '0.01';
+                            input.style.width = '100px';
+                            ratePerMtrSpan.parentNode.replaceChild(input, ratePerMtrSpan);
+                        }
+                        
+                        // Update row number
+                        const rowNumberCell = row.querySelector('td:first-child');
+                        if (rowNumberCell && !rowNumberCell.classList.contains('row-number')) {
+                            rowNumberCell.classList.add('row-number');
+                            rowNumberCell.textContent = index + 1;
+                        }
+                        
+                        // Attach event listeners
+                        const editableFields = row.querySelectorAll('.editable-field');
+                        editableFields.forEach(function(field) {
+                            field.addEventListener('blur', function() {
+                                recalculateApprovalQuotationTotals(quotationId, false);
+                            });
+                        });
+                    });
+                    
+                    // Add Add Row button if it doesn't exist
+                    const existingAddBtn = folderContent.querySelector('.add-row-btn-approval');
+                    if (!existingAddBtn && itemRows.length > 0) {
+                        const addRowDiv = document.createElement('div');
+                        addRowDiv.style.cssText = 'margin-top: 10px; text-align: right;';
+                        addRowDiv.className = 'add-row-btn-approval';
+                        const addBtn = document.createElement('button');
+                        addBtn.textContent = '➕ Add Row';
+                        addBtn.style.cssText = 'background: #4CAF50; color: white; border: none; padding: 8px 16px; cursor: pointer; border-radius: 4px; font-size: 14px;';
+                        addBtn.onclick = function() {
+                            addApprovalRow(quotationId);
+                        };
+                        addRowDiv.appendChild(addBtn);
+                        // Insert before grand total
+                        const grandTotal = folderContent.querySelector('.grand-total');
+                        if (grandTotal) {
+                            grandTotal.parentNode.insertBefore(addRowDiv, grandTotal);
+                        } else {
+                            folderContent.appendChild(addRowDiv);
+                        }
+                    }
+                }
+            });
+        }
+        
+        /*
+            ============================================
+            DELETE APPROVAL ROW FUNCTION
+            ============================================
+            Deletes a row from the Approval section table
+        */
+        function deleteApprovalRow(quotationId, rowId) {
+            const folder = document.getElementById('folder-' + quotationId);
+            if (!folder) return;
+            
+            const row = folder.querySelector('#' + rowId);
+            if (!row || !row.classList.contains('item-row')) {
+                return;
+            }
+            
+            if (confirm('Are you sure you want to delete this row?')) {
+                row.remove();
+                updateApprovalRowNumbers(quotationId);
+                recalculateApprovalQuotationTotals(quotationId, false);
+            }
+        }
+        
+        /*
+            ============================================
+            UPDATE APPROVAL ROW NUMBERS FUNCTION
+            ============================================
+            Updates serial numbers in Approval section table
+        */
+        function updateApprovalRowNumbers(quotationId) {
+            const folder = document.getElementById('folder-' + quotationId);
+            if (!folder) return;
+            
+            const itemRows = folder.querySelectorAll('.item-row');
+            itemRows.forEach(function(row, index) {
+                const rowNumberCell = row.querySelector('.row-number');
+                if (rowNumberCell) {
+                    rowNumberCell.textContent = index + 1;
+                }
+            });
+        }
+        
+        /*
+            ============================================
+            ADD APPROVAL ROW FUNCTION
+            ============================================
+            Adds a new empty row to the Approval section table
+        */
+        function addApprovalRow(quotationId) {
+            const folder = document.getElementById('folder-' + quotationId);
+            if (!folder) return;
+            
+            const folderContent = folder.querySelector('.quotation-folder-content');
+            if (!folderContent) return;
+            
+            const table = folderContent.querySelector('table');
+            if (!table) return;
+            
+            const tbody = table.querySelector('tbody');
+            if (!tbody) return;
+            
+            // Get the last pipe type or use default
+            const existingRows = folder.querySelectorAll('.item-row');
+            let pipeType = 'Default';
+            if (existingRows.length > 0) {
+                const lastRow = existingRows[existingRows.length - 1];
+                pipeType = lastRow.getAttribute('data-pipe-type') || 'Default';
+            }
+            
+            // Create new row
+            const row = document.createElement('tr');
+            row.className = 'item-row';
+            const rowId = `approval-row-${quotationId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            row.id = rowId;
+            row.setAttribute('data-pipe-type', pipeType);
+            
+            const rowNumber = existingRows.length + 1;
+            
+            row.innerHTML = `
+                <td class="row-number">${rowNumber}</td>
+                <td>
+                    <input type="text" 
+                           class="editable-field" 
+                           data-field="originalDescription"
+                           data-pipe-type="${pipeType}"
+                           data-row-id="${rowId}"
+                           value="" placeholder="Enter description">
+                </td>
+                <td>
+                    <input type="number" 
+                           class="editable-field" 
+                           data-field="quantity"
+                           data-pipe-type="${pipeType}"
+                           data-row-id="${rowId}"
+                           value="0" 
+                           min="0" 
+                           step="1">
+                </td>
+                <td class="col-base-rate">
+                    ₹<input type="number" 
+                           class="editable-field" 
+                           data-field="unitRate"
+                           data-pipe-type="${pipeType}"
+                           data-row-id="${rowId}"
+                           value="0" 
+                           min="0" 
+                           step="0.01" style="width: 80px;">
+                </td>
+                <td class="col-margin">
+                    <input type="number" 
+                           class="editable-field" 
+                           data-field="marginPercent"
+                           data-pipe-type="${pipeType}"
+                           data-row-id="${rowId}"
+                           value="" 
+                           min="0" 
+                           step="0.01" style="width: 60px;">
+                </td>
+                <td>₹<input type="number" 
+                           class="editable-field rate-per-mtr" 
+                           data-field="finalRate"
+                           data-pipe-type="${pipeType}"
+                           data-row-id="${rowId}"
+                           value="0.00" 
+                           min="0" 
+                           step="0.01" style="width: 100px;"></td>
+                <td>₹<span class="line-total" data-row-id="${rowId}">0.00</span></td>
+                <td>
+                    <button class="delete-row-btn" onclick="deleteApprovalRow(${quotationId}, '${rowId}')" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
+                </td>
+            `;
+            
+            tbody.appendChild(row);
+            
+            // Attach event listeners
+            const editableFields = row.querySelectorAll('.editable-field');
+            editableFields.forEach(function(field) {
+                field.addEventListener('blur', function() {
+                    recalculateApprovalQuotationTotals(quotationId, false);
                 });
             });
+            
+            recalculateApprovalQuotationTotals(quotationId, false);
         }
         
         /*
@@ -2202,16 +2660,33 @@
                 const marginValue = row.querySelector('[data-field="marginPercent"]')?.value || '';
                 const marginPercent = marginValue === '' ? 0 : (parseFloat(marginValue) || 0);
                 
-                // Calculate final rate
-                const finalRate = unitRate * (1 + marginPercent / 100);
+                // Check if finalRate is editable (input) or calculated
+                const finalRateInput = row.querySelector('[data-field="finalRate"]');
+                let finalRate;
+                
+                if (finalRateInput && finalRateInput.tagName === 'INPUT') {
+                    // User edited finalRate directly - use that value
+                    finalRate = parseFloat(finalRateInput.value || 0) || 0;
+                } else {
+                    // Calculate final rate from unitRate and margin
+                    finalRate = unitRate * (1 + marginPercent / 100);
+                    // Update the finalRate input if it exists
+                    if (finalRateInput) {
+                        finalRateInput.value = finalRate.toFixed(2);
+                    }
+                }
                 
                 // Calculate line total
                 const lineTotal = quantity * finalRate;
                 
                 // Update displays
-                const ratePerMtrSpan = row.querySelector('.rate-per-mtr');
-                if (ratePerMtrSpan) {
-                    ratePerMtrSpan.textContent = formatIndianNumber(finalRate.toFixed(2));
+                const ratePerMtrElement = row.querySelector('.rate-per-mtr');
+                if (ratePerMtrElement) {
+                    if (ratePerMtrElement.tagName === 'INPUT') {
+                        // Already an input, value is already set
+                    } else {
+                        ratePerMtrElement.textContent = formatIndianNumber(finalRate.toFixed(2));
+                    }
                 }
                 
                 const lineTotalSpan = row.querySelector('.line-total');
