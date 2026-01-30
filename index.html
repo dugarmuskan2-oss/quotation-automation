@@ -2268,7 +2268,7 @@
             fetch('http://127.0.0.1:7242/ingest/94f43956-7071-4935-87a6-da4459027d68',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:approveQuotation-afterPush',message:'after push',data:{length:approvedQuotations.length,id:quotationWithStatus.id,hasTableHTML:!!quotationWithStatus.tableHTML,hasHeaderHTML:!!quotationWithStatus.headerHTML},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(function(){});
             // #endregion
             
-            // Save to server so it appears on other devices
+            // Save to server only (no localStorage)
             queueQuotationSave(quotationWithStatus);
             
             // Clear the Creation section (quotation disappears from Creation)
@@ -2388,6 +2388,10 @@
             // #region agent log
             fetch('http://127.0.0.1:7242/ingest/94f43956-7071-4935-87a6-da4459027d68',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:displayAllApprovedQuotations-afterInnerHTML',message:'after innerHTML',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2'})}).catch(function(){});
             // #endregion
+            
+            approvedQuotations.forEach(function(q) {
+                recalculateApprovalQuotationTotals(q.id, false);
+            });
             
             // Attach event listeners to all editable fields in Approval section
             try {
@@ -3463,8 +3467,6 @@
                 return true;
             } catch (error) {
                 console.error('Error saving quotation to server:', error);
-                // Fallback to localStorage so data isn't lost
-                saveToLocalStorage();
                 return false;
             }
         }
@@ -3477,7 +3479,7 @@
             }
             const timeout = setTimeout(() => {
                 saveQuotationToServer(quotation);
-            }, 500);
+            }, 0);
             quotationSaveTimers.set(quotation.id, timeout);
         }
         
@@ -3522,8 +3524,6 @@
                 fetch('http://127.0.0.1:7242/ingest/94f43956-7071-4935-87a6-da4459027d68',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:loadFromServer-catch',message:'loadFromServer failed',data:{err:String(error&&error.message)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(function(){});
                 // #endregion
                 console.error('Error loading quotations from server:', error);
-                // Fallback to localStorage
-                loadFromLocalStorage();
             }
         }
 
