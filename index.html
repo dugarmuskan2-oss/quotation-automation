@@ -2256,32 +2256,24 @@
                 checkedBy: checkedBy
             };
             
-            // Add to approved quotations array (not saved yet - needs approval)
             const quotationWithStatus = {
                 ...quotationData,
-                saved: false  // Not approved yet - will show full content with Approve button
+                saved: false
             };
+            
+            // Save to server first; only then show in Approval (so it appears after refresh)
+            const saved = await saveQuotationToServer(quotationWithStatus);
+            if (!saved) {
+                alert('Could not save quotation to server. It will not appear after refresh. Check that DynamoDB is configured in your Vercel project environment variables (DYNAMODB_TABLE, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION).');
+                return;
+            }
+            
+            quotationWithStatus.saved = true;
             approvedQuotations.push(quotationWithStatus);
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/94f43956-7071-4935-87a6-da4459027d68',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:approveQuotation-afterPush',message:'after push',data:{length:approvedQuotations.length,id:quotationWithStatus.id,hasTableHTML:!!quotationWithStatus.tableHTML,hasHeaderHTML:!!quotationWithStatus.headerHTML},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(function(){});
-            // #endregion
             
-            // Save to server only (no localStorage)
-            queueQuotationSave(quotationWithStatus);
-            
-            // Clear the Creation section (quotation disappears from Creation)
             clearCreationSection();
-            
-            // Display all approved quotations
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/94f43956-7071-4935-87a6-da4459027d68',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:approveQuotation-beforeDisplay',message:'before displayAllApprovedQuotations',data:{length:approvedQuotations.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(function(){});
-            // #endregion
             displayAllApprovedQuotations();
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/94f43956-7071-4935-87a6-da4459027d68',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:approveQuotation-afterDisplay',message:'after displayAllApprovedQuotations',data:{length:approvedQuotations.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(function(){});
-            // #endregion
             
-            // Scroll to Approval section
             document.getElementById('approvalSection').scrollIntoView({ 
                 behavior: 'smooth' 
             });
@@ -2550,12 +2542,20 @@
                             rowNumberCell.textContent = index + 1;
                         }
                         
-                        // Attach event listeners
+                        // Attach event listeners (recalculate and save to server on blur)
                         const editableFields = row.querySelectorAll('.editable-field');
                         editableFields.forEach(function(field) {
                             field.addEventListener('blur', function() {
-                                recalculateApprovalQuotationTotals(quotationId, false);
+                                recalculateApprovalQuotationTotals(quotationId, true);
                             });
+                        });
+                    });
+                    
+                    // Sync and save when header or terms are edited
+                    const headerAndTermsInputs = folderContent.querySelectorAll('.quotation-header input, .quotation-header textarea, .terms-box textarea, .terms-box input');
+                    headerAndTermsInputs.forEach(function(input) {
+                        input.addEventListener('blur', function() {
+                            updateQuotationFromApprovalSection(quotationId, this);
                         });
                     });
                     
@@ -2586,7 +2586,7 @@
             if (confirm('Are you sure you want to delete this row?')) {
                 row.remove();
                 updateApprovalRowNumbers(quotationId);
-                recalculateApprovalQuotationTotals(quotationId, false);
+                recalculateApprovalQuotationTotals(quotationId, true);
             }
         }
         
@@ -2708,11 +2708,11 @@
             const editableFields = row.querySelectorAll('.editable-field');
             editableFields.forEach(function(field) {
                 field.addEventListener('blur', function() {
-                    recalculateApprovalQuotationTotals(quotationId, false);
+                    recalculateApprovalQuotationTotals(quotationId, true);
                 });
             });
             
-            recalculateApprovalQuotationTotals(quotationId, false);
+            recalculateApprovalQuotationTotals(quotationId, true);
         }
         
         /*
@@ -2892,9 +2892,15 @@
             });
             
             if (quotationIndex !== -1) {
-                approvedQuotations[quotationIndex].grandTotal = formatIndianNumber(grandTotal.toFixed(2));
+                const quotation = approvedQuotations[quotationIndex];
+                quotation.grandTotal = formatIndianNumber(grandTotal.toFixed(2));
                 if (shouldSave) {
-                    queueQuotationSave(approvedQuotations[quotationIndex]);
+                    // Sync table and header HTML from current DOM so saved quotation has latest edits
+                    const headerEl = folderContent.querySelector('.quotation-header');
+                    if (headerEl) quotation.headerHTML = headerEl.outerHTML;
+                    const tableEl = folderContent.querySelector('table');
+                    if (tableEl) quotation.tableHTML = tableEl.outerHTML;
+                    queueQuotationSave(quotation);
                 }
             }
         }
@@ -3522,7 +3528,14 @@
                 fetch('http://127.0.0.1:7242/ingest/94f43956-7071-4935-87a6-da4459027d68',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:loadFromServer-catch',message:'loadFromServer failed',data:{err:String(error&&error.message)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(function(){});
                 // #endregion
                 console.error('Error loading quotations from server:', error);
+                showApprovalLoadError(error.message || String(error));
             }
+        }
+        
+        function showApprovalLoadError(message) {
+            const container = document.getElementById('approvedQuotationsContainer');
+            if (!container) return;
+            container.innerHTML = '<p id="noApprovedQuotations" style="text-align: center; color: #c62828; padding: 20px; background: #ffebee; border-radius: 4px;">Could not load quotations from server. ' + (message || '') + ' Check that DynamoDB is configured in Vercel (DYNAMODB_TABLE, AWS credentials).</p>';
         }
 
         /*
