@@ -3454,15 +3454,21 @@
                     throw new Error(result.error || 'Failed to load quotations from server');
                 }
                 const quotations = Array.isArray(result.quotations) ? result.quotations : [];
-                const serverIds = new Set(quotations.map(function(q) { return q.id; }));
+                const serverIds = new Set(quotations.map(function(q) { return String(q.id); }));
                 // Keep local quotations that are not on server yet (e.g. just approved, save still pending)
-                const localOnly = approvedQuotations.filter(function(q) { return !serverIds.has(q.id); });
+                const localOnly = approvedQuotations.filter(function(q) { return !serverIds.has(String(q.id)); });
                 approvedQuotations = localOnly.slice();
                 quotations.forEach(function(quotation) {
                     if (quotation.saved === undefined) {
                         quotation.saved = false;
                     }
-                    approvedQuotations.push(quotation);
+                    const sid = String(quotation.id);
+                    const existing = approvedQuotations.find(function(q) { return String(q.id) === sid; });
+                    if (existing) {
+                        existing.saved = quotation.saved !== false;
+                    } else {
+                        approvedQuotations.push(quotation);
+                    }
                 });
                 if (approvedQuotations.length > 0) {
                     displayAllApprovedQuotations();
