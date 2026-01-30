@@ -2264,6 +2264,9 @@
                 saved: false  // Not approved yet - will show full content with Approve button
             };
             approvedQuotations.push(quotationWithStatus);
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/94f43956-7071-4935-87a6-da4459027d68',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:approveQuotation-afterPush',message:'after push',data:{length:approvedQuotations.length,id:quotationWithStatus.id,hasTableHTML:!!quotationWithStatus.tableHTML,hasHeaderHTML:!!quotationWithStatus.headerHTML},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(function(){});
+            // #endregion
             
             // Save to server so it appears on other devices
             queueQuotationSave(quotationWithStatus);
@@ -2272,7 +2275,13 @@
             clearCreationSection();
             
             // Display all approved quotations
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/94f43956-7071-4935-87a6-da4459027d68',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:approveQuotation-beforeDisplay',message:'before displayAllApprovedQuotations',data:{length:approvedQuotations.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(function(){});
+            // #endregion
             displayAllApprovedQuotations();
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/94f43956-7071-4935-87a6-da4459027d68',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:approveQuotation-afterDisplay',message:'after displayAllApprovedQuotations',data:{length:approvedQuotations.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(function(){});
+            // #endregion
             
             // Scroll to Approval section
             document.getElementById('approvalSection').scrollIntoView({ 
@@ -2291,11 +2300,18 @@
                 This function loops through all approved quotations
                 and displays them in the Approval section.
             */
+            // #region agent log
+            var _container = document.getElementById('approvedQuotationsContainer');
+            fetch('http://127.0.0.1:7242/ingest/94f43956-7071-4935-87a6-da4459027d68',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:displayAllApprovedQuotations-entry',message:'entry',data:{length:approvedQuotations.length,containerNull:_container==null},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2,H4'})}).catch(function(){});
+            // #endregion
             
-            const container = document.getElementById('approvedQuotationsContainer');
+            const container = _container || document.getElementById('approvedQuotationsContainer');
             
             // If no quotations, show message
             if (approvedQuotations.length === 0) {
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/94f43956-7071-4935-87a6-da4459027d68',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:displayAllApprovedQuotations-emptyBranch',message:'length 0 branch',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(function(){});
+                // #endregion
                 container.innerHTML = `
                     <p id="noApprovedQuotations" style="text-align: center; color: #999; padding: 20px;">
                         No quotations approved yet. Create and approve a quotation to see it here.
@@ -2315,9 +2331,12 @@
             
             // Show all quotations as collapsible folders
             approvedQuotations.slice().reverse().forEach(function(quotation, index) {
+                // #region agent log
+                if (index === 0) fetch('http://127.0.0.1:7242/ingest/94f43956-7071-4935-87a6-da4459027d68',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:displayAllApprovedQuotations-forEach',message:'first quotation',data:{id:quotation.id,hasTableHTML:!!quotation.tableHTML,hasHeaderHTML:!!quotation.headerHTML,tableHTMLLen:(quotation.tableHTML&&quotation.tableHTML.length)||0},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2'})}).catch(function(){});
+                // #endregion
                 const quotationNumber = approvedQuotations.length - index;
-                const contactNumber = extractContactNumber(quotation.contactDetails);
-                let folderName = quotation.customerName;
+                const contactNumber = extractContactNumber(quotation.contactDetails || '');
+                let folderName = quotation.customerName != null ? String(quotation.customerName) : '';
                 if (contactNumber) {
                     folderName += ` (${contactNumber})`;
                 }
@@ -2361,11 +2380,24 @@
                 `;
             });
             
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/94f43956-7071-4935-87a6-da4459027d68',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:displayAllApprovedQuotations-beforeInnerHTML',message:'before innerHTML',data:{htmlLen:allQuotationsHTML.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2'})}).catch(function(){});
+            // #endregion
             // Update the container
             container.innerHTML = allQuotationsHTML;
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/94f43956-7071-4935-87a6-da4459027d68',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:displayAllApprovedQuotations-afterInnerHTML',message:'after innerHTML',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2'})}).catch(function(){});
+            // #endregion
             
             // Attach event listeners to all editable fields in Approval section
-            attachApprovalSectionListeners();
+            try {
+                attachApprovalSectionListeners();
+            } catch (e) {
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/94f43956-7071-4935-87a6-da4459027d68',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:displayAllApprovedQuotations-attachError',message:'attachApprovalSectionListeners threw',data:{err:String(e.message)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H5'})}).catch(function(){});
+                // #endregion
+                throw e;
+            }
         }
         
         /*
@@ -2929,6 +2961,9 @@
                 
                 Returns: Contact number if found, or empty string
             */
+            if (contactDetails == null || typeof contactDetails !== 'string') {
+                return '';
+            }
             
             // Try to find phone number patterns
             // Common patterns: Phone: (555) 123-4567, Phone: 555-123-4567, Tel: 5551234567, etc.
@@ -3447,6 +3482,9 @@
         }
         
         async function loadFromServer() {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/94f43956-7071-4935-87a6-da4459027d68',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:loadFromServer-start',message:'loadFromServer called',data:{approvedLen:approvedQuotations.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(function(){});
+            // #endregion
             try {
                 const response = await fetch(`${API_BASE_URL}/quotations`);
                 const result = await safeJsonParse(response);
@@ -3457,6 +3495,9 @@
                 const serverIds = new Set(quotations.map(function(q) { return String(q.id); }));
                 // Keep local quotations that are not on server yet (e.g. just approved, save still pending)
                 const localOnly = approvedQuotations.filter(function(q) { return !serverIds.has(String(q.id)); });
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/94f43956-7071-4935-87a6-da4459027d68',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:loadFromServer-merge',message:'before merge',data:{quotationsLen:quotations.length,localOnlyLen:localOnly.length,approvedLen:approvedQuotations.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(function(){});
+                // #endregion
                 approvedQuotations = localOnly.slice();
                 quotations.forEach(function(quotation) {
                     if (quotation.saved === undefined) {
@@ -3470,10 +3511,16 @@
                         approvedQuotations.push(quotation);
                     }
                 });
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/94f43956-7071-4935-87a6-da4459027d68',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:loadFromServer-afterMerge',message:'after merge',data:{approvedLen:approvedQuotations.length,callingDisplay:approvedQuotations.length>0},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(function(){});
+                // #endregion
                 if (approvedQuotations.length > 0) {
                     displayAllApprovedQuotations();
                 }
             } catch (error) {
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/94f43956-7071-4935-87a6-da4459027d68',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:loadFromServer-catch',message:'loadFromServer failed',data:{err:String(error&&error.message)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(function(){});
+                // #endregion
                 console.error('Error loading quotations from server:', error);
                 // Fallback to localStorage
                 loadFromLocalStorage();
