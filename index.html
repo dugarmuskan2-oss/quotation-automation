@@ -555,17 +555,17 @@
     
     <div class="container">
         <!-- Main title -->
-        <h1>📋 Quotation Generator</h1>
+        <h1>?? Quotation Generator</h1>
         
         <!-- Info message explaining the app -->
         <div class="info-message">
             <strong>How to use:</strong> Upload rate file and instructions first, then paste email content and/or upload a file, then click "Generate Quotation".
         </div>
         
-        <!-- Configuration Section: Upload rate file and instructions -->
+        <!-- Price List and Instruction Section: Upload rate file and instructions -->
         <div class="input-section" id="configSection">
             <div class="config-header">
-                <h2 style="margin: 0;">Configuration</h2>
+                <h2 style="margin: 0;">Price List and Instructions</h2>
                 <button class="config-toggle-btn" type="button" onclick="toggleConfigSection()">Show</button>
             </div>
             
@@ -576,7 +576,7 @@
                         <label for="rateFileUpload">Upload Rate Files (Excel or PDF) - You can select multiple:</label>
                         <input type="file" id="rateFileUpload" accept=".xlsx,.xls,.pdf" multiple style="margin-top: 8px;">
                         <button type="button" class="upload-btn" onclick="uploadRateFile()" style="margin-top: 10px; width: 100%;">
-                            📤 Upload Rate Files
+                            ?? Upload Rate Files
                         </button>
                         <p id="rateFileStatus" style="margin-top: 8px; font-size: 12px; color: #666;"></p>
                         <div id="uploadStatusBanner" style="display:none; margin-top:10px; padding:10px; border-radius:4px; font-size:14px;"></div>
@@ -587,18 +587,18 @@
                         <label for="instructionsText">AI Instructions (paste your instructions here):</label>
                         <textarea id="instructionsText" placeholder="Paste your AI instructions here..." style="width: 100%; min-height: 100px; padding: 8px; margin-top: 8px; border: 2px solid #ddd; border-radius: 4px; font-family: inherit;"></textarea>
                         <button class="upload-btn" onclick="saveInstructions()" style="margin-top: 10px; width: 100%;">
-                            💾 Save Instructions
+                            ?? Save Instructions
                         </button>
                         <p id="instructionsStatus" style="margin-top: 8px; font-size: 12px; color: #666;"></p>
                     </div>
                 </div>
 
-                <!-- Terms & Conditions (Configuration) -->
+                <!-- Terms & Conditions (Price List and Instruction) -->
                 <div style="margin-bottom: 20px;">
                     <label for="termsConfigText">Terms & Conditions (default for all quotations):</label>
                     <textarea id="termsConfigText" placeholder="Enter default terms and conditions..." style="width: 100%; min-height: 140px; padding: 8px; margin-top: 8px; border: 2px solid #ddd; border-radius: 4px; font-family: inherit;"></textarea>
                     <button class="upload-btn" onclick="saveTermsConfig()" style="margin-top: 10px; width: 100%;">
-                        💾 Save Terms & Conditions
+                        ?? Save Terms & Conditions
                     </button>
                     <p id="termsConfigStatus" style="margin-top: 8px; font-size: 12px; color: #666;"></p>
                 </div>
@@ -632,7 +632,7 @@
             
             <!-- Generate button -->
             <button class="generate-btn" onclick="generateQuotation()">
-                ▶ Generate Quotation
+                ? Generate Quotation
             </button>
         </div>
         
@@ -709,7 +709,7 @@
             
             <!-- Grand Total (hidden initially) -->
             <div class="grand-total" id="creationGrandTotal" style="display: none;">
-                <span>Total: ₹<span id="grandTotal">0.00</span></span>
+                <span>Total: ?<span id="grandTotal">0.00</span></span>
             </div>
 
             <hr class="terms-divider" id="termsDivider" style="display: none;">
@@ -735,7 +735,7 @@
             
             <!-- Approve Button (hidden initially) -->
             <button class="approve-btn" id="creationApproveBtn" onclick="approveQuotation()" style="display: none;">
-                ✓ Create Quotation
+                ? Approve
             </button>
         </div>
         
@@ -760,7 +760,7 @@
             <h3 style="margin-top:20px;">Talk to AI</h3>
             <div id="aiChatLog" style="border:1px solid #ddd; border-radius:4px; padding:10px; min-height:80px; background:#fafafa; margin-bottom:10px;"></div>
             <textarea id="aiChatInput" placeholder="Type your question about the AI output..." style="width:100%; min-height:60px; padding:10px; border:1px solid #ddd; border-radius:4px;"></textarea>
-            <button type="button" class="upload-btn" onclick="sendAiMessage()" style="margin-top:10px; width:100%;">🤖 Ask AI</button>
+            <button type="button" class="upload-btn" onclick="sendAiMessage()" style="margin-top:10px; width:100%;">?? Ask AI</button>
         </div>
     </div>
     
@@ -1003,7 +1003,7 @@
                 const result = await safeJsonParse(response);
                 
                 if (response.ok) {
-                    let successMsg = `✓ Uploaded ${validFiles.length} file(s)`;
+                    let successMsg = `? Uploaded ${validFiles.length} file(s)`;
                     if (invalidFiles.length > 0) {
                         successMsg += ` (${invalidFiles.length} file(s) skipped due to errors)`;
                     }
@@ -1080,7 +1080,7 @@
                     // Also save to localStorage as backup
                     localStorage.setItem('aiInstructions', instructionsText);
                     
-                    statusEl.textContent = '✓ Instructions saved (shared with all devices)';
+                    statusEl.textContent = '? Instructions saved (shared with all devices)';
                     statusEl.style.color = '#4CAF50';
                 } else {
                     throw new Error(result.error || 'Failed to save instructions');
@@ -1111,7 +1111,7 @@
                     localStorage.setItem('aiInstructions', result.content);
                     const statusEl = document.getElementById('instructionsStatus');
                     if (statusEl) {
-                        statusEl.textContent = '✓ Instructions loaded from server';
+                        statusEl.textContent = '? Instructions loaded from server';
                         statusEl.style.color = '#4CAF50';
                     }
                 } else {
@@ -1191,7 +1191,7 @@
                 data.filenames.forEach((filename, index) => {
                     filesHTML += `
                         <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background-color: #f5f5f5; border-radius: 4px; border: 1px solid #ddd;">
-                            <span>📄 ${filename}</span>
+                            <span>?? ${filename}</span>
                             <button onclick="deleteRateFile('${filename}')" style="background-color: #f44336; color: white; border: none; padding: 5px 15px; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
                         </div>
                     `;
@@ -1523,6 +1523,40 @@
             // Step 5: Calculate grand total
             let grandTotal = 0;
             
+            // Helper: format item description for display only (based on originalDescription + identifiedPipeType)
+            function formatItemDescriptionForDisplay(originalDescription, identifiedPipeType) {
+                if (!originalDescription || typeof originalDescription !== 'string') {
+                    return originalDescription || '';
+                }
+                const trimmed = String(originalDescription).trim();
+                const pipeType = (identifiedPipeType || '').trim();
+                const match = trimmed.match(/^(.+?)[xX](.+)$/);
+                if (!match) {
+                    return trimmed;
+                }
+                const first = match[1].trim();
+                const secondRaw = (match[2] || '').trim();
+                const second = secondRaw.toUpperCase();
+                if (!first) return trimmed;
+                const pipeLower = pipeType.toLowerCase();
+                if (pipeLower.includes('seamless')) {
+                    return first + '" NB X Sch ' + secondRaw;
+                }
+                if (pipeLower.includes('erw')) {
+                    if (second === 'H') return first + '" NB X Heavy - ERW';
+                    if (second === 'M') return first + '" NB X Medium - ERW';
+                    if (/^\d+$/.test(secondRaw)) return first + '" NB X ' + secondRaw + 'mm Thk - ERW';
+                    return trimmed;
+                }
+                if (pipeLower.includes('gi')) {
+                    if (second === 'H') return first + '" NB X Heavy - GI';
+                    if (second === 'M') return first + '" NB X Medium - GI';
+                    if (/^\d+$/.test(secondRaw)) return first + '" NB X ' + secondRaw + 'mm Thk - GI';
+                    return trimmed;
+                }
+                return trimmed;
+            }
+            
             // Helper: get standardized header label based on pipe type
             function getPipeHeaderLabel(pipeType) {
                 const value = (pipeType || '').toLowerCase();
@@ -1559,7 +1593,7 @@
                     const row = document.createElement('tr');
                     row.className = 'item-row';
                     
-                    // Calculate line total (quantity × final rate)
+                    // Calculate line total (quantity ? final rate)
                     const lineTotal = parseFloat(item.quantity) * parseFloat(item.finalRate);
                     grandTotal += lineTotal;
                     
@@ -1573,7 +1607,7 @@
                         <td class="actions-cell" style="text-align: center; vertical-align: middle; padding: 5px;">
                             <div style="display: flex; flex-direction: column; align-items: center; gap: 5px;">
                                 <button class="row-action-btn row-action-add" onclick="addRow('${pipeType}')" title="Add row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">+</button>
-                                <button class="row-action-btn row-action-delete" onclick="deleteRow('${rowId}')" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">+</button>
+                                <button class="row-action-btn row-action-delete" onclick="deleteRow('${rowId}')" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">?</button>
                             </div>
                         </td>
                         <td class="row-number">${index + 1}</td>
@@ -1583,7 +1617,7 @@
                                    data-field="originalDescription"
                                    data-pipe-type="${pipeType}"
                                    data-row-id="${rowId}"
-                                   value="${item.originalDescription}">
+                                   value="${String(formatItemDescriptionForDisplay(item.originalDescription, item.identifiedPipeType)).replace(/"/g, '&quot;')}">
                         </td>
                         <td>
                             <input type="number" 
@@ -1596,7 +1630,7 @@
                                    step="1">
                         </td>
                         <td class="col-base-rate">
-                            ₹<input type="number" 
+                            ?<input type="number" 
                                    class="editable-field" 
                                    data-field="unitRate"
                                    data-pipe-type="${pipeType}"
@@ -1615,7 +1649,7 @@
                                    min="0" 
                                    step="0.01" style="width: 60px;">
                         </td>
-                        <td>₹<input type="number" 
+                        <td>?<input type="number" 
                                    class="editable-field rate-per-mtr" 
                                    data-field="finalRate"
                                    data-pipe-type="${pipeType}"
@@ -1623,7 +1657,7 @@
                                    value="${parseFloat(item.finalRate || 0).toFixed(2)}" 
                                    min="0" 
                                    step="0.01" style="width: 100px;"></td>
-                        <td>₹<span class="line-total" data-row-id="${rowId}">${formatIndianNumber(lineTotal.toFixed(2))}</span></td>
+                        <td>?<span class="line-total" data-row-id="${rowId}">${formatIndianNumber(lineTotal.toFixed(2))}</span></td>
                     `;
                     
                     tableBody.appendChild(row);
@@ -1731,7 +1765,7 @@
                 }
             }
             
-            // Calculate line total: quantity × final rate
+            // Calculate line total: quantity ? final rate
             const lineTotal = quantity * finalRate;
             
             // Update the line total display
@@ -1767,7 +1801,7 @@
             itemRows.forEach(function(row) {
                 // Get line total for this row
                 const lineTotalSpan = row.querySelector('.line-total');
-                const lineTotalText = lineTotalSpan.textContent.replace('₹', '').replace(/,/g, ''); // Remove all commas
+                const lineTotalText = lineTotalSpan.textContent.replace('?', '').replace(/,/g, ''); // Remove all commas
                 const lineTotal = parseFloat(lineTotalText) || 0;
                 
                 // Add to grand total
@@ -1876,7 +1910,7 @@
                 <td class="actions-cell" style="text-align: center; vertical-align: middle; padding: 5px;">
                     <div style="display: flex; flex-direction: column; align-items: center; gap: 5px;">
                         <button class="row-action-btn row-action-add" onclick="addRow('${pipeType}')" title="Add row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">+</button>
-                        <button class="row-action-btn row-action-delete" onclick="deleteRow('${rowId}')" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">+</button>
+                        <button class="row-action-btn row-action-delete" onclick="deleteRow('${rowId}')" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">?</button>
                     </div>
                 </td>
                 <td class="row-number">${rowNumber}</td>
@@ -1899,7 +1933,7 @@
                            step="1">
                 </td>
                 <td class="col-base-rate">
-                    ₹<input type="number" 
+                    ?<input type="number" 
                            class="editable-field" 
                            data-field="unitRate"
                            data-pipe-type="${pipeType}"
@@ -1918,7 +1952,7 @@
                            min="0" 
                            step="0.01" style="width: 60px;">
                 </td>
-                <td>₹<input type="number" 
+                <td>?<input type="number" 
                            class="editable-field rate-per-mtr" 
                            data-field="finalRate"
                            data-pipe-type="${pipeType}"
@@ -1926,7 +1960,7 @@
                            value="0.00" 
                            min="0" 
                            step="0.01" style="width: 100px;"></td>
-                <td>₹<span class="line-total" data-row-id="${rowId}">0.00</span></td>
+                <td>?<span class="line-total" data-row-id="${rowId}">0.00</span></td>
             `;
             
             tableBody.appendChild(row);
@@ -2297,25 +2331,25 @@
                 // Show Approve button only if not saved yet
                 const approveButtonHTML = quotation.saved 
                     ? '' 
-                    : `<button class="save-btn" onclick="saveQuotation(${quotation.id})">✓ Approve</button>`;
+                    : `<button class="save-btn" onclick="saveQuotation(${quotation.id})">? Approve</button>`;
                 
-                const downloadButtonHTML = `<button class="save-btn" onclick="downloadQuotationPdf(${quotation.id})">📥 Download PDF</button>`;
+                const downloadButtonHTML = `<button class="save-btn" onclick="downloadQuotationPdf(${quotation.id})">?? Download PDF</button>`;
 
                 allQuotationsHTML += `
                     <div class="quotation-folder" id="folder-${quotation.id}">
                         <div class="quotation-folder-header" onclick="toggleQuotationFolder(${quotation.id})">
                             <span>
-                                <span class="folder-icon">📁</span>
+                                <span class="folder-icon">??</span>
                                 ${folderName}
                                 ${approvedBadgeHTML}
                             </span>
-                            <span class="folder-toggle-icon">▶</span>
+                            <span class="folder-toggle-icon">?</span>
                         </div>
                         <div class="quotation-folder-content" id="folder-content-${quotation.id}">
                             ${quotation.headerHTML || ''}
                             ${quotation.tableHTML}
                             <div class="grand-total">
-                                <span>Total: ₹${quotation.grandTotal}</span>
+                                <span>Total: ?${quotation.grandTotal}</span>
                             </div>
                             ${quotation.termsText ? `<hr class="terms-divider"><div class="terms-box"><h4>TERMS AND CONDITIONS</h4><div style="white-space: pre-wrap; font-size: 14px;">${quotation.termsText}</div></div>` : ''}
                             <div style="margin-top: 10px; display: flex; gap: 10px;">
@@ -2441,7 +2475,7 @@
                             const actionsHtml = `
                                 <div style="display: flex; flex-direction: column; align-items: center; gap: 5px;">
                                     <button class="row-action-btn row-action-add" onclick="addApprovalRow(${quotationId})" title="Add row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">+</button>
-                                    <button class="row-action-btn row-action-delete" onclick="deleteApprovalRow(${quotationId}, '${row.id}')" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">+</button>
+                                    <button class="row-action-btn row-action-delete" onclick="deleteApprovalRow(${quotationId}, '${row.id}')" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">?</button>
                                 </div>
                             `;
                             
@@ -2461,7 +2495,7 @@
                         // Make rate-per-mtr editable if it's a span
                         const ratePerMtrSpan = row.querySelector('.rate-per-mtr');
                         if (ratePerMtrSpan && ratePerMtrSpan.tagName === 'SPAN') {
-                            const currentValue = ratePerMtrSpan.textContent.replace('₹', '').replace(/,/g, '');
+                            const currentValue = ratePerMtrSpan.textContent.replace('?', '').replace(/,/g, '');
                             const input = document.createElement('input');
                             input.type = 'number';
                             input.className = 'editable-field rate-per-mtr';
@@ -2581,7 +2615,7 @@
                 <td class="actions-cell" style="text-align: center; vertical-align: middle; padding: 5px;">
                     <div style="display: flex; flex-direction: column; align-items: center; gap: 5px;">
                         <button class="row-action-btn row-action-add" onclick="addApprovalRow(${quotationId})" title="Add row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">+</button>
-                        <button class="row-action-btn row-action-delete" onclick="deleteApprovalRow(${quotationId}, '${rowId}')" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">+</button>
+                        <button class="row-action-btn row-action-delete" onclick="deleteApprovalRow(${quotationId}, '${rowId}')" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">?</button>
                     </div>
                 </td>
                 <td class="row-number">${rowNumber}</td>
@@ -2604,7 +2638,7 @@
                            step="1">
                 </td>
                 <td class="col-base-rate">
-                    ₹<input type="number" 
+                    ?<input type="number" 
                            class="editable-field" 
                            data-field="unitRate"
                            data-pipe-type="${pipeType}"
@@ -2623,7 +2657,7 @@
                            min="0" 
                            step="0.01" style="width: 60px;">
                 </td>
-                <td>₹<input type="number" 
+                <td>?<input type="number" 
                            class="editable-field rate-per-mtr" 
                            data-field="finalRate"
                            data-pipe-type="${pipeType}"
@@ -2631,7 +2665,7 @@
                            value="0.00" 
                            min="0" 
                            step="0.01" style="width: 100px;"></td>
-                <td>₹<span class="line-total" data-row-id="${rowId}">0.00</span></td>
+                <td>?<span class="line-total" data-row-id="${rowId}">0.00</span></td>
             `;
             
             tbody.appendChild(row);
@@ -2815,7 +2849,7 @@
             // Update grand total
             const grandTotalElement = folderContent.querySelector('.grand-total span');
             if (grandTotalElement) {
-                grandTotalElement.textContent = `Total: ₹${formatIndianNumber(grandTotal.toFixed(2))}`;
+                grandTotalElement.textContent = `Total: ?${formatIndianNumber(grandTotal.toFixed(2))}`;
             }
             
             // Update the quotation object (only save if shouldSave is true)
@@ -2989,7 +3023,7 @@
                 const unitRate = row.querySelector('[data-field="unitRate"]')?.value || '';
                 const marginPercent = row.querySelector('[data-field="marginPercent"]')?.value || '';
                 const finalRate = row.querySelector('[data-field="finalRate"]')?.value || '';
-                const lineTotal = row.querySelector('.line-total')?.textContent.replace('₹', '').trim() || '';
+                const lineTotal = row.querySelector('.line-total')?.textContent.replace('?', '').trim() || '';
                 
                 lineItems.push({
                     size: size,
@@ -3102,7 +3136,7 @@
                 // Update grand total from the display
                 const grandTotalElement = folderContent.querySelector('.grand-total span');
                 if (grandTotalElement) {
-                    const grandTotalText = grandTotalElement.textContent.replace('Total: ₹', '').replace(/,/g, '');
+                    const grandTotalText = grandTotalElement.textContent.replace('Total: ?', '').replace(/,/g, '');
                     quotation.grandTotal = grandTotalText;
                 }
             }
@@ -3217,7 +3251,7 @@
 
                 <div id="pdfTable">${quotation.tableHTML || ''}</div>
 
-                <div style="margin-top:20px;padding:12px;background:#3b3f79;color:#fff;text-align:right;">Total: ₹${quotation.grandTotal || '0.00'}</div>
+                <div style="margin-top:20px;padding:12px;background:#3b3f79;color:#fff;text-align:right;">Total: ?${quotation.grandTotal || '0.00'}</div>
 
                 ${termsHtml}
             `;
@@ -3420,7 +3454,10 @@
                     throw new Error(result.error || 'Failed to load quotations from server');
                 }
                 const quotations = Array.isArray(result.quotations) ? result.quotations : [];
-                approvedQuotations = [];
+                const serverIds = new Set(quotations.map(function(q) { return q.id; }));
+                // Keep local quotations that are not on server yet (e.g. just approved, save still pending)
+                const localOnly = approvedQuotations.filter(function(q) { return !serverIds.has(q.id); });
+                approvedQuotations = localOnly.slice();
                 quotations.forEach(function(quotation) {
                     if (quotation.saved === undefined) {
                         quotation.saved = false;
@@ -3542,7 +3579,7 @@
         // Load saved quotations from server (DynamoDB)
         loadFromServer();
         
-        // Load default terms from configuration
+        // Load default terms from Price List and Instructions
         loadTermsConfig();
         
         // Load instructions from localStorage
