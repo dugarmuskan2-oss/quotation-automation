@@ -1788,36 +1788,26 @@
         function recalculateAllTotals() {
             /*
                 This function:
-                1. Finds all item rows
-                2. Calculates and updates grand total
+                1. Finds all item rows in the CREATION section only
+                2. Calculates and updates the Creation section grand total only
             */
+            const creationSection = document.getElementById('quotationSection');
+            if (!creationSection) return;
+            const creationTable = creationSection.querySelector('#quotationTable');
+            const grandTotalEl = creationSection.querySelector('#grandTotal');
+            if (!creationTable || !grandTotalEl) return;
             
-            // Get all item rows - ONLY from Creation section table (not Approval section)
-            const creationTable = document.getElementById('quotationTable');
-            const itemRows = creationTable ? creationTable.querySelectorAll('.item-row') : document.querySelectorAll('.item-row');
-            // #region agent log
-            var _inCreation = 0; var _inApproval = 0;
-            itemRows.forEach(function(r) {
-                if (r.closest('#quotationTable')) _inCreation++; else if (r.closest('#approvedQuotationsContainer')) _inApproval++;
-            });
-            fetch('http://127.0.0.1:7242/ingest/94f43956-7071-4935-87a6-da4459027d68',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:recalculateAllTotals',message:'row count',data:{total:itemRows.length,inCreation:_inCreation,inApproval:_inApproval,scopedToTable:!!creationTable},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(function(){});
-            // #endregion
-            
+            const itemRows = creationTable.querySelectorAll('.item-row');
             let grandTotal = 0;
             
-            // Calculate grand total from all rows
             itemRows.forEach(function(row) {
-                // Get line total for this row
                 const lineTotalSpan = row.querySelector('.line-total');
-                const lineTotalText = lineTotalSpan ? lineTotalSpan.textContent.replace(/\?|\u20B9/g, '').replace(/,/g, '') : '0';
+                const lineTotalText = lineTotalSpan ? lineTotalSpan.textContent.replace(/\?|\u20B9|?/g, '').replace(/,/g, '') : '0';
                 const lineTotal = parseFloat(lineTotalText) || 0;
-                
-                // Add to grand total
                 grandTotal += lineTotal;
             });
             
-            // Update grand total
-            document.getElementById('grandTotal').textContent = formatIndianNumber(grandTotal.toFixed(2));
+            grandTotalEl.textContent = formatIndianNumber(grandTotal.toFixed(2));
         }
         
         /*
