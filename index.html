@@ -1551,6 +1551,69 @@
             return pipeType || '';
         }
 
+        function formatItemDescriptionByPipeType(item) {
+            const raw = (item.originalDescription || '').trim();
+            if (!raw) {
+                return raw;
+            }
+            const pipeType = (item.identifiedPipeType || '').toLowerCase();
+            const normalized = raw.replace(/["]/g, '').trim();
+            const xMatch = normalized.match(/(\d+(?:\.\d+)?)\s*[xX]\s*([A-Za-z0-9\.]+)/);
+            const hMatch = normalized.match(/^(\d+(?:\.\d+)?)\s*(h|hv|hvy|heavy|hevy)$/i);
+            const mMatch = normalized.match(/^(\d+(?:\.\d+)?)\s*(m|med|medium)$/i);
+            const schMatch = normalized.match(/^(\d+(?:\.\d+)?)\s*(?:sch|schedule)\s*(\d+(?:\.\d+)?)$/i);
+            let first = '';
+            let secondClean = '';
+            let isHeavy = false;
+            let isMedium = false;
+            let isSch = false;
+            if (xMatch) {
+                first = xMatch[1];
+                secondClean = (xMatch[2] || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            } else if (hMatch) {
+                first = hMatch[1];
+                secondClean = hMatch[2].toLowerCase();
+                isHeavy = true;
+            } else if (mMatch) {
+                first = mMatch[1];
+                secondClean = mMatch[2].toLowerCase();
+                isMedium = true;
+            } else if (schMatch) {
+                first = schMatch[1];
+                secondClean = schMatch[2].toLowerCase();
+                isSch = true;
+            } else {
+                return raw;
+            }
+
+            if (pipeType.includes('seamless')) {
+                if (isSch || /^\d+(\.\d+)?$/.test(secondClean)) {
+                    return `${first}" NB X Sch ${secondClean}`;
+                }
+                return raw;
+            }
+
+            const isGi = pipeType.includes('gi') || pipeType.includes('galvanized');
+            const isErw = pipeType.includes('erw');
+            if (!isGi && !isErw) {
+                return raw;
+            }
+            const pipeLabel = isGi ? 'GI' : 'ERW';
+            const heavyTokens = ['h', 'hv', 'hvy', 'heavy', 'hevy'];
+            const mediumTokens = ['m', 'med', 'medium'];
+
+            if (isHeavy || heavyTokens.includes(secondClean)) {
+                return `${first}" NB X Heavy -- ${pipeLabel}`;
+            }
+            if (isMedium || mediumTokens.includes(secondClean)) {
+                return `${first}" NB X Medium -- ${pipeLabel}`;
+            }
+            if (/^\d+(\.\d+)?$/.test(secondClean)) {
+                return `${first}" NB X ${secondClean}mm thl -- ${pipeLabel}`;
+            }
+            return raw;
+        }
+
         function appendGroupedItems(tableBody, groupedItems, grandTotal) {
             // Step 6: Loop through each pipe type group
             Object.keys(groupedItems).forEach(function(pipeType) {
@@ -1581,6 +1644,8 @@
                 items.forEach(function(item, index) {
                     const row = document.createElement('tr');
                     row.className = 'item-row';
+                    const formattedDescription = formatItemDescriptionByPipeType(item);
+                    const safeDescription = formattedDescription.replace(/"/g, '&quot;');
                     
                     // Calculate line total (quantity × final rate)
                     const lineTotal = parseFloat(item.quantity) * parseFloat(item.finalRate);
@@ -1606,7 +1671,7 @@
                                    data-field="originalDescription"
                                    data-pipe-type="${pipeType}"
                                    data-row-id="${rowId}"
-                                   value="${item.originalDescription}">
+                                   value="${safeDescription}">
                         </td>
                         <td>
                             <input type="number" 
@@ -1810,9 +1875,13 @@
             let finalRate;
             if (fieldChanged === 'lineTotal' && lineTotalInput && lineTotalInput.dataset.manual === 'true') {
                 const manualLineTotal = parseFloat(lineTotalInput.value || 0) || 0;
-                finalRate = quantity > 0 ? (manualLineTotal / quantity) : 0;
-                if (finalRateInput) {
-                    finalRateInput.value = finalRate.toFixed(2);
+                if (quantity > 0) {
+                    finalRate = manualLineTotal / quantity;
+                    if (finalRateInput) {
+                        finalRateInput.value = finalRate.toFixed(2);
+                    }
+                } else {
+                    finalRate = 0;
                 }
                 lineTotalInput.dataset.manual = '';
             } else if (fieldChanged === 'finalRate') {
@@ -1828,7 +1897,11 @@
             }
             
             // Calculate line total: quantity × final rate
-            const lineTotal = quantity * finalRate;
+            let lineTotal = quantity * finalRate;
+            if (fieldChanged === 'lineTotal' && lineTotalInput) {
+                const manualLineTotal = parseFloat(lineTotalInput.value || 0) || 0;
+                lineTotal = quantity > 0 ? (quantity * finalRate) : manualLineTotal;
+            }
             
             // Update the line total display
             if (lineTotalInput) {
@@ -1853,8 +1926,12 @@
                 2. Calculates and updates grand total
             */
             
-            // Get all item rows
-            const itemRows = document.querySelectorAll('.item-row');
+            // Get all item rows in Creation table
+            const tableBody = document.getElementById('quotationTableBody');
+            if (!tableBody) {
+                return;
+            }
+            const itemRows = tableBody.querySelectorAll('.item-row');
             
             let grandTotal = 0;
             
@@ -3125,10 +3202,15 @@
                 const lineTotalInput = row.querySelector('[data-field="lineTotal"]');
                 let lineTotal = quantity * finalRate;
                 if (lineTotalInput && lineTotalInput.tagName === 'INPUT' && lineTotalInput.dataset.manual === 'true') {
-                    lineTotal = parseFloat(lineTotalInput.value || 0) || 0;
-                    finalRate = quantity > 0 ? (lineTotal / quantity) : 0;
-                    if (finalRateInput) {
-                        finalRateInput.value = finalRate.toFixed(2);
+                    const manualLineTotal = parseFloat(lineTotalInput.value || 0) || 0;
+                    if (quantity > 0) {
+                        finalRate = manualLineTotal / quantity;
+                        if (finalRateInput) {
+                            finalRateInput.value = finalRate.toFixed(2);
+                        }
+                        lineTotal = quantity * finalRate;
+                    } else {
+                        lineTotal = manualLineTotal;
                     }
                     lineTotalInput.dataset.manual = '';
                 }
@@ -3503,7 +3585,7 @@
             wrapper.style.top = '0';
             wrapper.style.width = '794px';
             wrapper.style.padding = '20px';
-            wrapper.style.fontFamily = 'Arial, sans-serif';
+            wrapper.style.fontFamily = '"Noto Sans", Arial, sans-serif';
             wrapper.style.color = '#333';
 
             const termsText = normalizeTermsText((quotation.termsText || '').trim());
@@ -3524,6 +3606,9 @@
             }
 
             wrapper.innerHTML = `
+                <style>
+                    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;600;700&display=swap');
+                </style>
                 <div class="quote-header-top" style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #3b3f79;padding-bottom:10px;margin-bottom:12px;">
                     <div style="display:flex;align-items:center;">
                         <div style="width:80px;height:80px;display:flex;align-items:center;justify-content:center;overflow:hidden;">
@@ -3567,13 +3652,40 @@
 
             document.body.appendChild(wrapper);
 
-            // Replace inputs with text and remove base rate + margin columns
+            // Replace inputs with text and remove control/actions columns
             wrapper.querySelectorAll('input').forEach(input => {
                 const span = document.createElement('span');
                 span.textContent = input.value || '';
                 input.replaceWith(span);
             });
             wrapper.querySelectorAll('.col-base-rate, .col-margin').forEach(el => el.remove());
+            wrapper.querySelectorAll('button, .pipe-header-actions').forEach(el => el.remove());
+            wrapper.querySelectorAll('table').forEach(table => {
+                const headerRow = table.querySelector('thead tr');
+                if (headerRow) {
+                    const headerCells = Array.from(headerRow.children);
+                    const firstHeaderCell = headerCells[0];
+                    const actionIndex = headerCells.findIndex(cell => cell.textContent.trim().toUpperCase() === 'ACTIONS');
+                    if (actionIndex !== -1) {
+                        headerCells[actionIndex].remove();
+                        table.querySelectorAll('tbody tr').forEach(row => {
+                            const cells = row.children;
+                            if (cells.length > actionIndex) {
+                                cells[actionIndex].remove();
+                            }
+                        });
+                    }
+                    if (firstHeaderCell && !firstHeaderCell.textContent.trim() && !firstHeaderCell.querySelector('input')) {
+                        firstHeaderCell.remove();
+                        table.querySelectorAll('tbody tr').forEach(row => {
+                            const firstCell = row.querySelector('td:first-child');
+                            if (firstCell) {
+                                firstCell.remove();
+                            }
+                        });
+                    }
+                }
+            });
             
             // Inline images to avoid canvas tainting
             const inlineImages = async (container) => {
@@ -3615,7 +3727,7 @@
             await waitForImages(wrapper);
 
             const canvas = await window.html2canvas(wrapper, {
-                scale: 2,
+                scale: 3,
                 useCORS: true,
                 backgroundColor: '#ffffff'
             });
