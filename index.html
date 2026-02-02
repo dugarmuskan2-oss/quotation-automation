@@ -1560,10 +1560,19 @@
                 // Step 6a: Create header row for this pipe type
                 const headerRow = document.createElement('tr');
                 headerRow.className = 'pipe-type-header';
+                headerRow.id = `pipe-header-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                headerRow.setAttribute('data-pipe-type', pipeType);
                 const headerLabel = getPipeHeaderLabel(pipeType);
                 headerRow.innerHTML = `
                     <td colspan="9">
-                        <input type="text" class="editable-field" data-field="pipeTypeHeader" value="${headerLabel}">
+                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+                            <input type="text" class="editable-field" data-field="pipeTypeHeader" value="${headerLabel}" style="flex: 1; border: none; background: transparent; font-weight: bold;">
+                            <div style="display: flex; gap: 6px;">
+                                <button onclick="addRow('${pipeType}')" title="Add item row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">➕</button>
+                                <button onclick="addRow('__NEW_HEADER__', '${headerRow.id}')" title="Add pipe type" style="background: #2196F3; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">H+</button>
+                                <button onclick="deleteRow('${headerRow.id}')" title="Delete pipe type" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
+                            </div>
+                        </div>
                     </td>
                 `;
                 tableBody.appendChild(headerRow);
@@ -1637,7 +1646,13 @@
                                    value="${parseFloat(item.finalRate || 0).toFixed(2)}" 
                                    min="0" 
                                    step="0.01" style="width: 100px;"></td>
-                        <td>₹<span class="line-total" data-row-id="${rowId}">${formatIndianNumber(lineTotal.toFixed(2))}</span></td>
+                        <td>₹<input type="number" 
+                                   class="editable-field line-total-input" 
+                                   data-field="lineTotal"
+                                   data-row-id="${rowId}"
+                                   value="${lineTotal.toFixed(2)}"
+                                   min="0" 
+                                   step="0.01" style="width: 100px;"></td>
                     `;
                     
                     tableBody.appendChild(row);
@@ -1748,6 +1763,9 @@
             // Add event listener to each field
             editableFields.forEach(function(field) {
                 field.addEventListener('input', function() {
+                    if (this.getAttribute('data-field') === 'lineTotal') {
+                        this.dataset.manual = 'true';
+                    }
                     // When any field changes, recalculate that row
                     recalculateRow(this);
                 });
@@ -1786,10 +1804,18 @@
             
             // Check if finalRate was edited directly
             const finalRateInput = row.querySelector('[data-field="finalRate"]');
+            const lineTotalInput = row.querySelector('[data-field="lineTotal"]');
             const fieldChanged = changedField.getAttribute('data-field');
             
             let finalRate;
-            if (fieldChanged === 'finalRate') {
+            if (fieldChanged === 'lineTotal' && lineTotalInput && lineTotalInput.dataset.manual === 'true') {
+                const manualLineTotal = parseFloat(lineTotalInput.value || 0) || 0;
+                finalRate = quantity > 0 ? (manualLineTotal / quantity) : 0;
+                if (finalRateInput) {
+                    finalRateInput.value = finalRate.toFixed(2);
+                }
+                lineTotalInput.dataset.manual = '';
+            } else if (fieldChanged === 'finalRate') {
                 // User edited finalRate directly - use that value
                 finalRate = parseFloat(changedField.value || 0) || 0;
             } else {
@@ -1805,9 +1831,8 @@
             const lineTotal = quantity * finalRate;
             
             // Update the line total display
-            const lineTotalSpan = row.querySelector('.line-total');
-            if (lineTotalSpan) {
-                lineTotalSpan.textContent = formatIndianNumber(lineTotal.toFixed(2));
+            if (lineTotalInput) {
+                lineTotalInput.value = lineTotal.toFixed(2);
             }
             
             // Recalculate all subtotals and grand total
@@ -1836,9 +1861,15 @@
             // Calculate grand total from all rows
             itemRows.forEach(function(row) {
                 // Get line total for this row
-                const lineTotalSpan = row.querySelector('.line-total');
-                const lineTotalText = lineTotalSpan.textContent.replace('₹', '').replace(/,/g, ''); // Remove all commas
-                const lineTotal = parseFloat(lineTotalText) || 0;
+                const lineTotalInput = row.querySelector('[data-field="lineTotal"]');
+                let lineTotal = 0;
+                if (lineTotalInput && lineTotalInput.tagName === 'INPUT') {
+                    lineTotal = parseFloat(lineTotalInput.value || 0) || 0;
+                } else {
+                    const lineTotalSpan = row.querySelector('.line-total');
+                    const lineTotalText = lineTotalSpan.textContent.replace('₹', '').replace(/,/g, ''); // Remove all commas
+                    lineTotal = parseFloat(lineTotalText) || 0;
+                }
                 
                 // Add to grand total
                 grandTotal += lineTotal;
@@ -1858,6 +1889,9 @@
             const editableFields = row.querySelectorAll('.editable-field');
             editableFields.forEach(function(field) {
                 field.addEventListener('input', function() {
+                    if (this.getAttribute('data-field') === 'lineTotal') {
+                        this.dataset.manual = 'true';
+                    }
                     recalculateRow(this);
                 });
                 field.addEventListener('blur', function() {
@@ -1874,11 +1908,19 @@
         */
         function deleteRow(rowId) {
             const row = document.getElementById(rowId);
-            if (!row || !row.classList.contains('item-row')) {
+            if (!row || (!row.classList.contains('item-row') && !row.classList.contains('pipe-type-header'))) {
                 return;
             }
             
             if (confirm('Are you sure you want to delete this row?')) {
+                if (row.classList.contains('pipe-type-header')) {
+                    let nextRow = row.nextElementSibling;
+                    while (nextRow && !nextRow.classList.contains('pipe-type-header')) {
+                        const rowToRemove = nextRow;
+                        nextRow = nextRow.nextElementSibling;
+                        rowToRemove.remove();
+                    }
+                }
                 row.remove();
                 updateRowNumbers();
                 recalculateAllTotals();
@@ -1907,9 +1949,32 @@
             ============================================
             Adds a new empty row to the table
         */
-        function addRow(pipeType = null) {
+        function addRow(pipeType = null, insertAfterId = null) {
             const tableBody = document.getElementById('quotationTableBody');
             if (!tableBody) {
+                return;
+            }
+            
+            if (pipeType === '__NEW_HEADER__') {
+                const existingHeaderCell = tableBody.querySelector('.pipe-type-header td[colspan]');
+                const colspan = existingHeaderCell ? existingHeaderCell.getAttribute('colspan') : '8';
+                const headerRow = document.createElement('tr');
+                headerRow.className = 'pipe-type-header';
+                headerRow.id = `pipe-header-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                headerRow.setAttribute('data-pipe-type', 'Default');
+                headerRow.innerHTML = `
+                    <td colspan="${colspan}">
+                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+                            <input type="text" class="editable-field" data-field="pipeTypeHeader" value="Default" style="flex: 1; border: none; background: transparent; font-weight: bold;">
+                            <div style="display: flex; gap: 6px;">
+                                <button onclick="addRow('Default')" title="Add item row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">➕</button>
+                                <button onclick="addRow('__NEW_HEADER__', '${headerRow.id}')" title="Add pipe type" style="background: #2196F3; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">H+</button>
+                                <button onclick="deleteRow('${headerRow.id}')" title="Delete pipe type" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
+                            </div>
+                        </div>
+                    </td>
+                `;
+                tableBody.appendChild(headerRow);
                 return;
             }
             
@@ -1922,23 +1987,36 @@
                 } else {
                     pipeType = 'Default';
                     // Create a header row if it doesn't exist
+                    const existingHeaderCell = tableBody.querySelector('.pipe-type-header td[colspan]');
+                    const colspan = existingHeaderCell ? existingHeaderCell.getAttribute('colspan') : '8';
                     const headerRow = document.createElement('tr');
                     headerRow.className = 'pipe-type-header';
+                    headerRow.id = `pipe-header-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                    headerRow.setAttribute('data-pipe-type', pipeType);
                     headerRow.innerHTML = `
-                        <td colspan="8">
-                            <input type="text" class="editable-field" data-field="pipeTypeHeader" value="Default">
+                        <td colspan="${colspan}">
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+                                <input type="text" class="editable-field" data-field="pipeTypeHeader" value="${pipeType}" style="flex: 1; border: none; background: transparent; font-weight: bold;">
+                                <div style="display: flex; gap: 6px;">
+                                    <button onclick="addRow('${pipeType}')" title="Add item row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">➕</button>
+                                    <button onclick="addRow('__NEW_HEADER__', '${headerRow.id}')" title="Add pipe type" style="background: #2196F3; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">H+</button>
+                                    <button onclick="deleteRow('${headerRow.id}')" title="Delete pipe type" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
+                                </div>
+                            </div>
                         </td>
                     `;
                     tableBody.appendChild(headerRow);
                 }
             }
             
+            const resolvedPipeType = pipeType;
+            
             // Create new row
             const row = document.createElement('tr');
             row.className = 'item-row';
             const rowId = `row-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             row.id = rowId;
-            row.setAttribute('data-pipe-type', pipeType);
+            row.setAttribute('data-pipe-type', resolvedPipeType);
             
             const rowNumber = document.querySelectorAll('.item-row').length + 1;
             
@@ -1954,7 +2032,7 @@
                     <input type="text" 
                            class="editable-field" 
                            data-field="originalDescription"
-                           data-pipe-type="${pipeType}"
+                           data-pipe-type="${resolvedPipeType}"
                            data-row-id="${rowId}"
                            value="" placeholder="Enter description">
                 </td>
@@ -1962,7 +2040,7 @@
                     <input type="number" 
                            class="editable-field" 
                            data-field="quantity"
-                           data-pipe-type="${pipeType}"
+                           data-pipe-type="${resolvedPipeType}"
                            data-row-id="${rowId}"
                            value="0" 
                            min="0" 
@@ -1972,7 +2050,7 @@
                     ₹<input type="number" 
                            class="editable-field" 
                            data-field="unitRate"
-                           data-pipe-type="${pipeType}"
+                           data-pipe-type="${resolvedPipeType}"
                            data-row-id="${rowId}"
                            value="0" 
                            min="0" 
@@ -1982,7 +2060,7 @@
                     <input type="number" 
                            class="editable-field" 
                            data-field="marginPercent"
-                           data-pipe-type="${pipeType}"
+                           data-pipe-type="${resolvedPipeType}"
                            data-row-id="${rowId}"
                            value="" 
                            min="0" 
@@ -1991,12 +2069,18 @@
                 <td>₹<input type="number" 
                            class="editable-field rate-per-mtr" 
                            data-field="finalRate"
-                           data-pipe-type="${pipeType}"
+                           data-pipe-type="${resolvedPipeType}"
                            data-row-id="${rowId}"
                            value="0.00" 
                            min="0" 
                            step="0.01" style="width: 100px;"></td>
-                <td>₹<span class="line-total" data-row-id="${rowId}">0.00</span></td>
+                <td>₹<input type="number" 
+                           class="editable-field line-total-input" 
+                           data-field="lineTotal"
+                           data-row-id="${rowId}"
+                           value="0.00"
+                           min="0" 
+                           step="0.01" style="width: 100px;"></td>
             `;
             
             tableBody.appendChild(row);
@@ -2481,6 +2565,32 @@
                         headerRow.appendChild(actionsHeader);
                     }
                     
+                    // Remove unused leading control column from approved tables
+                    if (headerRow) {
+                        const firstHeaderCell = headerRow.querySelector('th:first-child');
+                        const hasActionsHeader = headerRow.querySelector('th:last-child')?.textContent.includes('ACTIONS');
+                        if (hasActionsHeader && firstHeaderCell && !firstHeaderCell.textContent.trim() && !firstHeaderCell.querySelector('input')) {
+                            firstHeaderCell.remove();
+                            const bodyRows = table.querySelectorAll('tbody tr');
+                            bodyRows.forEach(function(row) {
+                                if (row.classList.contains('pipe-type-header')) {
+                                    const headerCell = row.querySelector('td[colspan]');
+                                    if (headerCell) {
+                                        const currentColspan = parseInt(headerCell.getAttribute('colspan') || '0', 10);
+                                        if (currentColspan > 1) {
+                                            headerCell.setAttribute('colspan', String(currentColspan - 1));
+                                        }
+                                    }
+                                } else {
+                                    const firstCell = row.querySelector('td:first-child');
+                                    if (firstCell) {
+                                        firstCell.remove();
+                                    }
+                                }
+                            });
+                        }
+                    }
+                    
                     // Make QTY PER MTRS and RATE PER MTRS headers editable
                     if (headerRow) {
                         const headerCells = headerRow.querySelectorAll('th');
@@ -2504,8 +2614,56 @@
                     // Update pipe type headers colspan
                     const pipeHeaders = table.querySelectorAll('.pipe-type-header td[colspan]');
                     pipeHeaders.forEach(header => {
-                        if (parseInt(header.getAttribute('colspan')) === 7) {
-                            header.setAttribute('colspan', '8');
+                        const headerRow = table.querySelector('thead tr');
+                        const targetColspan = headerRow ? headerRow.children.length : parseInt(header.getAttribute('colspan') || '0', 10);
+                        if (targetColspan && parseInt(header.getAttribute('colspan')) !== targetColspan) {
+                            header.setAttribute('colspan', String(targetColspan));
+                        }
+                    });
+                    
+                    // Add controls for pipe type header rows
+                    const pipeHeaderRows = table.querySelectorAll('.pipe-type-header');
+                    pipeHeaderRows.forEach(function(headerRow) {
+                        if (!headerRow.id) {
+                            headerRow.id = `approval-header-${quotationId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                        }
+                        const headerCell = headerRow.querySelector('td');
+                        if (!headerCell) return;
+                        const headerInput = headerRow.querySelector('[data-field="pipeTypeHeader"]');
+                        if (headerInput && !headerRow.getAttribute('data-pipe-type')) {
+                            headerRow.setAttribute('data-pipe-type', headerInput.value || 'Default');
+                        }
+                        if (!headerCell.querySelector('.pipe-header-actions')) {
+                            const actions = document.createElement('div');
+                            actions.className = 'pipe-header-actions';
+                            actions.style.display = 'flex';
+                            actions.style.gap = '6px';
+                            const addItemBtn = document.createElement('button');
+                            addItemBtn.textContent = '➕';
+                            addItemBtn.title = 'Add item row';
+                            addItemBtn.style.cssText = 'background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;';
+                            addItemBtn.onclick = function() {
+                                const pipeValue = headerInput ? (headerInput.value || 'Default') : (headerRow.getAttribute('data-pipe-type') || 'Default');
+                                addApprovalRow(quotationId, pipeValue, headerRow.id);
+                            };
+                            const addHeaderBtn = document.createElement('button');
+                            addHeaderBtn.textContent = 'H+';
+                            addHeaderBtn.title = 'Add pipe type';
+                            addHeaderBtn.style.cssText = 'background: #2196F3; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;';
+                            addHeaderBtn.onclick = function() {
+                                addApprovalRow(quotationId, '__NEW_HEADER__', headerRow.id);
+                            };
+                            const deleteHeaderBtn = document.createElement('button');
+                            deleteHeaderBtn.textContent = '🗑️';
+                            deleteHeaderBtn.title = 'Delete pipe type';
+                            deleteHeaderBtn.style.cssText = 'background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;';
+                            deleteHeaderBtn.onclick = function() {
+                                deleteApprovalRow(quotationId, headerRow.id);
+                            };
+                            actions.appendChild(addItemBtn);
+                            actions.appendChild(addHeaderBtn);
+                            actions.appendChild(deleteHeaderBtn);
+                            headerCell.appendChild(actions);
                         }
                     });
                     
@@ -2547,6 +2705,21 @@
                             input.style.width = '100px';
                             ratePerMtrSpan.parentNode.replaceChild(input, ratePerMtrSpan);
                         }
+                        
+                        // Make amount editable if it's a span
+                        const lineTotalSpan = row.querySelector('.line-total');
+                        if (lineTotalSpan && lineTotalSpan.tagName === 'SPAN') {
+                            const currentValue = lineTotalSpan.textContent.replace('₹', '').replace(/,/g, '');
+                            const input = document.createElement('input');
+                            input.type = 'number';
+                            input.className = 'editable-field line-total-input';
+                            input.setAttribute('data-field', 'lineTotal');
+                            input.value = currentValue;
+                            input.min = '0';
+                            input.step = '0.01';
+                            input.style.width = '100px';
+                            lineTotalSpan.parentNode.replaceChild(input, lineTotalSpan);
+                        }
 
                         // Make quantity editable if it's not already an input
                         const quantityField = row.querySelector('[data-field="quantity"]');
@@ -2574,6 +2747,11 @@
                         // Attach event listeners
                         const editableFields = row.querySelectorAll('.editable-field');
                         editableFields.forEach(function(field) {
+                            if (field.getAttribute('data-field') === 'lineTotal') {
+                                field.addEventListener('input', function() {
+                                    this.dataset.manual = 'true';
+                                });
+                            }
                             field.addEventListener('blur', function() {
                                 recalculateApprovalQuotationTotals(quotationId, false);
                             });
@@ -2616,11 +2794,19 @@
             if (!folder) return;
             
             const row = folder.querySelector('#' + rowId);
-            if (!row || !row.classList.contains('item-row')) {
+            if (!row || (!row.classList.contains('item-row') && !row.classList.contains('pipe-type-header'))) {
                 return;
             }
             
             if (confirm('Are you sure you want to delete this row?')) {
+                if (row.classList.contains('pipe-type-header')) {
+                    let nextRow = row.nextElementSibling;
+                    while (nextRow && !nextRow.classList.contains('pipe-type-header')) {
+                        const rowToRemove = nextRow;
+                        nextRow = nextRow.nextElementSibling;
+                        rowToRemove.remove();
+                    }
+                }
                 row.remove();
                 updateApprovalRowNumbers(quotationId);
                 recalculateApprovalQuotationTotals(quotationId, false);
@@ -2652,7 +2838,7 @@
             ============================================
             Adds a new empty row to the Approval section table
         */
-        function addApprovalRow(quotationId) {
+        function addApprovalRow(quotationId, pipeType = null, insertAfterId = null) {
             const folder = document.getElementById('folder-' + quotationId);
             if (!folder) return;
             
@@ -2665,12 +2851,39 @@
             const tbody = table.querySelector('tbody');
             if (!tbody) return;
             
+            if (pipeType === '__NEW_HEADER__') {
+                const existingHeaderCell = table.querySelector('.pipe-type-header td[colspan]');
+                const headerRow = table.querySelector('thead tr');
+                const colspan = existingHeaderCell
+                    ? existingHeaderCell.getAttribute('colspan')
+                    : (headerRow ? headerRow.children.length : 8);
+                const newHeaderRow = document.createElement('tr');
+                newHeaderRow.className = 'pipe-type-header';
+                newHeaderRow.id = `approval-header-${quotationId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                newHeaderRow.setAttribute('data-pipe-type', 'Default');
+                newHeaderRow.innerHTML = `
+                    <td colspan="${colspan}">
+                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+                            <input type="text" class="editable-field" data-field="pipeTypeHeader" value="Default" style="flex: 1; border: none; background: transparent; font-weight: bold;">
+                            <div style="display: flex; gap: 6px;">
+                                <button onclick="addApprovalRow(${quotationId}, 'Default', '${newHeaderRow.id}')" title="Add item row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">➕</button>
+                                <button onclick="addApprovalRow(${quotationId}, '__NEW_HEADER__', '${newHeaderRow.id}')" title="Add pipe type" style="background: #2196F3; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">H+</button>
+                                <button onclick="deleteApprovalRow(${quotationId}, '${newHeaderRow.id}')" title="Delete pipe type" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
+                            </div>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(newHeaderRow);
+                attachApprovalSectionListeners();
+                return;
+            }
+            
             // Get the last pipe type or use default
             const existingRows = folder.querySelectorAll('.item-row');
-            let pipeType = 'Default';
-            if (existingRows.length > 0) {
+            let resolvedPipeType = pipeType || 'Default';
+            if (!pipeType && existingRows.length > 0) {
                 const lastRow = existingRows[existingRows.length - 1];
-                pipeType = lastRow.getAttribute('data-pipe-type') || 'Default';
+                resolvedPipeType = lastRow.getAttribute('data-pipe-type') || 'Default';
             }
             
             // Create new row
@@ -2678,7 +2891,7 @@
             row.className = 'item-row';
             const rowId = `approval-row-${quotationId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             row.id = rowId;
-            row.setAttribute('data-pipe-type', pipeType);
+            row.setAttribute('data-pipe-type', resolvedPipeType);
             
             const rowNumber = existingRows.length + 1;
             
@@ -2688,7 +2901,7 @@
                     <input type="text" 
                            class="editable-field" 
                            data-field="originalDescription"
-                           data-pipe-type="${pipeType}"
+                           data-pipe-type="${resolvedPipeType}"
                            data-row-id="${rowId}"
                            value="" placeholder="Enter description">
                 </td>
@@ -2696,7 +2909,7 @@
                     <input type="number" 
                            class="editable-field" 
                            data-field="quantity"
-                           data-pipe-type="${pipeType}"
+                           data-pipe-type="${resolvedPipeType}"
                            data-row-id="${rowId}"
                            value="0" 
                            min="0" 
@@ -2706,7 +2919,7 @@
                     ₹<input type="number" 
                            class="editable-field" 
                            data-field="unitRate"
-                           data-pipe-type="${pipeType}"
+                           data-pipe-type="${resolvedPipeType}"
                            data-row-id="${rowId}"
                            value="0" 
                            min="0" 
@@ -2716,7 +2929,7 @@
                     <input type="number" 
                            class="editable-field" 
                            data-field="marginPercent"
-                           data-pipe-type="${pipeType}"
+                           data-pipe-type="${resolvedPipeType}"
                            data-row-id="${rowId}"
                            value="" 
                            min="0" 
@@ -2725,18 +2938,33 @@
                 <td>₹<input type="number" 
                            class="editable-field rate-per-mtr" 
                            data-field="finalRate"
-                           data-pipe-type="${pipeType}"
+                           data-pipe-type="${resolvedPipeType}"
                            data-row-id="${rowId}"
                            value="0.00" 
                            min="0" 
                            step="0.01" style="width: 100px;"></td>
-                <td>₹<span class="line-total" data-row-id="${rowId}">0.00</span></td>
+                <td>₹<input type="number" 
+                           class="editable-field line-total-input" 
+                           data-field="lineTotal"
+                           data-row-id="${rowId}"
+                           value="0.00"
+                           min="0" 
+                           step="0.01" style="width: 100px;"></td>
                 <td>
                     <button class="delete-row-btn" onclick="deleteApprovalRow(${quotationId}, '${rowId}')" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
                 </td>
             `;
             
-            tbody.appendChild(row);
+            if (insertAfterId) {
+                const insertAfterRow = folderContent.querySelector('#' + insertAfterId);
+                if (insertAfterRow && insertAfterRow.parentNode === tbody) {
+                    insertAfterRow.insertAdjacentElement('afterend', row);
+                } else {
+                    tbody.appendChild(row);
+                }
+            } else {
+                tbody.appendChild(row);
+            }
             
             // Attach event listeners
             const editableFields = row.querySelectorAll('.editable-field');
@@ -2894,7 +3122,16 @@
                 }
                 
                 // Calculate line total
-                const lineTotal = quantity * finalRate;
+                const lineTotalInput = row.querySelector('[data-field="lineTotal"]');
+                let lineTotal = quantity * finalRate;
+                if (lineTotalInput && lineTotalInput.tagName === 'INPUT' && lineTotalInput.dataset.manual === 'true') {
+                    lineTotal = parseFloat(lineTotalInput.value || 0) || 0;
+                    finalRate = quantity > 0 ? (lineTotal / quantity) : 0;
+                    if (finalRateInput) {
+                        finalRateInput.value = finalRate.toFixed(2);
+                    }
+                    lineTotalInput.dataset.manual = '';
+                }
                 
                 // Update displays
                 const ratePerMtrElement = row.querySelector('.rate-per-mtr');
@@ -2906,9 +3143,13 @@
                     }
                 }
                 
-                const lineTotalSpan = row.querySelector('.line-total');
-                if (lineTotalSpan) {
-                    lineTotalSpan.textContent = formatIndianNumber(lineTotal.toFixed(2));
+                if (lineTotalInput && lineTotalInput.tagName === 'INPUT') {
+                    lineTotalInput.value = lineTotal.toFixed(2);
+                } else {
+                    const lineTotalSpan = row.querySelector('.line-total');
+                    if (lineTotalSpan) {
+                        lineTotalSpan.textContent = formatIndianNumber(lineTotal.toFixed(2));
+                    }
                 }
                 
                 grandTotal += lineTotal;
