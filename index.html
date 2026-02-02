@@ -2046,15 +2046,7 @@
             This function adds the quotation to the Approval section
             and stores it in the approvedQuotations array.
         */
-        function approveQuotation() {
-            /*
-                This function:
-                1. Gets all quotation data from the creation section
-                2. Creates a copy and adds it to the approved quotations array
-                3. Displays all approved quotations in the Approval section
-                4. Hides the creation section quotation
-            */
-            
+        function getQuotationHeaderValues() {
             // Get all quotation data
             const quotationDate = document.getElementById('quotationDate').value;
             const customerName = document.getElementById('kindAttn').value || '';
@@ -2071,13 +2063,26 @@
             if (document.getElementById('termsText') && termsText !== termsTextRaw) {
                 document.getElementById('termsText').value = termsText;
             }
-            
-            // Get the table HTML - ensure all current input values are captured
-            const quotationTable = document.getElementById('quotationTable');
-            
+
+            return {
+                quotationDate,
+                customerName,
+                projectName,
+                contactDetails,
+                shipTo,
+                crmRefNo,
+                quotationNo,
+                preparedBy,
+                checkedBy,
+                grandTotal,
+                termsText
+            };
+        }
+
+        function cloneQuotationTableWithValues(quotationTable) {
             // Clone the table first
             const tableClone = quotationTable.cloneNode(true);
-            
+
             // Update all cloned table input values to match current values from original
             const originalTableInputs = quotationTable.querySelectorAll('input, textarea');
             originalTableInputs.forEach((originalInput) => {
@@ -2124,10 +2129,11 @@
                     }
                 }
             });
-            
-            // Get the header - ensure all current input values are captured
-            const quotationHeader = document.getElementById('creationQuotationHeader');
-            
+
+            return tableClone;
+        }
+
+        function cloneQuotationHeaderWithValues(quotationHeader) {
             // Clone the header first
             const headerClone = quotationHeader.cloneNode(true);
             headerClone.style.display = 'block'; // Make sure it's visible in the clone
@@ -2163,7 +2169,25 @@
                     }
                 }
             });
-            
+
+            return headerClone;
+        }
+
+        function buildQuotationData(quotationHeaderValues, tableClone, headerClone) {
+            const {
+                quotationDate,
+                customerName,
+                projectName,
+                contactDetails,
+                shipTo,
+                crmRefNo,
+                quotationNo,
+                preparedBy,
+                checkedBy,
+                grandTotal,
+                termsText
+            } = quotationHeaderValues;
+
             // Create quotation object to store
             const quotationData = {
                 id: Date.now(), // Unique ID based on timestamp
@@ -2181,14 +2205,20 @@
                 preparedBy: preparedBy,
                 checkedBy: checkedBy
             };
-            
+
+            return quotationData;
+        }
+
+        function addQuotationToApprovedQuotations(quotationData) {
             // Add to approved quotations array (not saved yet - needs approval)
             const quotationWithStatus = {
                 ...quotationData,
                 saved: false  // Not approved yet - will show full content with Approve button
             };
             approvedQuotations.push(quotationWithStatus);
-            
+        }
+
+        function persistAndRefreshApprovals() {
             // Automatically save all quotations to localStorage (including unapproved ones)
             saveToLocalStorage();
             
@@ -2197,11 +2227,38 @@
             
             // Display all approved quotations
             displayAllApprovedQuotations();
-            
+        }
+
+        function scrollToApprovalSection() {
             // Scroll to Approval section
             document.getElementById('approvalSection').scrollIntoView({ 
                 behavior: 'smooth' 
             });
+        }
+
+        function approveQuotation() {
+            /*
+                This function:
+                1. Gets all quotation data from the creation section
+                2. Creates a copy and adds it to the approved quotations array
+                3. Displays all approved quotations in the Approval section
+                4. Hides the creation section quotation
+            */
+            
+            const quotationHeaderValues = getQuotationHeaderValues();
+            
+            // Get the table HTML - ensure all current input values are captured
+            const quotationTable = document.getElementById('quotationTable');
+            const tableClone = cloneQuotationTableWithValues(quotationTable);
+            
+            // Get the header - ensure all current input values are captured
+            const quotationHeader = document.getElementById('creationQuotationHeader');
+            const headerClone = cloneQuotationHeaderWithValues(quotationHeader);
+            
+            const quotationData = buildQuotationData(quotationHeaderValues, tableClone, headerClone);
+            addQuotationToApprovedQuotations(quotationData);
+            persistAndRefreshApprovals();
+            scrollToApprovalSection();
         }
         
         /*
