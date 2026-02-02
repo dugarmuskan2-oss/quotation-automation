@@ -681,10 +681,10 @@
                         <th style="width: 50px;"></th>
                         <th>S. NO</th>
                         <th>ITEM & DESCRIPTION</th>
-                        <th>QTY PER MTRS</th>
+                        <th><input type="text" value="QTY PER MTRS" style="width: 100%; border: none; background: transparent; color: white; font-weight: bold;"></th>
                         <th class="col-base-rate">BASE RATE</th>
                         <th class="col-margin">MARGIN %</th>
-                        <th>RATE PER MTRS</th>
+                        <th><input type="text" value="RATE PER MTRS" style="width: 100%; border: none; background: transparent; color: white; font-weight: bold;"></th>
                         <th>AMOUNT</th>
                     </tr>
                 </thead>
@@ -2481,6 +2481,26 @@
                         headerRow.appendChild(actionsHeader);
                     }
                     
+                    // Make QTY PER MTRS and RATE PER MTRS headers editable
+                    if (headerRow) {
+                        const headerCells = headerRow.querySelectorAll('th');
+                        headerCells.forEach(function(cell) {
+                            const text = cell.textContent.trim();
+                            if ((text === 'QTY PER MTRS' || text === 'RATE PER MTRS') && !cell.querySelector('input')) {
+                                const input = document.createElement('input');
+                                input.type = 'text';
+                                input.value = text;
+                                input.style.width = '100%';
+                                input.style.border = 'none';
+                                input.style.background = 'transparent';
+                                input.style.color = 'white';
+                                input.style.fontWeight = 'bold';
+                                cell.textContent = '';
+                                cell.appendChild(input);
+                            }
+                        });
+                    }
+                    
                     // Update pipe type headers colspan
                     const pipeHeaders = table.querySelectorAll('.pipe-type-header td[colspan]');
                     pipeHeaders.forEach(header => {
@@ -2526,6 +2546,22 @@
                             input.step = '0.01';
                             input.style.width = '100px';
                             ratePerMtrSpan.parentNode.replaceChild(input, ratePerMtrSpan);
+                        }
+
+                        // Make quantity editable if it's not already an input
+                        const quantityField = row.querySelector('[data-field="quantity"]');
+                        if (quantityField && quantityField.tagName !== 'INPUT') {
+                            const currentValue = quantityField.textContent.replace(/,/g, '').trim();
+                            const input = document.createElement('input');
+                            input.type = 'number';
+                            input.className = 'editable-field';
+                            input.setAttribute('data-field', 'quantity');
+                            input.setAttribute('data-pipe-type', row.getAttribute('data-pipe-type') || '');
+                            input.setAttribute('data-row-id', row.id || '');
+                            input.value = currentValue || '0';
+                            input.min = '0';
+                            input.step = '1';
+                            quantityField.parentNode.replaceChild(input, quantityField);
                         }
                         
                         // Update row number
