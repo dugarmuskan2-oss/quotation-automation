@@ -1500,52 +1500,58 @@
             This function takes the quotation data and displays it on the page.
             Groups items by pipe type and makes all fields editable.
         */
-        function displayQuotation(data) {
-            /*
-                Parameter:
-                - data: The quotation data object from mockAIExtraction
-            */
-            
+        function populateQuotationHeader(data) {
             // Step 1: Fill in the header information (make editable)
             document.getElementById('quotationDate').value = data.quotationDate;
             document.getElementById('billTo').value = data.projectName || '';
             document.getElementById('shipTo').value = data.shipTo || '';
             document.getElementById('kindAttn').value = data.customerName || '';
-            
+        }
+
+        function getQuotationTableBody() {
             // Step 2: Get the table body element (where rows will be added)
-            const tableBody = document.getElementById('quotationTableBody');
-            
+            return document.getElementById('quotationTableBody');
+        }
+
+        function clearQuotationTableBody(tableBody) {
             // Step 3: Clear any existing rows
             tableBody.innerHTML = "";
-            
+        }
+
+        function groupLineItemsByPipeType(lineItems) {
             // Step 4: Group line items by pipe type
             const groupedItems = {};
-            data.lineItems.forEach(function(item) {
+            lineItems.forEach(function(item) {
                 const pipeType = item.identifiedPipeType;
                 if (!groupedItems[pipeType]) {
                     groupedItems[pipeType] = [];
                 }
                 groupedItems[pipeType].push(item);
             });
-            
-            // Step 5: Calculate grand total
-            let grandTotal = 0;
-            
-            // Helper: get standardized header label based on pipe type
-            function getPipeHeaderLabel(pipeType) {
-                const value = (pipeType || '').toLowerCase();
-                if (value.includes('seamless')) {
-                    return 'CS Seamless Pipe as per ASTM 106 Gr. B';
-                }
-                if (value.includes('gi') || value.includes('galvanized')) {
-                    return 'MS GI Pipe as per IS 1239/ 3589';
-                }
-                if (value.includes('erw')) {
-                    return 'MS ERW Pipe as per IS 1239/ 3589';
-                }
-                return pipeType || '';
-            }
+            return groupedItems;
+        }
 
+        function initializeGrandTotal() {
+            // Step 5: Calculate grand total
+            return 0;
+        }
+
+        // Helper: get standardized header label based on pipe type
+        function getPipeHeaderLabel(pipeType) {
+            const value = (pipeType || '').toLowerCase();
+            if (value.includes('seamless')) {
+                return 'CS Seamless Pipe as per ASTM 106 Gr. B';
+            }
+            if (value.includes('gi') || value.includes('galvanized')) {
+                return 'MS GI Pipe as per IS 1239/ 3589';
+            }
+            if (value.includes('erw')) {
+                return 'MS ERW Pipe as per IS 1239/ 3589';
+            }
+            return pipeType || '';
+        }
+
+        function appendGroupedItems(tableBody, groupedItems, grandTotal) {
             // Step 6: Loop through each pipe type group
             Object.keys(groupedItems).forEach(function(pipeType) {
                 const items = groupedItems[pipeType];
@@ -1640,16 +1646,24 @@
                     attachRowEventListeners(row);
                 });
             });
-            
+
+            return grandTotal;
+        }
+
+        function renderGrandTotal(grandTotal) {
             // Step 7: Display grand total
             document.getElementById('grandTotal').textContent = formatIndianNumber(grandTotal.toFixed(2));
-            
+        }
+
+        function hideNoCreationQuotationMessage() {
             // Step 8: Hide the "no quotation" message
             const noCreationMsg = document.getElementById('noCreationQuotation');
             if (noCreationMsg) {
                 noCreationMsg.style.display = 'none';
             }
-            
+        }
+
+        function showCreationQuotationContent() {
             // Step 9: Show the quotation content (header, table, totals, approve button, terms)
             document.getElementById('creationQuotationHeader').style.display = 'block';
             document.getElementById('quotationTable').style.display = 'table';
@@ -1657,14 +1671,58 @@
             document.getElementById('creationApproveBtn').style.display = 'block';
             document.getElementById('termsDivider').style.display = 'block';
             document.getElementById('termsBox').style.display = 'block';
-            
+        }
+
+        function attachCreationCalculationListeners() {
             // Step 10: Add event listeners to all editable fields for real-time calculation
             attachCalculationListeners();
-            
+        }
+
+        function scrollToQuotationSection() {
             // Step 11: Scroll to the quotation so user can see it
             document.getElementById('quotationSection').scrollIntoView({ 
                 behavior: 'smooth' 
             });
+        }
+
+        function displayQuotation(data) {
+            /*
+                Parameter:
+                - data: The quotation data object from mockAIExtraction
+            */
+            
+            // Step 1: Fill in the header information (make editable)
+            populateQuotationHeader(data);
+            
+            // Step 2: Get the table body element (where rows will be added)
+            const tableBody = getQuotationTableBody();
+            
+            // Step 3: Clear any existing rows
+            clearQuotationTableBody(tableBody);
+            
+            // Step 4: Group line items by pipe type
+            const groupedItems = groupLineItemsByPipeType(data.lineItems);
+            
+            // Step 5: Calculate grand total
+            let grandTotal = initializeGrandTotal();
+            
+            // Step 6: Loop through each pipe type group
+            grandTotal = appendGroupedItems(tableBody, groupedItems, grandTotal);
+            
+            // Step 7: Display grand total
+            renderGrandTotal(grandTotal);
+            
+            // Step 8: Hide the "no quotation" message
+            hideNoCreationQuotationMessage();
+            
+            // Step 9: Show the quotation content (header, table, totals, approve button, terms)
+            showCreationQuotationContent();
+            
+            // Step 10: Add event listeners to all editable fields for real-time calculation
+            attachCreationCalculationListeners();
+            
+            // Step 11: Scroll to the quotation so user can see it
+            scrollToQuotationSection();
         }
         
         /*
@@ -2267,30 +2325,27 @@
             ============================================
             This function displays all approved quotations in the Approval section.
         */
-        function displayAllApprovedQuotations() {
-            /*
-                This function loops through all approved quotations
-                and displays them in the Approval section.
-            */
-            
-            const container = document.getElementById('approvedQuotationsContainer');
-            
-            // If no quotations, show message
-            if (approvedQuotations.length === 0) {
-                container.innerHTML = `
-                    <p id="noApprovedQuotations" style="text-align: center; color: #999; padding: 20px;">
-                        No quotations approved yet. Create and approve a quotation to see it here.
-                    </p>
-                `;
-                return;
-            }
-            
+        function getApprovedQuotationsContainer() {
+            return document.getElementById('approvedQuotationsContainer');
+        }
+
+        function renderNoApprovedQuotationsMessage(container) {
+            container.innerHTML = `
+                <p id="noApprovedQuotations" style="text-align: center; color: #999; padding: 20px;">
+                    No quotations approved yet. Create and approve a quotation to see it here.
+                </p>
+            `;
+        }
+
+        function hideNoApprovedQuotationsMessage() {
             // Hide the "no quotations" message
             const noQuotationsMsg = document.getElementById('noApprovedQuotations');
             if (noQuotationsMsg) {
                 noQuotationsMsg.style.display = 'none';
             }
-            
+        }
+
+        function buildAllApprovedQuotationsHTML() {
             // Build HTML for all approved quotations
             let allQuotationsHTML = '';
             
@@ -2341,12 +2396,45 @@
                     </div>
                 `;
             });
-            
+
+            return allQuotationsHTML;
+        }
+
+        function renderApprovedQuotationsHTML(container, allQuotationsHTML) {
             // Update the container
             container.innerHTML = allQuotationsHTML;
-            
+        }
+
+        function attachApprovalListeners() {
             // Attach event listeners to all editable fields in Approval section
             attachApprovalSectionListeners();
+        }
+
+        function displayAllApprovedQuotations() {
+            /*
+                This function loops through all approved quotations
+                and displays them in the Approval section.
+            */
+            
+            const container = getApprovedQuotationsContainer();
+            
+            // If no quotations, show message
+            if (approvedQuotations.length === 0) {
+                renderNoApprovedQuotationsMessage(container);
+                return;
+            }
+            
+            // Hide the "no quotations" message
+            hideNoApprovedQuotationsMessage();
+            
+            // Build HTML for all approved quotations
+            const allQuotationsHTML = buildAllApprovedQuotationsHTML();
+            
+            // Update the container
+            renderApprovedQuotationsHTML(container, allQuotationsHTML);
+            
+            // Attach event listeners to all editable fields in Approval section
+            attachApprovalListeners();
         }
         
         /*
