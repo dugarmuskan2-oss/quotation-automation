@@ -3658,6 +3658,18 @@
                 span.textContent = input.value || '';
                 input.replaceWith(span);
             });
+            // Ensure pipe type headers are visible in PDF
+            wrapper.querySelectorAll('.pipe-type-header').forEach(row => {
+                row.style.background = '#3b3f79';
+                row.style.color = '#ffffff';
+                row.style.fontWeight = 'bold';
+                row.querySelectorAll('td').forEach(cell => {
+                    cell.style.background = '#3b3f79';
+                    cell.style.color = '#ffffff';
+                    cell.style.padding = '12px';
+                    cell.style.border = '1px solid #ffffff';
+                });
+            });
             wrapper.querySelectorAll('.col-base-rate, .col-margin').forEach(el => el.remove());
             wrapper.querySelectorAll('button, .pipe-header-actions').forEach(el => el.remove());
             wrapper.querySelectorAll('table').forEach(table => {
@@ -3678,12 +3690,21 @@
                     if (firstHeaderCell && !firstHeaderCell.textContent.trim() && !firstHeaderCell.querySelector('input')) {
                         firstHeaderCell.remove();
                         table.querySelectorAll('tbody tr').forEach(row => {
+                            if (row.classList.contains('pipe-type-header')) {
+                                return;
+                            }
                             const firstCell = row.querySelector('td:first-child');
                             if (firstCell) {
                                 firstCell.remove();
                             }
                         });
                     }
+                }
+                const headerColCount = headerRow ? headerRow.children.length : 0;
+                if (headerColCount > 0) {
+                    table.querySelectorAll('.pipe-type-header td[colspan]').forEach(cell => {
+                        cell.setAttribute('colspan', String(headerColCount));
+                    });
                 }
             });
             
