@@ -1671,6 +1671,10 @@
             document.getElementById('creationApproveBtn').style.display = 'block';
             document.getElementById('termsDivider').style.display = 'block';
             document.getElementById('termsBox').style.display = 'block';
+            const termsText = document.getElementById('termsText');
+            if (termsText && termsText.value.trim() === '' && defaultTermsText) {
+                termsText.value = defaultTermsText;
+            }
         }
 
         function attachCreationCalculationListeners() {
@@ -2357,6 +2361,7 @@
                 if (contactNumber) {
                     folderName += ` (${contactNumber})`;
                 }
+                const termsText = quotation.termsText || defaultTermsText || '';
                 
                 // Show APPROVED badge only if saved, with checked by name
                 const checkedByName = quotation.checkedBy ? ` - ${quotation.checkedBy}` : '';
@@ -2387,7 +2392,7 @@
                             <div class="grand-total">
                                 <span>Total: ₹${quotation.grandTotal}</span>
                             </div>
-                            ${quotation.termsText ? `<hr class="terms-divider"><div class="terms-box"><h4>TERMS AND CONDITIONS</h4><div style="white-space: pre-wrap; font-size: 14px;">${quotation.termsText}</div></div>` : ''}
+                            ${termsText ? `<hr class="terms-divider"><div class="terms-box"><h4>TERMS AND CONDITIONS</h4><div style="white-space: pre-wrap; font-size: 14px;">${termsText}</div></div>` : ''}
                             <div style="margin-top: 10px; display: flex; gap: 10px;">
                                 ${approveButtonHTML}
                                 ${downloadButtonHTML}
@@ -3477,6 +3482,9 @@
         
         // Array to store all approved quotations
         let approvedQuotations = [];
+        const defaultTermsText = document.getElementById('termsText')
+            ? document.getElementById('termsText').value
+            : '';
         
         /*
             ============================================
