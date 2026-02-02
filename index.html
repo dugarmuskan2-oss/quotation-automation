@@ -1415,6 +1415,45 @@
             This is the main function that runs when the button is clicked.
             It coordinates all the steps to generate a quotation.
         */
+        function getInputsForQuotation() {
+            const emailContent = document.getElementById('emailContent').value;
+            const fileInput = document.getElementById('fileUpload');
+            const file = fileInput.files[0];
+            return { emailContent, fileInput, file };
+        }
+
+        async function readUploadedFileContent(file) {
+            let fileContent = "";
+            if (file) {
+                fileContent = await readFileContent(file);
+            }
+            return fileContent;
+        }
+
+        function ensureInputProvided(emailContent, fileContent) {
+            if (!emailContent.trim() && !fileContent.trim()) {
+                showError("Please provide either email content or upload a file.");
+                return false;
+            }
+            return true;
+        }
+
+        function showAiProcessingMessage() {
+            showError("Processing with AI... Please wait.");
+        }
+
+        function clearErrorMessage() {
+            hideError();
+        }
+
+        async function fetchQuotationData(emailContent, fileContent) {
+            return await extractQuotationWithAI(emailContent, fileContent);
+        }
+
+        function renderQuotation(quotationData) {
+            displayQuotation(quotationData);
+        }
+
         async function generateQuotation() {
             /*
                 async function means this function can wait for things to complete
@@ -1423,39 +1462,30 @@
             
             try {
                 // Step 1: Get email content from textarea
-                const emailContent = document.getElementById('emailContent').value;
-                
-                // Step 2: Get uploaded file
-                const fileInput = document.getElementById('fileUpload');
-                const file = fileInput.files[0]; // Get first file (if any)
+                const { emailContent, fileInput, file } = getInputsForQuotation();
                 
                 // Step 3: Read file content (if file was uploaded)
-                let fileContent = "";
-                if (file) {
-                    fileContent = await readFileContent(file);
-                }
+                let fileContent = await readUploadedFileContent(file);
                 
                 // Step 4: Check if at least one input was provided
-                if (!emailContent.trim() && !fileContent.trim()) {
-                    // Show error message
-                    showError("Please provide either email content or upload a file.");
+                if (!ensureInputProvided(emailContent, fileContent)) {
                     return; // Stop here if no input
                 }
                 
                 // Hide any previous error messages
-                hideError();
+                clearErrorMessage();
                 
                 // Step 5: Call AI API to extract data
                 // Show loading message
-                showError("Processing with AI... Please wait.");
+                showAiProcessingMessage();
                 
-                const quotationData = await extractQuotationWithAI(emailContent, fileContent);
+                const quotationData = await fetchQuotationData(emailContent, fileContent);
                 
                 // Hide loading message
-                hideError();
+                clearErrorMessage();
                 
                 // Step 6: Display the quotation
-                displayQuotation(quotationData);
+                renderQuotation(quotationData);
                 
             } catch (error) {
                 // If something goes wrong, show error message
