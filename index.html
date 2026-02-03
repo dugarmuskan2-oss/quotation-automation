@@ -681,10 +681,10 @@
                         <th style="width: 50px;"></th>
                         <th>S. NO</th>
                         <th>ITEM & DESCRIPTION</th>
-                        <th><input type="text" value="QTY PER MTRS" style="width: 100%; border: none; background: transparent; color: white; font-weight: bold;"></th>
+                        <th><input type="text" value="QTY (Mtrs)" style="width: 100%; border: none; background: transparent; color: white; font-weight: bold;"></th>
                         <th class="col-base-rate">BASE RATE</th>
                         <th class="col-margin">MARGIN %</th>
-                        <th><input type="text" value="RATE PER MTRS" style="width: 100%; border: none; background: transparent; color: white; font-weight: bold;"></th>
+                        <th><input type="text" value="Rate per Mtr" style="width: 100%; border: none; background: transparent; color: white; font-weight: bold;"></th>
                         <th>AMOUNT</th>
                     </tr>
                 </thead>
@@ -2668,15 +2668,21 @@
                         }
                     }
                     
-                    // Make QTY PER MTRS and RATE PER MTRS headers editable
+                    // Make QTY and Rate headers editable
                     if (headerRow) {
                         const headerCells = headerRow.querySelectorAll('th');
                         headerCells.forEach(function(cell) {
                             const text = cell.textContent.trim();
-                            if ((text === 'QTY PER MTRS' || text === 'RATE PER MTRS') && !cell.querySelector('input')) {
+                            let replacement = '';
+                            if (text === 'QTY PER MTRS' || text === 'QTY PER MTR' || text === 'QTY (MTRS)' || text === 'QTY (Mtrs)') {
+                                replacement = 'QTY (Mtrs)';
+                            } else if (text === 'RATE PER MTRS' || text === 'RATE PER MTR' || text === 'Rate per mtrs' || text === 'Rate per mtr' || text === 'Rate per Mtr') {
+                                replacement = 'Rate per Mtr';
+                            }
+                            if (replacement && !cell.querySelector('input')) {
                                 const input = document.createElement('input');
                                 input.type = 'text';
-                                input.value = text;
+                                input.value = replacement;
                                 input.style.width = '100%';
                                 input.style.border = 'none';
                                 input.style.background = 'transparent';
@@ -3589,6 +3595,7 @@
             wrapper.style.color = '#333';
 
             const termsText = normalizeTermsText((quotation.termsText || '').trim());
+            const formattedGrandTotal = formatIndianNumber(String(quotation.grandTotal || '0').replace(/,/g, ''));
             const termsHtml = termsText
                 ? `<hr style="margin-top:22px;border:0;border-top:1px solid #ddd;">
                    <div style="margin-top:12px;font-size:14px;white-space:pre-wrap;"><strong style="font-size:15px;display:block;margin-bottom:8px;">TERMS AND CONDITIONS</strong>${termsText}</div>`
@@ -3645,7 +3652,7 @@
 
                 <div id="pdfTable">${quotation.tableHTML || ''}</div>
 
-                <div style="margin-top:20px;padding:12px;background:#3b3f79;color:#fff;text-align:right;">Total: ₹${quotation.grandTotal || '0.00'}</div>
+                <div style="margin-top:20px;padding:12px;background:#3b3f79;color:#fff;text-align:right;">Total: ₹${formattedGrandTotal}</div>
 
                 ${termsHtml}
             `;
@@ -3658,6 +3665,15 @@
                 span.textContent = input.value || '';
                 input.replaceWith(span);
             });
+            // Normalize header labels in PDF
+            wrapper.querySelectorAll('table thead th').forEach(th => {
+                const text = th.textContent.trim();
+                if (text === 'QTY PER MTRS' || text === 'QTY PER MTR' || text === 'QTY PER METERS') {
+                    th.textContent = 'QTY (Mtrs)';
+                } else if (text === 'RATE PER MTRS' || text === 'RATE PER MTR' || text === 'Rate per mtrs' || text === 'Rate per mtr') {
+                    th.textContent = 'Rate per Mtr';
+                }
+            });
             // Ensure pipe type headers are visible in PDF
             wrapper.querySelectorAll('.pipe-type-header').forEach(row => {
                 row.style.background = '#3b3f79';
@@ -3669,6 +3685,33 @@
                     cell.style.padding = '12px';
                     cell.style.border = '1px solid #ffffff';
                 });
+            });
+            // Format numeric cells (qty, rate, amount) with Indian commas
+            wrapper.querySelectorAll('table tbody td').forEach(td => {
+                const span = td.querySelector('span');
+                if (span) {
+                    const raw = span.textContent.trim();
+                    const numeric = raw.replace(/,/g, '').trim();
+                    if (/^\d+(\.\d+)?$/.test(numeric)) {
+                        const hasDecimal = numeric.includes('.');
+                        let formatted = formatIndianNumber(numeric);
+                        if (!hasDecimal) {
+                            formatted = formatted.replace(/\.00$/, '');
+                        }
+                        span.textContent = formatted;
+                    }
+                    return;
+                }
+                const raw = td.textContent.trim();
+                const numeric = raw.replace(/₹/g, '').replace(/,/g, '').trim();
+                if (/^\d+(\.\d+)?$/.test(numeric)) {
+                    const hasDecimal = numeric.includes('.');
+                    let formatted = formatIndianNumber(numeric);
+                    if (!hasDecimal) {
+                        formatted = formatted.replace(/\.00$/, '');
+                    }
+                    td.textContent = raw.includes('₹') ? `₹${formatted}` : formatted;
+                }
             });
             wrapper.querySelectorAll('.col-base-rate, .col-margin').forEach(el => el.remove());
             wrapper.querySelectorAll('button, .pipe-header-actions').forEach(el => el.remove());
