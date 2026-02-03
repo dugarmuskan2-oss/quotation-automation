@@ -1609,7 +1609,7 @@
                 return `${first}" NB X Medium -- ${pipeLabel}`;
             }
             if (/^\d+(\.\d+)?$/.test(secondClean)) {
-                return `${first}" NB X ${secondClean}mm thl -- ${pipeLabel}`;
+                return `${first}" NB X ${secondClean}mm thk -- ${pipeLabel}`;
             }
             return raw;
         }
@@ -3668,8 +3668,10 @@
             let cursorY = margin;
 
             const brand = { r: 59, g: 63, b: 121 };
+            const softText = { r: 48, g: 48, b: 48 };
             const setBrandFill = () => doc.setFillColor(brand.r, brand.g, brand.b);
             const setBrandText = () => doc.setTextColor(brand.r, brand.g, brand.b);
+            const setSoftText = () => doc.setTextColor(softText.r, softText.g, softText.b);
 
             const ensureSpace = (height) => {
                 if (cursorY + height > pageHeight - margin) {
@@ -3692,7 +3694,7 @@
 
             const logoDataUrl = await loadLogoDataUrl();
             if (logoDataUrl) {
-                const maxLogoSize = 60;
+                const maxLogoSize = 56;
                 const props = doc.getImageProperties(logoDataUrl);
                 const ratio = props.width / props.height;
                 let logoWidth = maxLogoSize;
@@ -3705,29 +3707,30 @@
                 doc.addImage(logoDataUrl, 'PNG', margin, cursorY + (maxLogoSize - logoHeight) / 2, logoWidth, logoHeight);
             }
             doc.setFont('helvetica', 'bold');
-            doc.setFontSize(14);
-            doc.text('DSC PIPES AND TUBES PVT LTD', margin + 70, cursorY + 18);
+            doc.setFontSize(12);
+            setSoftText();
+            doc.text('DSC PIPES AND TUBES PVT LTD', margin + 70, cursorY + 14);
             doc.setFont('helvetica', 'normal');
-            doc.setFontSize(10);
-            doc.text('REGD OFFICE: 7C, 7TH FLOOR, DOSHI TOWERS, NO:156', margin + 70, cursorY + 34);
-            doc.text('P.H ROAD, KILAPUK, CHENNAI - 600 010', margin + 70, cursorY + 48);
-            doc.text('EMAIL ID: info@dscpipes.com', margin + 70, cursorY + 62);
+            doc.setFontSize(9);
+            doc.text('REGD OFFICE: 7C, 7TH FLOOR, DOSHI TOWERS, NO:156', margin + 70, cursorY + 30);
+            doc.text('P.H ROAD, KILAPUK, CHENNAI - 600 010', margin + 70, cursorY + 42);
+            doc.text('EMAIL ID: info@dscpipes.com', margin + 70, cursorY + 54);
             doc.setFont('helvetica', 'bold');
-            setBrandText();
-            doc.setFontSize(18);
-            doc.text('QUOTATION', pageWidth - margin, cursorY + 28, { align: 'right' });
+            setSoftText();
+            doc.setFontSize(16);
+            doc.text('QUOTATION', pageWidth - margin, cursorY + 26, { align: 'right' });
             doc.setTextColor(0, 0, 0);
-            cursorY += 80;
+            cursorY += 70;
             doc.setDrawColor(brand.r, brand.g, brand.b);
             doc.setLineWidth(1);
             doc.line(margin, cursorY, pageWidth - margin, cursorY);
-            cursorY += 18;
+            cursorY += 14;
 
-            doc.setFontSize(10);
+            doc.setFontSize(9);
             doc.setFont('helvetica', 'normal');
             const leftX = margin;
             const rightX = margin + contentWidth / 2 + 10;
-            const rowGap = 14;
+            const rowGap = 12;
             const metaLeft = [
                 ['CRM REF NO', quotation.crmRefNo || ''],
                 ['QUOTATION DATE', quotation.quotationDate || ''],
@@ -3741,29 +3744,30 @@
             ];
             metaLeft.forEach((row, idx) => {
                 doc.text(row[0], leftX, cursorY + idx * rowGap);
-                doc.text(row[1], leftX + 140, cursorY + idx * rowGap);
+                doc.text(row[1], leftX + 120, cursorY + idx * rowGap);
             });
             metaRight.forEach((row, idx) => {
                 doc.text(row[0], rightX, cursorY + idx * rowGap);
-                doc.text(row[1], rightX + 140, cursorY + idx * rowGap);
+                doc.text(row[1], rightX + 120, cursorY + idx * rowGap);
             });
-            cursorY += Math.max(metaLeft.length, metaRight.length) * rowGap + 12;
+            cursorY += Math.max(metaLeft.length, metaRight.length) * rowGap + 10;
 
             doc.setDrawColor(220);
             doc.setLineWidth(1);
             doc.line(margin, cursorY, pageWidth - margin, cursorY);
-            cursorY += 16;
+            cursorY += 12;
             doc.setFont('helvetica', 'bold');
-            doc.text('Bill To', margin, cursorY);
-            doc.text('Ship To', margin + contentWidth / 2, cursorY);
-            cursorY += 14;
+            doc.text('Bill To', leftX, cursorY);
+            doc.text('Ship To', rightX, cursorY);
+            cursorY += 12;
             doc.setFont('helvetica', 'normal');
-            doc.text(quotation.projectName || '', margin, cursorY);
-            doc.text(quotation.shipTo || '', margin + contentWidth / 2, cursorY);
-            cursorY += 22;
+            doc.setFontSize(9);
+            doc.text(quotation.projectName || '', leftX, cursorY);
+            doc.text(quotation.shipTo || '', rightX, cursorY);
+            cursorY += 18;
 
             const rows = parseQuotationTableForPdf(quotation.tableHTML);
-            const colWidths = [35, 210, 70, 100, 120];
+            const colWidths = [35, 225, 70, 95, 110];
             const colLabels = ['S. NO', 'ITEM & DESCRIPTION', 'QTY (Mtrs)', 'Rate per Mtr (Rs.)', 'AMOUNT (Rs.)'];
             const colX = [
                 margin,
@@ -3774,50 +3778,55 @@
             ];
 
             const drawHeader = () => {
-                ensureSpace(24);
+                ensureSpace(22);
                 setBrandFill();
                 doc.setTextColor(255, 255, 255);
-                doc.rect(margin, cursorY, contentWidth, 22, 'F');
+                doc.rect(margin, cursorY, contentWidth, 20, 'F');
                 doc.setFont('helvetica', 'bold');
-                doc.setFontSize(9);
+                doc.setFontSize(7);
                 colLabels.forEach((label, idx) => {
-                    doc.text(label, colX[idx] + 6, cursorY + 15);
+                    const centerX = colX[idx] + colWidths[idx] / 2;
+                    doc.text(label, centerX, cursorY + 13, { align: 'center' });
                 });
                 doc.setDrawColor(255);
                 doc.setLineWidth(0.5);
                 colX.slice(1).forEach(x => {
-                    doc.line(x, cursorY, x, cursorY + 22);
+                    doc.line(x, cursorY, x, cursorY + 20);
                 });
                 doc.setTextColor(0, 0, 0);
-                cursorY += 24;
+                cursorY += 22;
             };
 
             doc.setCharSpace(0);
             drawHeader();
 
-            rows.forEach(row => {
+            rows.forEach((row, idx) => {
                 if (row.type === 'pipe') {
-                    ensureSpace(24);
+                    ensureSpace(22);
                     setBrandFill();
                     doc.setTextColor(255, 255, 255);
-                    doc.rect(margin, cursorY, contentWidth, 22, 'F');
+                    doc.rect(margin, cursorY, contentWidth, 20, 'F');
                     doc.setFont('helvetica', 'bold');
-                    doc.setFontSize(10);
-                    doc.text(row.text, margin + 6, cursorY + 15);
+                    doc.setFontSize(9);
+                    doc.text(row.text, margin + 6, cursorY + 13);
                     doc.setTextColor(0, 0, 0);
-                    cursorY += 24;
+                    cursorY += 22;
                     return;
                 }
                 const descLines = doc.splitTextToSize(row.desc || '', colWidths[1] - 10);
-                const rowHeight = Math.max(20, descLines.length * 12 + 4);
-                ensureSpace(rowHeight + 6);
+                const rowHeight = Math.max(18, descLines.length * 10 + 6);
+                ensureSpace(rowHeight + 4);
+                if (idx % 2 === 0) {
+                    doc.setFillColor(245, 245, 245);
+                    doc.rect(margin, cursorY, contentWidth, rowHeight, 'F');
+                }
                 doc.setFont('helvetica', 'normal');
                 doc.setFontSize(9);
-                doc.text(row.sno || '', colX[0] + 6, cursorY + 14);
-                doc.text(descLines, colX[1] + 6, cursorY + 14);
-                doc.text(formatNumber(row.qty, false), colX[2] + colWidths[2] - 6, cursorY + 14, { align: 'right' });
-                doc.text(formatNumber(row.rate, true), colX[3] + colWidths[3] - 6, cursorY + 14, { align: 'right' });
-                doc.text(formatNumber(row.amount, true), colX[4] + colWidths[4] - 6, cursorY + 14, { align: 'right' });
+                doc.text(row.sno || '', colX[0] + 6, cursorY + 12);
+                doc.text(descLines, colX[1] + 6, cursorY + 12);
+                doc.text(formatNumber(row.qty, false), colX[2] + colWidths[2] - 6, cursorY + 12, { align: 'right' });
+                doc.text(formatNumber(row.rate, true), colX[3] + colWidths[3] - 6, cursorY + 12, { align: 'right' });
+                doc.text(formatNumber(row.amount, true), colX[4] + colWidths[4] - 6, cursorY + 12, { align: 'right' });
                 doc.setDrawColor(230);
                 doc.setLineWidth(0.5);
                 doc.rect(margin, cursorY, contentWidth, rowHeight);
@@ -3829,14 +3838,14 @@
 
             ensureSpace(30);
             setBrandFill();
-            doc.rect(margin, cursorY + 6, contentWidth, 24, 'F');
+            doc.rect(margin, cursorY + 6, contentWidth, 22, 'F');
             doc.setTextColor(255, 255, 255);
             doc.setFont('helvetica', 'bold');
-            doc.setFontSize(12);
+            doc.setFontSize(11);
             const formattedGrandTotal = formatIndianNumber(String(quotation.grandTotal || '0').replace(/,/g, ''));
-            doc.text(`Total: Rs. ${formattedGrandTotal}`, pageWidth - margin - 6, cursorY + 23, { align: 'right' });
+            doc.text(`Total: Rs. ${formattedGrandTotal}`, pageWidth - margin - 6, cursorY + 21, { align: 'right' });
             doc.setTextColor(0, 0, 0);
-            cursorY += 46;
+            cursorY += 42;
             doc.setDrawColor(220);
             doc.setLineWidth(1);
             doc.line(margin, cursorY, pageWidth - margin, cursorY);
@@ -3846,11 +3855,13 @@
             if (termsText) {
                 ensureSpace(24);
                 doc.setFont('helvetica', 'bold');
-                doc.setFontSize(12);
+                doc.setFontSize(8);
+                setSoftText();
                 doc.text('TERMS AND CONDITIONS', margin, cursorY);
-                cursorY += 16;
+                cursorY += 18;
                 doc.setFont('helvetica', 'normal');
-                doc.setFontSize(10);
+                doc.setTextColor(0, 0, 0);
+                doc.setFontSize(9);
                 const termLines = doc.splitTextToSize(termsText, contentWidth);
                 termLines.forEach(line => {
                     ensureSpace(14);
