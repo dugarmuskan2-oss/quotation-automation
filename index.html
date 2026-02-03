@@ -3565,11 +3565,87 @@
             alert(`Quotation saved as file: ${filename}`);
         }
 
+        function parseQuotationTableForPdf(tableHTML) {
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = tableHTML || '';
+            const rows = [];
+            tempDiv.querySelectorAll('tbody tr').forEach(row => {
+                if (row.classList.contains('pipe-type-header')) {
+                    const headerInput = row.querySelector('[data-field="pipeTypeHeader"]');
+                    const headerText = headerInput?.value || headerInput?.getAttribute('value') || row.textContent.trim();
+                    if (headerText) {
+                        rows.push({ type: 'pipe', text: headerText });
+                    }
+                    return;
+                }
+                if (!row.classList.contains('item-row')) {
+                    return;
+                }
+                const getValue = (selector) => {
+                    const el = row.querySelector(selector);
+                    if (!el) return '';
+                    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+                        return el.value || el.getAttribute('value') || '';
+                    }
+                    return el.textContent || '';
+                };
+                const sno = row.querySelector('.row-number')?.textContent?.trim() || '';
+                const desc = getValue('[data-field="originalDescription"]').trim();
+                const qty = getValue('[data-field="quantity"]').trim();
+                const rate = getValue('[data-field="finalRate"]').trim();
+                let amount = getValue('[data-field="lineTotal"]').trim();
+                if (!amount) {
+                    const lineTotalSpan = row.querySelector('.line-total');
+                    amount = lineTotalSpan ? lineTotalSpan.textContent.trim() : '';
+                }
+                rows.push({
+                    type: 'item',
+                    sno,
+                    desc,
+                    qty,
+                    rate,
+                    amount
+                });
+            });
+            return rows;
+        }
+
+        async function loadLogoDataUrl() {
+            const logoImg = document.querySelector('.logo-placeholder img');
+            let logoSrc = 'logo.png';
+            if (logoImg && logoImg.getAttribute('src')) {
+                logoSrc = logoImg.getAttribute('src');
+            }
+            try {
+                logoSrc = new URL(logoSrc, window.location.href).toString();
+            } catch (error) {
+                return null;
+            }
+            return new Promise(resolve => {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = () => {
+                    try {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0);
+                        resolve(canvas.toDataURL('image/png'));
+                    } catch (e) {
+                        resolve(null);
+                    }
+                };
+                img.onerror = () => resolve(null);
+                img.src = logoSrc;
+            });
+        }
+
         /*
             ============================================
             DOWNLOAD QUOTATION AS PDF
             ============================================
-            Opens a print window with base rate and margin columns hidden.
+            Text-based PDF generation (selectable text).
         */
         async function downloadQuotationPdf(quotationId) {
             const quotation = approvedQuotations.find(q => q.id === quotationId);
@@ -3579,235 +3655,212 @@
             }
 
             const { jsPDF } = window.jspdf || {};
-            if (!jsPDF || !window.html2canvas) {
+            if (!jsPDF) {
                 alert('PDF libraries not loaded. Please refresh and try again.');
                 return;
             }
 
-            // Build a hidden container for PDF rendering
-            const wrapper = document.createElement('div');
-            wrapper.style.position = 'fixed';
-            wrapper.style.left = '-9999px';
-            wrapper.style.top = '0';
-            wrapper.style.width = '794px';
-            wrapper.style.padding = '20px';
-            wrapper.style.fontFamily = '"Noto Sans", Arial, sans-serif';
-            wrapper.style.color = '#333';
+            const doc = new jsPDF('p', 'pt', 'a4');
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const pageHeight = doc.internal.pageSize.getHeight();
+            const margin = 30;
+            const contentWidth = pageWidth - margin * 2;
+            let cursorY = margin;
 
-            const termsText = normalizeTermsText((quotation.termsText || '').trim());
-            const formattedGrandTotal = formatIndianNumber(String(quotation.grandTotal || '0').replace(/,/g, ''));
-            const termsHtml = termsText
-                ? `<hr style="margin-top:22px;border:0;border-top:1px solid #ddd;">
-                   <div style="margin-top:12px;font-size:14px;white-space:pre-wrap;"><strong style="font-size:15px;display:block;margin-bottom:8px;">TERMS AND CONDITIONS</strong>${termsText}</div>`
-                : '';
+            const brand = { r: 59, g: 63, b: 121 };
+            const setBrandFill = () => doc.setFillColor(brand.r, brand.g, brand.b);
+            const setBrandText = () => doc.setTextColor(brand.r, brand.g, brand.b);
 
-            const logoImg = document.querySelector('.logo-placeholder img');
-            let logoSrc = 'logo.png';
-            if (logoImg && logoImg.getAttribute('src')) {
-                logoSrc = logoImg.getAttribute('src');
-            }
-            try {
-                logoSrc = new URL(logoSrc, window.location.href).toString();
-            } catch (error) {
-                // Keep as-is if URL construction fails
-            }
-
-            wrapper.innerHTML = `
-                <style>
-                    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;600;700&display=swap');
-                </style>
-                <div class="quote-header-top" style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #3b3f79;padding-bottom:10px;margin-bottom:12px;">
-                    <div style="display:flex;align-items:center;">
-                        <div style="width:80px;height:80px;display:flex;align-items:center;justify-content:center;overflow:hidden;">
-                            <img src="${logoSrc}" style="max-width:100%;max-height:100%;" onerror="this.style.display='none'">
-                        </div>
-                        <div style="margin-left:16px;">
-                            <h3 style="margin:0;font-size:18px;">DSC PIPES AND TUBES PVT LTD</h3>
-                            <p style="margin:2px 0;font-size:12px;">REGD OFFICE: 7C, 7TH FLOOR, DOSHI TOWERS, NO:156</p>
-                            <p style="margin:2px 0;font-size:12px;">P.H ROAD, KILAPUK, CHENNAI - 600 010</p>
-                            <p style="margin:2px 0;font-size:12px;">EMAIL ID: info@dscpipes.com</p>
-                        </div>
-                    </div>
-                    <div style="font-size:24px;font-weight:bold;color:#3b3f79;">QUOTATION</div>
-                </div>
-
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:12px;margin-bottom:12px;">
-                    <div>
-                        <div style="display:flex;justify-content:space-between;"><span>CRM REF NO</span><span>${quotation.crmRefNo || ''}</span></div>
-                        <div style="display:flex;justify-content:space-between;"><span>QUOTATION DATE</span><span>${quotation.quotationDate || ''}</span></div>
-                        <div style="display:flex;justify-content:space-between;"><span>QUOTATION NO</span><span>${quotation.quotationNo || ''}</span></div>
-                    </div>
-                    <div>
-                        <div style="display:flex;justify-content:space-between;"><span>PREPARED BY</span><span>${quotation.preparedBy || ''}</span></div>
-                        <div style="display:flex;justify-content:space-between;"><span>CHECKED BY</span><span>${quotation.checkedBy || ''}</span></div>
-                        <div style="display:flex;justify-content:space-between;"><span>KIND ATTN</span><span>${quotation.customerName || ''}</span></div>
-                        <div style="display:flex;justify-content:space-between;"><span>CONTACT NUMBER</span><span>${quotation.contactDetails || ''}</span></div>
-                    </div>
-                </div>
-
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;border-top:1px solid #ddd;padding-top:10px;font-size:12px;">
-                    <div><strong>Bill To</strong><br>${quotation.projectName || ''}</div>
-                    <div><strong>Ship To</strong><br>${quotation.shipTo || ''}</div>
-                </div>
-
-                <div id="pdfTable">${quotation.tableHTML || ''}</div>
-
-                <div style="margin-top:20px;padding:12px;background:#3b3f79;color:#fff;text-align:right;">Total: ₹${formattedGrandTotal}</div>
-
-                ${termsHtml}
-            `;
-
-            document.body.appendChild(wrapper);
-
-            // Replace inputs with text and remove control/actions columns
-            wrapper.querySelectorAll('input').forEach(input => {
-                const span = document.createElement('span');
-                span.textContent = input.value || '';
-                input.replaceWith(span);
-            });
-            // Normalize header labels in PDF
-            wrapper.querySelectorAll('table thead th').forEach(th => {
-                const text = th.textContent.trim();
-                if (text === 'QTY PER MTRS' || text === 'QTY PER MTR' || text === 'QTY PER METERS') {
-                    th.textContent = 'QTY (Mtrs)';
-                } else if (text === 'RATE PER MTRS' || text === 'RATE PER MTR' || text === 'Rate per mtrs' || text === 'Rate per mtr') {
-                    th.textContent = 'Rate per Mtr';
+            const ensureSpace = (height) => {
+                if (cursorY + height > pageHeight - margin) {
+                    doc.addPage();
+                    cursorY = margin;
                 }
+            };
+
+            const formatNumber = (value, keepDecimals = false) => {
+                const cleaned = String(value || '').replace(/₹/g, '').replace(/,/g, '').replace(/\s+/g, '').trim();
+                if (!cleaned || !/^\d+(\.\d+)?$/.test(cleaned)) {
+                    return value || '';
+                }
+                let formatted = formatIndianNumber(cleaned);
+                if (!keepDecimals) {
+                    formatted = formatted.replace(/\.00$/, '');
+                }
+                return formatted;
+            };
+
+            const logoDataUrl = await loadLogoDataUrl();
+            if (logoDataUrl) {
+                const maxLogoSize = 60;
+                const props = doc.getImageProperties(logoDataUrl);
+                const ratio = props.width / props.height;
+                let logoWidth = maxLogoSize;
+                let logoHeight = maxLogoSize;
+                if (ratio >= 1) {
+                    logoHeight = maxLogoSize / ratio;
+                } else {
+                    logoWidth = maxLogoSize * ratio;
+                }
+                doc.addImage(logoDataUrl, 'PNG', margin, cursorY + (maxLogoSize - logoHeight) / 2, logoWidth, logoHeight);
+            }
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(14);
+            doc.text('DSC PIPES AND TUBES PVT LTD', margin + 70, cursorY + 18);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(10);
+            doc.text('REGD OFFICE: 7C, 7TH FLOOR, DOSHI TOWERS, NO:156', margin + 70, cursorY + 34);
+            doc.text('P.H ROAD, KILAPUK, CHENNAI - 600 010', margin + 70, cursorY + 48);
+            doc.text('EMAIL ID: info@dscpipes.com', margin + 70, cursorY + 62);
+            doc.setFont('helvetica', 'bold');
+            setBrandText();
+            doc.setFontSize(18);
+            doc.text('QUOTATION', pageWidth - margin, cursorY + 28, { align: 'right' });
+            doc.setTextColor(0, 0, 0);
+            cursorY += 80;
+            doc.setDrawColor(brand.r, brand.g, brand.b);
+            doc.setLineWidth(1);
+            doc.line(margin, cursorY, pageWidth - margin, cursorY);
+            cursorY += 18;
+
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'normal');
+            const leftX = margin;
+            const rightX = margin + contentWidth / 2 + 10;
+            const rowGap = 14;
+            const metaLeft = [
+                ['CRM REF NO', quotation.crmRefNo || ''],
+                ['QUOTATION DATE', quotation.quotationDate || ''],
+                ['QUOTATION NO', quotation.quotationNo || '']
+            ];
+            const metaRight = [
+                ['PREPARED BY', quotation.preparedBy || ''],
+                ['CHECKED BY', quotation.checkedBy || ''],
+                ['KIND ATTN', quotation.customerName || ''],
+                ['CONTACT NUMBER', quotation.contactDetails || '']
+            ];
+            metaLeft.forEach((row, idx) => {
+                doc.text(row[0], leftX, cursorY + idx * rowGap);
+                doc.text(row[1], leftX + 140, cursorY + idx * rowGap);
             });
-            // Ensure pipe type headers are visible in PDF
-            wrapper.querySelectorAll('.pipe-type-header').forEach(row => {
-                row.style.background = '#3b3f79';
-                row.style.color = '#ffffff';
-                row.style.fontWeight = 'bold';
-                row.querySelectorAll('td').forEach(cell => {
-                    cell.style.background = '#3b3f79';
-                    cell.style.color = '#ffffff';
-                    cell.style.padding = '12px';
-                    cell.style.border = '1px solid #ffffff';
+            metaRight.forEach((row, idx) => {
+                doc.text(row[0], rightX, cursorY + idx * rowGap);
+                doc.text(row[1], rightX + 140, cursorY + idx * rowGap);
+            });
+            cursorY += Math.max(metaLeft.length, metaRight.length) * rowGap + 12;
+
+            doc.setDrawColor(220);
+            doc.setLineWidth(1);
+            doc.line(margin, cursorY, pageWidth - margin, cursorY);
+            cursorY += 16;
+            doc.setFont('helvetica', 'bold');
+            doc.text('Bill To', margin, cursorY);
+            doc.text('Ship To', margin + contentWidth / 2, cursorY);
+            cursorY += 14;
+            doc.setFont('helvetica', 'normal');
+            doc.text(quotation.projectName || '', margin, cursorY);
+            doc.text(quotation.shipTo || '', margin + contentWidth / 2, cursorY);
+            cursorY += 22;
+
+            const rows = parseQuotationTableForPdf(quotation.tableHTML);
+            const colWidths = [35, 210, 70, 100, 120];
+            const colLabels = ['S. NO', 'ITEM & DESCRIPTION', 'QTY (Mtrs)', 'Rate per Mtr (Rs.)', 'AMOUNT (Rs.)'];
+            const colX = [
+                margin,
+                margin + colWidths[0],
+                margin + colWidths[0] + colWidths[1],
+                margin + colWidths[0] + colWidths[1] + colWidths[2],
+                margin + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3]
+            ];
+
+            const drawHeader = () => {
+                ensureSpace(24);
+                setBrandFill();
+                doc.setTextColor(255, 255, 255);
+                doc.rect(margin, cursorY, contentWidth, 22, 'F');
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(9);
+                colLabels.forEach((label, idx) => {
+                    doc.text(label, colX[idx] + 6, cursorY + 15);
                 });
-            });
-            // Format numeric cells (qty, rate, amount) with Indian commas
-            wrapper.querySelectorAll('table tbody td').forEach(td => {
-                const span = td.querySelector('span');
-                if (span) {
-                    const raw = span.textContent.trim();
-                    const numeric = raw.replace(/,/g, '').trim();
-                    if (/^\d+(\.\d+)?$/.test(numeric)) {
-                        const hasDecimal = numeric.includes('.');
-                        let formatted = formatIndianNumber(numeric);
-                        if (!hasDecimal) {
-                            formatted = formatted.replace(/\.00$/, '');
-                        }
-                        span.textContent = formatted;
-                    }
+                doc.setDrawColor(255);
+                doc.setLineWidth(0.5);
+                colX.slice(1).forEach(x => {
+                    doc.line(x, cursorY, x, cursorY + 22);
+                });
+                doc.setTextColor(0, 0, 0);
+                cursorY += 24;
+            };
+
+            doc.setCharSpace(0);
+            drawHeader();
+
+            rows.forEach(row => {
+                if (row.type === 'pipe') {
+                    ensureSpace(24);
+                    setBrandFill();
+                    doc.setTextColor(255, 255, 255);
+                    doc.rect(margin, cursorY, contentWidth, 22, 'F');
+                    doc.setFont('helvetica', 'bold');
+                    doc.setFontSize(10);
+                    doc.text(row.text, margin + 6, cursorY + 15);
+                    doc.setTextColor(0, 0, 0);
+                    cursorY += 24;
                     return;
                 }
-                const raw = td.textContent.trim();
-                const numeric = raw.replace(/₹/g, '').replace(/,/g, '').trim();
-                if (/^\d+(\.\d+)?$/.test(numeric)) {
-                    const hasDecimal = numeric.includes('.');
-                    let formatted = formatIndianNumber(numeric);
-                    if (!hasDecimal) {
-                        formatted = formatted.replace(/\.00$/, '');
-                    }
-                    td.textContent = raw.includes('₹') ? `₹${formatted}` : formatted;
-                }
-            });
-            wrapper.querySelectorAll('.col-base-rate, .col-margin').forEach(el => el.remove());
-            wrapper.querySelectorAll('button, .pipe-header-actions').forEach(el => el.remove());
-            wrapper.querySelectorAll('table').forEach(table => {
-                const headerRow = table.querySelector('thead tr');
-                if (headerRow) {
-                    const headerCells = Array.from(headerRow.children);
-                    const firstHeaderCell = headerCells[0];
-                    const actionIndex = headerCells.findIndex(cell => cell.textContent.trim().toUpperCase() === 'ACTIONS');
-                    if (actionIndex !== -1) {
-                        headerCells[actionIndex].remove();
-                        table.querySelectorAll('tbody tr').forEach(row => {
-                            const cells = row.children;
-                            if (cells.length > actionIndex) {
-                                cells[actionIndex].remove();
-                            }
-                        });
-                    }
-                    if (firstHeaderCell && !firstHeaderCell.textContent.trim() && !firstHeaderCell.querySelector('input')) {
-                        firstHeaderCell.remove();
-                        table.querySelectorAll('tbody tr').forEach(row => {
-                            if (row.classList.contains('pipe-type-header')) {
-                                return;
-                            }
-                            const firstCell = row.querySelector('td:first-child');
-                            if (firstCell) {
-                                firstCell.remove();
-                            }
-                        });
-                    }
-                }
-                const headerColCount = headerRow ? headerRow.children.length : 0;
-                if (headerColCount > 0) {
-                    table.querySelectorAll('.pipe-type-header td[colspan]').forEach(cell => {
-                        cell.setAttribute('colspan', String(headerColCount));
-                    });
-                }
-            });
-            
-            // Inline images to avoid canvas tainting
-            const inlineImages = async (container) => {
-                const images = Array.from(container.querySelectorAll('img'));
-                await Promise.all(images.map(async (img) => {
-                    const src = img.getAttribute('src') || '';
-                    if (!src || src.startsWith('data:')) {
-                        return;
-                    }
-                    try {
-                        const response = await fetch(src, { mode: 'cors' });
-                        const blob = await response.blob();
-                        const dataUrl = await new Promise((resolve, reject) => {
-                            const reader = new FileReader();
-                            reader.onload = () => resolve(reader.result);
-                            reader.onerror = reject;
-                            reader.readAsDataURL(blob);
-                        });
-                        img.setAttribute('src', dataUrl);
-                    } catch (error) {
-                        img.remove();
-                    }
-                }));
-            };
-
-            const waitForImages = async (container) => {
-                const images = Array.from(container.querySelectorAll('img'));
-                await Promise.all(images.map(img => new Promise(resolve => {
-                    if (img.complete) {
-                        resolve();
-                    } else {
-                        img.onload = resolve;
-                        img.onerror = resolve;
-                    }
-                })));
-            };
-
-            await inlineImages(wrapper);
-            await waitForImages(wrapper);
-
-            const canvas = await window.html2canvas(wrapper, {
-                scale: 3,
-                useCORS: true,
-                backgroundColor: '#ffffff'
+                const descLines = doc.splitTextToSize(row.desc || '', colWidths[1] - 10);
+                const rowHeight = Math.max(20, descLines.length * 12 + 4);
+                ensureSpace(rowHeight + 6);
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(9);
+                doc.text(row.sno || '', colX[0] + 6, cursorY + 14);
+                doc.text(descLines, colX[1] + 6, cursorY + 14);
+                doc.text(formatNumber(row.qty, false), colX[2] + colWidths[2] - 6, cursorY + 14, { align: 'right' });
+                doc.text(formatNumber(row.rate, true), colX[3] + colWidths[3] - 6, cursorY + 14, { align: 'right' });
+                doc.text(formatNumber(row.amount, true), colX[4] + colWidths[4] - 6, cursorY + 14, { align: 'right' });
+                doc.setDrawColor(230);
+                doc.setLineWidth(0.5);
+                doc.rect(margin, cursorY, contentWidth, rowHeight);
+                colX.slice(1).forEach(x => {
+                    doc.line(x, cursorY, x, cursorY + rowHeight);
+                });
+                cursorY += rowHeight;
             });
 
-            const imgData = canvas.toDataURL('image/png');
-            const pdf = new jsPDF('p', 'pt', 'a4');
-            const pageWidth = pdf.internal.pageSize.getWidth();
-            const pageHeight = pdf.internal.pageSize.getHeight();
+            ensureSpace(30);
+            setBrandFill();
+            doc.rect(margin, cursorY + 6, contentWidth, 24, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(12);
+            const formattedGrandTotal = formatIndianNumber(String(quotation.grandTotal || '0').replace(/,/g, ''));
+            doc.text(`Total: Rs. ${formattedGrandTotal}`, pageWidth - margin - 6, cursorY + 23, { align: 'right' });
+            doc.setTextColor(0, 0, 0);
+            cursorY += 46;
+            doc.setDrawColor(220);
+            doc.setLineWidth(1);
+            doc.line(margin, cursorY, pageWidth - margin, cursorY);
+            cursorY += 22;
 
-            const imgWidth = pageWidth - 40;
-            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+            const termsText = normalizeTermsText((quotation.termsText || '').trim());
+            if (termsText) {
+                ensureSpace(24);
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(12);
+                doc.text('TERMS AND CONDITIONS', margin, cursorY);
+                cursorY += 16;
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(10);
+                const termLines = doc.splitTextToSize(termsText, contentWidth);
+                termLines.forEach(line => {
+                    ensureSpace(14);
+                    doc.text(line, margin, cursorY);
+                    cursorY += 14;
+                });
+            }
 
-            pdf.addImage(imgData, 'PNG', 20, 20, imgWidth, imgHeight);
             const filename = `Quotation-${quotation.customerName || 'Customer'}.pdf`;
-            pdf.save(filename);
-            document.body.removeChild(wrapper);
+            doc.save(filename);
         }
         
         /*
