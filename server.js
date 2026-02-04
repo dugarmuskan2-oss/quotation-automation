@@ -25,7 +25,9 @@ let ddbDocClient = null;
 let ddbTableName = null;
 
 const useGoogleCloud = !!(process.env.GOOGLE_CLOUD_BUCKET_NAME || process.env.GOOGLE_CLOUD_CREDENTIALS);
-const useAWS = !!(process.env.AWS_S3_BUCKET_NAME && process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY);
+const hasAwsCredentials = !!(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY);
+const awsRegion = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1';
+const useAWS = !!(process.env.AWS_S3_BUCKET_NAME || process.env.DYNAMODB_TABLE);
 
 // Initialize Google Cloud Storage (if configured)
 if (useGoogleCloud) {
@@ -61,17 +63,18 @@ if (useGoogleCloud) {
 }
 
 // Initialize AWS S3 (if configured)
-if (useAWS) {
+if (process.env.AWS_S3_BUCKET_NAME) {
     try {
         const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
-        
-        s3Client = new S3Client({
-            region: process.env.AWS_REGION || 'us-east-1',
-            credentials: {
+
+        const s3Config = { region: awsRegion };
+        if (hasAwsCredentials) {
+            s3Config.credentials = {
                 accessKeyId: process.env.AWS_ACCESS_KEY_ID,
                 secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
-            }
-        });
+            };
+        }
+        s3Client = new S3Client(s3Config);
         s3BucketName = process.env.AWS_S3_BUCKET_NAME;
         console.log(`AWS S3 initialized successfully (bucket: ${s3BucketName})`);
     } catch (error) {
@@ -80,18 +83,18 @@ if (useAWS) {
 }
 
 // Initialize DynamoDB (if configured)
-if (useAWS && process.env.DYNAMODB_TABLE) {
+if (process.env.DYNAMODB_TABLE) {
     try {
         const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
         const { DynamoDBDocumentClient } = require('@aws-sdk/lib-dynamodb');
-        const region = process.env.AWS_REGION || 'us-east-1';
-        const ddbClient = new DynamoDBClient({
-            region,
-            credentials: {
+        const ddbConfig = { region: awsRegion };
+        if (hasAwsCredentials) {
+            ddbConfig.credentials = {
                 accessKeyId: process.env.AWS_ACCESS_KEY_ID,
                 secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
-            }
-        });
+            };
+        }
+        const ddbClient = new DynamoDBClient(ddbConfig);
         ddbDocClient = DynamoDBDocumentClient.from(ddbClient);
         ddbTableName = process.env.DYNAMODB_TABLE;
         console.log(`DynamoDB initialized successfully (table: ${ddbTableName})`);

@@ -799,6 +799,49 @@
             }
         }
 
+        async function saveQuotationToBackend(quotation) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/save-quotation`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ quotation })
+                });
+                const result = await safeJsonParse(response);
+                if (!response.ok) {
+                    throw new Error(result.error || 'Failed to save quotation');
+                }
+            } catch (error) {
+                console.error('Error saving quotation to backend:', error);
+            }
+        }
+
+        async function loadQuotationsFromBackend() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/quotations`);
+                const result = await safeJsonParse(response);
+                if (!response.ok) {
+                    throw new Error(result.error || 'Failed to load quotations');
+                }
+                const quotations = Array.isArray(result.quotations) ? result.quotations : [];
+                if (quotations.length > 0) {
+                    approvedQuotations = quotations;
+                    displayAllApprovedQuotations();
+                    return true;
+                }
+                return false;
+            } catch (error) {
+                console.error('Error loading quotations from backend:', error);
+                return false;
+            }
+        }
+
+        async function initQuotations() {
+            const loaded = await loadQuotationsFromBackend();
+            if (!loaded) {
+                loadFromLocalStorage();
+            }
+        }
+
         /*
             ============================================
             UPLOAD STATUS BANNER FUNCTION
@@ -2439,6 +2482,7 @@
                 saved: false  // Not approved yet - will show full content with Approve button
             };
             approvedQuotations.push(quotationWithStatus);
+            return quotationWithStatus;
         }
 
         function persistAndRefreshApprovals() {
@@ -2479,7 +2523,8 @@
             const headerClone = cloneQuotationHeaderWithValues(quotationHeader);
             
             const quotationData = buildQuotationData(quotationHeaderValues, tableClone, headerClone);
-            addQuotationToApprovedQuotations(quotationData);
+            const quotationWithStatus = addQuotationToApprovedQuotations(quotationData);
+            saveQuotationToBackend(quotationWithStatus);
             persistAndRefreshApprovals();
             scrollToApprovalSection();
         }
@@ -3543,6 +3588,7 @@
             
             // Save all quotations to localStorage (including this newly approved one with all updates)
             saveToLocalStorage();
+            saveQuotationToBackend(quotation);
             
             // Update the display to show saved status (as folder)
             displayAllApprovedQuotations();
@@ -4013,8 +4059,8 @@
         // This code runs when the page finishes loading
         console.log("Quotation Generator loaded successfully!");
         
-        // Load saved quotations from localStorage
-        loadFromLocalStorage();
+        // Load saved quotations (backend first, local fallback)
+        initQuotations();
         
         // Load instructions from localStorage
         loadInstructions();
