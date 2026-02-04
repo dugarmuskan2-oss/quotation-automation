@@ -2576,9 +2576,7 @@
                     : '';
                 
                 // Show Approve button only if not saved yet
-                const approveButtonHTML = quotation.saved 
-                    ? '' 
-                    : `<button class="save-btn" onclick="saveQuotation(${quotation.id})">✅ Approve</button>`;
+                const approveButtonHTML = `<button class="save-btn" onclick="saveQuotation(${quotation.id})">✅ Approve</button>`;
                 
                 const downloadButtonHTML = `<button class="save-btn" onclick="downloadQuotationPdf(${quotation.id})">⬇️ Download PDF</button>`;
 
