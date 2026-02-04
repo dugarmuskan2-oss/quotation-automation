@@ -137,6 +137,21 @@ const response = await fetch('/api/extract-quotation', {
 });
 ```
 
+### Monthly Cleanup of Old Quotations (DynamoDB)
+This repo includes a Lambda at `lambda/cleanupOldQuotations.js` that deletes quotations older than 1 year.
+
+Steps:
+1. Create an AWS Lambda using `lambda/cleanupOldQuotations.js`
+2. Set environment variables:
+   - `DYNAMODB_TABLE`
+   - `AWS_REGION` (or `AWS_DEFAULT_REGION`)
+3. Attach IAM permissions to the Lambda role:
+   - `dynamodb:Scan`
+   - `dynamodb:DeleteItem`
+4. Create an EventBridge schedule (monthly):
+   - Example cron: `cron(0 0 1 * ? *)` (runs on the 1st of every month)
+5. Add the Lambda as the rule target
+
 ## ✅ What Works Now
 
 - ✅ Paste email content

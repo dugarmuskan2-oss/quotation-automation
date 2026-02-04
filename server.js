@@ -967,6 +967,40 @@ app.post('/api/save-quotation', async (req, res) => {
     }
 });
 
+// Get next quote number (atomic increment in DynamoDB)
+app.get('/api/next-quote-number', async (req, res) => {
+    try {
+        if (!ddbDocClient || !ddbTableName) {
+            return res.status(500).json({ error: 'DynamoDB not configured. Set DYNAMODB_TABLE in environment variables.' });
+        }
+        const { UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+        const startValue = 107; // first increment yields 108
+        const result = await ddbDocClient.send(new UpdateCommand({
+            TableName: ddbTableName,
+            Key: { id: 'QUOTE_NUMBER_COUNTER' },
+            UpdateExpression: 'SET #v = if_not_exists(#v, :start) + :inc, #t = :type',
+            ExpressionAttributeNames: {
+                '#v': 'value',
+                '#t': 'type'
+            },
+            ExpressionAttributeValues: {
+                ':start': startValue,
+                ':inc': 1,
+                ':type': 'counter'
+            },
+            ReturnValues: 'UPDATED_NEW'
+        }));
+        const nextValue = result?.Attributes?.value;
+        if (!nextValue) {
+            return res.status(500).json({ error: 'Failed to generate next quote number' });
+        }
+        res.json({ value: nextValue });
+    } catch (error) {
+        console.error('Error generating next quote number:', error);
+        res.status(500).json({ error: 'Failed to generate next quote number', details: error.message });
+    }
+});
+
 // Get all quotations from DynamoDB
 app.get('/api/quotations', async (req, res) => {
     try {

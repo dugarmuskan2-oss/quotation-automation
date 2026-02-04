@@ -721,6 +721,7 @@
                         <div class="meta-row"><span>PREPARED BY</span><input type="text" id="preparedBy" class="header-editable" style="width: 140px;"></div>
                         <div class="meta-row"><span>ASSIGNED TO</span><input type="text" id="assignedTo" class="header-editable" style="width: 140px;"></div>
                         <div class="meta-row"><span>CHECKED BY</span><input type="text" id="checkedBy" class="header-editable" style="width: 140px;"></div>
+                        <div class="meta-row"><span>QUOTE NUMBER</span><input type="text" id="quoteNumber" class="header-editable" style="width: 140px;"></div>
                     </div>
                 </div>
 
@@ -784,6 +785,14 @@
         <!-- Approval Section (shows all approved quotations) -->
         <div id="approvalSection" class="quotation-section">
             <h2>Approval</h2>
+            <div style="margin-bottom: 10px;">
+                <input
+                    type="text"
+                    id="approvalSearchInput"
+                    placeholder="Search by company, kind attn, or month (e.g., January)"
+                    style="width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 4px;"
+                >
+            </div>
             <div id="approvedQuotationsContainer">
                 <!-- All approved quotations will be displayed here -->
                 <p id="noApprovedQuotations" style="text-align: center; color: #999; padding: 20px;">
@@ -1552,6 +1561,19 @@
 
         function clearErrorMessage() {
             hideError();
+        }
+
+        function formatQuoteNumber(numberValue) {
+            return `DSC-${numberValue}`;
+        }
+
+        async function consumeNextQuoteNumber() {
+            const response = await fetch(`${API_BASE_URL}/next-quote-number`);
+            const result = await safeJsonParse(response);
+            if (!response.ok) {
+                throw new Error(result.error || 'Failed to fetch quote number');
+            }
+            return formatQuoteNumber(result.value);
         }
 
         async function fetchQuotationData(emailContent, fileContent) {
@@ -2390,6 +2412,7 @@
             const preparedBy = document.getElementById('preparedBy') ? document.getElementById('preparedBy').value : '';
             const assignedTo = document.getElementById('assignedTo') ? document.getElementById('assignedTo').value : '';
             const checkedBy = document.getElementById('checkedBy') ? document.getElementById('checkedBy').value : '';
+            const quoteNumber = document.getElementById('quoteNumber') ? document.getElementById('quoteNumber').value : '';
             const contactDetails = mobileNumber || phoneNumber || '';
             const grandTotal = document.getElementById('grandTotal').textContent;
             const termsTextRaw = document.getElementById('termsText') ? document.getElementById('termsText').value : '';
@@ -2409,6 +2432,7 @@
                 preparedBy,
                 assignedTo,
                 checkedBy,
+                quoteNumber,
                 grandTotal,
                 termsText
             };
@@ -2520,6 +2544,7 @@
                 preparedBy,
                 assignedTo,
                 checkedBy,
+                quoteNumber,
                 grandTotal,
                 termsText
             } = quotationHeaderValues;
@@ -2540,7 +2565,8 @@
                 assignedTo: assignedTo,
                 phoneNumber: phoneNumber,
                 mobileNumber: mobileNumber,
-                checkedBy: checkedBy
+                checkedBy: checkedBy,
+                quoteNumber: quoteNumber
             };
 
             return quotationData;
@@ -2574,7 +2600,7 @@
             });
         }
 
-        function approveQuotation() {
+        async function approveQuotation() {
             /*
                 This function:
                 1. Gets all quotation data from the creation section
@@ -2583,6 +2609,14 @@
                 4. Hides the creation section quotation
             */
             
+            const quoteNumberInput = document.getElementById('quoteNumber');
+            if (quoteNumberInput && !quoteNumberInput.value.trim()) {
+                try {
+                    quoteNumberInput.value = await consumeNextQuoteNumber();
+                } catch (error) {
+                    console.error('Failed to generate quote number:', error);
+                }
+            }
             const quotationHeaderValues = getQuotationHeaderValues();
             
             // Get the table HTML - ensure all current input values are captured
@@ -2628,12 +2662,13 @@
             }
         }
 
-        function buildAllApprovedQuotationsHTML() {
+        function buildAllApprovedQuotationsHTMLForList(quotationsList) {
             // Build HTML for all approved quotations
             let allQuotationsHTML = '';
+            const sourceList = Array.isArray(quotationsList) ? quotationsList : [];
             
             // Show all quotations as collapsible folders
-            approvedQuotations.slice().reverse().forEach(function(quotation, index) {
+            sourceList.slice().reverse().forEach(function(quotation, index) {
                 const quotationNumber = approvedQuotations.length - index;
                 const contactNumber = extractContactNumber(quotation.contactDetails);
                 let folderName = quotation.customerName;
@@ -2681,6 +2716,99 @@
             });
 
             return allQuotationsHTML;
+        }
+
+        function buildAllApprovedQuotationsHTML() {
+            return buildAllApprovedQuotationsHTMLForList(approvedQuotations);
+        }
+
+        function normalizeSearchText(value) {
+            return String(value || '').toLowerCase().trim();
+        }
+
+        function getMonthIndexFromToken(token) {
+            const months = [
+                'january', 'february', 'march', 'april', 'may', 'june',
+                'july', 'august', 'september', 'october', 'november', 'december'
+            ];
+            const cleanToken = normalizeSearchText(token);
+            if (!cleanToken) {
+                return -1;
+            }
+            const monthIndex = months.findIndex(month => month.startsWith(cleanToken));
+            return monthIndex;
+        }
+
+        function getMonthIndexFromDateText(dateText) {
+            const normalized = normalizeSearchText(dateText);
+            const months = [
+                'january', 'february', 'march', 'april', 'may', 'june',
+                'july', 'august', 'september', 'october', 'november', 'december'
+            ];
+            const monthIndexByName = months.findIndex(month => normalized.includes(month));
+            if (monthIndexByName !== -1) {
+                return monthIndexByName;
+            }
+            const parsedDate = new Date(dateText);
+            if (!isNaN(parsedDate.getTime())) {
+                return parsedDate.getMonth();
+            }
+            return -1;
+        }
+
+        function doesMonthMatchQuery(query, quotationDate) {
+            const tokens = normalizeSearchText(query).split(/\s+/).filter(Boolean);
+            if (tokens.length === 0) {
+                return false;
+            }
+            const queryMonthIndex = tokens.map(getMonthIndexFromToken).find(index => index !== -1);
+            if (queryMonthIndex === undefined) {
+                return false;
+            }
+            const quotationMonthIndex = getMonthIndexFromDateText(quotationDate);
+            if (quotationMonthIndex === -1) {
+                return false;
+            }
+            return queryMonthIndex === quotationMonthIndex;
+        }
+
+        function matchesApprovalSearch(quotation, query) {
+            const normalizedQuery = normalizeSearchText(query);
+            if (!normalizedQuery) {
+                return true;
+            }
+            const companyName = normalizeSearchText(quotation.projectName);
+            const kindAttn = normalizeSearchText(quotation.customerName);
+            const quoteNumber = normalizeSearchText(quotation.quoteNumber);
+            const combined = `${companyName} ${kindAttn} ${quoteNumber}`;
+            if (combined.includes(normalizedQuery)) {
+                return true;
+            }
+            return doesMonthMatchQuery(normalizedQuery, quotation.quotationDate || '');
+        }
+
+        function getFilteredApprovedQuotations(query) {
+            const normalizedQuery = normalizeSearchText(query);
+            if (!normalizedQuery) {
+                return approvedQuotations.slice();
+            }
+            return approvedQuotations.filter(quotation => matchesApprovalSearch(quotation, normalizedQuery));
+        }
+
+        function getApprovalSearchInput() {
+            return document.getElementById('approvalSearchInput');
+        }
+
+        function attachApprovalSearchListener() {
+            const searchInput = getApprovalSearchInput();
+            if (!searchInput || searchInput.dataset.bound === 'true') {
+                return;
+            }
+            searchInput.addEventListener('input', function() {
+                approvalSearchQuery = searchInput.value || '';
+                displayAllApprovedQuotations();
+            });
+            searchInput.dataset.bound = 'true';
         }
 
         function buildApprovalSplitLayout({ quotation, termsText, approveButtonHTML, downloadButtonHTML }) {
@@ -2735,6 +2863,24 @@
             container.innerHTML = allQuotationsHTML;
         }
 
+        function updateApprovalContainerScrollLimit(container) {
+            const folders = Array.from(container.querySelectorAll('.quotation-folder'));
+            if (folders.length <= 10) {
+                container.style.maxHeight = '';
+                container.style.overflowY = '';
+                return;
+            }
+
+            let totalHeight = 0;
+            const visibleCount = Math.min(10, folders.length);
+            for (let i = 0; i < visibleCount; i += 1) {
+                totalHeight += folders[i].getBoundingClientRect().height;
+            }
+            totalHeight += 10; // small buffer for container padding
+            container.style.maxHeight = `${Math.ceil(totalHeight)}px`;
+            container.style.overflowY = 'auto';
+        }
+
         function attachApprovalListeners() {
             // Attach event listeners to all editable fields in Approval section
             attachApprovalSectionListeners();
@@ -2758,13 +2904,16 @@
             hideNoApprovedQuotationsMessage();
             
             // Build HTML for all approved quotations
-            const allQuotationsHTML = buildAllApprovedQuotationsHTML();
+            attachApprovalSearchListener();
+            const filteredQuotations = getFilteredApprovedQuotations(approvalSearchQuery);
+            const allQuotationsHTML = buildAllApprovedQuotationsHTMLForList(filteredQuotations);
             
             // Update the container
             renderApprovedQuotationsHTML(container, allQuotationsHTML);
             
             // Attach event listeners to all editable fields in Approval section
             attachApprovalListeners();
+            updateApprovalContainerScrollLimit(container);
         }
         
         /*
@@ -3396,6 +3545,8 @@
                 quotation.assignedTo = changedInput.value;
             } else if (inputId === 'checkedBy') {
                 quotation.checkedBy = changedInput.value;
+            } else if (inputId === 'quoteNumber') {
+                quotation.quoteNumber = changedInput.value;
             } else if (inputId === 'kindAttn') {
                 quotation.customerName = changedInput.value;
             } else if (inputId === 'phoneNumber') {
@@ -3558,6 +3709,7 @@
             document.getElementById('preparedBy').value = '';
             document.getElementById('assignedTo').value = '';
             document.getElementById('checkedBy').value = '';
+            document.getElementById('quoteNumber').value = '';
             document.getElementById('phoneNumber').value = '';
             document.getElementById('mobileNumber').value = '';
             lastEmailContent = '';
@@ -3780,6 +3932,8 @@
                         quotation.assignedTo = input.value;
                     } else if (inputId === 'checkedBy') {
                         quotation.checkedBy = input.value;
+                    } else if (inputId === 'quoteNumber') {
+                        quotation.quoteNumber = input.value;
                     } else if (inputId === 'kindAttn') {
                         quotation.customerName = input.value;
                     } else if (inputId === 'phoneNumber') {
@@ -4266,6 +4420,7 @@
         let approvedQuotations = [];
         let lastEmailContent = '';
         let lastFileContent = '';
+        let approvalSearchQuery = '';
         const defaultTermsText = document.getElementById('termsText')
             ? document.getElementById('termsText').value
             : '';
