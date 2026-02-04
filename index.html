@@ -3845,11 +3845,11 @@
             const formattedGrandTotal = formatIndianNumber(String(quotation.grandTotal || '0').replace(/,/g, ''));
             doc.text(`Total: Rs. ${formattedGrandTotal}`, pageWidth - margin - 6, cursorY + 21, { align: 'right' });
             doc.setTextColor(0, 0, 0);
-            cursorY += 42;
+            cursorY += 36;
             doc.setDrawColor(220);
             doc.setLineWidth(1);
             doc.line(margin, cursorY, pageWidth - margin, cursorY);
-            cursorY += 22;
+            cursorY += 16;
 
             const termsText = normalizeTermsText((quotation.termsText || '').trim());
             if (termsText) {
@@ -3858,15 +3858,15 @@
                 doc.setFontSize(8);
                 setSoftText();
                 doc.text('TERMS AND CONDITIONS', margin, cursorY);
-                cursorY += 18;
+                cursorY += 14;
                 doc.setFont('helvetica', 'normal');
                 doc.setTextColor(0, 0, 0);
                 doc.setFontSize(9);
                 const termLines = doc.splitTextToSize(termsText, contentWidth);
                 termLines.forEach(line => {
-                    ensureSpace(14);
+                    ensureSpace(12);
                     doc.text(line, margin, cursorY);
-                    cursorY += 14;
+                    cursorY += 12;
                 });
             }
 
