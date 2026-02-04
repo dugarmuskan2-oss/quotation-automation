@@ -656,15 +656,15 @@
 
                 <div class="quote-meta">
                     <div>
-                        <div class="meta-row"><span>CRM REF NO</span><input type="text" id="crmRefNo" class="header-editable" style="width: 140px;"></div>
                         <div class="meta-row"><span>QUOTATION DATE</span><input type="text" id="quotationDate" class="header-editable" style="width: 140px;"></div>
-                        <div class="meta-row"><span>QUOTATION NO</span><input type="text" id="quotationNo" class="header-editable" style="width: 140px;"></div>
+                        <div class="meta-row"><span>KIND ATTN</span><input type="text" id="kindAttn" class="header-editable" style="width: 140px;"></div>
+                        <div class="meta-row"><span>PHONE NUMBER</span><input type="text" id="phoneNumber" class="header-editable" style="width: 140px;"></div>
+                        <div class="meta-row"><span>MOBILE NUMBER</span><input type="text" id="mobileNumber" class="header-editable" style="width: 140px;"></div>
                     </div>
                     <div>
                         <div class="meta-row"><span>PREPARED BY</span><input type="text" id="preparedBy" class="header-editable" style="width: 140px;"></div>
+                        <div class="meta-row"><span>ASSIGNED TO</span><input type="text" id="assignedTo" class="header-editable" style="width: 140px;"></div>
                         <div class="meta-row"><span>CHECKED BY</span><input type="text" id="checkedBy" class="header-editable" style="width: 140px;"></div>
-                        <div class="meta-row"><span>KIND ATTN</span><input type="text" id="kindAttn" class="header-editable" style="width: 140px;"></div>
-                        <div class="meta-row"><span>CONTACT NUMBER</span><input type="text" id="mobileNumber" class="header-editable" style="width: 140px;"></div>
                     </div>
                 </div>
 
@@ -2317,12 +2317,13 @@
             const quotationDate = document.getElementById('quotationDate').value;
             const customerName = document.getElementById('kindAttn').value || '';
             const projectName = document.getElementById('billTo').value || '';
-            const contactDetails = document.getElementById('mobileNumber').value || '';
             const shipTo = document.getElementById('shipTo').value || '';
-            const crmRefNo = document.getElementById('crmRefNo') ? document.getElementById('crmRefNo').value : '';
-            const quotationNo = document.getElementById('quotationNo') ? document.getElementById('quotationNo').value : '';
+            const phoneNumber = document.getElementById('phoneNumber') ? document.getElementById('phoneNumber').value : '';
+            const mobileNumber = document.getElementById('mobileNumber') ? document.getElementById('mobileNumber').value : '';
             const preparedBy = document.getElementById('preparedBy') ? document.getElementById('preparedBy').value : '';
+            const assignedTo = document.getElementById('assignedTo') ? document.getElementById('assignedTo').value : '';
             const checkedBy = document.getElementById('checkedBy') ? document.getElementById('checkedBy').value : '';
+            const contactDetails = mobileNumber || phoneNumber || '';
             const grandTotal = document.getElementById('grandTotal').textContent;
             const termsTextRaw = document.getElementById('termsText') ? document.getElementById('termsText').value : '';
             const termsText = normalizeTermsText(termsTextRaw);
@@ -2335,10 +2336,11 @@
                 customerName,
                 projectName,
                 contactDetails,
+                phoneNumber,
+                mobileNumber,
                 shipTo,
-                crmRefNo,
-                quotationNo,
                 preparedBy,
+                assignedTo,
                 checkedBy,
                 grandTotal,
                 termsText
@@ -2446,9 +2448,10 @@
                 projectName,
                 contactDetails,
                 shipTo,
-                crmRefNo,
-                quotationNo,
+                phoneNumber,
+                mobileNumber,
                 preparedBy,
+                assignedTo,
                 checkedBy,
                 grandTotal,
                 termsText
@@ -2466,9 +2469,10 @@
                 headerHTML: headerClone.outerHTML, // Store full header HTML with current values
                 termsText: termsText,
                 shipTo: shipTo,
-                crmRefNo: crmRefNo,
-                quotationNo: quotationNo,
                 preparedBy: preparedBy,
+                assignedTo: assignedTo,
+                phoneNumber: phoneNumber,
+                mobileNumber: mobileNumber,
                 checkedBy: checkedBy
             };
 
@@ -3175,20 +3179,22 @@
             const fieldName = changedInput.getAttribute('data-field');
             const inputId = changedInput.id;
             
-            if (inputId === 'crmRefNo') {
-                quotation.crmRefNo = changedInput.value;
-            } else if (inputId === 'quotationNo') {
-                quotation.quotationNo = changedInput.value;
-            } else if (inputId === 'quotationDate') {
+            if (inputId === 'quotationDate') {
                 quotation.quotationDate = changedInput.value;
             } else if (inputId === 'preparedBy') {
                 quotation.preparedBy = changedInput.value;
+            } else if (inputId === 'assignedTo') {
+                quotation.assignedTo = changedInput.value;
             } else if (inputId === 'checkedBy') {
                 quotation.checkedBy = changedInput.value;
             } else if (inputId === 'kindAttn') {
                 quotation.customerName = changedInput.value;
+            } else if (inputId === 'phoneNumber') {
+                quotation.phoneNumber = changedInput.value;
+                quotation.contactDetails = quotation.mobileNumber || quotation.phoneNumber || '';
             } else if (inputId === 'mobileNumber') {
-                quotation.contactDetails = changedInput.value;
+                quotation.mobileNumber = changedInput.value;
+                quotation.contactDetails = quotation.mobileNumber || quotation.phoneNumber || '';
             } else if (inputId === 'billTo') {
                 quotation.projectName = changedInput.value;
             } else if (inputId === 'shipTo') {
@@ -3340,10 +3346,10 @@
             document.getElementById('kindAttn').value = '';
             document.getElementById('emailContent').value = '';
             document.getElementById('fileUpload').value = '';
-            document.getElementById('crmRefNo').value = '';
-            document.getElementById('quotationNo').value = '';
             document.getElementById('preparedBy').value = '';
+            document.getElementById('assignedTo').value = '';
             document.getElementById('checkedBy').value = '';
+            document.getElementById('phoneNumber').value = '';
             document.getElementById('mobileNumber').value = '';
             
             // Clear terms and conditions
@@ -3555,26 +3561,27 @@
                 const headerInputs = folderContent.querySelectorAll('.quotation-header input');
                 headerInputs.forEach(function(input) {
                     const inputId = input.id;
-                    if (inputId === 'crmRefNo') {
-                        quotation.crmRefNo = input.value;
-                    } else if (inputId === 'quotationNo') {
-                        quotation.quotationNo = input.value;
-                    } else if (inputId === 'quotationDate') {
+                    if (inputId === 'quotationDate') {
                         quotation.quotationDate = input.value;
                     } else if (inputId === 'preparedBy') {
                         quotation.preparedBy = input.value;
+                    } else if (inputId === 'assignedTo') {
+                        quotation.assignedTo = input.value;
                     } else if (inputId === 'checkedBy') {
                         quotation.checkedBy = input.value;
                     } else if (inputId === 'kindAttn') {
                         quotation.customerName = input.value;
+                    } else if (inputId === 'phoneNumber') {
+                        quotation.phoneNumber = input.value;
                     } else if (inputId === 'mobileNumber') {
-                        quotation.contactDetails = input.value;
+                        quotation.mobileNumber = input.value;
                     } else if (inputId === 'billTo') {
                         quotation.projectName = input.value;
                     } else if (inputId === 'shipTo') {
                         quotation.shipTo = input.value;
                     }
                 });
+                quotation.contactDetails = quotation.mobileNumber || quotation.phoneNumber || '';
                 
                 // Update grand total from the display
                 const grandTotalElement = folderContent.querySelector('.grand-total span');
@@ -3779,15 +3786,15 @@
             const rightX = margin + contentWidth / 2 + 10;
             const rowGap = 12;
             const metaLeft = [
-                ['CRM REF NO', quotation.crmRefNo || ''],
                 ['QUOTATION DATE', quotation.quotationDate || ''],
-                ['QUOTATION NO', quotation.quotationNo || '']
+                ['KIND ATTN', quotation.customerName || ''],
+                ['PHONE NUMBER', quotation.phoneNumber || ''],
+                ['MOBILE NUMBER', quotation.mobileNumber || '']
             ];
             const metaRight = [
                 ['PREPARED BY', quotation.preparedBy || ''],
-                ['CHECKED BY', quotation.checkedBy || ''],
-                ['KIND ATTN', quotation.customerName || ''],
-                ['CONTACT NUMBER', quotation.contactDetails || '']
+                ['ASSIGNED TO', quotation.assignedTo || ''],
+                ['CHECKED BY', quotation.checkedBy || '']
             ];
             metaLeft.forEach((row, idx) => {
                 doc.text(row[0], leftX, cursorY + idx * rowGap);
