@@ -218,6 +218,58 @@
         .assigned-badge {
             background-color: #1976d2;
         }
+
+        .approval-layout {
+            display: flex;
+            gap: 16px;
+            align-items: flex-start;
+        }
+
+        .approval-quotation {
+            flex: 1 1 0;
+            min-width: 0;
+        }
+
+        .approval-side {
+            flex: 0 0 320px;
+            max-width: 360px;
+        }
+
+        .approval-scroll-panel {
+            overflow: visible;
+        }
+
+        .approval-drag-area {
+            position: relative;
+            min-height: 120px;
+        }
+
+        .approval-drag-panel {
+            position: relative;
+            cursor: grab;
+        }
+
+        .approval-drag-panel.dragging {
+            cursor: grabbing;
+            user-select: none;
+        }
+
+        .approval-drag-handle {
+            font-size: 11px;
+            color: #666;
+            margin-bottom: 6px;
+        }
+
+        @media (max-width: 900px) {
+            .approval-layout {
+                flex-direction: column;
+            }
+            .approval-side {
+                flex: 1 1 auto;
+                max-width: none;
+                width: 100%;
+            }
+        }
         
         /* Folder-like styling for saved quotations */
         .quotation-folder {
@@ -801,6 +853,15 @@
                     details: 'Server returned non-JSON response. This usually means the API endpoint is not found or the server is not running.'
                 };
             }
+        }
+
+        function escapeHtml(text) {
+            return String(text || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
         }
 
         async function saveQuotationToBackend(quotation) {
@@ -1512,7 +1573,9 @@
                 const { emailContent, fileInput, file } = getInputsForQuotation();
                 
                 // Step 3: Read file content (if file was uploaded)
-                let fileContent = await readUploadedFileContent(file);
+            let fileContent = await readUploadedFileContent(file);
+            lastEmailContent = emailContent;
+            lastFileContent = fileContent;
                 
                 // Step 4: Check if at least one input was provided
                 if (!ensureInputProvided(emailContent, fileContent)) {
@@ -2531,6 +2594,8 @@
             const headerClone = cloneQuotationHeaderWithValues(quotationHeader);
             
             const quotationData = buildQuotationData(quotationHeaderValues, tableClone, headerClone);
+            quotationData.emailContent = document.getElementById('emailContent')?.value || lastEmailContent || '';
+            quotationData.fileContent = lastFileContent || '';
             const quotationWithStatus = addQuotationToApprovedQuotations(quotationData);
             saveQuotationToBackend(quotationWithStatus);
             persistAndRefreshApprovals();
@@ -2604,22 +2669,65 @@
                             <span class="folder-toggle-icon">▶</span>
                         </div>
                         <div class="quotation-folder-content" id="folder-content-${quotation.id}">
-                            ${quotation.headerHTML || ''}
-                            ${quotation.tableHTML}
-                            <div class="grand-total">
-                                <span>Total: ₹${quotation.grandTotal}</span>
-                            </div>
-                            ${termsText ? `<hr class="terms-divider"><div class="terms-box"><h4>TERMS AND CONDITIONS</h4><div style="white-space: pre-wrap; font-size: 14px;">${termsText}</div></div>` : ''}
-                            <div style="margin-top: 10px; display: flex; gap: 10px;">
-                                ${approveButtonHTML}
-                                ${downloadButtonHTML}
-                            </div>
+                            ${buildApprovalSplitLayout({
+                                quotation,
+                                termsText,
+                                approveButtonHTML,
+                                downloadButtonHTML
+                            })}
                         </div>
                     </div>
                 `;
             });
 
             return allQuotationsHTML;
+        }
+
+        function buildApprovalSplitLayout({ quotation, termsText, approveButtonHTML, downloadButtonHTML }) {
+            const sidePanelHTML = buildApprovalSidePanelHTML(quotation);
+
+            return `
+                <div class="approval-layout">
+                    <div class="approval-quotation">
+                        ${quotation.headerHTML || ''}
+                        ${quotation.tableHTML}
+                        <div class="grand-total">
+                            <span>Total: ₹${quotation.grandTotal}</span>
+                        </div>
+                        ${termsText ? `<hr class="terms-divider"><div class="terms-box"><h4>TERMS AND CONDITIONS</h4><div style="white-space: pre-wrap; font-size: 14px;">${termsText}</div></div>` : ''}
+                        <div style="margin-top: 10px; display: flex; gap: 10px;">
+                            ${approveButtonHTML}
+                            ${downloadButtonHTML}
+                        </div>
+                    </div>
+                    ${sidePanelHTML}
+                </div>
+            `;
+        }
+
+        function buildApprovalSidePanelHTML(quotation) {
+            const emailBlock = quotation.emailContent
+                ? `<div style="margin-top:10px;"><strong>Email Content</strong><div style="white-space: pre-wrap; font-size: 12px; background:#fafafa; border:1px solid #eee; padding:8px; border-radius:4px;">${escapeHtml(quotation.emailContent)}</div></div>`
+                : '';
+            const fileBlock = quotation.fileContent
+                ? `<div style="margin-top:10px;"><strong>File Content</strong><div style="white-space: pre-wrap; font-size: 12px; background:#fafafa; border:1px solid #eee; padding:8px; border-radius:4px;">${escapeHtml(quotation.fileContent)}</div></div>`
+                : '';
+            const panelContent = emailBlock || fileBlock
+                ? `${emailBlock}${fileBlock}`
+                : `<div style="margin-top:10px; font-size: 12px; color:#777; background:#fafafa; border:1px dashed #ddd; padding:8px; border-radius:4px;">No email or file content available.</div>`;
+
+            return `
+                <div class="approval-side">
+                    <div class="approval-drag-area">
+                        <div class="approval-drag-panel" data-drag="email-panel">
+                            <div class="approval-drag-handle">Drag to move</div>
+                            <div class="approval-scroll-panel">
+                                ${panelContent}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
         }
 
         function renderApprovedQuotationsHTML(container, allQuotationsHTML) {
@@ -2886,9 +2994,20 @@
                         // Attach event listeners
                         const editableFields = row.querySelectorAll('.editable-field');
                         editableFields.forEach(function(field) {
-                            if (field.getAttribute('data-field') === 'lineTotal') {
+                            const fieldName = field.getAttribute('data-field') || '';
+                            if (fieldName === 'lineTotal') {
                                 field.addEventListener('input', function() {
                                     this.dataset.manual = 'true';
+                                });
+                            }
+                            if (fieldName === 'finalRate') {
+                                field.addEventListener('input', function() {
+                                    this.dataset.manual = 'true';
+                                });
+                            }
+                            if (['quantity', 'unitRate', 'marginPercent', 'finalRate', 'lineTotal'].includes(fieldName)) {
+                                field.addEventListener('input', function() {
+                                    recalculateApprovalQuotationTotals(quotationId, false);
                                 });
                             }
                             field.addEventListener('blur', function() {
@@ -2919,7 +3038,72 @@
                         }
                     }
                 }
+
+                attachApprovalSidePanelDrag(folderContent);
             });
+        }
+
+        function attachApprovalSidePanelDrag(folderContent) {
+            const dragPanel = folderContent.querySelector('.approval-drag-panel');
+            const dragArea = folderContent.querySelector('.approval-drag-area');
+            if (!dragPanel || !dragArea || dragPanel.dataset.dragBound === 'true') {
+                return;
+            }
+
+            const handle = dragPanel.querySelector('.approval-drag-handle');
+            if (!handle) {
+                return;
+            }
+
+            dragArea.style.position = 'relative';
+            const quotationColumn = folderContent.querySelector('.approval-quotation');
+            const getQuoteHeight = () => quotationColumn ? quotationColumn.getBoundingClientRect().height : dragArea.getBoundingClientRect().height;
+            const getMaxOffset = () => {
+                const quoteHeight = getQuoteHeight();
+                return Math.max(0, quoteHeight - dragPanel.offsetHeight);
+            };
+            dragArea.style.paddingBottom = `${getMaxOffset()}px`;
+            dragPanel.style.position = 'absolute';
+            dragPanel.style.left = '0';
+            dragPanel.style.right = '0';
+            dragPanel.style.top = '0px';
+            dragPanel.style.transform = dragPanel.style.transform || 'translateY(0px)';
+            dragPanel.style.willChange = 'transform';
+            dragArea.style.minHeight = `${Math.max(dragArea.clientHeight, dragPanel.offsetHeight + getMaxOffset())}px`;
+
+            let startY = 0;
+            let startOffset = 0;
+            let dragging = false;
+
+            const onPointerMove = (event) => {
+                if (!dragging) return;
+                const delta = event.clientY - startY;
+                const maxTop = getMaxOffset();
+                const nextOffset = Math.min(Math.max(startOffset + delta, 0), maxTop);
+                dragPanel.style.transform = `translateY(${nextOffset}px)`;
+            };
+
+            const onPointerUp = () => {
+                if (!dragging) return;
+                dragging = false;
+                dragPanel.classList.remove('dragging');
+                document.removeEventListener('pointermove', onPointerMove);
+                document.removeEventListener('pointerup', onPointerUp);
+            };
+
+            handle.addEventListener('pointerdown', (event) => {
+                event.preventDefault();
+                dragging = true;
+                dragPanel.classList.add('dragging');
+                startY = event.clientY;
+                const currentTransform = dragPanel.style.transform || 'translateY(0px)';
+                const match = currentTransform.match(/translateY\((-?\d+(\.\d+)?)px\)/);
+                startOffset = match ? parseFloat(match[1]) : 0;
+                document.addEventListener('pointermove', onPointerMove);
+                document.addEventListener('pointerup', onPointerUp);
+            });
+
+            dragPanel.dataset.dragBound = 'true';
         }
         
         /*
@@ -3108,6 +3292,22 @@
             // Attach event listeners
             const editableFields = row.querySelectorAll('.editable-field');
             editableFields.forEach(function(field) {
+                const fieldName = field.getAttribute('data-field') || '';
+                if (fieldName === 'lineTotal') {
+                    field.addEventListener('input', function() {
+                        this.dataset.manual = 'true';
+                    });
+                }
+                if (fieldName === 'finalRate') {
+                    field.addEventListener('input', function() {
+                        this.dataset.manual = 'true';
+                    });
+                }
+                if (['quantity', 'unitRate', 'marginPercent', 'finalRate', 'lineTotal'].includes(fieldName)) {
+                    field.addEventListener('input', function() {
+                        recalculateApprovalQuotationTotals(quotationId, false);
+                    });
+                }
                 field.addEventListener('blur', function() {
                     recalculateApprovalQuotationTotals(quotationId, false);
                 });
@@ -3250,7 +3450,7 @@
                 const finalRateInput = row.querySelector('[data-field="finalRate"]');
                 let finalRate;
                 
-                if (finalRateInput && finalRateInput.tagName === 'INPUT') {
+                if (finalRateInput && finalRateInput.tagName === 'INPUT' && finalRateInput.dataset.manual === 'true') {
                     // User edited finalRate directly - use that value
                     finalRate = parseFloat(finalRateInput.value || 0) || 0;
                 } else {
@@ -3360,6 +3560,8 @@
             document.getElementById('checkedBy').value = '';
             document.getElementById('phoneNumber').value = '';
             document.getElementById('mobileNumber').value = '';
+            lastEmailContent = '';
+            lastFileContent = '';
             
             // Clear terms and conditions
             if (document.getElementById('termsText')) {
@@ -4062,6 +4264,8 @@
         
         // Array to store all approved quotations
         let approvedQuotations = [];
+        let lastEmailContent = '';
+        let lastFileContent = '';
         const defaultTermsText = document.getElementById('termsText')
             ? document.getElementById('termsText').value
             : '';
