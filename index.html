@@ -1887,6 +1887,16 @@
             if (termsText && termsText.value.trim() === '' && defaultTermsText) {
                 termsText.value = defaultTermsText;
             }
+            const quoteNumberInput = document.getElementById('quoteNumber');
+            if (quoteNumberInput && !quoteNumberInput.value.trim()) {
+                consumeNextQuoteNumber()
+                    .then(nextNumber => {
+                        quoteNumberInput.value = nextNumber;
+                    })
+                    .catch(error => {
+                        console.error('Failed to generate quote number:', error);
+                    });
+            }
         }
 
         function attachCreationCalculationListeners() {
