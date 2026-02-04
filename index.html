@@ -3371,6 +3371,9 @@
                 
                 Returns: Contact number if found, or empty string
             */
+            if (!contactDetails) {
+                return '';
+            }
             
             // Try to find phone number patterns
             // Common patterns: Phone: (555) 123-4567, Phone: 555-123-4567, Tel: 5551234567, etc.
