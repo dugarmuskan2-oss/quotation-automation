@@ -1696,7 +1696,7 @@
             return entryId;
         }
 
-        function buildCreationFolderContentFromDisplay() {
+        function buildCreationFolderContentFromDisplay(entryId) {
             const header = document.getElementById('creationQuotationHeader');
             const table = document.getElementById('quotationTable');
             const grandTotalText = document.getElementById('grandTotal')?.textContent || '';
@@ -1718,6 +1718,9 @@
                     <span>Total: ₹${grandTotalText}</span>
                 </div>
                 ${termsText ? `<hr class="terms-divider"><div class="terms-box"><h4>TERMS AND CONDITIONS</h4><div style="white-space: pre-wrap; font-size: 14px;">${escapeHtml(termsText)}</div></div>` : ''}
+                <button class="approve-btn" onclick="approveQuotationFromCreationFolder('${entryId}')">
+                    ✅ Create Quotation
+                </button>
             `;
         }
 
@@ -1752,11 +1755,26 @@
             if (!content) {
                 return;
             }
-            content.innerHTML = buildCreationFolderContentFromDisplay();
+            content.innerHTML = buildCreationFolderContentFromDisplay(entryId);
             const loading = document.getElementById(`creation-loading-${entryId}`);
             if (loading) {
                 loading.remove();
             }
+            attachCreationFolderCalculationListeners(entryId);
+        }
+
+        function removeCreationFolderEntry(entryId) {
+            const wrapper = document.getElementById(`folder-${entryId}`);
+            if (wrapper) {
+                wrapper.remove();
+            }
+            const loading = document.getElementById(`creation-loading-${entryId}`);
+            if (loading) {
+                loading.remove();
+            }
+            delete creationFolderState[entryId];
+            updateCreationEmptyMessage();
+            updateCreationContainerScrollLimit();
         }
 
         function markCreationFolderEntryError(entryId, message) {
@@ -1991,6 +2009,13 @@
                 // Hide any previous error messages
                 clearErrorMessage();
                 creationFolderId = createCreationFolderEntry(emailContent, file);
+                if (creationFolderId) {
+                    creationFolderState[creationFolderId] = {
+                        emailContent: emailContent || '',
+                        emailContentHtml: lastEmailHtmlContent || '',
+                        fileContent: fileContent || ''
+                    };
+                }
                 
                 // Step 5: Call AI API to extract data
                 const quotationData = await fetchQuotationData(emailContent, fileContent);
@@ -2510,6 +2535,99 @@
                 });
             });
         }
+
+        function attachCreationFolderCalculationListeners(entryId) {
+            const folderContent = document.getElementById(`folder-content-${entryId}`);
+            if (!folderContent) {
+                return;
+            }
+            const editableFields = folderContent.querySelectorAll('.editable-field');
+            editableFields.forEach(function(field) {
+                field.addEventListener('input', function() {
+                    if (this.getAttribute('data-field') === 'lineTotal') {
+                        this.dataset.manual = 'true';
+                    }
+                    recalculateRowInContainer(this, folderContent);
+                });
+                field.addEventListener('blur', function() {
+                    recalculateRowInContainer(this, folderContent);
+                });
+            });
+        }
+
+        function recalculateRowInContainer(changedField, container) {
+            const row = changedField.closest('tr');
+            if (!row || !row.classList.contains('item-row')) {
+                return;
+            }
+            const quantity = parseFloat(row.querySelector('[data-field="quantity"]')?.value || 0) || 0;
+            const unitRate = parseFloat(row.querySelector('[data-field="unitRate"]')?.value || 0) || 0;
+            const marginValue = row.querySelector('[data-field="marginPercent"]')?.value || '';
+            const marginPercent = marginValue === '' ? 0 : (parseFloat(marginValue) || 0);
+            const finalRateInput = row.querySelector('[data-field="finalRate"]');
+            const lineTotalInput = row.querySelector('[data-field="lineTotal"]');
+            const fieldChanged = changedField.getAttribute('data-field');
+
+            let finalRate;
+            if (fieldChanged === 'lineTotal' && lineTotalInput && lineTotalInput.dataset.manual === 'true') {
+                const manualLineTotal = parseFloat(lineTotalInput.value || 0) || 0;
+                if (quantity > 0) {
+                    finalRate = manualLineTotal / quantity;
+                    if (finalRateInput) {
+                        finalRateInput.value = finalRate.toFixed(2);
+                    }
+                } else {
+                    finalRate = 0;
+                }
+                lineTotalInput.dataset.manual = '';
+            } else if (fieldChanged === 'finalRate') {
+                finalRate = parseFloat(changedField.value || 0) || 0;
+            } else {
+                finalRate = unitRate * (1 + marginPercent / 100);
+                if (finalRateInput) {
+                    finalRateInput.value = finalRate.toFixed(2);
+                }
+            }
+
+            let lineTotal = quantity * finalRate;
+            if (fieldChanged === 'lineTotal' && lineTotalInput) {
+                const manualLineTotal = parseFloat(lineTotalInput.value || 0) || 0;
+                lineTotal = quantity > 0 ? (quantity * finalRate) : manualLineTotal;
+            }
+            if (lineTotalInput) {
+                lineTotalInput.value = lineTotal.toFixed(2);
+            }
+
+            recalculateAllTotalsInContainer(container);
+        }
+
+        function recalculateAllTotalsInContainer(container) {
+            if (!container) {
+                return;
+            }
+            const tableBody = container.querySelector('tbody');
+            if (!tableBody) {
+                return;
+            }
+            const itemRows = tableBody.querySelectorAll('.item-row');
+            let grandTotal = 0;
+            itemRows.forEach(function(row) {
+                const lineTotalInput = row.querySelector('[data-field="lineTotal"]');
+                let lineTotal = 0;
+                if (lineTotalInput && lineTotalInput.tagName === 'INPUT') {
+                    lineTotal = parseFloat(lineTotalInput.value || 0) || 0;
+                } else {
+                    const lineTotalSpan = row.querySelector('.line-total');
+                    const lineTotalText = lineTotalSpan ? lineTotalSpan.textContent.replace('₹', '').replace(/,/g, '') : '0';
+                    lineTotal = parseFloat(lineTotalText) || 0;
+                }
+                grandTotal += lineTotal;
+            });
+            const totalEl = container.querySelector('.grand-total span');
+            if (totalEl) {
+                totalEl.textContent = `Total: ₹${formatIndianNumber(grandTotal.toFixed(2))}`;
+            }
+        }
         
         /*
             ============================================
@@ -2928,6 +3046,9 @@
                     if (originalInput.tagName === 'TEXTAREA') {
                         clonedInput.textContent = currentValue;
                     }
+                    if (originalInput.id) {
+                        clonedInput.setAttribute('data-field', originalInput.id);
+                    }
                 }
             });
 
@@ -3037,6 +3158,95 @@
             saveQuotationToBackend(quotationWithStatus);
             persistAndRefreshApprovals();
             scrollToApprovalSection();
+        }
+
+        function getInputValueFromContainer(container, fieldId) {
+            if (!container) {
+                return '';
+            }
+            const input = container.querySelector(`[data-field="${fieldId}"]`) || container.querySelector(`#${fieldId}`);
+            return input ? input.value : '';
+        }
+
+        function getQuotationHeaderValuesFromContainer(container) {
+            const quotationDate = getInputValueFromContainer(container, 'quotationDate');
+            const customerName = getInputValueFromContainer(container, 'kindAttn') || '';
+            const projectName = getInputValueFromContainer(container, 'billTo') || '';
+            const shipTo = getInputValueFromContainer(container, 'shipTo') || '';
+            const phoneNumber = getInputValueFromContainer(container, 'phoneNumber') || '';
+            const mobileNumber = getInputValueFromContainer(container, 'mobileNumber') || '';
+            const preparedBy = getInputValueFromContainer(container, 'preparedBy') || '';
+            const assignedTo = getInputValueFromContainer(container, 'assignedTo') || '';
+            const checkedBy = getInputValueFromContainer(container, 'checkedBy') || '';
+            const quoteNumber = getInputValueFromContainer(container, 'quoteNumber') || '';
+            const contactDetails = mobileNumber || phoneNumber || '';
+            const grandTotal = getGrandTotalFromContainer(container);
+            const termsTextRaw = getTermsTextFromContainer(container);
+            const termsText = normalizeTermsText(termsTextRaw);
+
+            return {
+                quotationDate,
+                customerName,
+                projectName,
+                contactDetails,
+                phoneNumber,
+                mobileNumber,
+                shipTo,
+                preparedBy,
+                assignedTo,
+                checkedBy,
+                quoteNumber,
+                grandTotal,
+                termsText
+            };
+        }
+
+        function getGrandTotalFromContainer(container) {
+            if (!container) {
+                return '';
+            }
+            const totalEl = container.querySelector('.grand-total span');
+            const totalText = totalEl ? totalEl.textContent : '';
+            const match = totalText.match(/₹\s*([0-9,]+(?:\.\d+)?)/);
+            return match ? match[1] : '';
+        }
+
+        function getTermsTextFromContainer(container) {
+            if (!container) {
+                return '';
+            }
+            const termsEl = container.querySelector('.terms-box div');
+            return termsEl ? termsEl.textContent : '';
+        }
+
+        async function approveQuotationFromCreationFolder(entryId) {
+            const folderContent = document.getElementById(`folder-content-${entryId}`);
+            if (!folderContent) {
+                return;
+            }
+            const quoteNumberInput = folderContent.querySelector('[data-field="quoteNumber"], #quoteNumber');
+            if (quoteNumberInput && !quoteNumberInput.value.trim()) {
+                try {
+                    quoteNumberInput.value = await consumeNextQuoteNumber();
+                } catch (error) {
+                    console.error('Failed to generate quote number:', error);
+                }
+            }
+            const quotationHeaderValues = getQuotationHeaderValuesFromContainer(folderContent);
+            const quotationTable = folderContent.querySelector('table');
+            const tableClone = quotationTable ? cloneQuotationTableWithValues(quotationTable) : null;
+            const quotationHeader = folderContent.querySelector('.quotation-header');
+            const headerClone = quotationHeader ? cloneQuotationHeaderWithValues(quotationHeader) : null;
+            const quotationData = buildQuotationData(quotationHeaderValues, tableClone, headerClone);
+            const folderState = creationFolderState[entryId] || {};
+            quotationData.emailContent = folderState.emailContent || '';
+            quotationData.emailContentHtml = folderState.emailContentHtml || '';
+            quotationData.fileContent = folderState.fileContent || '';
+            const quotationWithStatus = addQuotationToApprovedQuotations(quotationData);
+            saveQuotationToBackend(quotationWithStatus);
+            persistAndRefreshApprovals();
+            scrollToApprovalSection();
+            removeCreationFolderEntry(entryId);
         }
         
         /*
@@ -4900,6 +5110,7 @@
         let lastEmailContent = '';
         let lastFileContent = '';
         let lastEmailHtmlContent = '';
+        let creationFolderState = {};
         let approvalSearchQuery = '';
         const defaultTermsText = document.getElementById('termsText')
             ? document.getElementById('termsText').value
