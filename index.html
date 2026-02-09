@@ -1717,10 +1717,23 @@
                 <div class="grand-total">
                     <span>Total: ₹${grandTotalText}</span>
                 </div>
-                ${termsText ? `<hr class="terms-divider"><div class="terms-box"><h4>TERMS AND CONDITIONS</h4><div style="white-space: pre-wrap; font-size: 14px;">${escapeHtml(termsText)}</div></div>` : ''}
+                ${buildEditableTermsBoxHtml(termsText)}
                 <button class="approve-btn" onclick="approveQuotationFromCreationFolder('${entryId}')">
                     ✅ Create Quotation
                 </button>
+            `;
+        }
+
+        function buildEditableTermsBoxHtml(termsText) {
+            if (!termsText) {
+                return '';
+            }
+            return `
+                <hr class="terms-divider">
+                <div class="terms-box">
+                    <h4>TERMS AND CONDITIONS</h4>
+                    <textarea class="terms-textarea" data-field="termsText" style="width:100%; min-height:160px; padding:6px 0; border:none; border-radius:0; font-family: inherit; font-size: 14px; background: transparent; outline: none;">${escapeHtml(termsText)}</textarea>
+                </div>
             `;
         }
 
@@ -1746,7 +1759,7 @@
                 <div class="grand-total">
                     <span>Total: ₹${quotationData.grandTotal || ''}</span>
                 </div>
-                ${termsText ? `<hr class="terms-divider"><div class="terms-box"><h4>TERMS AND CONDITIONS</h4><div style="white-space: pre-wrap; font-size: 14px;">${escapeHtml(termsText)}</div></div>` : ''}
+                ${buildEditableTermsBoxHtml(termsText)}
             `;
         }
 
@@ -3215,6 +3228,10 @@
             if (!container) {
                 return '';
             }
+            const termsTextarea = container.querySelector('.terms-box textarea');
+            if (termsTextarea) {
+                return termsTextarea.value || '';
+            }
             const termsEl = container.querySelector('.terms-box div');
             return termsEl ? termsEl.textContent : '';
         }
@@ -3435,7 +3452,7 @@
                         <div class="grand-total">
                             <span>Total: ₹${quotation.grandTotal}</span>
                         </div>
-                        ${termsText ? `<hr class="terms-divider"><div class="terms-box"><h4>TERMS AND CONDITIONS</h4><div style="white-space: pre-wrap; font-size: 14px;">${termsText}</div></div>` : ''}
+                        ${buildEditableTermsBoxHtml(termsText)}
                         <div style="margin-top: 10px; display: flex; gap: 10px;">
                             ${approveButtonHTML}
                             ${downloadButtonHTML}
@@ -4215,9 +4232,14 @@
             
             // Update terms text if it's a terms field
             if (changedInput.id === 'termsText' || changedInput.closest('.terms-box')) {
-                const termsElement = updatedContent.querySelector('.terms-box');
-                if (termsElement) {
-                    quotation.termsText = termsElement.textContent || termsElement.innerText;
+                const termsTextarea = updatedContent.querySelector('.terms-box textarea');
+                if (termsTextarea) {
+                    quotation.termsText = termsTextarea.value || '';
+                } else {
+                    const termsElement = updatedContent.querySelector('.terms-box');
+                    if (termsElement) {
+                        quotation.termsText = termsElement.textContent || termsElement.innerText;
+                    }
                 }
             }
             
