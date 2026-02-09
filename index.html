@@ -775,6 +775,8 @@
             <p id="noCreationQuotation" style="text-align: center; color: #999; padding: 20px;">
                 Generate a quotation to see it here.
             </p>
+            <div id="creationFilesContainer"></div>
+            <div id="creationFilesContainer"></div>
             
             <!-- Quotation Header (hidden initially) -->
             <div class="quotation-header" id="creationQuotationHeader" style="display: none;">
@@ -1647,6 +1649,163 @@
             hideError();
         }
 
+        function getCreationFilesContainer() {
+            return document.getElementById('creationFilesContainer');
+        }
+
+        function buildCreationFolderTitle(emailContent, file) {
+            const trimmed = (emailContent || '').trim();
+            if (file && file.name) {
+                return `File: ${file.name}`;
+            }
+            if (trimmed) {
+                const snippet = trimmed.replace(/\s+/g, ' ').slice(0, 40);
+                return `Email: ${snippet}${trimmed.length > 40 ? '…' : ''}`;
+            }
+            return 'Email Quotation';
+        }
+
+        function createCreationFolderEntry(emailContent, file) {
+            const container = getCreationFilesContainer();
+            if (!container) {
+                return null;
+            }
+            const entryId = `creation-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            const title = buildCreationFolderTitle(emailContent, file);
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'quotation-folder';
+            wrapper.id = `folder-${entryId}`;
+            wrapper.innerHTML = `
+                <div class="quotation-folder-header" onclick="toggleQuotationFolder('${entryId}')">
+                    <span>
+                        <span class="folder-icon">📁</span>
+                        ${escapeHtml(title)}
+                    </span>
+                    <span style="display: inline-flex; align-items: center; gap: 6px;">
+                        <span id="creation-loading-${entryId}" class="creation-loading-icon" aria-label="Processing" style="color:#666; font-size:12px;">⏳</span>
+                        <span class="folder-toggle-icon">▶</span>
+                    </span>
+                </div>
+                <div class="quotation-folder-content" id="folder-content-${entryId}">
+                </div>
+            `;
+
+            container.prepend(wrapper);
+            updateCreationEmptyMessage();
+            return entryId;
+        }
+
+        function buildCreationFolderContentFromDisplay() {
+            const header = document.getElementById('creationQuotationHeader');
+            const table = document.getElementById('quotationTable');
+            const grandTotalText = document.getElementById('grandTotal')?.textContent || '';
+            const termsValue = document.getElementById('termsText')?.value || '';
+            const headerClone = header ? cloneQuotationHeaderWithValues(header) : null;
+            const tableClone = table ? cloneQuotationTableWithValues(table) : null;
+            const termsText = termsValue || defaultTermsText || '';
+            if (headerClone) {
+                stripIdsFromClone(headerClone);
+            }
+            if (tableClone) {
+                stripIdsFromClone(tableClone);
+            }
+
+            return `
+                ${headerClone ? headerClone.outerHTML : ''}
+                ${tableClone ? tableClone.outerHTML : ''}
+                <div class="grand-total">
+                    <span>Total: ₹${grandTotalText}</span>
+                </div>
+                ${termsText ? `<hr class="terms-divider"><div class="terms-box"><h4>TERMS AND CONDITIONS</h4><div style="white-space: pre-wrap; font-size: 14px;">${escapeHtml(termsText)}</div></div>` : ''}
+            `;
+        }
+
+        function stripIdsFromClone(cloneRoot) {
+            if (!cloneRoot) {
+                return;
+            }
+            if (cloneRoot.getAttribute && cloneRoot.getAttribute('id')) {
+                cloneRoot.removeAttribute('id');
+            }
+            const nodesWithId = cloneRoot.querySelectorAll ? cloneRoot.querySelectorAll('[id]') : [];
+            nodesWithId.forEach(node => node.removeAttribute('id'));
+        }
+
+        function buildCreationFolderContentFromData(quotationData) {
+            if (!quotationData) {
+                return '';
+            }
+            const termsText = quotationData.termsText || defaultTermsText || '';
+            return `
+                ${quotationData.headerHTML || ''}
+                ${quotationData.tableHTML || ''}
+                <div class="grand-total">
+                    <span>Total: ₹${quotationData.grandTotal || ''}</span>
+                </div>
+                ${termsText ? `<hr class="terms-divider"><div class="terms-box"><h4>TERMS AND CONDITIONS</h4><div style="white-space: pre-wrap; font-size: 14px;">${escapeHtml(termsText)}</div></div>` : ''}
+            `;
+        }
+
+        function finalizeCreationFolderEntry(entryId) {
+            const content = document.getElementById(`folder-content-${entryId}`);
+            if (!content) {
+                return;
+            }
+            content.innerHTML = buildCreationFolderContentFromDisplay();
+            const loading = document.getElementById(`creation-loading-${entryId}`);
+            if (loading) {
+                loading.remove();
+            }
+        }
+
+        function markCreationFolderEntryError(entryId, message) {
+            const content = document.getElementById(`folder-content-${entryId}`);
+            if (!content) {
+                return;
+            }
+            content.innerHTML = `
+                <div style="padding: 8px 0; color: #c62828; display: flex; align-items: center; gap: 8px;">
+                    <span>⚠️</span>
+                    <span>${escapeHtml(message)}</span>
+                </div>
+            `;
+            const loading = document.getElementById(`creation-loading-${entryId}`);
+            if (loading) {
+                loading.remove();
+            }
+        }
+
+        function updateCreationContainerScrollLimit() {
+            const container = getCreationFilesContainer();
+            if (!container) {
+                return;
+            }
+            const folders = Array.from(container.querySelectorAll('.quotation-folder'));
+            if (folders.length <= 5) {
+                container.style.maxHeight = '';
+                container.style.overflowY = '';
+                return;
+            }
+            let totalHeight = 0;
+            for (let i = 0; i < Math.min(5, folders.length); i += 1) {
+                totalHeight += folders[i].getBoundingClientRect().height;
+            }
+            totalHeight += 10;
+            container.style.maxHeight = `${Math.ceil(totalHeight)}px`;
+            container.style.overflowY = 'auto';
+        }
+
+        function updateCreationEmptyMessage() {
+            const noCreationMsg = document.getElementById('noCreationQuotation');
+            const container = getCreationFilesContainer();
+            if (!noCreationMsg || !container) {
+                return;
+            }
+            const hasFolders = container.querySelectorAll('.quotation-folder').length > 0;
+            noCreationMsg.style.display = hasFolders ? 'none' : 'block';
+        }
+
         function sanitizeEmailHtmlTable(html) {
             if (!html) {
                 return '';
@@ -1810,7 +1969,7 @@
                 async function means this function can wait for things to complete
                 (like reading a file) before continuing
             */
-            
+            let creationFolderId = null;
             try {
                 // Step 1: Get email content from textarea
                 const { emailContent, fileInput, file } = getInputsForQuotation();
@@ -1824,25 +1983,37 @@
                 if (!ensureInputProvided(emailContent, fileContent)) {
                     return; // Stop here if no input
                 }
+                const emailInput = document.getElementById('emailContent');
+                if (emailInput) {
+                    emailInput.value = '';
+                }
                 
                 // Hide any previous error messages
                 clearErrorMessage();
+                creationFolderId = createCreationFolderEntry(emailContent, file);
                 
                 // Step 5: Call AI API to extract data
-                // Show loading message
-                showAiProcessingMessage();
-                
                 const quotationData = await fetchQuotationData(emailContent, fileContent);
-                
-                // Hide loading message
-                clearErrorMessage();
-                
+
                 // Step 6: Display the quotation
                 renderQuotation(quotationData);
+                if (creationFolderId) {
+                    finalizeCreationFolderEntry(creationFolderId);
+                    updateCreationContainerScrollLimit();
+                }
                 
             } catch (error) {
                 // If something goes wrong, show error message
                 showError("An error occurred: " + error.message);
+                if (creationFolderId) {
+                    markCreationFolderEntryError(creationFolderId, error.message || 'Failed to generate quotation.');
+                    updateCreationContainerScrollLimit();
+                }
+            } finally {
+                if (creationFolderId) {
+                    clearCreationSection();
+                    updateCreationEmptyMessage();
+                }
             }
         }
         
