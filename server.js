@@ -377,6 +377,22 @@ async function saveInstructionsToGCS(content) {
     await uploadToGCS(Buffer.from(content, 'utf8'), 'instructions.txt', '');
 }
 
+async function readDefaultTermsFromGCS() {
+    try {
+        const buffer = await readFileFromGCS('default-terms.txt');
+        return buffer.toString('utf8');
+    } catch (error) {
+        if (error.code === 404) {
+            return null;
+        }
+        throw error;
+    }
+}
+
+async function saveDefaultTermsToGCS(content) {
+    await uploadToGCS(Buffer.from(content, 'utf8'), 'default-terms.txt', '');
+}
+
 // AWS S3 Helper Functions
 async function uploadToS3(fileBuffer, fileName, folder = 'rates') {
     if (!s3Client || !s3BucketName) {
@@ -478,6 +494,22 @@ async function readInstructionsFromS3() {
 
 async function saveInstructionsToS3(content) {
     await uploadToS3(Buffer.from(content, 'utf8'), 'instructions.txt', '');
+}
+
+async function readDefaultTermsFromS3() {
+    try {
+        const buffer = await readFileFromS3('default-terms.txt');
+        return buffer.toString('utf8');
+    } catch (error) {
+        if (error.name === 'NoSuchKey' || error.$metadata?.httpStatusCode === 404) {
+            return null;
+        }
+        throw error;
+    }
+}
+
+async function saveDefaultTermsToS3(content) {
+    await uploadToS3(Buffer.from(content, 'utf8'), 'default-terms.txt', '');
 }
 
 // ===============================
@@ -928,6 +960,72 @@ app.get('/api/get-instructions', async (req, res) => {
         console.error('Error getting instructions:', error);
         res.status(500).json({ 
             error: 'Failed to get instructions',
+            details: error.message
+        });
+    }
+});
+
+// Save default terms and conditions to server (shared across all users/devices)
+app.post('/api/save-default-terms', express.json(), async (req, res) => {
+    try {
+        const { defaultTerms } = req.body;
+
+        if (defaultTerms === undefined || defaultTerms === null) {
+            return res.status(400).json({ error: 'Default terms text is required' });
+        }
+
+        const content = typeof defaultTerms === 'string' ? defaultTerms : String(defaultTerms);
+
+        if (useGoogleCloud && bucket) {
+            await saveDefaultTermsToGCS(content);
+        } else if (useAWS && s3Client) {
+            await saveDefaultTermsToS3(content);
+        } else {
+            const defaultTermsFile = path.join(baseDir, 'default-terms.txt');
+            fs.writeFileSync(defaultTermsFile, content, 'utf8');
+        }
+
+        res.json({
+            success: true,
+            message: 'Default terms saved successfully'
+        });
+    } catch (error) {
+        console.error('Error saving default terms:', error);
+        res.status(500).json({
+            error: 'Failed to save default terms',
+            details: error.message
+        });
+    }
+});
+
+// Get default terms and conditions from server (shared across all users/devices)
+app.get('/api/get-default-terms', async (req, res) => {
+    try {
+        let content = null;
+        let hasFile = false;
+
+        if (useGoogleCloud && bucket) {
+            content = await readDefaultTermsFromGCS();
+            hasFile = content !== null;
+        } else if (useAWS && s3Client) {
+            content = await readDefaultTermsFromS3();
+            hasFile = content !== null;
+        } else {
+            const defaultTermsFile = path.join(baseDir, 'default-terms.txt');
+            if (fs.existsSync(defaultTermsFile)) {
+                content = fs.readFileSync(defaultTermsFile, 'utf8');
+                hasFile = true;
+            }
+        }
+
+        res.json({
+            hasFile: hasFile,
+            content: content || ''
+        });
+    } catch (error) {
+        console.error('Error getting default terms:', error);
+        res.status(500).json({
+            error: 'Failed to get default terms',
             details: error.message
         });
     }

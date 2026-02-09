@@ -733,6 +733,16 @@
                     </div>
                 </div>
                 
+                <!-- Default Terms and Conditions -->
+                <div style="margin-top: 20px;">
+                    <label for="defaultTermsConfig">Default Terms and Conditions (used when a quotation has no terms):</label>
+                    <textarea id="defaultTermsConfig" placeholder="Paste default terms here. Save to apply for all new quotations." style="width: 100%; min-height: 120px; padding: 8px; margin-top: 8px; border: 2px solid #ddd; border-radius: 4px; font-family: inherit;"></textarea>
+                    <button type="button" class="upload-btn" onclick="saveDefaultTerms()" style="margin-top: 10px; width: 100%;">
+                        💾 Save Default Terms
+                    </button>
+                    <p id="defaultTermsStatus" style="margin-top: 8px; font-size: 12px; color: #666;"></p>
+                </div>
+                
                 <!-- Uploaded Files Management Section -->
                 <div class="input-section" id="filesManagementSection" style="margin-top: 30px;">
                     <h2>Uploaded Rate Files</h2>
@@ -1320,6 +1330,75 @@
                 if (savedInstructions) {
                     document.getElementById('instructionsText').value = savedInstructions;
                 }
+            }
+        }
+        
+        /*
+            ============================================
+            SAVE DEFAULT TERMS FUNCTION
+            ============================================
+            Saves default terms and conditions to server (shared across all devices)
+        */
+        async function saveDefaultTerms() {
+            const textarea = document.getElementById('defaultTermsConfig');
+            const statusEl = document.getElementById('defaultTermsStatus');
+            if (!textarea || !statusEl) return;
+            const value = textarea.value;
+            try {
+                statusEl.textContent = 'Saving...';
+                statusEl.style.color = '#666';
+                const response = await fetch(`${API_BASE_URL}/save-default-terms`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ defaultTerms: value })
+                });
+                const result = await safeJsonParse(response);
+                if (response.ok) {
+                    defaultTermsText = value;
+                    statusEl.textContent = '✓ Default terms saved (shared with all devices)';
+                    statusEl.style.color = '#4CAF50';
+                } else {
+                    throw new Error(result.error || 'Failed to save default terms');
+                }
+            } catch (error) {
+                statusEl.textContent = `Error: ${error.message}`;
+                statusEl.style.color = '#f44336';
+                console.error('Error saving default terms:', error);
+            }
+        }
+        
+        /*
+            ============================================
+            LOAD DEFAULT TERMS FUNCTION
+            ============================================
+            Loads default terms from server and sets global defaultTermsText
+        */
+        async function loadDefaultTerms() {
+            const textarea = document.getElementById('defaultTermsConfig');
+            const statusEl = document.getElementById('defaultTermsStatus');
+            const fallback = document.getElementById('termsText') ? document.getElementById('termsText').value : '';
+            try {
+                const response = await fetch(`${API_BASE_URL}/get-default-terms`);
+                const result = await safeJsonParse(response);
+                if (response.ok && result.hasFile && result.content !== undefined) {
+                    defaultTermsText = result.content || fallback;
+                    if (textarea) textarea.value = result.content || '';
+                    if (statusEl) {
+                        statusEl.textContent = '✓ Default terms loaded from server';
+                        statusEl.style.color = '#4CAF50';
+                    }
+                } else {
+                    defaultTermsText = fallback;
+                    if (textarea) textarea.value = fallback;
+                    if (statusEl) {
+                        statusEl.textContent = 'Using in-page terms as default (save here to set server default)';
+                        statusEl.style.color = '#999';
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading default terms:', error);
+                defaultTermsText = fallback;
+                if (textarea) textarea.value = fallback;
             }
         }
         
@@ -5134,9 +5213,10 @@
         let lastEmailHtmlContent = '';
         let creationFolderState = {};
         let approvalSearchQuery = '';
-        const defaultTermsText = document.getElementById('termsText')
-            ? document.getElementById('termsText').value
-            : '';
+        let defaultTermsText = (function() {
+            const el = document.getElementById('termsText');
+            return el ? el.value : '';
+        })();
         
         /*
             ============================================
@@ -5151,8 +5231,11 @@
         // Load saved quotations (backend first, local fallback)
         initQuotations();
         
-        // Load instructions from localStorage
+        // Load instructions from server
         loadInstructions();
+        
+        // Load default terms from server (sets defaultTermsText for new quotations)
+        loadDefaultTerms();
         
         // Load and display uploaded files
         loadUploadedFiles();
