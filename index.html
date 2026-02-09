@@ -532,6 +532,12 @@
             padding-left: 16px;
         }
 
+        .terms-box textarea,
+        .terms-textarea {
+            min-height: 380px;
+            resize: vertical;
+        }
+
         .terms-divider {
             margin-top: 22px;
             border: 0;
@@ -855,7 +861,7 @@
             <!-- Terms and Conditions -->
             <div class="terms-box" id="termsBox" style="display: none;">
                 <h4>TERMS AND CONDITIONS</h4>
-                <textarea id="termsText" style="width:100%; min-height:160px; padding:6px 0; border:none; border-radius:0; font-family: inherit; font-size: 14px; background: transparent; outline: none;">
+                <textarea id="termsText" class="terms-textarea" style="width:100%; padding:6px 0; border:none; border-radius:0; font-family: inherit; font-size: 14px; background: transparent; outline: none;">
 1. GST: exclusive and rate of GST is 18% or 9% + 9%
 2. TCS: extra
 3. Delivery period: will be confirmed at the time of finalisation of order.
@@ -1811,7 +1817,7 @@
                 <hr class="terms-divider">
                 <div class="terms-box">
                     <h4>TERMS AND CONDITIONS</h4>
-                    <textarea class="terms-textarea" data-field="termsText" style="width:100%; min-height:160px; padding:6px 0; border:none; border-radius:0; font-family: inherit; font-size: 14px; background: transparent; outline: none;">${escapeHtml(termsText)}</textarea>
+                    <textarea class="terms-textarea" data-field="termsText" style="width:100%; padding:6px 0; border:none; border-radius:0; font-family: inherit; font-size: 14px; background: transparent; outline: none;">${escapeHtml(termsText)}</textarea>
                 </div>
             `;
         }
