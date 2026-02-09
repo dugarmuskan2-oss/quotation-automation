@@ -33,18 +33,18 @@
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: #f5f5f5;
-            padding: 20px;
+            padding: 0;
             line-height: 1.6;
         }
         
         /* Container - wraps all content */
         .container {
-            max-width: 1200px;
-            margin: 0 auto;
+            max-width: 100%;
+            margin: 0;
             background-color: white;
-            padding: 30px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+            border-radius: 0;
+            box-shadow: none;
         }
         
         /* Page title */
@@ -222,7 +222,8 @@
         .approval-layout {
             display: flex;
             gap: 16px;
-            align-items: flex-start;
+            align-items: stretch;
+            position: relative;
         }
 
         .approval-quotation {
@@ -230,9 +231,29 @@
             min-width: 0;
         }
 
+        .approval-quotation table {
+            width: 100%;
+        }
+
         .approval-side {
-            flex: 0 0 320px;
-            max-width: 360px;
+            flex: 0 0 520px;
+            max-width: 580px;
+        }
+
+        .approval-resize-handle {
+            width: 6px;
+            height: 100%;
+            cursor: col-resize;
+            border-radius: 4px;
+            background: #9e9e9e;
+            flex: 0 0 6px;
+            margin-top: 0;
+            box-shadow: inset 0 0 0 1px #7f7f7f;
+            align-self: stretch;
+        }
+
+        .approval-quotation {
+            font-size: 12px;
         }
 
         .approval-scroll-panel {
@@ -258,6 +279,69 @@
             font-size: 11px;
             color: #666;
             margin-bottom: 6px;
+        }
+
+        .email-table-preview table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+            font-size: 12px;
+        }
+
+        .email-table-preview th,
+        .email-table-preview td {
+            border: 1px solid #ddd;
+            padding: 4px 6px;
+            text-align: left;
+            vertical-align: top;
+            word-break: break-word;
+        }
+
+        .email-html-preview {
+            white-space: pre-wrap;
+            font-size: 12px;
+            background: #fafafa;
+            border: 1px solid #eee;
+            padding: 8px;
+            border-radius: 4px;
+            overflow-y: visible;
+            overflow-x: auto;
+        }
+
+        .email-html-preview table {
+            white-space: normal;
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: auto;
+        }
+
+        .email-html-preview th,
+        .email-html-preview td {
+            white-space: normal;
+            word-break: break-word;
+        }
+
+        .email-html-preview th,
+        .email-html-preview td {
+            border: 1px solid #ddd;
+            padding: 4px 6px;
+            text-align: left;
+            vertical-align: top;
+            word-break: break-word;
+        }
+
+        .email-table-preview table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+
+        .email-table-preview th,
+        .email-table-preview td {
+            border: 1px solid #ddd;
+            padding: 4px 6px;
+            text-align: left;
+            vertical-align: top;
         }
 
         @media (max-width: 900px) {
@@ -1563,6 +1647,143 @@
             hideError();
         }
 
+        function sanitizeEmailHtmlTable(html) {
+            if (!html) {
+                return '';
+            }
+            const wrapper = document.createElement('div');
+            wrapper.innerHTML = html;
+            const table = wrapper.querySelector('table');
+            if (!table) {
+                return '';
+            }
+            const allowedTags = new Set(['TABLE', 'THEAD', 'TBODY', 'TFOOT', 'TR', 'TH', 'TD']);
+            table.querySelectorAll('*').forEach(node => {
+                if (!allowedTags.has(node.tagName)) {
+                    const text = node.textContent || '';
+                    const textNode = document.createTextNode(text);
+                    node.replaceWith(textNode);
+                    return;
+                }
+                node.removeAttribute('style');
+            });
+            table.removeAttribute('style');
+            return table.outerHTML;
+        }
+
+        function sanitizeEmailHtmlForPreview(html) {
+            if (!html) {
+                return '';
+            }
+            const wrapper = document.createElement('div');
+            wrapper.innerHTML = html;
+            wrapper.querySelectorAll('script, style, link, meta').forEach(node => node.remove());
+            const allowedTags = new Set([
+                'DIV', 'P', 'BR', 'SPAN', 'STRONG', 'B', 'EM', 'I', 'U',
+                'TABLE', 'THEAD', 'TBODY', 'TFOOT', 'TR', 'TH', 'TD',
+                'UL', 'OL', 'LI'
+            ]);
+            wrapper.querySelectorAll('*').forEach(node => {
+                if (!allowedTags.has(node.tagName)) {
+                    const text = node.textContent || '';
+                    node.replaceWith(document.createTextNode(text));
+                    return;
+                }
+                Array.from(node.attributes).forEach(attr => {
+                    if (attr.name.toLowerCase().startsWith('on')) {
+                        node.removeAttribute(attr.name);
+                    }
+                });
+            });
+            return wrapper.innerHTML;
+        }
+
+        function buildEmailContentPreviewHTML(quotation) {
+            const htmlPreview = sanitizeEmailHtmlForPreview(quotation.emailContentHtml);
+            if (htmlPreview) {
+                return `<div class="email-html-preview">${htmlPreview}</div>`;
+            }
+            const textTable = buildTableFromTabbedText(quotation.emailContent || '');
+            if (textTable) {
+                return `<div class="email-table-preview">${textTable}</div>`;
+            }
+            return `<div style="white-space: pre-wrap; font-size: 12px; background:#fafafa; border:1px solid #eee; padding:8px; border-radius:4px;">${escapeHtml(quotation.emailContent || '')}</div>`;
+        }
+
+        function extractSurroundingTextFromHtml(html) {
+            if (!html) {
+                return { before: '', after: '' };
+            }
+            const wrapper = document.createElement('div');
+            wrapper.innerHTML = html;
+            const tables = wrapper.querySelectorAll('table');
+            if (!tables.length) {
+                const text = wrapper.textContent || '';
+                return { before: text.replace(/\s+\n/g, '\n').trim(), after: '' };
+            }
+            const firstTable = tables[0];
+            const beforeWrapper = document.createElement('div');
+            const afterWrapper = document.createElement('div');
+            let passedTable = false;
+            Array.from(wrapper.childNodes).forEach(node => {
+                if (node === firstTable) {
+                    passedTable = true;
+                    return;
+                }
+                if (!passedTable) {
+                    beforeWrapper.appendChild(node.cloneNode(true));
+                } else {
+                    afterWrapper.appendChild(node.cloneNode(true));
+                }
+            });
+            const beforeText = (beforeWrapper.textContent || '').replace(/\s+\n/g, '\n').trim();
+            const afterText = (afterWrapper.textContent || '').replace(/\s+\n/g, '\n').trim();
+            return { before: beforeText, after: afterText };
+        }
+
+        function buildTableFromTabbedText(text) {
+            const raw = String(text || '').trim();
+            if (!raw) {
+                return '';
+            }
+            if (!raw.includes('\t')) {
+                return '';
+            }
+            const rows = raw.split(/\r?\n/).filter(line => line.trim());
+            if (rows.length < 2) {
+                return '';
+            }
+            const cells = rows.map(row => row.split('\t'));
+            const maxCols = Math.max(...cells.map(row => row.length));
+            const normalized = cells.map(row => {
+                const filled = row.slice();
+                while (filled.length < maxCols) {
+                    filled.push('');
+                }
+                return filled;
+            });
+            const header = normalized[0];
+            const bodyRows = normalized.slice(1);
+            const headerHtml = header.map(cell => `<th>${escapeHtml(cell)}</th>`).join('');
+            const bodyHtml = bodyRows.map(row => {
+                const cols = row.map(cell => `<td>${escapeHtml(cell)}</td>`).join('');
+                return `<tr>${cols}</tr>`;
+            }).join('');
+            return `<table><thead><tr>${headerHtml}</tr></thead><tbody>${bodyHtml}</tbody></table>`;
+        }
+
+        function attachEmailPasteListener() {
+            const emailInput = document.getElementById('emailContent');
+            if (!emailInput || emailInput.dataset.pasteBound === 'true') {
+                return;
+            }
+            emailInput.addEventListener('paste', (event) => {
+                const html = event.clipboardData ? event.clipboardData.getData('text/html') : '';
+                lastEmailHtmlContent = html || '';
+            });
+            emailInput.dataset.pasteBound = 'true';
+        }
+
         function formatQuoteNumber(numberValue) {
             return `DSC-${numberValue}`;
         }
@@ -2639,6 +2860,7 @@
             
             const quotationData = buildQuotationData(quotationHeaderValues, tableClone, headerClone);
             quotationData.emailContent = document.getElementById('emailContent')?.value || lastEmailContent || '';
+            quotationData.emailContentHtml = lastEmailHtmlContent || '';
             quotationData.fileContent = lastFileContent || '';
             const quotationWithStatus = addQuotationToApprovedQuotations(quotationData);
             saveQuotationToBackend(quotationWithStatus);
@@ -2838,14 +3060,15 @@
                             ${downloadButtonHTML}
                         </div>
                     </div>
+                    <div class="approval-resize-handle" aria-label="Resize panels" style="height: 100%; background: #c7c7c7; align-self: stretch; min-height: 200px;"></div>
                     ${sidePanelHTML}
                 </div>
             `;
         }
 
         function buildApprovalSidePanelHTML(quotation) {
-            const emailBlock = quotation.emailContent
-                ? `<div style="margin-top:10px;"><strong>Email Content</strong><div style="white-space: pre-wrap; font-size: 12px; background:#fafafa; border:1px solid #eee; padding:8px; border-radius:4px;">${escapeHtml(quotation.emailContent)}</div></div>`
+            const emailBlock = quotation.emailContent || quotation.emailContentHtml
+                ? `<div style="margin-top:10px;"><strong>Email Content</strong>${buildEmailContentPreviewHTML(quotation)}</div>`
                 : '';
             const fileBlock = quotation.fileContent
                 ? `<div style="margin-top:10px;"><strong>File Content</strong><div style="white-space: pre-wrap; font-size: 12px; background:#fafafa; border:1px solid #eee; padding:8px; border-radius:4px;">${escapeHtml(quotation.fileContent)}</div></div>`
@@ -2866,6 +3089,26 @@
                     </div>
                 </div>
             `;
+        }
+
+        function updateEmailPreviewScroll(folderContent) {
+            const quoteColumn = folderContent.querySelector('.approval-quotation');
+            const emailPreview = folderContent.querySelector('.email-html-preview');
+            if (!quoteColumn || !emailPreview) {
+                return;
+            }
+            const quoteHeight = quoteColumn.getBoundingClientRect().height;
+            if (!quoteHeight) {
+                return;
+            }
+            const threshold = Math.max(quoteHeight * 0.5, 200);
+            if (emailPreview.scrollHeight > threshold) {
+                emailPreview.style.maxHeight = `${Math.floor(threshold)}px`;
+                emailPreview.style.overflowY = 'auto';
+            } else {
+                emailPreview.style.maxHeight = '';
+                emailPreview.style.overflowY = 'visible';
+            }
         }
 
         function renderApprovedQuotationsHTML(container, allQuotationsHTML) {
@@ -3199,6 +3442,8 @@
                 }
 
                 attachApprovalSidePanelDrag(folderContent);
+                updateEmailPreviewScroll(folderContent);
+                attachApprovalResizeHandle(folderContent);
             });
         }
 
@@ -3263,6 +3508,58 @@
             });
 
             dragPanel.dataset.dragBound = 'true';
+        }
+
+        function applyApprovalSideWidth(layout, sidePanel, widthPx) {
+            if (!layout || !sidePanel) {
+                return;
+            }
+            const safeWidth = Math.max(320, Math.min(widthPx, 900));
+            sidePanel.style.flex = `0 0 ${safeWidth}px`;
+            sidePanel.style.maxWidth = `${safeWidth}px`;
+            layout.dataset.emailWidth = String(safeWidth);
+        }
+
+        function attachApprovalResizeHandle(folderContent) {
+            const layout = folderContent.querySelector('.approval-layout');
+            const handle = folderContent.querySelector('.approval-resize-handle');
+            const sidePanel = folderContent.querySelector('.approval-side');
+            if (!layout || !handle || !sidePanel || handle.dataset.bound === 'true') {
+                return;
+            }
+
+            let startX = 0;
+            let startWidth = 0;
+            let resizing = false;
+
+            const onMove = (event) => {
+                if (!resizing) return;
+                const delta = event.clientX - startX;
+                applyApprovalSideWidth(layout, sidePanel, startWidth - delta);
+            };
+
+            const onUp = () => {
+                if (!resizing) return;
+                resizing = false;
+                document.removeEventListener('pointermove', onMove);
+                document.removeEventListener('pointerup', onUp);
+            };
+
+            handle.addEventListener('pointerdown', (event) => {
+                event.preventDefault();
+                resizing = true;
+                startX = event.clientX;
+                startWidth = sidePanel.getBoundingClientRect().width;
+                document.addEventListener('pointermove', onMove);
+                document.addEventListener('pointerup', onUp);
+            });
+
+            const storedWidth = parseInt(layout.dataset.emailWidth || '', 10);
+            if (Number.isFinite(storedWidth)) {
+                applyApprovalSideWidth(layout, sidePanel, storedWidth);
+            }
+
+            handle.dataset.bound = 'true';
         }
         
         /*
@@ -4336,6 +4633,7 @@
 
         // Ensure logo loads correctly on localhost
         document.addEventListener('DOMContentLoaded', setLogoSource);
+        document.addEventListener('DOMContentLoaded', attachEmailPasteListener);
         
         /*
             ============================================
@@ -4430,6 +4728,7 @@
         let approvedQuotations = [];
         let lastEmailContent = '';
         let lastFileContent = '';
+        let lastEmailHtmlContent = '';
         let approvalSearchQuery = '';
         const defaultTermsText = document.getElementById('termsText')
             ? document.getElementById('termsText').value
