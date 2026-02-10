@@ -2161,8 +2161,9 @@
                 // Step 5: Call AI API (sends files as multipart when present)
                 const quotationData = await fetchQuotationData(emailContent, fileContent, files, file);
 
-                // Store server-returned extracted content so the creation folder and approval panel can show it
-                if (creationFolderId && quotationData.enquiryContent) {
+                // Only show content under "File Content" when the user actually uploaded a file.
+                // When only email was pasted, enquiryContent is from email and must not be shown as file content.
+                if (creationFolderId && hasFiles && quotationData.enquiryContent) {
                     creationFolderState[creationFolderId].fileContent = quotationData.enquiryContent;
                     quotationData.fileContent = quotationData.enquiryContent;
                 }

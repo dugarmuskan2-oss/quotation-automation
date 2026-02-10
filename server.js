@@ -851,8 +851,20 @@ app.post('/api/save-instructions', express.json(), async (req, res) => {
     }
 });
 
+// API key check for integration endpoints (Cloud Run, etc.). When QUOTATION_API_KEY is set,
+// requests must send header X-API-Key with the same value; otherwise 401.
+function requireQuotationApiKey(req, res, next) {
+    const expected = process.env.QUOTATION_API_KEY;
+    if (!expected) return next();
+    const provided = req.get('X-API-Key');
+    if (provided !== expected) {
+        return res.status(401).json({ error: 'Unauthorized', message: 'Invalid or missing X-API-Key' });
+    }
+    next();
+}
+
 // Get instructions from server (shared across all users/devices)
-app.get('/api/get-instructions', async (req, res) => {
+app.get('/api/get-instructions', requireQuotationApiKey, async (req, res) => {
     try {
         let content = null;
         let hasFile = false;
@@ -977,7 +989,7 @@ function writeQuotationsToFile(quotations) {
 }
 
 // Save quotation to DynamoDB (or file when DynamoDB not configured)
-app.post('/api/save-quotation', async (req, res) => {
+app.post('/api/save-quotation', requireQuotationApiKey, async (req, res) => {
     try {
         const { quotation } = req.body || {};
         if (!quotation || !quotation.id) {
@@ -1092,7 +1104,7 @@ const isMultipart = (req) => {
     const ct = (req.headers['content-type'] || '').toLowerCase();
     return ct.indexOf('multipart/form-data') === 0 || req.is('multipart/form-data');
 };
-app.post('/api/generate-quotation', (req, res, next) => {
+app.post('/api/generate-quotation', requireQuotationApiKey, (req, res, next) => {
     if (isMultipart(req)) {
         return enquiryUpload.fields([{ name: 'enquiryFiles', maxCount: 10 }])(req, res, next);
     }
