@@ -823,7 +823,7 @@
                         <div class="meta-row"><span>PREPARED BY</span><input type="text" id="preparedBy" class="header-editable" style="width: 140px;"></div>
                         <div class="meta-row"><span>ASSIGNED TO</span><input type="text" id="assignedTo" class="header-editable" style="width: 140px;"></div>
                         <div class="meta-row"><span>CHECKED BY</span><input type="text" id="checkedBy" class="header-editable" style="width: 140px;"></div>
-                        <div class="meta-row"><span>QUOTE NUMBER</span><input type="text" id="quoteNumber" class="header-editable" style="width: 140px;"></div>
+                        <div class="meta-row"><span>QUOTE NUMBER</span><input type="text" id="quoteNumber" data-field="quoteNumber" class="header-editable" style="width: 140px;"></div>
                     </div>
                 </div>
 
@@ -942,8 +942,11 @@
             ============================================
             Backend server URL - change if your server runs on different port
         */
-        // Automatically detect API URL based on current location (works on localhost and Vercel)
-        const API_BASE_URL = window.location.origin + '/api';
+        // Use current origin when valid (localhost or Vercel); fallback for file:// so fetch works locally
+        const origin = window.location.origin;
+        const API_BASE_URL = (origin && origin !== 'null' && origin.startsWith('http'))
+            ? origin + '/api'
+            : 'http://localhost:3000/api';
         let lastAiRawOutput = '';
         
         /*
@@ -1110,7 +1113,7 @@
             ============================================
             UPLOAD RATE FILE FUNCTION
             ============================================
-            Uploads Excel rate file to the backend
+            Uploads PDF rate file to the backend
         */
         async function uploadRateFile() {
             const fileInput = document.getElementById('rateFileUpload');
@@ -1848,7 +1851,7 @@
             `;
         }
 
-        function finalizeCreationFolderEntry(entryId) {
+        async function finalizeCreationFolderEntry(entryId) {
             const content = document.getElementById(`folder-content-${entryId}`);
             if (!content) {
                 return;
@@ -1858,7 +1861,16 @@
             if (loading) {
                 loading.remove();
             }
+            attachCreationFolderRowButtons(entryId);
             attachCreationFolderCalculationListeners(entryId);
+            const quoteInput = content.querySelector('[data-field="quoteNumber"]');
+            if (quoteInput && !quoteInput.value.trim()) {
+                try {
+                    quoteInput.value = await consumeNextQuoteNumber();
+                } catch (e) {
+                    console.error('Failed to set quote number in creation folder:', e);
+                }
+            }
         }
 
         function removeCreationFolderEntry(entryId) {
@@ -2121,7 +2133,7 @@
                 // Step 6: Display the quotation
                 renderQuotation(quotationData);
                 if (creationFolderId) {
-                    finalizeCreationFolderEntry(creationFolderId);
+                    await finalizeCreationFolderEntry(creationFolderId);
                     updateCreationContainerScrollLimit();
                 }
                 
@@ -2278,9 +2290,9 @@
                         <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
                             <input type="text" class="editable-field" data-field="pipeTypeHeader" value="${headerLabel}" style="flex: 1; border: none; background: transparent; font-weight: bold;">
                             <div style="display: flex; gap: 6px;">
-                                <button onclick="addRow('${pipeType}')" title="Add item row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">➕</button>
-                                <button onclick="addRow('__NEW_HEADER__', '${headerRow.id}')" title="Add pipe type" style="background: #2196F3; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">H+</button>
-                                <button onclick="deleteRow('${headerRow.id}')" title="Delete pipe type" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
+                                <button onclick="addRow('${pipeType}', null, event)" title="Add item row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">➕</button>
+                                <button onclick="addRow('__NEW_HEADER__', '${headerRow.id}', event)" title="Add pipe type" style="background: #2196F3; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">H+</button>
+                                <button onclick="deleteRow(event)" title="Delete pipe type" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
                             </div>
                         </div>
                     </td>
@@ -2295,7 +2307,7 @@
                     const safeDescription = formattedDescription.replace(/"/g, '&quot;');
                     
                     // Calculate line total (quantity × final rate)
-                    const lineTotal = parseFloat(item.quantity) * parseFloat(item.finalRate);
+                    const lineTotal = roundAmountToWhole(parseFloat(item.quantity) * parseFloat(item.finalRate));
                     grandTotal += lineTotal;
                     
                     // Generate unique row ID
@@ -2307,8 +2319,8 @@
                     row.innerHTML = `
                         <td style="text-align: center; vertical-align: middle; padding: 5px;">
                             <div style="display: flex; flex-direction: column; align-items: center; gap: 5px;">
-                                <button onclick="addRow('${pipeType}')" title="Add row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">➕</button>
-                                <button onclick="deleteRow('${rowId}')" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">➖</button>
+                                <button onclick="addRow('${pipeType}', null, event)" title="Add row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">➕</button>
+                                <button onclick="deleteRow(event)" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">➖</button>
                             </div>
                         </td>
                         <td class="row-number">${index + 1}</td>
@@ -2362,9 +2374,9 @@
                                    class="editable-field line-total-input" 
                                    data-field="lineTotal"
                                    data-row-id="${rowId}"
-                                   value="${lineTotal.toFixed(2)}"
+                                   value="${lineTotal}"
                                    min="0" 
-                                   step="0.01" style="width: 100px;"></td>
+                                   step="1" style="width: 100px;"></td>
                     `;
                     
                     tableBody.appendChild(row);
@@ -2378,8 +2390,8 @@
         }
 
         function renderGrandTotal(grandTotal) {
-            // Step 7: Display grand total
-            document.getElementById('grandTotal').textContent = formatIndianNumber(grandTotal.toFixed(2));
+            // Step 7: Display grand total (amounts are whole numbers)
+            document.getElementById('grandTotal').textContent = formatIndianNumber(roundAmountToWhole(grandTotal), true);
         }
 
         function hideNoCreationQuotationMessage() {
@@ -2560,9 +2572,9 @@
                 lineTotal = quantity > 0 ? (quantity * finalRate) : manualLineTotal;
             }
             
-            // Update the line total display
+            // Update the line total display (no decimals)
             if (lineTotalInput) {
-                lineTotalInput.value = lineTotal.toFixed(2);
+                lineTotalInput.value = String(roundAmountToWhole(lineTotal));
             }
             
             // Recalculate all subtotals and grand total
@@ -2601,16 +2613,12 @@
                     lineTotal = parseFloat(lineTotalInput.value || 0) || 0;
                 } else {
                     const lineTotalSpan = row.querySelector('.line-total');
-                    const lineTotalText = lineTotalSpan.textContent.replace('₹', '').replace(/,/g, ''); // Remove all commas
+                    const lineTotalText = lineTotalSpan ? lineTotalSpan.textContent.replace('₹', '').replace(/,/g, '') : '0';
                     lineTotal = parseFloat(lineTotalText) || 0;
                 }
-                
-                // Add to grand total
-                grandTotal += lineTotal;
+                grandTotal += roundAmountToWhole(lineTotal);
             });
-            
-            // Update grand total
-            document.getElementById('grandTotal').textContent = formatIndianNumber(grandTotal.toFixed(2));
+            document.getElementById('grandTotal').textContent = formatIndianNumber(roundAmountToWhole(grandTotal), true);
         }
         
         /*
@@ -2650,6 +2658,127 @@
                 field.addEventListener('blur', function() {
                     recalculateRowInContainer(this, folderContent);
                 });
+            });
+        }
+
+        function addCreationFolderRow(entryId, pipeType, insertAfterRow) {
+            const folderContent = document.getElementById(`folder-content-${entryId}`);
+            if (!folderContent) return;
+            const table = folderContent.querySelector('table');
+            const tableBody = table ? table.querySelector('tbody') : null;
+            if (!tableBody) return;
+
+            if (pipeType === '__NEW_HEADER__') {
+                const existingHeaderCell = tableBody.querySelector('.pipe-type-header td[colspan]');
+                const colspan = existingHeaderCell ? existingHeaderCell.getAttribute('colspan') : '8';
+                const headerRow = document.createElement('tr');
+                headerRow.className = 'pipe-type-header';
+                headerRow.innerHTML = `
+                    <td colspan="${colspan}">
+                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+                            <input type="text" class="editable-field" data-field="pipeTypeHeader" value="Default" style="flex: 1; border: none; background: transparent; font-weight: bold;">
+                            <div style="display: flex; gap: 6px;">
+                                <button type="button" data-creation-entry-id="${entryId}" data-creation-action="add-row" data-creation-pipe-type="Default" title="Add item row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">➕</button>
+                                <button type="button" data-creation-entry-id="${entryId}" data-creation-action="add-header" title="Add pipe type" style="background: #2196F3; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">H+</button>
+                                <button type="button" data-creation-entry-id="${entryId}" data-creation-action="delete-row" title="Delete pipe type" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
+                            </div>
+                        </div>
+                    </td>
+                `;
+                tableBody.appendChild(headerRow);
+                attachCreationFolderCalculationListeners(entryId);
+                recalculateAllTotalsInContainer(folderContent);
+                return;
+            }
+
+            if (!pipeType) {
+                const existingRows = tableBody.querySelectorAll('.item-row');
+                pipeType = existingRows.length ? (existingRows[existingRows.length - 1].getAttribute('data-pipe-type') || 'Default') : 'Default';
+            }
+            const resolvedPipeType = pipeType;
+            const row = document.createElement('tr');
+            row.className = 'item-row';
+            row.setAttribute('data-pipe-type', resolvedPipeType);
+            const rowNumber = tableBody.querySelectorAll('.item-row').length + 1;
+            row.innerHTML = `
+                <td style="text-align: center; vertical-align: middle; padding: 5px;">
+                    <div style="display: flex; flex-direction: column; align-items: center; gap: 5px;">
+                        <button type="button" data-creation-entry-id="${entryId}" data-creation-action="add-row" data-creation-pipe-type="${resolvedPipeType}" title="Add row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">➕</button>
+                        <button type="button" data-creation-entry-id="${entryId}" data-creation-action="delete-row" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">➖</button>
+                    </div>
+                </td>
+                <td class="row-number">${rowNumber}</td>
+                <td><input type="text" class="editable-field" data-field="originalDescription" data-pipe-type="${resolvedPipeType}" value="" placeholder="Enter description"></td>
+                <td><input type="number" class="editable-field" data-field="quantity" data-pipe-type="${resolvedPipeType}" value="0" min="0" step="1"></td>
+                <td class="col-base-rate">₹<input type="number" class="editable-field" data-field="unitRate" data-pipe-type="${resolvedPipeType}" value="0" min="0" step="0.01" style="width: 80px;"></td>
+                <td class="col-margin"><input type="number" class="editable-field" data-field="marginPercent" data-pipe-type="${resolvedPipeType}" value="" min="0" step="0.01" style="width: 60px;"></td>
+                <td>₹<input type="number" class="editable-field rate-per-mtr" data-field="finalRate" data-pipe-type="${resolvedPipeType}" value="0.00" min="0" step="0.01" style="width: 100px;"></td>
+                <td>₹<input type="number" class="editable-field line-total-input" data-field="lineTotal" value="0" min="0" step="1" style="width: 100px;"></td>
+            `;
+            if (insertAfterRow && insertAfterRow.parentNode === tableBody) {
+                tableBody.insertBefore(row, insertAfterRow.nextElementSibling);
+            } else {
+                tableBody.appendChild(row);
+            }
+            attachCreationFolderCalculationListeners(entryId);
+            recalculateAllTotalsInContainer(folderContent);
+            updateRowNumbers(tableBody);
+        }
+
+        function deleteCreationFolderRow(entryId, ev) {
+            const row = ev && ev.target ? ev.target.closest('tr') : null;
+            if (!row || (!row.classList.contains('item-row') && !row.classList.contains('pipe-type-header'))) return;
+            const folderContent = document.getElementById(`folder-content-${entryId}`);
+            if (!folderContent || !row.closest('.quotation-folder-content') || row.closest('.quotation-folder-content') !== folderContent) return;
+            const tableBody = row.closest('tbody');
+            if (!tableBody) return;
+            if (!confirm('Are you sure you want to delete this row?')) return;
+            if (row.classList.contains('pipe-type-header')) {
+                let nextRow = row.nextElementSibling;
+                while (nextRow && !nextRow.classList.contains('pipe-type-header')) {
+                    const toRemove = nextRow;
+                    nextRow = nextRow.nextElementSibling;
+                    toRemove.remove();
+                }
+            }
+            row.remove();
+            updateRowNumbers(tableBody);
+            recalculateAllTotalsInContainer(folderContent);
+        }
+
+        function attachCreationFolderRowButtons(entryId) {
+            const folderContent = document.getElementById(`folder-content-${entryId}`);
+            if (!folderContent || folderContent.getAttribute('data-creation-delegate') === '1') return;
+            folderContent.setAttribute('data-creation-delegate', '1');
+            folderContent.querySelectorAll('button[onclick*="addRow"], button[onclick*="deleteRow"]').forEach(function(btn) {
+                const onclick = btn.getAttribute('onclick') || '';
+                if (onclick.indexOf('__NEW_HEADER__') !== -1) {
+                    btn.setAttribute('data-creation-entry-id', entryId);
+                    btn.setAttribute('data-creation-action', 'add-header');
+                } else if (onclick.indexOf('addRow') !== -1) {
+                    const tr = btn.closest('tr');
+                    const pipeType = (tr && tr.getAttribute('data-pipe-type')) || (tr && tr.querySelector('input[data-field="pipeTypeHeader"]') && tr.querySelector('input[data-field="pipeTypeHeader"]').value) || 'Default';
+                    btn.setAttribute('data-creation-entry-id', entryId);
+                    btn.setAttribute('data-creation-action', 'add-row');
+                    btn.setAttribute('data-creation-pipe-type', pipeType);
+                } else if (onclick.indexOf('deleteRow') !== -1) {
+                    btn.setAttribute('data-creation-entry-id', entryId);
+                    btn.setAttribute('data-creation-action', 'delete-row');
+                }
+                btn.removeAttribute('onclick');
+            });
+            folderContent.addEventListener('click', function(ev) {
+                const btn = ev.target.closest('button[data-creation-entry-id]');
+                if (!btn || btn.getAttribute('data-creation-entry-id') !== entryId) return;
+                const action = btn.getAttribute('data-creation-action');
+                const eid = btn.getAttribute('data-creation-entry-id');
+                if (action === 'add-row') {
+                    addCreationFolderRow(eid, btn.getAttribute('data-creation-pipe-type') || 'Default', btn.closest('tr'));
+                } else if (action === 'add-header') {
+                    addCreationFolderRow(eid, '__NEW_HEADER__', null);
+                } else if (action === 'delete-row') {
+                    deleteCreationFolderRow(eid, ev);
+                }
             });
         }
 
@@ -2693,7 +2822,7 @@
                 lineTotal = quantity > 0 ? (quantity * finalRate) : manualLineTotal;
             }
             if (lineTotalInput) {
-                lineTotalInput.value = lineTotal.toFixed(2);
+                lineTotalInput.value = String(roundAmountToWhole(lineTotal));
             }
 
             recalculateAllTotalsInContainer(container);
@@ -2719,11 +2848,11 @@
                     const lineTotalText = lineTotalSpan ? lineTotalSpan.textContent.replace('₹', '').replace(/,/g, '') : '0';
                     lineTotal = parseFloat(lineTotalText) || 0;
                 }
-                grandTotal += lineTotal;
+                grandTotal += roundAmountToWhole(lineTotal);
             });
             const totalEl = container.querySelector('.grand-total span');
             if (totalEl) {
-                totalEl.textContent = `Total: ₹${formatIndianNumber(grandTotal.toFixed(2))}`;
+                totalEl.textContent = `Total: ₹${formatIndianNumber(roundAmountToWhole(grandTotal), true)}`;
             }
         }
         
@@ -2733,12 +2862,19 @@
             ============================================
             Deletes a row from the table and recalculates totals
         */
-        function deleteRow(rowId) {
-            const row = document.getElementById(rowId);
+        function deleteRow(rowIdOrEvent) {
+            let row = null;
+            if (rowIdOrEvent && typeof rowIdOrEvent === 'object' && rowIdOrEvent.target) {
+                row = rowIdOrEvent.target.closest('tr');
+            } else if (typeof rowIdOrEvent === 'string') {
+                row = document.getElementById(rowIdOrEvent);
+            }
             if (!row || (!row.classList.contains('item-row') && !row.classList.contains('pipe-type-header'))) {
                 return;
             }
-            
+            const tableBody = row.closest('tbody');
+            const container = tableBody ? tableBody.closest('.quotation-folder-content') : null;
+
             if (confirm('Are you sure you want to delete this row?')) {
                 if (row.classList.contains('pipe-type-header')) {
                     let nextRow = row.nextElementSibling;
@@ -2749,8 +2885,13 @@
                     }
                 }
                 row.remove();
-                updateRowNumbers();
-                recalculateAllTotals();
+                if (container && tableBody) {
+                    updateRowNumbers(tableBody);
+                    recalculateAllTotalsInContainer(container);
+                } else {
+                    updateRowNumbers(tableBody || undefined);
+                    recalculateAllTotals();
+                }
             }
         }
         
@@ -2760,8 +2901,8 @@
             ============================================
             Updates the serial numbers in the table after row deletion
         */
-        function updateRowNumbers() {
-            const itemRows = document.querySelectorAll('.item-row');
+        function updateRowNumbers(tableBody) {
+            const itemRows = tableBody ? tableBody.querySelectorAll('.item-row') : document.querySelectorAll('.item-row');
             itemRows.forEach(function(row, index) {
                 const rowNumberCell = row.querySelector('.row-number');
                 if (rowNumberCell) {
@@ -2776,14 +2917,17 @@
             ============================================
             Adds a new empty row to the table
         */
-        function addRow(pipeType = null, insertAfterId = null) {
-            const tableBody = document.getElementById('quotationTableBody');
-            if (!tableBody) {
+        function addRow(pipeType, insertAfterId, ev) {
+            const tableBody = (ev && ev.target) ? (ev.target.closest('table') && ev.target.closest('table').querySelector('tbody')) : null;
+            const tableBodyFallback = document.getElementById('quotationTableBody');
+            const tableBodyToUse = tableBody || tableBodyFallback;
+            if (!tableBodyToUse) {
                 return;
             }
+            const container = tableBodyToUse.closest('.quotation-folder-content');
             
             if (pipeType === '__NEW_HEADER__') {
-                const existingHeaderCell = tableBody.querySelector('.pipe-type-header td[colspan]');
+                const existingHeaderCell = tableBodyToUse.querySelector('.pipe-type-header td[colspan]');
                 const colspan = existingHeaderCell ? existingHeaderCell.getAttribute('colspan') : '8';
                 const headerRow = document.createElement('tr');
                 headerRow.className = 'pipe-type-header';
@@ -2794,27 +2938,32 @@
                         <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
                             <input type="text" class="editable-field" data-field="pipeTypeHeader" value="Default" style="flex: 1; border: none; background: transparent; font-weight: bold;">
                             <div style="display: flex; gap: 6px;">
-                                <button onclick="addRow('Default')" title="Add item row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">➕</button>
-                                <button onclick="addRow('__NEW_HEADER__', '${headerRow.id}')" title="Add pipe type" style="background: #2196F3; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">H+</button>
-                                <button onclick="deleteRow('${headerRow.id}')" title="Delete pipe type" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
+                                <button onclick="addRow('Default', null, event)" title="Add item row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">➕</button>
+                                <button onclick="addRow('__NEW_HEADER__', '${headerRow.id}', event)" title="Add pipe type" style="background: #2196F3; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">H+</button>
+                                <button onclick="deleteRow(event)" title="Delete pipe type" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
                             </div>
                         </div>
                     </td>
                 `;
-                tableBody.appendChild(headerRow);
+                tableBodyToUse.appendChild(headerRow);
+                if (container) {
+                    const entryId = container.id && container.id.startsWith('folder-content-') ? container.id.replace('folder-content-', '') : '';
+                    if (entryId) attachCreationFolderCalculationListeners(entryId);
+                    recalculateAllTotalsInContainer(container);
+                }
                 return;
             }
             
             // If no pipe type specified, use the last pipe type or create a default one
             if (!pipeType) {
-                const existingRows = document.querySelectorAll('.item-row');
+                const existingRows = tableBodyToUse.querySelectorAll('.item-row');
                 if (existingRows.length > 0) {
                     const lastRow = existingRows[existingRows.length - 1];
                     pipeType = lastRow.getAttribute('data-pipe-type') || 'Default';
                 } else {
                     pipeType = 'Default';
                     // Create a header row if it doesn't exist
-                    const existingHeaderCell = tableBody.querySelector('.pipe-type-header td[colspan]');
+                    const existingHeaderCell = tableBodyToUse.querySelector('.pipe-type-header td[colspan]');
                     const colspan = existingHeaderCell ? existingHeaderCell.getAttribute('colspan') : '8';
                     const headerRow = document.createElement('tr');
                     headerRow.className = 'pipe-type-header';
@@ -2825,14 +2974,14 @@
                             <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
                                 <input type="text" class="editable-field" data-field="pipeTypeHeader" value="${pipeType}" style="flex: 1; border: none; background: transparent; font-weight: bold;">
                                 <div style="display: flex; gap: 6px;">
-                                    <button onclick="addRow('${pipeType}')" title="Add item row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">➕</button>
-                                    <button onclick="addRow('__NEW_HEADER__', '${headerRow.id}')" title="Add pipe type" style="background: #2196F3; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">H+</button>
-                                    <button onclick="deleteRow('${headerRow.id}')" title="Delete pipe type" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
+                                    <button onclick="addRow('${pipeType}', null, event)" title="Add item row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">➕</button>
+                                    <button onclick="addRow('__NEW_HEADER__', '${headerRow.id}', event)" title="Add pipe type" style="background: #2196F3; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">H+</button>
+                                    <button onclick="deleteRow(event)" title="Delete pipe type" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
                                 </div>
                             </div>
                         </td>
                     `;
-                    tableBody.appendChild(headerRow);
+                    tableBodyToUse.appendChild(headerRow);
                 }
             }
             
@@ -2845,13 +2994,13 @@
             row.id = rowId;
             row.setAttribute('data-pipe-type', resolvedPipeType);
             
-            const rowNumber = document.querySelectorAll('.item-row').length + 1;
+            const rowNumber = tableBodyToUse.querySelectorAll('.item-row').length + 1;
             
             row.innerHTML = `
                 <td style="text-align: center; vertical-align: middle; padding: 5px;">
                     <div style="display: flex; flex-direction: column; align-items: center; gap: 5px;">
-                        <button onclick="addRow('${pipeType}')" title="Add row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">➕</button>
-                        <button onclick="deleteRow('${rowId}')" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">➖</button>
+                        <button onclick="addRow('${pipeType}', null, event)" title="Add row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">➕</button>
+                        <button onclick="deleteRow(event)" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 14px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">➖</button>
                     </div>
                 </td>
                 <td class="row-number">${rowNumber}</td>
@@ -2905,14 +3054,21 @@
                            class="editable-field line-total-input" 
                            data-field="lineTotal"
                            data-row-id="${rowId}"
-                           value="0.00"
+                           value="0"
                            min="0" 
-                           step="0.01" style="width: 100px;"></td>
+                           step="1" style="width: 100px;"></td>
             `;
             
-            tableBody.appendChild(row);
-            attachRowEventListeners(row);
-            recalculateAllTotals();
+            tableBodyToUse.appendChild(row);
+            if (container) {
+                const entryId = container.id && container.id.startsWith('folder-content-') ? container.id.replace('folder-content-', '') : '';
+                if (entryId) attachCreationFolderCalculationListeners(entryId);
+                recalculateAllTotalsInContainer(container);
+                updateRowNumbers(tableBodyToUse);
+            } else {
+                attachRowEventListeners(row);
+                recalculateAllTotals();
+            }
         }
 
         function setLogoSource() {
@@ -3326,21 +3482,23 @@
             if (!folderContent) {
                 return;
             }
-            const quoteNumberInput = folderContent.querySelector('[data-field="quoteNumber"], #quoteNumber');
-            if (quoteNumberInput && !quoteNumberInput.value.trim()) {
-                try {
-                    quoteNumberInput.value = await consumeNextQuoteNumber();
-                } catch (error) {
-                    console.error('Failed to generate quote number:', error);
-                }
-            }
+            const folderState = creationFolderState[entryId] || {};
             const quotationHeaderValues = getQuotationHeaderValuesFromContainer(folderContent);
             const quotationTable = folderContent.querySelector('table');
             const tableClone = quotationTable ? cloneQuotationTableWithValues(quotationTable) : null;
             const quotationHeader = folderContent.querySelector('.quotation-header');
             const headerClone = quotationHeader ? cloneQuotationHeaderWithValues(quotationHeader) : null;
+            let quoteNumber = (folderContent.querySelector('[data-field="quoteNumber"], #quoteNumber') || {}).value || '';
+            removeCreationFolderEntry(entryId);
+            if (!quoteNumber.trim()) {
+                try {
+                    quoteNumber = await consumeNextQuoteNumber();
+                } catch (error) {
+                    console.error('Failed to generate quote number:', error);
+                }
+            }
+            quotationHeaderValues.quoteNumber = quoteNumber;
             const quotationData = buildQuotationData(quotationHeaderValues, tableClone, headerClone);
-            const folderState = creationFolderState[entryId] || {};
             quotationData.emailContent = folderState.emailContent || '';
             quotationData.emailContentHtml = folderState.emailContentHtml || '';
             quotationData.fileContent = folderState.fileContent || '';
@@ -3348,7 +3506,6 @@
             saveQuotationToBackend(quotationWithStatus);
             persistAndRefreshApprovals();
             scrollToApprovalSection();
-            removeCreationFolderEntry(entryId);
         }
         
         /*
@@ -3890,7 +4047,7 @@
                                     this.dataset.manual = 'true';
                                 });
                             }
-                            if (['quantity', 'unitRate', 'marginPercent', 'finalRate', 'lineTotal'].includes(fieldName)) {
+                            if (['quantity', 'unitRate', 'marginPercent'].includes(fieldName)) {
                                 field.addEventListener('input', function() {
                                     recalculateApprovalQuotationTotals(quotationId, false);
                                 });
@@ -4209,9 +4366,9 @@
                            class="editable-field line-total-input" 
                            data-field="lineTotal"
                            data-row-id="${rowId}"
-                           value="0.00"
-                           min="0" 
-                           step="0.01" style="width: 100px;"></td>
+value="0"
+                            min="0" 
+                            step="1" style="width: 100px;"></td>
                 <td>
                     <button class="delete-row-btn" onclick="deleteApprovalRow(${quotationId}, '${rowId}')" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
                 </td>
@@ -4220,13 +4377,23 @@
             if (insertAfterId) {
                 const insertAfterRow = folderContent.querySelector('#' + insertAfterId);
                 if (insertAfterRow && insertAfterRow.parentNode === tbody) {
-                    insertAfterRow.insertAdjacentElement('afterend', row);
+                    let rowToInsertAfter = insertAfterRow;
+                    if (insertAfterRow.classList.contains('pipe-type-header')) {
+                        let next = insertAfterRow.nextElementSibling;
+                        while (next && !next.classList.contains('pipe-type-header')) {
+                            if (next.classList.contains('item-row')) rowToInsertAfter = next;
+                            next = next.nextElementSibling;
+                        }
+                    }
+                    rowToInsertAfter.insertAdjacentElement('afterend', row);
                 } else {
                     tbody.appendChild(row);
                 }
             } else {
                 tbody.appendChild(row);
             }
+            
+            updateApprovalRowNumbers(quotationId);
             
             // Attach event listeners
             const editableFields = row.querySelectorAll('.editable-field');
@@ -4242,7 +4409,7 @@
                         this.dataset.manual = 'true';
                     });
                 }
-                if (['quantity', 'unitRate', 'marginPercent', 'finalRate', 'lineTotal'].includes(fieldName)) {
+                if (['quantity', 'unitRate', 'marginPercent'].includes(fieldName)) {
                     field.addEventListener('input', function() {
                         recalculateApprovalQuotationTotals(quotationId, false);
                     });
@@ -4387,8 +4554,8 @@
             let grandTotal = 0;
             
             itemRows.forEach(function(row) {
-                const quantity = parseFloat(row.querySelector('[data-field="quantity"]')?.value || 0);
-                const unitRate = parseFloat(row.querySelector('[data-field="unitRate"]')?.value || 0);
+                const quantity = parseFloat(row.querySelector('[data-field="quantity"]')?.value || 0) || 0;
+                const unitRate = parseFloat(row.querySelector('[data-field="unitRate"]')?.value || 0) || 0;
                 const marginValue = row.querySelector('[data-field="marginPercent"]')?.value || '';
                 const marginPercent = marginValue === '' ? 0 : (parseFloat(marginValue) || 0);
                 
@@ -4402,6 +4569,7 @@
                 } else {
                     // Calculate final rate from unitRate and margin
                     finalRate = unitRate * (1 + marginPercent / 100);
+                    if (finalRate !== finalRate) finalRate = 0;
                     // Update the finalRate input if it exists
                     if (finalRateInput) {
                         finalRateInput.value = finalRate.toFixed(2);
@@ -4411,10 +4579,12 @@
                 // Calculate line total
                 const lineTotalInput = row.querySelector('[data-field="lineTotal"]');
                 let lineTotal = quantity * finalRate;
+                if (lineTotal !== lineTotal) lineTotal = 0;
                 if (lineTotalInput && lineTotalInput.tagName === 'INPUT' && lineTotalInput.dataset.manual === 'true') {
                     const manualLineTotal = parseFloat(lineTotalInput.value || 0) || 0;
                     if (quantity > 0) {
                         finalRate = manualLineTotal / quantity;
+                        if (finalRate !== finalRate) finalRate = 0;
                         if (finalRateInput) {
                             finalRateInput.value = finalRate.toFixed(2);
                         }
@@ -4422,10 +4592,11 @@
                     } else {
                         lineTotal = manualLineTotal;
                     }
+                    if (lineTotal !== lineTotal) lineTotal = 0;
                     lineTotalInput.dataset.manual = '';
                 }
+                lineTotal = roundAmountToWhole(lineTotal);
                 
-                // Update displays
                 const ratePerMtrElement = row.querySelector('.rate-per-mtr');
                 if (ratePerMtrElement) {
                     if (ratePerMtrElement.tagName === 'INPUT') {
@@ -4436,30 +4607,28 @@
                 }
                 
                 if (lineTotalInput && lineTotalInput.tagName === 'INPUT') {
-                    lineTotalInput.value = lineTotal.toFixed(2);
+                    lineTotalInput.value = String(lineTotal);
                 } else {
                     const lineTotalSpan = row.querySelector('.line-total');
                     if (lineTotalSpan) {
-                        lineTotalSpan.textContent = formatIndianNumber(lineTotal.toFixed(2));
+                        lineTotalSpan.textContent = formatIndianNumber(lineTotal, true);
                     }
                 }
                 
                 grandTotal += lineTotal;
             });
             
-            // Update grand total
             const grandTotalElement = folderContent.querySelector('.grand-total span');
             if (grandTotalElement) {
-                grandTotalElement.textContent = `Total: ₹${formatIndianNumber(grandTotal.toFixed(2))}`;
+                grandTotalElement.textContent = `Total: ₹${formatIndianNumber(roundAmountToWhole(grandTotal), true)}`;
             }
             
-            // Update the quotation object (only save if shouldSave is true)
             const quotationIndex = approvedQuotations.findIndex(function(q) {
                 return q.id === quotationId;
             });
             
             if (quotationIndex !== -1) {
-                approvedQuotations[quotationIndex].grandTotal = formatIndianNumber(grandTotal.toFixed(2));
+                approvedQuotations[quotationIndex].grandTotal = formatIndianNumber(roundAmountToWhole(grandTotal), true);
                 if (shouldSave) {
                     saveToLocalStorage();
                 }
@@ -4571,36 +4740,36 @@
             This function formats numbers with Indian numbering system (lakhs, crores).
             Example: 1234567 -> 12,34,567
         */
-        function formatIndianNumber(num) {
+        function formatIndianNumber(num, wholeNumber) {
             /*
-                Parameter:
                 - num: Number or string to format
-                
-                Returns: Formatted string with Indian comma placement
+                - wholeNumber: If true, format as integer (no decimals). Used for amount display.
             */
-            
-            // Convert to number and handle decimals
-            const number = parseFloat(num) || 0;
-            const parts = number.toFixed(2).split('.');
+            const number = wholeNumber ? Math.round(parseFloat(num) || 0) : (parseFloat(num) || 0);
+            const parts = wholeNumber ? [String(number), ''] : number.toFixed(2).split('.');
             const integerPart = parts[0];
-            const decimalPart = parts[1];
+            const decimalPart = parts[1] || '';
             
-            // Format integer part with Indian numbering system
-            // After the first 3 digits from right, commas every 2 digits
             let formatted = '';
             const reversed = integerPart.split('').reverse();
-            
             for (let i = 0; i < reversed.length; i++) {
                 if (i > 0 && i === 3) {
-                    formatted = ',' + formatted; // First comma after 3 digits
+                    formatted = ',' + formatted;
                 } else if (i > 3 && (i - 3) % 2 === 0) {
-                    formatted = ',' + formatted; // Then commas every 2 digits
+                    formatted = ',' + formatted;
                 }
                 formatted = reversed[i] + formatted;
             }
-            
-            // Add decimal part if exists
             return formatted + (decimalPart ? '.' + decimalPart : '');
+        }
+        
+        /*
+            Rounds an amount (line total or similar) to the nearest whole number.
+            Used for amount display in both Creation and Approval sections (no decimals).
+        */
+        function roundAmountToWhole(value) {
+            const n = parseFloat(value);
+            return (n !== n || !isFinite(n)) ? 0 : Math.round(n);
         }
         
         /*
@@ -4867,6 +5036,51 @@
                 alert('Quotation not found');
                 return;
             }
+            // Sync all manual edits from the folder DOM so the PDF reflects current content
+            const folderContent = document.getElementById('folder-content-' + quotationId);
+            if (folderContent) {
+                recalculateApprovalQuotationTotals(quotationId, false);
+                // Sync input/textarea values to value attributes so outerHTML serialization includes them (fixes blank rows in PDF)
+                folderContent.querySelectorAll('input, textarea').forEach(function(input) {
+                    if (input.type === 'number') {
+                        const v = normalizeNumberValue(input.value);
+                        input.setAttribute('value', v);
+                        input.value = v;
+                    } else {
+                        input.setAttribute('value', input.value);
+                    }
+                    if (input.tagName === 'TEXTAREA') {
+                        input.textContent = input.value;
+                    }
+                });
+                const tableElement = folderContent.querySelector('table');
+                if (tableElement) {
+                    quotation.tableHTML = tableElement.outerHTML;
+                }
+                const grandTotalEl = folderContent.querySelector('.grand-total span');
+                if (grandTotalEl) {
+                    const gt = grandTotalEl.textContent.replace(/Total:\s*₹/i, '').replace(/,/g, '').trim();
+                    if (gt) quotation.grandTotal = gt;
+                }
+                const headerInputs = folderContent.querySelectorAll('.quotation-header input');
+                headerInputs.forEach(function(input) {
+                    const inputId = input.getAttribute('id') || input.getAttribute('data-field') || '';
+                    const val = input.value || '';
+                    if (inputId === 'quotationDate') quotation.quotationDate = val;
+                    else if (inputId === 'preparedBy') quotation.preparedBy = val;
+                    else if (inputId === 'assignedTo') quotation.assignedTo = val;
+                    else if (inputId === 'checkedBy') quotation.checkedBy = val;
+                    else if (inputId === 'quoteNumber') quotation.quoteNumber = val;
+                    else if (inputId === 'kindAttn') quotation.customerName = val;
+                    else if (inputId === 'phoneNumber') quotation.phoneNumber = val;
+                    else if (inputId === 'mobileNumber') quotation.mobileNumber = val;
+                    else if (inputId === 'billTo') quotation.projectName = val;
+                    else if (inputId === 'shipTo') quotation.shipTo = val;
+                });
+                quotation.contactDetails = quotation.mobileNumber || quotation.phoneNumber || '';
+                const termsEl = folderContent.querySelector('.terms-box textarea');
+                if (termsEl) quotation.termsText = termsEl.value || '';
+            }
 
             const { jsPDF } = window.jspdf || {};
             if (!jsPDF) {
@@ -4954,7 +5168,8 @@
             const metaRight = [
                 ['PREPARED BY', quotation.preparedBy || ''],
                 ['ASSIGNED TO', quotation.assignedTo || ''],
-                ['CHECKED BY', quotation.checkedBy || '']
+                ['CHECKED BY', quotation.checkedBy || ''],
+                ['QUOTE NUMBER', quotation.quoteNumber || '']
             ];
             metaLeft.forEach((row, idx) => {
                 doc.text(row[0], leftX, cursorY + idx * rowGap);
@@ -5040,7 +5255,7 @@
                 doc.text(descLines, colX[1] + 6, cursorY + 12);
                 doc.text(formatNumber(row.qty, false), colX[2] + colWidths[2] - 6, cursorY + 12, { align: 'right' });
                 doc.text(formatNumber(row.rate, true), colX[3] + colWidths[3] - 6, cursorY + 12, { align: 'right' });
-                doc.text(formatNumber(row.amount, true), colX[4] + colWidths[4] - 6, cursorY + 12, { align: 'right' });
+                doc.text(formatNumber(roundAmountToWhole(row.amount), false), colX[4] + colWidths[4] - 6, cursorY + 12, { align: 'right' });
                 doc.setDrawColor(230);
                 doc.setLineWidth(0.5);
                 doc.rect(margin, cursorY, contentWidth, rowHeight);
@@ -5056,7 +5271,7 @@
             doc.setTextColor(255, 255, 255);
             doc.setFont('helvetica', 'bold');
             doc.setFontSize(11);
-            const formattedGrandTotal = formatIndianNumber(String(quotation.grandTotal || '0').replace(/,/g, ''));
+            const formattedGrandTotal = formatIndianNumber(roundAmountToWhole(String(quotation.grandTotal || '0').replace(/,/g, '')), true);
             doc.text(`Total: Rs. ${formattedGrandTotal}`, pageWidth - margin - 6, cursorY + 21, { align: 'right' });
             doc.setTextColor(0, 0, 0);
             cursorY += 42;

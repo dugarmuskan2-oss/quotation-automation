@@ -12,7 +12,6 @@ const { toFile } = require('openai/uploads');
 const fs = require('fs');
 const path = require('path');
 const cors = require('cors');
-const XLSX = require('xlsx');
 const { Readable } = require('stream');
 require('dotenv').config();
 
@@ -228,87 +227,6 @@ function readFileContent(filePath) {
         console.error('Error reading file:', error);
         return null;
     }
-}
-
-// Helper function to convert Excel to readable text format
-function excelToText(filePath) {
-    try {
-        const workbook = XLSX.readFile(filePath);
-        let textContent = '';
-        const fileName = path.basename(filePath);
-        
-        textContent += `\n=== FILE: ${fileName} ===\n`;
-        
-        // Read all sheets
-        workbook.SheetNames.forEach(sheetName => {
-            const worksheet = workbook.Sheets[sheetName];
-            const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
-            
-            textContent += `\nSheet: ${sheetName}\n`;
-            textContent += '='.repeat(50) + '\n';
-            
-            // Convert to readable table format
-            jsonData.forEach(row => {
-                if (row && row.length > 0) {
-                    textContent += row.join(' | ') + '\n';
-                }
-            });
-            textContent += '\n';
-        });
-        
-        return textContent;
-    } catch (error) {
-        console.error('Error reading Excel file:', error);
-        return null;
-    }
-}
-
-// Helper function to convert all Excel files to text
-function allExcelFilesToText(filePaths) {
-    let allContent = '';
-    filePaths.forEach((filePath, index) => {
-        const content = excelToText(filePath);
-        if (content) {
-            allContent += `\n\n${'='.repeat(60)}\n`;
-            allContent += `RATE FILE ${index + 1} of ${filePaths.length}\n`;
-            allContent += `${'='.repeat(60)}\n`;
-            allContent += content;
-        }
-    });
-    return allContent;
-}
-
-// Helper function to convert Excel to TXT and save temp files
-function excelToTxtFiles(filePath) {
-    const txtFilePaths = [];
-    try {
-        const workbook = XLSX.readFile(filePath);
-        const baseName = path.basename(filePath, path.extname(filePath));
-        const tempDir = path.join(baseDir, 'uploads', 'temp');
-
-        // Create temp directory if it doesn't exist
-        try {
-            if (!fs.existsSync(tempDir)) {
-                fs.mkdirSync(tempDir, { recursive: true });
-            }
-        } catch (error) {
-            console.error(`Error creating temp directory ${tempDir}:`, error);
-            // Continue anyway
-        }
-
-        workbook.SheetNames.forEach((sheetName, index) => {
-            const worksheet = workbook.Sheets[sheetName];
-            const csv = XLSX.utils.sheet_to_csv(worksheet);
-            const safeSheetName = sheetName.replace(/[<>:"/\\|?*]/g, '_');
-            const tempFileName = `${baseName}_${safeSheetName}_${Date.now()}_${index}.txt`;
-            const tempFilePath = path.join(tempDir, tempFileName);
-            fs.writeFileSync(tempFilePath, csv, 'utf8');
-            txtFilePaths.push(tempFilePath);
-        });
-    } catch (error) {
-        console.error('Error converting Excel to TXT:', error);
-    }
-    return txtFilePaths;
 }
 
 // Google Cloud Storage Helper Functions
@@ -612,7 +530,7 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', message: 'Server is running' });
 });
 
-// Upload rate files (Excel) - Multiple files allowed
+// Upload rate files (PDF) - Multiple files allowed
 app.post('/api/upload-rates', upload.array('rateFiles', 10), async (req, res) => {
     try {
         if (!req.files || req.files.length === 0) {
@@ -625,13 +543,13 @@ app.post('/api/upload-rates', upload.array('rateFiles', 10), async (req, res) =>
         for (const file of req.files) {
             try {
                 // Additional validation
-                const validExtensions = ['.xlsx', '.xls', '.pdf'];
+                const validExtensions = ['.pdf'];
                 const fileExt = path.extname(file.originalname).toLowerCase();
                 
                 if (!validExtensions.includes(fileExt)) {
                     errors.push({
                         filename: file.originalname,
-                        error: `Invalid file type: ${fileExt}. Only .xlsx, .xls, and .pdf files are allowed.`
+                        error: `Invalid file type: ${fileExt}. Only PDF files are allowed for rate uploads.`
                     });
                     continue;
                 }
@@ -1294,7 +1212,7 @@ app.post('/api/generate-quotation', async (req, res) => {
                             errorMessage += ` Errors: ${uploadErrors.map(e => `${e.filename}: ${e.error}`).join('; ')}`;
                         }
                     } else if (pdfFilesFound === 0) {
-                        errorMessage += ' No PDF files found (only Excel or other file types).';
+                        errorMessage += ' No PDF files found.';
                     }
                 }
                 throw new Error(errorMessage);
@@ -1315,7 +1233,7 @@ app.post('/api/generate-quotation', async (req, res) => {
         }
         
         // Prepare input for Responses API with file references
-        const promptText = `Please analyze the following enquiry and extract quotation information. Use the Excel rate files provided (${uploadedFileIds.length} file(s)) to match base rates. Read the Excel files directly to find the correct rates. Return the data in this exact JSON format:
+        const promptText = `Please analyze the following enquiry and extract quotation information. Use the PDF rate files provided (${uploadedFileIds.length} file(s)) to match base rates. Read the PDF files directly to find the correct rates. Return the data in this exact JSON format:
 
 {
   "customerName": "",
@@ -1338,12 +1256,12 @@ app.post('/api/generate-quotation', async (req, res) => {
 === ENQUIRY CONTENT ===
 ${enquiryText}
 
-Extract all pipe information from the enquiry, match with rates from the uploaded Excel rate files, calculate final rates with margins, and return the complete JSON.`;
+Extract all pipe information from the enquiry, match with rates from the uploaded PDF rate files, calculate final rates with margins, and return the complete JSON.`;
 
         const input = [
             {
                 role: 'system',
-                content: instructions || 'You are a quotation extraction assistant. Extract pipe information from enquiries and match them with rates from the provided Excel rate files. Read the Excel files directly to find the correct rates.'
+                content: instructions || 'You are a quotation extraction assistant. Extract pipe information from enquiries and match them with rates from the provided PDF rate files. Read the PDF files directly to find the correct rates.'
             },
             {
                 role: 'user',
@@ -1381,7 +1299,7 @@ Extract all pipe information from the enquiry, match with rates from the uploade
                     const retryInput = [
                         {
                             role: 'system',
-                            content: instructions || 'You are a quotation extraction assistant. Extract pipe information from enquiries and match them with rates from the provided Excel rate files. Read the Excel files directly to find the correct rates.'
+                            content: instructions || 'You are a quotation extraction assistant. Extract pipe information from enquiries and match them with rates from the provided PDF rate files. Read the PDF files directly to find the correct rates.'
                         },
                         {
                             role: 'user',
