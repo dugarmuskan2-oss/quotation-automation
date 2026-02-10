@@ -12,7 +12,6 @@ const { toFile } = require('openai/uploads');
 const fs = require('fs');
 const path = require('path');
 const cors = require('cors');
-const XLSX = require('xlsx');
 const { Readable } = require('stream');
 require('dotenv').config();
 
@@ -25,7 +24,9 @@ let ddbDocClient = null;
 let ddbTableName = null;
 
 const useGoogleCloud = !!(process.env.GOOGLE_CLOUD_BUCKET_NAME || process.env.GOOGLE_CLOUD_CREDENTIALS);
-const useAWS = !!(process.env.AWS_S3_BUCKET_NAME && process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY);
+const hasAwsCredentials = !!(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY);
+const awsRegion = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1';
+const useAWS = !!(process.env.AWS_S3_BUCKET_NAME || process.env.DYNAMODB_TABLE);
 
 // Initialize Google Cloud Storage (if configured)
 if (useGoogleCloud) {
@@ -61,17 +62,18 @@ if (useGoogleCloud) {
 }
 
 // Initialize AWS S3 (if configured)
-if (useAWS) {
+if (process.env.AWS_S3_BUCKET_NAME) {
     try {
         const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
-        
-        s3Client = new S3Client({
-            region: process.env.AWS_REGION || 'us-east-1',
-            credentials: {
+
+        const s3Config = { region: awsRegion };
+        if (hasAwsCredentials) {
+            s3Config.credentials = {
                 accessKeyId: process.env.AWS_ACCESS_KEY_ID,
                 secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
-            }
-        });
+            };
+        }
+        s3Client = new S3Client(s3Config);
         s3BucketName = process.env.AWS_S3_BUCKET_NAME;
         console.log(`AWS S3 initialized successfully (bucket: ${s3BucketName})`);
     } catch (error) {
@@ -80,18 +82,18 @@ if (useAWS) {
 }
 
 // Initialize DynamoDB (if configured)
-if (useAWS && process.env.DYNAMODB_TABLE) {
+if (process.env.DYNAMODB_TABLE) {
     try {
         const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
         const { DynamoDBDocumentClient } = require('@aws-sdk/lib-dynamodb');
-        const region = process.env.AWS_REGION || 'us-east-1';
-        const ddbClient = new DynamoDBClient({
-            region,
-            credentials: {
+        const ddbConfig = { region: awsRegion };
+        if (hasAwsCredentials) {
+            ddbConfig.credentials = {
                 accessKeyId: process.env.AWS_ACCESS_KEY_ID,
                 secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
-            }
-        });
+            };
+        }
+        const ddbClient = new DynamoDBClient(ddbConfig);
         ddbDocClient = DynamoDBDocumentClient.from(ddbClient);
         ddbTableName = process.env.DYNAMODB_TABLE;
         console.log(`DynamoDB initialized successfully (table: ${ddbTableName})`);
@@ -227,87 +229,6 @@ function readFileContent(filePath) {
     }
 }
 
-// Helper function to convert Excel to readable text format
-function excelToText(filePath) {
-    try {
-        const workbook = XLSX.readFile(filePath);
-        let textContent = '';
-        const fileName = path.basename(filePath);
-        
-        textContent += `\n=== FILE: ${fileName} ===\n`;
-        
-        // Read all sheets
-        workbook.SheetNames.forEach(sheetName => {
-            const worksheet = workbook.Sheets[sheetName];
-            const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
-            
-            textContent += `\nSheet: ${sheetName}\n`;
-            textContent += '='.repeat(50) + '\n';
-            
-            // Convert to readable table format
-            jsonData.forEach(row => {
-                if (row && row.length > 0) {
-                    textContent += row.join(' | ') + '\n';
-                }
-            });
-            textContent += '\n';
-        });
-        
-        return textContent;
-    } catch (error) {
-        console.error('Error reading Excel file:', error);
-        return null;
-    }
-}
-
-// Helper function to convert all Excel files to text
-function allExcelFilesToText(filePaths) {
-    let allContent = '';
-    filePaths.forEach((filePath, index) => {
-        const content = excelToText(filePath);
-        if (content) {
-            allContent += `\n\n${'='.repeat(60)}\n`;
-            allContent += `RATE FILE ${index + 1} of ${filePaths.length}\n`;
-            allContent += `${'='.repeat(60)}\n`;
-            allContent += content;
-        }
-    });
-    return allContent;
-}
-
-// Helper function to convert Excel to TXT and save temp files
-function excelToTxtFiles(filePath) {
-    const txtFilePaths = [];
-    try {
-        const workbook = XLSX.readFile(filePath);
-        const baseName = path.basename(filePath, path.extname(filePath));
-        const tempDir = path.join(baseDir, 'uploads', 'temp');
-
-        // Create temp directory if it doesn't exist
-        try {
-            if (!fs.existsSync(tempDir)) {
-                fs.mkdirSync(tempDir, { recursive: true });
-            }
-        } catch (error) {
-            console.error(`Error creating temp directory ${tempDir}:`, error);
-            // Continue anyway
-        }
-
-        workbook.SheetNames.forEach((sheetName, index) => {
-            const worksheet = workbook.Sheets[sheetName];
-            const csv = XLSX.utils.sheet_to_csv(worksheet);
-            const safeSheetName = sheetName.replace(/[<>:"/\\|?*]/g, '_');
-            const tempFileName = `${baseName}_${safeSheetName}_${Date.now()}_${index}.txt`;
-            const tempFilePath = path.join(tempDir, tempFileName);
-            fs.writeFileSync(tempFilePath, csv, 'utf8');
-            txtFilePaths.push(tempFilePath);
-        });
-    } catch (error) {
-        console.error('Error converting Excel to TXT:', error);
-    }
-    return txtFilePaths;
-}
-
 // Google Cloud Storage Helper Functions
 async function uploadToGCS(fileBuffer, fileName, folder = 'rates') {
     if (!bucket) {
@@ -372,6 +293,22 @@ async function readInstructionsFromGCS() {
 
 async function saveInstructionsToGCS(content) {
     await uploadToGCS(Buffer.from(content, 'utf8'), 'instructions.txt', '');
+}
+
+async function readDefaultTermsFromGCS() {
+    try {
+        const buffer = await readFileFromGCS('default-terms.txt');
+        return buffer.toString('utf8');
+    } catch (error) {
+        if (error.code === 404) {
+            return null;
+        }
+        throw error;
+    }
+}
+
+async function saveDefaultTermsToGCS(content) {
+    await uploadToGCS(Buffer.from(content, 'utf8'), 'default-terms.txt', '');
 }
 
 // AWS S3 Helper Functions
@@ -477,6 +414,22 @@ async function saveInstructionsToS3(content) {
     await uploadToS3(Buffer.from(content, 'utf8'), 'instructions.txt', '');
 }
 
+async function readDefaultTermsFromS3() {
+    try {
+        const buffer = await readFileFromS3('default-terms.txt');
+        return buffer.toString('utf8');
+    } catch (error) {
+        if (error.name === 'NoSuchKey' || error.$metadata?.httpStatusCode === 404) {
+            return null;
+        }
+        throw error;
+    }
+}
+
+async function saveDefaultTermsToS3(content) {
+    await uploadToS3(Buffer.from(content, 'utf8'), 'default-terms.txt', '');
+}
+
 // ===============================
 // RATE FILE INDEX (JSON MAPPING)
 // ===============================
@@ -577,7 +530,7 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', message: 'Server is running' });
 });
 
-// Upload rate files (Excel) - Multiple files allowed
+// Upload rate files (PDF) - Multiple files allowed
 app.post('/api/upload-rates', upload.array('rateFiles', 10), async (req, res) => {
     try {
         if (!req.files || req.files.length === 0) {
@@ -590,13 +543,13 @@ app.post('/api/upload-rates', upload.array('rateFiles', 10), async (req, res) =>
         for (const file of req.files) {
             try {
                 // Additional validation
-                const validExtensions = ['.xlsx', '.xls', '.pdf'];
+                const validExtensions = ['.pdf'];
                 const fileExt = path.extname(file.originalname).toLowerCase();
                 
                 if (!validExtensions.includes(fileExt)) {
                     errors.push({
                         filename: file.originalname,
-                        error: `Invalid file type: ${fileExt}. Only .xlsx, .xls, and .pdf files are allowed.`
+                        error: `Invalid file type: ${fileExt}. Only PDF files are allowed for rate uploads.`
                     });
                     continue;
                 }
@@ -930,6 +883,72 @@ app.get('/api/get-instructions', async (req, res) => {
     }
 });
 
+// Save default terms and conditions to server (shared across all users/devices)
+app.post('/api/save-default-terms', express.json(), async (req, res) => {
+    try {
+        const { defaultTerms } = req.body;
+
+        if (defaultTerms === undefined || defaultTerms === null) {
+            return res.status(400).json({ error: 'Default terms text is required' });
+        }
+
+        const content = typeof defaultTerms === 'string' ? defaultTerms : String(defaultTerms);
+
+        if (useGoogleCloud && bucket) {
+            await saveDefaultTermsToGCS(content);
+        } else if (useAWS && s3Client) {
+            await saveDefaultTermsToS3(content);
+        } else {
+            const defaultTermsFile = path.join(baseDir, 'default-terms.txt');
+            fs.writeFileSync(defaultTermsFile, content, 'utf8');
+        }
+
+        res.json({
+            success: true,
+            message: 'Default terms saved successfully'
+        });
+    } catch (error) {
+        console.error('Error saving default terms:', error);
+        res.status(500).json({
+            error: 'Failed to save default terms',
+            details: error.message
+        });
+    }
+});
+
+// Get default terms and conditions from server (shared across all users/devices)
+app.get('/api/get-default-terms', async (req, res) => {
+    try {
+        let content = null;
+        let hasFile = false;
+
+        if (useGoogleCloud && bucket) {
+            content = await readDefaultTermsFromGCS();
+            hasFile = content !== null;
+        } else if (useAWS && s3Client) {
+            content = await readDefaultTermsFromS3();
+            hasFile = content !== null;
+        } else {
+            const defaultTermsFile = path.join(baseDir, 'default-terms.txt');
+            if (fs.existsSync(defaultTermsFile)) {
+                content = fs.readFileSync(defaultTermsFile, 'utf8');
+                hasFile = true;
+            }
+        }
+
+        res.json({
+            hasFile: hasFile,
+            content: content || ''
+        });
+    } catch (error) {
+        console.error('Error getting default terms:', error);
+        res.status(500).json({
+            error: 'Failed to get default terms',
+            details: error.message
+        });
+    }
+});
+
 // Save quotation to DynamoDB (shared across devices)
 app.post('/api/save-quotation', async (req, res) => {
     try {
@@ -961,6 +980,40 @@ app.post('/api/save-quotation', async (req, res) => {
     } catch (error) {
         console.error('Error saving quotation:', error);
         res.status(500).json({ error: 'Failed to save quotation', details: error.message });
+    }
+});
+
+// Get next quote number (atomic increment in DynamoDB)
+app.get('/api/next-quote-number', async (req, res) => {
+    try {
+        if (!ddbDocClient || !ddbTableName) {
+            return res.status(500).json({ error: 'DynamoDB not configured. Set DYNAMODB_TABLE in environment variables.' });
+        }
+        const { UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+        const startValue = 107; // first increment yields 108
+        const result = await ddbDocClient.send(new UpdateCommand({
+            TableName: ddbTableName,
+            Key: { id: 'QUOTE_NUMBER_COUNTER' },
+            UpdateExpression: 'SET #v = if_not_exists(#v, :start) + :inc, #t = :type',
+            ExpressionAttributeNames: {
+                '#v': 'value',
+                '#t': 'type'
+            },
+            ExpressionAttributeValues: {
+                ':start': startValue,
+                ':inc': 1,
+                ':type': 'counter'
+            },
+            ReturnValues: 'UPDATED_NEW'
+        }));
+        const nextValue = result?.Attributes?.value;
+        if (!nextValue) {
+            return res.status(500).json({ error: 'Failed to generate next quote number' });
+        }
+        res.json({ value: nextValue });
+    } catch (error) {
+        console.error('Error generating next quote number:', error);
+        res.status(500).json({ error: 'Failed to generate next quote number', details: error.message });
     }
 });
 
@@ -1159,7 +1212,7 @@ app.post('/api/generate-quotation', async (req, res) => {
                             errorMessage += ` Errors: ${uploadErrors.map(e => `${e.filename}: ${e.error}`).join('; ')}`;
                         }
                     } else if (pdfFilesFound === 0) {
-                        errorMessage += ' No PDF files found (only Excel or other file types).';
+                        errorMessage += ' No PDF files found.';
                     }
                 }
                 throw new Error(errorMessage);
@@ -1180,7 +1233,7 @@ app.post('/api/generate-quotation', async (req, res) => {
         }
         
         // Prepare input for Responses API with file references
-        const promptText = `Please analyze the following enquiry and extract quotation information. Use the Excel rate files provided (${uploadedFileIds.length} file(s)) to match base rates. Read the Excel files directly to find the correct rates. Return the data in this exact JSON format:
+        const promptText = `Please analyze the following enquiry and extract quotation information. Use the PDF rate files provided (${uploadedFileIds.length} file(s)) to match base rates. Read the PDF files directly to find the correct rates. Return the data in this exact JSON format:
 
 {
   "customerName": "",
@@ -1203,12 +1256,12 @@ app.post('/api/generate-quotation', async (req, res) => {
 === ENQUIRY CONTENT ===
 ${enquiryText}
 
-Extract all pipe information from the enquiry, match with rates from the uploaded Excel rate files, calculate final rates with margins, and return the complete JSON.`;
+Extract all pipe information from the enquiry, match with rates from the uploaded PDF rate files, calculate final rates with margins, and return the complete JSON.`;
 
         const input = [
             {
                 role: 'system',
-                content: instructions || 'You are a quotation extraction assistant. Extract pipe information from enquiries and match them with rates from the provided Excel rate files. Read the Excel files directly to find the correct rates.'
+                content: instructions || 'You are a quotation extraction assistant. Extract pipe information from enquiries and match them with rates from the provided PDF rate files. Read the PDF files directly to find the correct rates.'
             },
             {
                 role: 'user',
@@ -1246,7 +1299,7 @@ Extract all pipe information from the enquiry, match with rates from the uploade
                     const retryInput = [
                         {
                             role: 'system',
-                            content: instructions || 'You are a quotation extraction assistant. Extract pipe information from enquiries and match them with rates from the provided Excel rate files. Read the Excel files directly to find the correct rates.'
+                            content: instructions || 'You are a quotation extraction assistant. Extract pipe information from enquiries and match them with rates from the provided PDF rate files. Read the PDF files directly to find the correct rates.'
                         },
                         {
                             role: 'user',
