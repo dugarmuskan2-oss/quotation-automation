@@ -119,10 +119,12 @@ const baseDir = isVercelEnv ? '/tmp' : __dirname;
 const uploadsDir = path.join(baseDir, 'uploads');
 const ratesDir = path.join(uploadsDir, 'rates');
 const instructionsDir = path.join(uploadsDir, 'instructions');
+const dataDir = path.join(baseDir, 'data');
+const quotationsFilePath = path.join(dataDir, 'quotations.json');
 
 // Create directories (they need to exist for multer to work)
 // On Vercel, /tmp exists but subdirectories need to be created
-[uploadsDir, ratesDir, instructionsDir].forEach(dir => {
+[uploadsDir, ratesDir, instructionsDir, dataDir].forEach(dir => {
     try {
         if (!fs.existsSync(dir)) {
             fs.mkdirSync(dir, { recursive: true });
@@ -949,33 +951,67 @@ app.get('/api/get-default-terms', async (req, res) => {
     }
 });
 
-// Save quotation to DynamoDB (shared across devices)
+// Helpers for file-based quotation store (used when DynamoDB is not configured)
+function readQuotationsFromFile() {
+    try {
+        if (fs.existsSync(quotationsFilePath)) {
+            const raw = fs.readFileSync(quotationsFilePath, 'utf8');
+            const data = JSON.parse(raw);
+            return Array.isArray(data.quotations) ? data.quotations : [];
+        }
+    } catch (e) {
+        console.error('Error reading quotations file:', e.message);
+    }
+    return [];
+}
+
+function writeQuotationsToFile(quotations) {
+    try {
+        fs.writeFileSync(quotationsFilePath, JSON.stringify({ quotations }, null, 2), 'utf8');
+    } catch (e) {
+        console.error('Error writing quotations file:', e.message);
+        throw e;
+    }
+}
+
+// Save quotation to DynamoDB (or file when DynamoDB not configured)
 app.post('/api/save-quotation', async (req, res) => {
     try {
-        if (!ddbDocClient || !ddbTableName) {
-            return res.status(500).json({ error: 'DynamoDB not configured. Set DYNAMODB_TABLE in environment variables.' });
-        }
         const { quotation } = req.body || {};
         if (!quotation || !quotation.id) {
             return res.status(400).json({ error: 'Quotation with id is required' });
         }
-        const { PutCommand } = require('@aws-sdk/lib-dynamodb');
         const now = new Date().toISOString();
         const updatedQuotation = {
             ...quotation,
             createdAt: quotation.createdAt || now,
             updatedAt: now
         };
-        const item = {
-            id: String(updatedQuotation.id),
-            updatedAt: updatedQuotation.updatedAt,
-            createdAt: updatedQuotation.createdAt,
-            data: updatedQuotation
-        };
-        await ddbDocClient.send(new PutCommand({
-            TableName: ddbTableName,
-            Item: item
-        }));
+
+        if (ddbDocClient && ddbTableName) {
+            const { PutCommand } = require('@aws-sdk/lib-dynamodb');
+            const item = {
+                id: String(updatedQuotation.id),
+                updatedAt: updatedQuotation.updatedAt,
+                createdAt: updatedQuotation.createdAt,
+                data: updatedQuotation
+            };
+            await ddbDocClient.send(new PutCommand({
+                TableName: ddbTableName,
+                Item: item
+            }));
+        } else {
+            const quotations = readQuotationsFromFile();
+            const idx = quotations.findIndex(q => String(q.id) === String(updatedQuotation.id));
+            if (idx >= 0) quotations[idx] = updatedQuotation;
+            else quotations.push(updatedQuotation);
+            quotations.sort((a, b) => {
+                const aT = new Date(a.updatedAt || a.createdAt || 0).getTime();
+                const bT = new Date(b.updatedAt || b.createdAt || 0).getTime();
+                return bT - aT;
+            });
+            writeQuotationsToFile(quotations);
+        }
         res.json({ success: true });
     } catch (error) {
         console.error('Error saving quotation:', error);
@@ -1017,23 +1053,24 @@ app.get('/api/next-quote-number', async (req, res) => {
     }
 });
 
-// Get all quotations from DynamoDB
+// Get all quotations (from DynamoDB or file when DynamoDB not configured)
 app.get('/api/quotations', async (req, res) => {
     try {
-        if (!ddbDocClient || !ddbTableName) {
-            return res.status(500).json({ error: 'DynamoDB not configured. Set DYNAMODB_TABLE in environment variables.' });
+        if (ddbDocClient && ddbTableName) {
+            const { ScanCommand } = require('@aws-sdk/lib-dynamodb');
+            const result = await ddbDocClient.send(new ScanCommand({
+                TableName: ddbTableName
+            }));
+            const items = result.Items || [];
+            const quotations = items.map(item => item.data || item).filter(Boolean);
+            quotations.sort((a, b) => {
+                const aTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
+                const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
+                return bTime - aTime;
+            });
+            return res.json({ quotations });
         }
-        const { ScanCommand } = require('@aws-sdk/lib-dynamodb');
-        const result = await ddbDocClient.send(new ScanCommand({
-            TableName: ddbTableName
-        }));
-        const items = result.Items || [];
-        const quotations = items.map(item => item.data || item).filter(Boolean);
-        quotations.sort((a, b) => {
-            const aTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
-            const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
-            return bTime - aTime;
-        });
+        const quotations = readQuotationsFromFile();
         res.json({ quotations });
     } catch (error) {
         console.error('Error loading quotations:', error);

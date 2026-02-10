@@ -1003,8 +1003,10 @@
                 }
                 const quotations = Array.isArray(result.quotations) ? result.quotations : [];
                 if (quotations.length > 0) {
-                    approvedQuotations = quotations;
-                    displayAllApprovedQuotations();
+                    approvedQuotations.length = 0;
+                    quotations.forEach(function(q) {
+                        approvedQuotations.push(q);
+                    });
                     return true;
                 }
                 return false;
@@ -1015,9 +1017,16 @@
         }
 
         async function initQuotations() {
-            const loaded = await loadQuotationsFromBackend();
-            if (!loaded) {
-                loadFromLocalStorage();
+            // Load from localStorage first so quotations show on refresh even if backend is slow or unavailable
+            loadFromLocalStorage();
+            // Then try backend (DynamoDB); if it returns data, use it for cross-browser sync
+            try {
+                const loaded = await loadQuotationsFromBackend();
+                if (loaded) {
+                    displayAllApprovedQuotations();
+                }
+            } catch (e) {
+                console.error('Error loading from backend:', e);
             }
         }
 
@@ -5446,23 +5455,22 @@ value="0"
             Code that runs when the page loads
         */
         
-        // This code runs when the page finishes loading
         console.log("Quotation Generator loaded successfully!");
         
-        // Load saved quotations (backend first, local fallback)
-        initQuotations();
+        function runPageInit() {
+            // Load saved quotations (localStorage first so they show on refresh, then backend if available)
+            initQuotations();
+            loadInstructions();
+            loadDefaultTerms();
+            loadUploadedFiles();
+            checkCurrentFiles();
+        }
         
-        // Load instructions from server
-        loadInstructions();
-        
-        // Load default terms from server (sets defaultTermsText for new quotations)
-        loadDefaultTerms();
-        
-        // Load and display uploaded files
-        loadUploadedFiles();
-        
-        // Check current rate files status
-        checkCurrentFiles();
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', runPageInit);
+        } else {
+            runPageInit();
+        }
     </script>
 </body>
 </html>
