@@ -1570,8 +1570,9 @@ module.exports = app;
 // Check for Vercel environment variables
 const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV || process.env.VERCEL_URL;
 if (!isVercel) {
-    app.listen(PORT, () => {
-        console.log(`Server running on http://localhost:${PORT}`);
+    const host = process.env.PORT ? '0.0.0.0' : undefined; // Cloud Run / PaaS need to bind to 0.0.0.0
+    app.listen(PORT, host, () => {
+        console.log(`Server running on http://${host || 'localhost'}:${PORT}`);
         console.log(`Make sure to set OPENAI_API_KEY in .env file`);
     });
 }
