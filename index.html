@@ -769,11 +769,12 @@
             ></textarea>
             
             <!-- File upload input -->
-            <label for="fileUpload" style="margin-top: 20px;">Or Upload File (PDF/Word/Text):</label>
+            <label for="fileUpload" style="margin-top: 20px;">Or Upload File (PDF/Word/Text/Images):</label>
             <input 
                 type="file" 
                 id="fileUpload" 
-                accept=".pdf,.doc,.docx,.txt"
+                accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png,.gif,.webp,.bmp,image/*"
+                multiple
             >
             
             <!-- Generate button -->
@@ -891,7 +892,7 @@
                 <input
                     type="text"
                     id="approvalSearchInput"
-                    placeholder="Search by company, kind attn, or month (e.g., January)"
+                    placeholder="Search by company, kind attn, quotation number or month (e.g., January)"
                     style="width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 4px;"
                 >
             </div>
@@ -1514,18 +1515,18 @@
             ============================================
             Calls the backend API to extract quotation data using OpenAI
         */
-        async function extractQuotationWithAI(emailContent, fileContent) {
+        async function extractQuotationWithAI(emailContent, fileContent, files, file) {
             /*
                 This function calls the backend API which uses OpenAI to extract quotation data.
+                When files are provided, sends multipart/form-data so the server can extract text from PDF/Word/images.
                 
                 Parameters:
                 - emailContent: Text from the email textarea
-                - fileContent: Content from uploaded file (if any)
-                
-                Returns: Promise that resolves to an object with customer info and line items
+                - fileContent: Content from uploaded file (if any) - used when no files sent
+                - files: Optional array of File objects to upload (PDF, Word, images)
+                - file: First file (fallback when files array is empty)
             */
             
-            // Get instructions from localStorage
             const instructions = localStorage.getItem('aiInstructions') || '';
             
             if (!instructions || instructions.trim() === '') {
@@ -1533,17 +1534,32 @@
             }
             
             try {
-                const response = await fetch(`${API_BASE_URL}/generate-quotation`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        emailContent: emailContent,
-                        fileContent: fileContent,
-                        instructions: instructions
-                    })
-                });
+                let response;
+                const filesToSend = (files && files.length > 0) ? files : (file ? [file] : []);
+                if (filesToSend.length > 0) {
+                    const formData = new FormData();
+                    formData.append('emailContent', emailContent || '');
+                    formData.append('instructions', instructions);
+                    for (let i = 0; i < filesToSend.length; i++) {
+                        formData.append('enquiryFiles', filesToSend[i]);
+                    }
+                    response = await fetch(`${API_BASE_URL}/generate-quotation`, {
+                        method: 'POST',
+                        body: formData
+                    });
+                } else {
+                    response = await fetch(`${API_BASE_URL}/generate-quotation`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            emailContent: emailContent,
+                            fileContent: fileContent,
+                            instructions: instructions
+                        })
+                    });
+                }
                 
                 const quotationData = await safeJsonParse(response);
                 
@@ -1713,8 +1729,9 @@
         function getInputsForQuotation() {
             const emailContent = document.getElementById('emailContent').value;
             const fileInput = document.getElementById('fileUpload');
-            const file = fileInput.files[0];
-            return { emailContent, fileInput, file };
+            const files = Array.from(fileInput.files || []);
+            const file = files[0] || null;
+            return { emailContent, fileInput, file, files };
         }
 
         async function readUploadedFileContent(file) {
@@ -1725,7 +1742,8 @@
             return fileContent;
         }
 
-        function ensureInputProvided(emailContent, fileContent) {
+        function ensureInputProvided(emailContent, fileContent, hasFiles) {
+            if (hasFiles) return true;
             if (!emailContent.trim() && !fileContent.trim()) {
                 showError("Please provide either email content or upload a file.");
                 return false;
@@ -1745,8 +1763,12 @@
             return document.getElementById('creationFilesContainer');
         }
 
-        function buildCreationFolderTitle(emailContent, file) {
+        function buildCreationFolderTitle(emailContent, file, files) {
             const trimmed = (emailContent || '').trim();
+            if (files && files.length > 1) {
+                const names = files.slice(0, 2).map(f => f.name).join(', ');
+                return `${files.length} files: ${names}${files.length > 2 ? '…' : ''}`;
+            }
             if (file && file.name) {
                 return `File: ${file.name}`;
             }
@@ -1757,13 +1779,13 @@
             return 'Email Quotation';
         }
 
-        function createCreationFolderEntry(emailContent, file) {
+        function createCreationFolderEntry(emailContent, file, files) {
             const container = getCreationFilesContainer();
             if (!container) {
                 return null;
             }
             const entryId = `creation-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-            const title = buildCreationFolderTitle(emailContent, file);
+            const title = buildCreationFolderTitle(emailContent, file, files);
 
             const wrapper = document.createElement('div');
             wrapper.className = 'quotation-folder';
@@ -2088,8 +2110,8 @@
             return formatQuoteNumber(result.value);
         }
 
-        async function fetchQuotationData(emailContent, fileContent) {
-            return await extractQuotationWithAI(emailContent, fileContent);
+        async function fetchQuotationData(emailContent, fileContent, files, file) {
+            return await extractQuotationWithAI(emailContent, fileContent, files, file);
         }
 
         function renderQuotation(quotationData) {
@@ -2103,17 +2125,22 @@
             */
             let creationFolderId = null;
             try {
-                // Step 1: Get email content from textarea
-                const { emailContent, fileInput, file } = getInputsForQuotation();
+                // Step 1: Get email content and any uploaded files
+                const { emailContent, fileInput, file, files } = getInputsForQuotation();
                 
-                // Step 3: Read file content (if file was uploaded)
-            let fileContent = await readUploadedFileContent(file);
-            lastEmailContent = emailContent;
-            lastFileContent = fileContent;
+                // When sending files, server extracts text; otherwise read as text (for paste-only flow)
+                let fileContent = '';
+                if (files && files.length > 0) {
+                    fileContent = ''; // Server will extract from PDF/Word/images
+                } else if (file) {
+                    fileContent = await readUploadedFileContent(file);
+                }
+                lastEmailContent = emailContent;
+                lastFileContent = fileContent;
                 
-                // Step 4: Check if at least one input was provided
-                if (!ensureInputProvided(emailContent, fileContent)) {
-                    return; // Stop here if no input
+                const hasFiles = (files && files.length > 0) || !!file;
+                if (!ensureInputProvided(emailContent, fileContent, hasFiles)) {
+                    return;
                 }
                 const emailInput = document.getElementById('emailContent');
                 if (emailInput) {
@@ -2122,7 +2149,7 @@
                 
                 // Hide any previous error messages
                 clearErrorMessage();
-                creationFolderId = createCreationFolderEntry(emailContent, file);
+                creationFolderId = createCreationFolderEntry(emailContent, file, files);
                 if (creationFolderId) {
                     creationFolderState[creationFolderId] = {
                         emailContent: emailContent || '',
@@ -2131,8 +2158,14 @@
                     };
                 }
                 
-                // Step 5: Call AI API to extract data
-                const quotationData = await fetchQuotationData(emailContent, fileContent);
+                // Step 5: Call AI API (sends files as multipart when present)
+                const quotationData = await fetchQuotationData(emailContent, fileContent, files, file);
+
+                // Store server-returned extracted content so the creation folder and approval panel can show it
+                if (creationFolderId && quotationData.enquiryContent) {
+                    creationFolderState[creationFolderId].fileContent = quotationData.enquiryContent;
+                    quotationData.fileContent = quotationData.enquiryContent;
+                }
 
                 // Step 6: Display the quotation
                 renderQuotation(quotationData);

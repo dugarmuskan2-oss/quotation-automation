@@ -15,6 +15,8 @@ const cors = require('cors');
 const { Readable } = require('stream');
 require('dotenv').config();
 
+const { extractTextFromFile } = require('./lib/extractFileText');
+
 // Cloud Storage Configuration (Google Cloud or AWS S3)
 let storageClient = null;
 let bucket = null;
@@ -1078,23 +1080,64 @@ app.get('/api/quotations', async (req, res) => {
     }
 });
 
-// Main API: Generate quotation using OpenAI
-app.post('/api/generate-quotation', async (req, res) => {
+// Multer for enquiry file uploads (PDF, Word, images) - memory storage so we can extract text
+const enquiryUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB per file
+    fileFilter: (req, file, cb) => { cb(null, true); }
+});
+
+// Main API: Generate quotation using OpenAI (accepts JSON or multipart with files)
+const isMultipart = (req) => {
+    const ct = (req.headers['content-type'] || '').toLowerCase();
+    return ct.indexOf('multipart/form-data') === 0 || req.is('multipart/form-data');
+};
+app.post('/api/generate-quotation', (req, res, next) => {
+    if (isMultipart(req)) {
+        return enquiryUpload.fields([{ name: 'enquiryFiles', maxCount: 10 }])(req, res, next);
+    }
+    next();
+}, async (req, res) => {
     try {
-        const { emailContent, fileContent, instructions } = req.body;
-        
-        if (!emailContent && !fileContent) {
-            return res.status(400).json({ error: 'No content provided' });
+        const contentType = (req.headers['content-type'] || '').slice(0, 50);
+        let emailContent = (req.body && req.body.emailContent) || '';
+        const fileContent = (req.body && req.body.fileContent) || '';
+        let instructions = (req.body && req.body.instructions) || '';
+
+        // If multipart with uploaded enquiry files, extract text from each and combine with email body
+        const enquiryFiles = req.files && req.files.enquiryFiles ? (Array.isArray(req.files.enquiryFiles) ? req.files.enquiryFiles : [req.files.enquiryFiles]) : [];
+        if (enquiryFiles.length > 0) {
+            const parts = [emailContent].filter(Boolean);
+            for (const file of enquiryFiles) {
+                const buffer = file.buffer || (file.path && fs.readFileSync(file.path));
+                if (!buffer || !Buffer.isBuffer(buffer)) {
+                    console.warn('generate-quotation: no buffer for file', file.originalname);
+                    parts.push(`--- ${file.originalname} ---\n[File could not be read.]`);
+                    continue;
+                }
+                const text = await extractTextFromFile(buffer, file.originalname, { openai, mimeType: file.mimetype });
+                if (text) {
+                    parts.push(`--- ${file.originalname} ---\n${text}`);
+                } else {
+                    parts.push(`--- ${file.originalname} ---\n[No text could be extracted from this file. If it is a scanned document or image-only PDF, add a short description in the email box above.]`);
+                }
+            }
+            emailContent = parts.join('\n\n');
+        } else if (!emailContent.trim() && !fileContent.trim()) {
+            console.warn('generate-quotation: no content. Content-Type:', contentType, 'hasFiles:', !!req.files, 'enquiryFiles:', enquiryFiles.length);
         }
-        
-        // Get instructions from request (sent from frontend localStorage)
+
+        if (!emailContent.trim() && !fileContent.trim()) {
+            return res.status(400).json({ error: 'No content provided. Paste email text and/or upload a file (PDF, Word, or image).' });
+        }
+
         if (!instructions || instructions.trim() === '') {
             return res.status(400).json({ error: 'No instructions provided. Please enter instructions first.' });
         }
-        
-        // Prepare content for OpenAI
-        const enquiryText = emailContent || fileContent || '';
-        
+
+        const enquiryText = (emailContent || fileContent || '').trim();
+        console.log('Enquiry text length:', enquiryText.length, 'chars. First 200:', enquiryText.slice(0, 200).replace(/\n/g, ' '));
+
         // Try to use existing OpenAI file IDs from the rate index (fast path - no S3 read, no upload)
         let uploadedFileIds = [];
         let uploadedFileNames = [];
@@ -1427,6 +1470,7 @@ Extract all pipe information from the enquiry, match with rates from the uploade
         
         res.json({
             ...quotationData,
+            enquiryContent: enquiryText,
             _ai: {
                 raw: responseText,
                 model: 'gpt-5.2',
