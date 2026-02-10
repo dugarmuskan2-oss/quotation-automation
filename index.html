@@ -1002,31 +1002,26 @@
                     throw new Error(result.error || 'Failed to load quotations');
                 }
                 const quotations = Array.isArray(result.quotations) ? result.quotations : [];
-                if (quotations.length > 0) {
-                    approvedQuotations.length = 0;
-                    quotations.forEach(function(q) {
-                        approvedQuotations.push(q);
-                    });
-                    return true;
-                }
-                return false;
+                approvedQuotations.length = 0;
+                quotations.forEach(function(q) {
+                    approvedQuotations.push(q);
+                });
+                return true;
             } catch (error) {
                 console.error('Error loading quotations from backend:', error);
+                approvedQuotations.length = 0;
                 return false;
             }
         }
 
         async function initQuotations() {
-            // Load from localStorage first so quotations show on refresh even if backend is slow or unavailable
-            loadFromLocalStorage();
-            // Then try backend (DynamoDB); if it returns data, use it for cross-browser sync
+            // Load quotations only from backend (DynamoDB)
             try {
-                const loaded = await loadQuotationsFromBackend();
-                if (loaded) {
-                    displayAllApprovedQuotations();
-                }
+                await loadQuotationsFromBackend();
+                displayAllApprovedQuotations();
             } catch (e) {
                 console.error('Error loading from backend:', e);
+                displayAllApprovedQuotations();
             }
         }
 
@@ -3369,13 +3364,9 @@
         }
 
         function persistAndRefreshApprovals() {
-            // Automatically save all quotations to localStorage (including unapproved ones)
-            saveToLocalStorage();
-            
             // Clear the Creation section (quotation disappears from Creation)
             clearCreationSection();
-            
-            // Display all approved quotations
+            // Display all approved quotations (storage is DynamoDB only via saveQuotationToBackend)
             displayAllApprovedQuotations();
         }
 
@@ -4537,8 +4528,8 @@ value="0"
                 quotation.shipTo = changedInput.value;
             }
             
-            // Save to localStorage
-            saveToLocalStorage();
+            // Persist to backend (DynamoDB) only
+            saveQuotationToBackend(quotation);
         }
         
         /*
@@ -4551,7 +4542,7 @@ value="0"
             /*
                 Parameters:
                 - quotationId: The ID of the quotation to recalculate
-                - shouldSave: Whether to save to localStorage (default: false)
+                - shouldSave: Whether to save to backend/DynamoDB (default: false)
             */
             
             if (shouldSave === undefined) {
@@ -4644,7 +4635,7 @@ value="0"
             if (quotationIndex !== -1) {
                 approvedQuotations[quotationIndex].grandTotal = formatIndianNumber(roundAmountToWhole(grandTotal), true);
                 if (shouldSave) {
-                    saveToLocalStorage();
+                    saveQuotationToBackend(approvedQuotations[quotationIndex]);
                 }
             }
         }
@@ -4832,7 +4823,7 @@ value="0"
             ============================================
             SAVE QUOTATION FUNCTION
             ============================================
-            This function saves a quotation to localStorage (as a file).
+            This function saves (approves) a quotation to the backend (DynamoDB).
             Saved quotations appear as folders that can be opened.
         */
         function saveQuotation(quotationId) {
@@ -4844,7 +4835,7 @@ value="0"
                 1. Captures all current values from the Approval section
                 2. Updates the quotation object with all changes
                 3. Marks quotation as saved
-                4. Saves to localStorage
+                4. Saves to backend (DynamoDB)
                 5. Updates display to show as folder
             */
             
@@ -4936,9 +4927,7 @@ value="0"
             
             // Mark quotation as saved (now it's approved)
             quotation.saved = true;
-            
-            // Save all quotations to localStorage (including this newly approved one with all updates)
-            saveToLocalStorage();
+            // Persist to backend (DynamoDB) only
             saveQuotationToBackend(quotation);
             
             // Update the display to show saved status (as folder)
@@ -5329,20 +5318,28 @@ value="0"
                 - quotationId: The unique ID of the quotation folder to toggle
             */
             
+            const folderEl = document.getElementById('folder-' + quotationId);
             const folderContent = document.getElementById('folder-content-' + quotationId);
-            const toggleIcon = document.querySelector(`#folder-${quotationId} .folder-toggle-icon`);
+            const toggleIcon = folderEl ? folderEl.querySelector('.folder-toggle-icon') : null;
             
-            if (!folderContent || !toggleIcon) {
+            if (!folderContent || !toggleIcon || !folderEl) {
                 return;
             }
             
+            const container = folderEl.parentElement;
+            const allFoldersInSection = container ? container.querySelectorAll('.quotation-folder') : [];
+            
             // Toggle the content visibility
             if (folderContent.classList.contains('show')) {
-                // Close the folder
+                // Close the folder: show all folders in this section again
                 folderContent.classList.remove('show');
                 toggleIcon.classList.remove('open');
+                allFoldersInSection.forEach(function (f) { f.style.display = ''; });
             } else {
-                // Open the folder
+                // Open the folder: hide other folders in this section so only this one is visible
+                allFoldersInSection.forEach(function (f) {
+                    f.style.display = f.id === folderEl.id ? '' : 'none';
+                });
                 folderContent.classList.add('show');
                 toggleIcon.classList.add('open');
             }
@@ -5354,58 +5351,16 @@ value="0"
         
         /*
             ============================================
-            SAVE TO LOCALSTORAGE FUNCTION
+            QUOTATION STORAGE: DYNAMODB ONLY
             ============================================
-            This function saves all saved quotations to browser's localStorage.
+            Quotations are loaded and saved only via the backend (DynamoDB).
+            These stubs exist only for compatibility; do not use localStorage for quotations.
         */
         function saveToLocalStorage() {
-            /*
-                This function saves ALL quotations to localStorage
-                (both approved and unapproved) so they persist across page refreshes.
-            */
-            
-            try {
-                // Save all quotations, not just approved ones
-                localStorage.setItem('savedQuotations', JSON.stringify(approvedQuotations));
-            } catch (error) {
-                console.error('Error saving to localStorage:', error);
-            }
+            // No-op: quotation storage is DynamoDB only
         }
-        
-        /*
-            ============================================
-            LOAD FROM LOCALSTORAGE FUNCTION
-            ============================================
-            This function loads saved quotations from localStorage on page load.
-        */
         function loadFromLocalStorage() {
-            /*
-                This function loads saved quotations from localStorage
-                and adds them to the approvedQuotations array.
-            */
-            
-            try {
-                const savedData = localStorage.getItem('savedQuotations');
-                if (savedData) {
-                    const allQuotations = JSON.parse(savedData);
-                    // Add all quotations to the array, preserving their saved status
-                    allQuotations.forEach(function(quotation) {
-                        // Preserve the saved status from localStorage (don't force it to true)
-                        // If saved property doesn't exist, default to false
-                        if (quotation.saved === undefined) {
-                            quotation.saved = false;
-                        }
-                        approvedQuotations.push(quotation);
-                    });
-                    
-                    // Display them if there are any
-                    if (allQuotations.length > 0) {
-                        displayAllApprovedQuotations();
-                    }
-                }
-            } catch (error) {
-                console.error('Error loading from localStorage:', error);
-            }
+            // No-op: quotation storage is DynamoDB only
         }
         
         /*
@@ -5463,7 +5418,7 @@ value="0"
         console.log("Quotation Generator loaded successfully!");
         
         function runPageInit() {
-            // Load saved quotations (localStorage first so they show on refresh, then backend if available)
+            // Load quotations from backend (DynamoDB) only
             initQuotations();
             loadInstructions();
             loadDefaultTerms();
