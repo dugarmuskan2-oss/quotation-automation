@@ -852,13 +852,12 @@ app.post('/api/save-instructions', express.json(), async (req, res) => {
     }
 });
 
-// API key check for integration endpoints (Cloud Run, etc.). When QUOTATION_API_KEY is set,
-// requests must send header X-API-Key with the same value; otherwise 401.
+// API key check: when X-API-Key is sent, it must match QUOTATION_API_KEY. If no header is sent, allow (e.g. browser).
 function requireQuotationApiKey(req, res, next) {
-    const expected = process.env.QUOTATION_API_KEY;
-    if (!expected) return next();
     const provided = req.get('X-API-Key');
-    if (provided !== expected) {
+    if (!provided) return next();
+    const expected = process.env.QUOTATION_API_KEY;
+    if (!expected || provided !== expected) {
         return res.status(401).json({ error: 'Unauthorized', message: 'Invalid or missing X-API-Key' });
     }
     next();
@@ -876,21 +875,18 @@ app.post('/gmail-push', express.json(), (req, res) => {
 });
 
 // Get instructions from server (shared across all users/devices)
-app.get('/api/get-instructions', requireQuotationApiKey, async (req, res) => {
+const getInstructionsHandler = async (req, res) => {
     try {
         let content = null;
         let hasFile = false;
         
         if (useGoogleCloud && bucket) {
-            // Get from Google Cloud Storage
             content = await readInstructionsFromGCS();
             hasFile = content !== null;
         } else if (useAWS && s3Client) {
-            // Get from AWS S3
             content = await readInstructionsFromS3();
             hasFile = content !== null;
         } else {
-            // Get from local file
             const instructionsFile = path.join(baseDir, 'instructions.txt');
             if (fs.existsSync(instructionsFile)) {
                 content = fs.readFileSync(instructionsFile, 'utf8');
@@ -898,18 +894,14 @@ app.get('/api/get-instructions', requireQuotationApiKey, async (req, res) => {
             }
         }
         
-        res.json({ 
-            hasFile: hasFile,
-            content: content || ''
-        });
+        res.json({ hasFile: hasFile, content: content || '' });
     } catch (error) {
         console.error('Error getting instructions:', error);
-        res.status(500).json({ 
-            error: 'Failed to get instructions',
-            details: error.message
-        });
+        res.status(500).json({ error: 'Failed to get instructions', details: error.message });
     }
-});
+};
+app.get('/api/get-instructions', requireQuotationApiKey, getInstructionsHandler);
+app.get('/get-instructions', requireQuotationApiKey, getInstructionsHandler);
 
 // Save default terms and conditions to server (shared across all users/devices)
 app.post('/api/save-default-terms', express.json(), async (req, res) => {
