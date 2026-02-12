@@ -873,6 +873,17 @@ app.post('/gmail-push', express.json(), (req, res) => {
     res.status(200).send();
     handleGmailPush(req.body).catch(e => console.error('gmail-push:', e));
 });
+// When Vercel passes path as query (?path=gmail-push)
+app.post('/', express.json(), (req, res, next) => {
+    if (req.query.path !== 'gmail-push') return next();
+    res.status(200).send();
+    handleGmailPush(req.body).catch(e => console.error('gmail-push:', e));
+});
+app.post('/api', express.json(), (req, res, next) => {
+    if (req.query.path !== 'gmail-push') return next();
+    res.status(200).send();
+    handleGmailPush(req.body).catch(e => console.error('gmail-push:', e));
+});
 
 // Get instructions from server (shared across all users/devices)
 const getInstructionsHandler = async (req, res) => {
