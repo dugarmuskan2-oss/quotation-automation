@@ -16,6 +16,7 @@ const { Readable } = require('stream');
 require('dotenv').config();
 
 const { extractTextFromFile } = require('./lib/extractFileText');
+const { handleGmailPush } = require('./lib/gmailPushHandler');
 
 // Cloud Storage Configuration (Google Cloud or AWS S3)
 let storageClient = null;
@@ -862,6 +863,12 @@ function requireQuotationApiKey(req, res, next) {
     }
     next();
 }
+
+// Gmail Pub/Sub push: acknowledge immediately, then process in background
+app.post('/api/gmail-push', express.json(), (req, res) => {
+    res.status(200).send();
+    handleGmailPush(req.body).catch(e => console.error('gmail-push:', e));
+});
 
 // Get instructions from server (shared across all users/devices)
 app.get('/api/get-instructions', requireQuotationApiKey, async (req, res) => {
