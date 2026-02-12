@@ -869,6 +869,11 @@ app.post('/api/gmail-push', express.json(), (req, res) => {
     res.status(200).send();
     handleGmailPush(req.body).catch(e => console.error('gmail-push:', e));
 });
+// Same handler for path Vercel passes when rewrite sends /api/* to the function (path = /gmail-push)
+app.post('/gmail-push', express.json(), (req, res) => {
+    res.status(200).send();
+    handleGmailPush(req.body).catch(e => console.error('gmail-push:', e));
+});
 
 // Get instructions from server (shared across all users/devices)
 app.get('/api/get-instructions', requireQuotationApiKey, async (req, res) => {
