@@ -3539,9 +3539,9 @@
             let allQuotationsHTML = '';
             const sourceList = Array.isArray(quotationsList) ? quotationsList : [];
             
-            // Show all quotations as collapsible folders
-            sourceList.slice().reverse().forEach(function(quotation, index) {
-                const quotationNumber = approvedQuotations.length - index;
+            // Show all quotations as collapsible folders (list is already newest-first from caller)
+            sourceList.forEach(function(quotation, index) {
+                const quotationNumber = sourceList.length - index;
                 const contactNumber = extractContactNumber(quotation.contactDetails);
                 let folderName = quotation.customerName;
                 if (contactNumber) {
