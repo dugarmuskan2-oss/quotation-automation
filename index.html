@@ -4562,16 +4562,29 @@ value="0"
                 // Check if finalRate is editable (input) or calculated
                 const finalRateInput = row.querySelector('[data-field="finalRate"]');
                 let finalRate;
-                
+                const calculatedFromFormula = unitRate * (1 + marginPercent / 100);
+                const calculatedOk = calculatedFromFormula === calculatedFromFormula && (unitRate > 0 || marginPercent !== 0);
+
                 if (finalRateInput && finalRateInput.tagName === 'INPUT' && finalRateInput.dataset.manual === 'true') {
                     // User edited finalRate directly - use that value
-                    finalRate = parseFloat(finalRateInput.value || 0) || 0;
+                    const manualVal = parseFloat(finalRateInput.value || 0) || 0;
+                    // If user cleared the field and we can calculate from base rate + margin, switch back to calculated
+                    if (manualVal === 0 && calculatedOk) {
+                        finalRateInput.dataset.manual = '';
+                        finalRate = calculatedFromFormula;
+                        finalRateInput.value = finalRate.toFixed(2);
+                    } else {
+                        finalRate = manualVal;
+                    }
                 } else {
                     // Calculate final rate from unitRate and margin
-                    finalRate = unitRate * (1 + marginPercent / 100);
+                    finalRate = calculatedOk ? calculatedFromFormula : 0;
                     if (finalRate !== finalRate) finalRate = 0;
-                    // Update the finalRate input if it exists
-                    if (finalRateInput) {
+                    const currentVal = finalRateInput ? (parseFloat(finalRateInput.value || 0) || 0) : 0;
+                    // Don't overwrite with 0 when the row already has a non-zero rate (e.g. from AI or previous manual)
+                    if (finalRate === 0 && currentVal > 0) {
+                        finalRate = currentVal;
+                    } else if (finalRateInput) {
                         finalRateInput.value = finalRate.toFixed(2);
                     }
                 }
