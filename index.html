@@ -3796,10 +3796,15 @@
             // Hide the "no quotations" message
             hideNoApprovedQuotationsMessage();
             
-            // Build HTML for all approved quotations
+            // Build HTML for all approved quotations (latest first)
             attachApprovalSearchListener();
             const filteredQuotations = getFilteredApprovedQuotations(approvalSearchQuery);
-            const allQuotationsHTML = buildAllApprovedQuotationsHTMLForList(filteredQuotations);
+            const sortedByNewest = filteredQuotations.slice().sort(function (a, b) {
+                const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : (a.createdAt ? new Date(a.createdAt).getTime() : (Number(a.id) || 0));
+                const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : (Number(b.id) || 0));
+                return bTime - aTime;
+            });
+            const allQuotationsHTML = buildAllApprovedQuotationsHTMLForList(sortedByNewest);
             
             // Update the container
             renderApprovedQuotationsHTML(container, allQuotationsHTML);
