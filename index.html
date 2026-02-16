@@ -994,6 +994,23 @@
             }
         }
 
+        const backendSaveTimers = new Map();
+
+        function scheduleQuotationBackendSave(quotation, delay = 1000) {
+            if (!quotation || !quotation.id) {
+                return;
+            }
+            const existingTimer = backendSaveTimers.get(quotation.id);
+            if (existingTimer) {
+                clearTimeout(existingTimer);
+            }
+            const timeoutId = setTimeout(() => {
+                backendSaveTimers.delete(quotation.id);
+                saveQuotationToBackend(quotation);
+            }, delay);
+            backendSaveTimers.set(quotation.id, timeoutId);
+        }
+
         async function loadQuotationsFromBackend() {
             try {
                 const response = await fetch(`${API_BASE_URL}/quotations`);
@@ -1015,10 +1032,7 @@
         }
 
         async function initQuotations() {
-            const loaded = await loadQuotationsFromBackend();
-            if (!loaded) {
-                loadFromLocalStorage();
-            }
+            await loadQuotationsFromBackend();
         }
 
         /*
@@ -1088,7 +1102,7 @@
             appendChatMessage('You', message);
             input.value = '';
 
-            const instructions = localStorage.getItem('aiInstructions') || '';
+            const instructions = document.getElementById('instructionsText')?.value || '';
             try {
                 const response = await fetch(`${API_BASE_URL}/ai-chat`, {
                     method: 'POST',
@@ -1283,9 +1297,6 @@
                 const result = await safeJsonParse(response);
                 
                 if (response.ok) {
-                    // Also save to localStorage as backup
-                    localStorage.setItem('aiInstructions', instructionsText);
-                    
                     statusEl.textContent = '✓ Instructions saved (shared with all devices)';
                     statusEl.style.color = '#4CAF50';
                 } else {
@@ -1303,7 +1314,6 @@
             LOAD INSTRUCTIONS FUNCTION
             ============================================
             Loads saved instructions from server (shared across all devices)
-            Falls back to localStorage if server fails
         */
         async function loadInstructions() {
             try {
@@ -1313,31 +1323,24 @@
                 
                 if (response.ok && result.hasFile && result.content) {
                     document.getElementById('instructionsText').value = result.content;
-                    // Also update localStorage as backup
-                    localStorage.setItem('aiInstructions', result.content);
                     const statusEl = document.getElementById('instructionsStatus');
                     if (statusEl) {
                         statusEl.textContent = '✓ Instructions loaded from server';
                         statusEl.style.color = '#4CAF50';
                     }
                 } else {
-                    // Fallback to localStorage if server doesn't have instructions
-                    const savedInstructions = localStorage.getItem('aiInstructions');
-                    if (savedInstructions) {
-                        document.getElementById('instructionsText').value = savedInstructions;
-                        const statusEl = document.getElementById('instructionsStatus');
-                        if (statusEl) {
-                            statusEl.textContent = 'Instructions loaded from local storage';
-                            statusEl.style.color = '#999';
-                        }
+                    const statusEl = document.getElementById('instructionsStatus');
+                    if (statusEl) {
+                        statusEl.textContent = 'No instructions found on server';
+                        statusEl.style.color = '#999';
                     }
                 }
             } catch (error) {
                 console.error('Error loading instructions from server:', error);
-                // Fallback to localStorage
-                const savedInstructions = localStorage.getItem('aiInstructions');
-                if (savedInstructions) {
-                    document.getElementById('instructionsText').value = savedInstructions;
+                const statusEl = document.getElementById('instructionsStatus');
+                if (statusEl) {
+                    statusEl.textContent = 'Error loading instructions from server';
+                    statusEl.style.color = '#f44336';
                 }
             }
         }
@@ -1497,7 +1500,7 @@
                     statusEl.style.color = '#4CAF50';
                 }
                 
-                // Load instructions from localStorage
+                // Load instructions from server
                 loadInstructions();
             } catch (error) {
                 console.error('Error checking files:', error);
@@ -1521,8 +1524,8 @@
                 Returns: Promise that resolves to an object with customer info and line items
             */
             
-            // Get instructions from localStorage
-            const instructions = localStorage.getItem('aiInstructions') || '';
+            // Get instructions from the current textarea
+            const instructions = document.getElementById('instructionsText')?.value || '';
             
             if (!instructions || instructions.trim() === '') {
                 throw new Error('No instructions provided. Please enter and save instructions first.');
@@ -3360,7 +3363,7 @@
         }
 
         function persistAndRefreshApprovals() {
-            // Automatically save all quotations to localStorage (including unapproved ones)
+            // Automatically persist all quotations (including unapproved ones)
             saveToLocalStorage();
             
             // Clear the Creation section (quotation disappears from Creation)
@@ -4086,6 +4089,19 @@
                     }
                 }
 
+                const autosaveInputs = folderContent.querySelectorAll('input, textarea');
+                autosaveInputs.forEach(function(input) {
+                    if (input.dataset.approvalAutosaveBound === 'true') {
+                        return;
+                    }
+                    const handler = function() {
+                        updateQuotationFromApprovalSection(quotationId, input);
+                    };
+                    input.addEventListener('change', handler);
+                    input.addEventListener('blur', handler);
+                    input.dataset.approvalAutosaveBound = 'true';
+                });
+
                 attachApprovalSidePanelDrag(folderContent);
                 updateEmailPreviewScroll(folderContent);
                 attachApprovalResizeHandle(folderContent);
@@ -4234,6 +4250,7 @@
                 row.remove();
                 updateApprovalRowNumbers(quotationId);
                 recalculateApprovalQuotationTotals(quotationId, false);
+                updateQuotationFromApprovalSection(quotationId, null);
             }
         }
         
@@ -4425,6 +4442,7 @@ value="0"
             });
             
             recalculateApprovalQuotationTotals(quotationId, false);
+            updateQuotationFromApprovalSection(quotationId, null);
         }
         
         /*
@@ -4433,6 +4451,31 @@ value="0"
             ============================================
             This function updates the quotation object when changes are made in Approval section.
         */
+        function updateApprovalBadge(quotationId, quotation) {
+            const folder = document.getElementById('folder-' + quotationId);
+            if (!folder) {
+                return;
+            }
+            const header = folder.querySelector('.quotation-folder-header span');
+            if (!header) {
+                return;
+            }
+            const existingBadge = header.querySelector('.saved-badge:not(.assigned-badge)');
+            if (quotation.saved) {
+                const checkedByName = quotation.checkedBy ? ` - ${quotation.checkedBy}` : '';
+                if (existingBadge) {
+                    existingBadge.textContent = `APPROVED${checkedByName}`;
+                } else {
+                    const badge = document.createElement('span');
+                    badge.className = 'saved-badge';
+                    badge.textContent = `APPROVED${checkedByName}`;
+                    header.appendChild(badge);
+                }
+            } else if (existingBadge) {
+                existingBadge.remove();
+            }
+        }
+
         function updateQuotationFromApprovalSection(quotationId, changedInput) {
             /*
                 Parameters:
@@ -4487,49 +4530,57 @@ value="0"
                 quotation.tableHTML = tableElement.outerHTML;
             }
             
-            // Update terms text if it's a terms field
-            if (changedInput.id === 'termsText' || changedInput.closest('.terms-box')) {
-                const termsTextarea = updatedContent.querySelector('.terms-box textarea');
-                if (termsTextarea) {
-                    quotation.termsText = termsTextarea.value || '';
-                } else {
-                    const termsElement = updatedContent.querySelector('.terms-box');
-                    if (termsElement) {
-                        quotation.termsText = termsElement.textContent || termsElement.innerText;
+            if (changedInput) {
+                // Update terms text if it's a terms field
+                if (changedInput.id === 'termsText' || changedInput.closest('.terms-box')) {
+                    const termsTextarea = updatedContent.querySelector('.terms-box textarea');
+                    if (termsTextarea) {
+                        quotation.termsText = termsTextarea.value || '';
+                    } else {
+                        const termsElement = updatedContent.querySelector('.terms-box');
+                        if (termsElement) {
+                            quotation.termsText = termsElement.textContent || termsElement.innerText;
+                        }
                     }
                 }
+                
+                // Update specific fields based on input
+                const inputId = changedInput.id;
+                
+                if (inputId === 'quotationDate') {
+                    quotation.quotationDate = changedInput.value;
+                } else if (inputId === 'preparedBy') {
+                    quotation.preparedBy = changedInput.value;
+                } else if (inputId === 'assignedTo') {
+                    quotation.assignedTo = changedInput.value;
+                } else if (inputId === 'checkedBy') {
+                    quotation.checkedBy = changedInput.value;
+                } else if (inputId === 'quoteNumber') {
+                    quotation.quoteNumber = changedInput.value;
+                } else if (inputId === 'kindAttn') {
+                    quotation.customerName = changedInput.value;
+                } else if (inputId === 'phoneNumber') {
+                    quotation.phoneNumber = changedInput.value;
+                    quotation.contactDetails = quotation.mobileNumber || quotation.phoneNumber || '';
+                } else if (inputId === 'mobileNumber') {
+                    quotation.mobileNumber = changedInput.value;
+                    quotation.contactDetails = quotation.mobileNumber || quotation.phoneNumber || '';
+                } else if (inputId === 'billTo') {
+                    quotation.projectName = changedInput.value;
+                } else if (inputId === 'shipTo') {
+                    quotation.shipTo = changedInput.value;
+                }
             }
-            
-            // Update specific fields based on input
-            const fieldName = changedInput.getAttribute('data-field');
-            const inputId = changedInput.id;
-            
-            if (inputId === 'quotationDate') {
-                quotation.quotationDate = changedInput.value;
-            } else if (inputId === 'preparedBy') {
-                quotation.preparedBy = changedInput.value;
-            } else if (inputId === 'assignedTo') {
-                quotation.assignedTo = changedInput.value;
-            } else if (inputId === 'checkedBy') {
-                quotation.checkedBy = changedInput.value;
-            } else if (inputId === 'quoteNumber') {
-                quotation.quoteNumber = changedInput.value;
-            } else if (inputId === 'kindAttn') {
-                quotation.customerName = changedInput.value;
-            } else if (inputId === 'phoneNumber') {
-                quotation.phoneNumber = changedInput.value;
-                quotation.contactDetails = quotation.mobileNumber || quotation.phoneNumber || '';
-            } else if (inputId === 'mobileNumber') {
-                quotation.mobileNumber = changedInput.value;
-                quotation.contactDetails = quotation.mobileNumber || quotation.phoneNumber || '';
-            } else if (inputId === 'billTo') {
-                quotation.projectName = changedInput.value;
-            } else if (inputId === 'shipTo') {
-                quotation.shipTo = changedInput.value;
+
+            if (quotation.saved) {
+                quotation.saved = false;
+                updateApprovalBadge(quotationId, quotation);
             }
+            quotation.updatedAt = new Date().toISOString();
             
-            // Save to localStorage
+            // Save to backend (debounced)
             saveToLocalStorage();
+            scheduleQuotationBackendSave(quotation);
         }
         
         /*
@@ -4542,7 +4593,7 @@ value="0"
             /*
                 Parameters:
                 - quotationId: The ID of the quotation to recalculate
-                - shouldSave: Whether to save to localStorage (default: false)
+                - shouldSave: Whether to persist changes (default: false)
             */
             
             if (shouldSave === undefined) {
@@ -4836,7 +4887,7 @@ value="0"
             ============================================
             SAVE QUOTATION FUNCTION
             ============================================
-            This function saves a quotation to localStorage (as a file).
+            This function saves a quotation to the backend as approved.
             Saved quotations appear as folders that can be opened.
         */
         function saveQuotation(quotationId) {
@@ -4848,7 +4899,7 @@ value="0"
                 1. Captures all current values from the Approval section
                 2. Updates the quotation object with all changes
                 3. Marks quotation as saved
-                4. Saves to localStorage
+                4. Saves to backend
                 5. Updates display to show as folder
             */
             
@@ -4941,7 +4992,7 @@ value="0"
             // Mark quotation as saved (now it's approved)
             quotation.saved = true;
             
-            // Save all quotations to localStorage (including this newly approved one with all updates)
+            // Save all quotations to backend (including this newly approved one with all updates)
             saveToLocalStorage();
             saveQuotationToBackend(quotation);
             
@@ -5360,56 +5411,20 @@ value="0"
             ============================================
             SAVE TO LOCALSTORAGE FUNCTION
             ============================================
-            This function saves all saved quotations to browser's localStorage.
+            This function is disabled; localStorage is not used.
         */
         function saveToLocalStorage() {
-            /*
-                This function saves ALL quotations to localStorage
-                (both approved and unapproved) so they persist across page refreshes.
-            */
-            
-            try {
-                // Save all quotations, not just approved ones
-                localStorage.setItem('savedQuotations', JSON.stringify(approvedQuotations));
-            } catch (error) {
-                console.error('Error saving to localStorage:', error);
-            }
+            // No-op: localStorage persistence is disabled.
         }
         
         /*
             ============================================
             LOAD FROM LOCALSTORAGE FUNCTION
             ============================================
-            This function loads saved quotations from localStorage on page load.
+            This function is disabled; localStorage is not used.
         */
         function loadFromLocalStorage() {
-            /*
-                This function loads saved quotations from localStorage
-                and adds them to the approvedQuotations array.
-            */
-            
-            try {
-                const savedData = localStorage.getItem('savedQuotations');
-                if (savedData) {
-                    const allQuotations = JSON.parse(savedData);
-                    // Add all quotations to the array, preserving their saved status
-                    allQuotations.forEach(function(quotation) {
-                        // Preserve the saved status from localStorage (don't force it to true)
-                        // If saved property doesn't exist, default to false
-                        if (quotation.saved === undefined) {
-                            quotation.saved = false;
-                        }
-                        approvedQuotations.push(quotation);
-                    });
-                    
-                    // Display them if there are any
-                    if (allQuotations.length > 0) {
-                        displayAllApprovedQuotations();
-                    }
-                }
-            } catch (error) {
-                console.error('Error loading from localStorage:', error);
-            }
+            // No-op: localStorage persistence is disabled.
         }
         
         /*
@@ -5467,7 +5482,7 @@ value="0"
         // This code runs when the page finishes loading
         console.log("Quotation Generator loaded successfully!");
         
-        // Load saved quotations (backend first, local fallback)
+        // Load saved quotations from backend
         initQuotations();
         
         // Load instructions from server
