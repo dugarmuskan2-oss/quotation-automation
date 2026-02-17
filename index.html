@@ -1618,6 +1618,46 @@
                 throw error;
             }
         }
+
+        async function extractQuotationWithAIFile(emailContent, file) {
+            const instructions = document.getElementById('instructionsText')?.value || '';
+            
+            if (!instructions || instructions.trim() === '') {
+                throw new Error('No instructions provided. Please enter and save instructions first.');
+            }
+            
+            const formData = new FormData();
+            if (emailContent) {
+                formData.append('emailContent', emailContent);
+            }
+            formData.append('instructions', instructions);
+            if (file) {
+                formData.append('enquiryFile', file);
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/generate-quotation-file`, {
+                    method: 'POST',
+                    body: formData
+                });
+                const quotationData = await safeJsonParse(response);
+                
+                if (!response.ok) {
+                    const errorMessage = quotationData.error || 'Failed to generate quotation';
+                    const errorDetails = quotationData.details ? ` | Details: ${quotationData.details}` : '';
+                    showAiError(`${errorMessage}${errorDetails}`);
+                    throw new Error(`${errorMessage}${errorDetails}`);
+                }
+                const aiRaw = quotationData?._ai?.raw || JSON.stringify(quotationData, null, 2);
+                updateAiResponseOutput(aiRaw);
+                return quotationData;
+                
+            } catch (error) {
+                console.error('Error calling AI API:', error);
+                showAiError(error.message);
+                throw error;
+            }
+        }
         
         /*
             ============================================
@@ -2143,7 +2183,10 @@
             return formatQuoteNumber(result.value);
         }
 
-        async function fetchQuotationData(emailContent, fileContent) {
+        async function fetchQuotationData(emailContent, fileContent, file) {
+            if (file) {
+                return await extractQuotationWithAIFile(emailContent, file);
+            }
             return await extractQuotationWithAI(emailContent, fileContent);
         }
 
@@ -2187,7 +2230,7 @@
                 }
                 
                 // Step 5: Call AI API to extract data
-                const quotationData = await fetchQuotationData(emailContent, fileContent);
+                const quotationData = await fetchQuotationData(emailContent, fileContent, file);
 
                 // Step 6: Display the quotation
                 renderQuotation(quotationData);

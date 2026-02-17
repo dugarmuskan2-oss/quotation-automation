@@ -107,7 +107,7 @@ const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '15mb' }));
 app.use(express.static('public')); // Serve static files if needed
 app.use(express.static(__dirname)); // Serve root files like index.html/logo.png
 
@@ -1099,8 +1099,316 @@ app.get('/api/quotations', async (req, res) => {
     }
 });
 
+async function getUploadedFileContent(uploadedFile) {
+    if (!uploadedFile) {
+        return '';
+    }
+    if (uploadedFile.buffer) {
+        return uploadedFile.buffer.toString('utf8');
+    }
+    if (uploadedFile.path) {
+        return readFileContent(uploadedFile.path);
+    }
+    return '';
+}
+
+async function uploadEnquiryFileToOpenAI(uploadedFile) {
+    if (!uploadedFile) {
+        return null;
+    }
+    let fileBuffer;
+    if (uploadedFile.buffer) {
+        fileBuffer = uploadedFile.buffer;
+    } else if (uploadedFile.path) {
+        fileBuffer = fs.readFileSync(uploadedFile.path);
+    }
+    if (!fileBuffer) {
+        return null;
+    }
+    const cleanBuffer = Buffer.from(fileBuffer);
+    const fileName = uploadedFile.originalname || 'enquiry-file';
+    const file = await openai.files.create({
+        file: cleanBuffer,
+        purpose: 'assistants'
+    });
+    console.log(`Uploaded enquiry file to OpenAI with ID: ${file.id} (${fileName})`);
+    return file.id;
+}
+
+async function handleGenerateQuotation({ emailContent, fileContent, instructions, enquiryFileId }, res) {
+    try {
+        if (!emailContent && !fileContent && !enquiryFileId) {
+            return res.status(400).json({ error: 'No content provided' });
+        }
+
+        if (!instructions || instructions.trim() === '') {
+            return res.status(400).json({ error: 'No instructions provided. Please enter instructions first.' });
+        }
+
+        // Prepare content for OpenAI
+        const enquiryText = emailContent || fileContent || '';
+
+        // Try to use existing OpenAI file IDs from the rate index (fast path - no S3 read, no upload)
+        let uploadedFileIds = [];
+        let uploadedFileNames = [];
+
+        try {
+            const mappings = await getAllRateMappings();
+            if (mappings && mappings.length > 0) {
+                uploadedFileIds = mappings.map(m => m.openaiFileId);
+                uploadedFileNames = mappings.map(m => m.originalName || m.s3Key.split('/').pop());
+                console.log(`Using ${uploadedFileIds.length} rate file(s) from index (no upload needed)`);
+            }
+        } catch (indexError) {
+            console.warn('Failed to load rate index, will fall back to uploading from storage:', indexError.message);
+        }
+
+        // Helper: upload rate files from storage to OpenAI and build index
+        async function uploadFromStorageAndBuildIndex() {
+            console.log('Rate index empty or invalid, falling back to reading from storage and uploading to OpenAI...');
+            // Get all rate files (from cloud storage or local storage)
+            let rateFiles = [];
+            if (useGoogleCloud && bucket) {
+                const gcsFiles = await listFilesFromGCS('rates');
+                rateFiles = gcsFiles.map(f => ({ name: f.name, path: f.path, storageType: 'gcs' }));
+            } else if (useAWS && s3Client) {
+                const s3Files = await listFilesFromS3('rates');
+                rateFiles = s3Files.map(f => ({ name: f.name, path: f.path, storageType: 's3' }));
+            } else {
+                const localFiles = getAllFiles(ratesDir);
+                rateFiles = localFiles.map(filePath => ({ name: path.basename(filePath), path: filePath, storageType: 'local' }));
+            }
+
+            if (rateFiles.length === 0) {
+                throw new Error('No rate files uploaded. Please upload rate files first.');
+            }
+
+            // Upload PDF rate files to OpenAI and build index
+            let pdfFilesFound = 0;
+            let pdfFilesUploaded = 0;
+            const uploadErrors = [];
+
+            for (const rateFile of rateFiles) {
+                const fileName = rateFile.name;
+                const ext = path.extname(fileName).toLowerCase();
+
+                if (ext !== '.pdf') {
+                    continue;
+                }
+
+                pdfFilesFound++;
+
+                try {
+                    let fileBuffer;
+                    if (rateFile.storageType === 'gcs') {
+                        fileBuffer = await readFileFromGCS(rateFile.path);
+                    } else if (rateFile.storageType === 's3') {
+                        fileBuffer = await readFileFromS3(rateFile.path);
+                    } else {
+                        fileBuffer = fs.readFileSync(rateFile.path);
+                    }
+
+                    console.log(`Uploading file ${fileName} to OpenAI...`);
+                    console.log(`Storage type: ${rateFile.storageType}, Path: ${rateFile.path}`);
+
+                    // Log file size for debugging
+                    const fileSizeMB = fileBuffer.length / (1024 * 1024);
+                    console.log(`File size: ${fileSizeMB.toFixed(2)} MB`);
+                    if (fileSizeMB > 10) {
+                        console.warn(`⚠️ Large file detected: ${fileSizeMB.toFixed(2)} MB. This may exceed OpenAI's limits.`);
+                    }
+
+                    // Ensure buffer is completely clean (strip any stream-like properties)
+                    const cleanBuffer = Buffer.from(fileBuffer);
+
+                    // Upload to OpenAI
+                    const file = await openai.files.create({
+                        file: cleanBuffer,
+                        purpose: 'assistants'
+                    });
+
+                    console.log(`Uploaded to OpenAI with ID: ${file.id}`);
+                    uploadedFileIds.push(file.id);
+                    uploadedFileNames.push(fileName);
+                    pdfFilesUploaded++;
+
+                    const s3Key = rateFile.path; // Already includes 'rates/' prefix for cloud storage
+                    await addRateMapping({ s3Key, openaiFileId: file.id, originalName: fileName });
+                } catch (error) {
+                    console.error(`Error uploading file ${fileName} to OpenAI:`, error);
+                    let errorMessage = error.message || 'Failed to upload to OpenAI';
+                    if (error.status === 413 || error.message.includes('413') || error.message.includes('capacity limit') || error.message.includes('too large') || error.message.includes('exceeds the capacity')) {
+                        const fileSizeMB = (fileBuffer ? (fileBuffer.length / (1024 * 1024)).toFixed(2) : 'unknown');
+                        errorMessage = `File too large: ${fileSizeMB} MB. OpenAI's file size limit may be lower than expected. Please compress the PDF to under 50 MB or split it into smaller files.`;
+                    } else if (fileBuffer) {
+                        const fileSizeMB = (fileBuffer.length / (1024 * 1024)).toFixed(2);
+                        errorMessage = `${error.message} (File size: ${fileSizeMB} MB)`;
+                    }
+                    uploadErrors.push({ filename: fileName, error: errorMessage });
+                }
+            }
+
+            if (pdfFilesFound === 0) {
+                let errorMessage = 'No PDF rate files found. Please upload PDF rate files.';
+                if (rateFiles.length > 0) {
+                    const nonPdfCount = rateFiles.length - pdfFilesFound;
+                    errorMessage += ` Found ${rateFiles.length} file(s) in storage, but ${pdfFilesFound} PDF file(s) found.`;
+                }
+                throw new Error(errorMessage);
+            }
+
+            if (pdfFilesUploaded === 0) {
+                const errorMessages = uploadErrors.map(err => `${err.filename}: ${err.error}`).join('; ');
+                throw new Error(`Failed to upload rate files to OpenAI. ${errorMessages}`);
+            }
+
+            return { uploadErrors };
+        }
+
+        if (uploadedFileIds.length === 0) {
+            const { uploadErrors } = await uploadFromStorageAndBuildIndex();
+            if (uploadErrors.length > 0) {
+                console.warn('Some files failed to upload:', uploadErrors);
+            }
+        }
+
+        const promptText = `Please analyze the following enquiry and extract quotation information. Use the PDF rate files provided (${uploadedFileIds.length} file(s)) to match base rates. Read the PDF files directly to find the correct rates. Return the data in this exact JSON format:
+
+{
+  "customerName": "",
+  "projectName": "",
+  "shipTo": "",
+  "quotationDate": "",
+  "lineItems": [
+    {
+      "originalDescription": "",
+      "identifiedPipeType": "",
+      "quantity": "",
+      "unitRate": "",
+      "marginPercent": "",
+      "finalRate": "",
+      "lineTotal": ""
+    }
+  ]
+}
+
+Extract all pipe information from the enquiry, match with rates from the uploaded PDF rate files, calculate final rates with margins, and return the complete JSON.`;
+
+        const userContentParts = [
+            {
+                type: 'input_text',
+                text: `${promptText}\n\nEnquiry:\n${enquiryText}`
+            }
+        ];
+
+        if (enquiryFileId) {
+            userContentParts.push({
+                type: 'input_file',
+                file_id: enquiryFileId
+            });
+        }
+
+        const completion = await openai.responses.create({
+            model: 'gpt-5.2',
+            input: [
+                {
+                    role: 'system',
+                    content: instructions || 'You are a quotation extraction assistant. Extract pipe information from enquiries and match them with rates from the provided PDF rate files. Read the PDF files directly to find the correct rates.'
+                },
+                {
+                    role: 'user',
+                    content: [
+                        ...userContentParts,
+                        ...uploadedFileIds.map(fileId => ({
+                            type: 'input_file',
+                            file_id: fileId
+                        }))
+                    ]
+                }
+            ]
+        });
+
+        // NOTE: Do NOT delete OpenAI files here.
+        // We reuse file IDs from the index to avoid re-uploading.
+        // Deletion is handled only when a rate file is deleted via /api/delete-rate-file.
+
+        // Parse response
+        const responseText =
+            completion.output_text ||
+            completion.output?.[0]?.content?.[0]?.text ||
+            completion.output?.[0]?.content?.[0]?.value ||
+            '';
+        let quotationData;
+
+        try {
+            quotationData = JSON.parse(responseText);
+        } catch (parseError) {
+            // Try to extract JSON from response if it's wrapped in markdown
+            const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+                quotationData = JSON.parse(jsonMatch[0]);
+            } else {
+                throw new Error('Failed to parse AI response as JSON');
+            }
+        }
+
+        // Validate and format response
+        if (!quotationData.lineItems || !Array.isArray(quotationData.lineItems)) {
+            quotationData.lineItems = [];
+        }
+
+        // Calculate final rates and line totals if not provided
+        quotationData.lineItems = quotationData.lineItems.map(item => {
+            const unitRate = parseFloat(item.unitRate) || 0;
+            const marginPercentRaw = parseFloat(item.marginPercent);
+            const marginPercent = Number.isFinite(marginPercentRaw) ? marginPercentRaw : 0;
+            const quantity = parseFloat(item.quantity) || 0;
+
+            const finalRate = unitRate * (1 + marginPercent / 100);
+            const lineTotal = quantity * finalRate;
+
+            return {
+                originalDescription: item.originalDescription || '',
+                identifiedPipeType: item.identifiedPipeType || '',
+                quantity: quantity.toString(),
+                unitRate: unitRate.toFixed(2),
+                marginPercent: marginPercent.toString(),
+                finalRate: finalRate.toFixed(2),
+                lineTotal: lineTotal.toFixed(2)
+            };
+        });
+
+        // Set quotation date if not provided
+        if (!quotationData.quotationDate) {
+            const today = new Date();
+            quotationData.quotationDate = today.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+        }
+
+        res.json({
+            ...quotationData,
+            _ai: {
+                raw: responseText,
+                model: 'gpt-5.2',
+                files: uploadedFileNames
+            }
+        });
+    } catch (error) {
+        console.error('Error generating quotation:', error);
+        res.status(500).json({
+            error: 'Failed to generate quotation',
+            details: error.message
+        });
+    }
+}
+
 // Main API: Generate quotation using OpenAI
 app.post('/api/generate-quotation', async (req, res) => {
+    const { emailContent, fileContent, instructions } = req.body || {};
+    return handleGenerateQuotation({ emailContent, fileContent, instructions }, res);
     try {
         const { emailContent, fileContent, instructions } = req.body;
         
@@ -1462,6 +1770,20 @@ Extract all pipe information from the enquiry, match with rates from the uploade
             details: error.message 
         });
     }
+});
+
+// Generate quotation using OpenAI with multipart upload
+app.post('/api/generate-quotation-file', upload.single('enquiryFile'), async (req, res) => {
+    const emailContent = req.body?.emailContent || '';
+    const instructions = req.body?.instructions || '';
+    let enquiryFileId = null;
+    try {
+        enquiryFileId = await uploadEnquiryFileToOpenAI(req.file);
+    } catch (error) {
+        console.error('Failed to upload enquiry file to OpenAI:', error);
+        return res.status(500).json({ error: 'Failed to upload enquiry file', details: error.message });
+    }
+    await handleGenerateQuotation({ emailContent, fileContent: '', instructions, enquiryFileId }, res);
 });
 
 // Chat with AI about the last response
