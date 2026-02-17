@@ -2213,46 +2213,85 @@
             return pipeType || '';
         }
 
+        function normalizeFractionText(text) {
+            if (!text) {
+                return text;
+            }
+            const fractionMap = {
+                '¼': '1/4',
+                '½': '1/2',
+                '¾': '3/4',
+                '⅛': '1/8',
+                '⅜': '3/8',
+                '⅝': '5/8',
+                '⅞': '7/8',
+                '⅓': '1/3',
+                '⅔': '2/3'
+            };
+            let normalized = text
+                .replace(/\u00A0/g, ' ')
+                .replace(/\u2044/g, '/');
+            normalized = normalized.replace(/(\d)([¼½¾⅛⅜⅝⅞⅓⅔])/g, '$1 $2');
+            normalized = normalized.replace(/[¼½¾⅛⅜⅝⅞⅓⅔]/g, match => fractionMap[match] || match);
+            normalized = normalized.replace(/\s+/g, ' ');
+            normalized = normalized.replace(/(\d+)\s+(\d+\/\d+)/g, '$1-$2');
+            // Normalize "11/2" => "1-1/2" when numerator is single digit
+            return normalized.replace(/(\d)(\d)\/(\d)(?=\D|$)/g, '$1-$2/$3');
+        }
+
+        function isNumericLikeToken(token) {
+            if (!token) {
+                return false;
+            }
+            return /^\d+(\.\d+)?$/.test(token) || /^\d+\/\d+$/.test(token) || /^\d+-\d+\/\d+$/.test(token);
+        }
+
         function formatItemDescriptionByPipeType(item) {
             const raw = (item.originalDescription || '').trim();
             if (!raw) {
                 return raw;
             }
             const pipeType = (item.identifiedPipeType || '').toLowerCase();
-            const normalized = raw.replace(/["]/g, '').trim();
-            const xMatch = normalized.match(/(\d+(?:\.\d+)?)\s*[xX]\s*([A-Za-z0-9\.]+)/);
-            const hMatch = normalized.match(/^(\d+(?:\.\d+)?)\s*(h|hv|hvy|heavy|hevy)$/i);
-            const mMatch = normalized.match(/^(\d+(?:\.\d+)?)\s*(m|med|medium)$/i);
-            const schMatch = normalized.match(/^(\d+(?:\.\d+)?)\s*(?:sch|schedule)\s*(\d+(?:\.\d+)?)$/i);
+            const normalized = normalizeFractionText(raw.replace(/["]/g, '').trim());
+            const numberToken = '\\d+(?:\\.\\d+)?|\\d+-\\d+\\/\\d+|\\d+\\/\\d+';
+            const xMatch = normalized.match(new RegExp(`(${numberToken})\\s*[xX]\\s*([A-Za-z0-9\\.\\/-]+)`));
+            const hMatch = normalized.match(new RegExp(`^(${numberToken})\\s*(h|hv|hvy|heavy|hevy)$`, 'i'));
+            const mMatch = normalized.match(new RegExp(`^(${numberToken})\\s*(m|med|medium)$`, 'i'));
+            const schMatch = normalized.match(new RegExp(`^(${numberToken})\\s*(?:sch|schedule)\\s*(\\d+(?:\\.\\d+)?)$`, 'i'));
             let first = '';
+            let secondDisplay = '';
             let secondClean = '';
             let isHeavy = false;
             let isMedium = false;
             let isSch = false;
             if (xMatch) {
                 first = xMatch[1];
-                secondClean = (xMatch[2] || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                secondDisplay = normalizeFractionText((xMatch[2] || '').trim());
+                secondClean = secondDisplay.toLowerCase().replace(/[^a-z0-9]/g, '');
             } else if (hMatch) {
                 first = hMatch[1];
+                secondDisplay = hMatch[2];
                 secondClean = hMatch[2].toLowerCase();
                 isHeavy = true;
             } else if (mMatch) {
                 first = mMatch[1];
+                secondDisplay = mMatch[2];
                 secondClean = mMatch[2].toLowerCase();
                 isMedium = true;
             } else if (schMatch) {
                 first = schMatch[1];
+                secondDisplay = schMatch[2];
                 secondClean = schMatch[2].toLowerCase();
                 isSch = true;
             } else {
-                return raw;
+                return normalized;
             }
 
             if (pipeType.includes('seamless')) {
-                if (isSch || /^\d+(\.\d+)?$/.test(secondClean)) {
-                    return `${first}" NB X Sch ${secondClean}`;
+                if (isSch || isNumericLikeToken(secondClean)) {
+                    return `${first}" NB X Sch ${secondDisplay || secondClean}`;
                 }
-                return raw;
+                return normalized;
             }
 
             const isGi = pipeType.includes('gi') || pipeType.includes('galvanized');
@@ -2270,10 +2309,10 @@
             if (isMedium || mediumTokens.includes(secondClean)) {
                 return `${first}" NB X Medium -- ${pipeLabel}`;
             }
-            if (/^\d+(\.\d+)?$/.test(secondClean)) {
-                return `${first}" NB X ${secondClean}mm thk -- ${pipeLabel}`;
+            if (isNumericLikeToken(secondClean)) {
+                return `${first}" NB X ${secondDisplay || secondClean}mm thk -- ${pipeLabel}`;
             }
-            return raw;
+            return normalized;
         }
 
         function appendGroupedItems(tableBody, groupedItems, grandTotal) {
