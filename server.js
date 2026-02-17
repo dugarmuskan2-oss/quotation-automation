@@ -779,6 +779,64 @@ app.post('/api/delete-rate-file', async (req, res) => {
     }
 });
 
+// View/download rate file
+app.get('/api/view-rate-file', async (req, res) => {
+    try {
+        const rawName = req.query.filename;
+        if (!rawName) {
+            return res.status(400).json({ error: 'Filename is required' });
+        }
+        const filename = path.basename(String(rawName));
+        if (!filename) {
+            return res.status(400).json({ error: 'Invalid filename' });
+        }
+
+        const ext = path.extname(filename).toLowerCase();
+        const contentTypeMap = {
+            '.pdf': 'application/pdf',
+            '.xls': 'application/vnd.ms-excel',
+            '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        };
+        res.setHeader('Content-Type', contentTypeMap[ext] || 'application/octet-stream');
+        res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+
+        if (useGoogleCloud && bucket) {
+            const filePath = `rates/${filename}`;
+            const file = bucket.file(filePath);
+            const stream = file.createReadStream();
+            stream.on('error', (error) => {
+                console.error('Error reading file from GCS:', error);
+                if (!res.headersSent) {
+                    res.status(404).json({ error: 'File not found' });
+                }
+            });
+            return stream.pipe(res);
+        }
+
+        if (useAWS && s3Client) {
+            const { GetObjectCommand } = require('@aws-sdk/client-s3');
+            const command = new GetObjectCommand({
+                Bucket: s3BucketName,
+                Key: `rates/${filename}`
+            });
+            const response = await s3Client.send(command);
+            if (!response.Body) {
+                return res.status(404).json({ error: 'File not found' });
+            }
+            return response.Body.pipe(res);
+        }
+
+        const filePath = path.join(ratesDir, filename);
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ error: 'File not found' });
+        }
+        return res.sendFile(filePath);
+    } catch (error) {
+        console.error('Error viewing rate file:', error);
+        return res.status(500).json({ error: 'Failed to load rate file', details: error.message });
+    }
+});
+
 // Get current rate files info
 app.get('/api/current-rates', async (req, res) => {
     try {
