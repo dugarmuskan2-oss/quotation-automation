@@ -3739,6 +3739,10 @@
             return String(value || '').toLowerCase().trim();
         }
 
+        function idsMatch(a, b) {
+            return String(a) === String(b);
+        }
+
         function getMonthIndexFromToken(token) {
             const months = [
                 'january', 'february', 'march', 'april', 'may', 'june',
@@ -3977,7 +3981,7 @@
             quotationFolders.forEach(function(folder) {
                 // Get quotation ID from folder ID (format: folder-1234567890)
                 const folderId = folder.id;
-                const quotationId = parseInt(folderId.replace('folder-', ''));
+                const quotationId = folderId.replace('folder-', '');
                 
                 const folderContent = folder.querySelector('.quotation-folder-content');
                 if (!folderContent) return;
@@ -4371,8 +4375,11 @@
             const folder = document.getElementById('folder-' + quotationId);
             if (!folder) return;
             
-            const row = folder.querySelector('#' + rowId);
+            const row = document.getElementById(rowId);
             if (!row || (!row.classList.contains('item-row') && !row.classList.contains('pipe-type-header'))) {
+                return;
+            }
+            if (!folder.contains(row)) {
                 return;
             }
             
@@ -4445,9 +4452,9 @@
                         <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
                             <input type="text" class="editable-field" data-field="pipeTypeHeader" value="Default" style="flex: 1; border: none; background: transparent; font-weight: bold;">
                             <div style="display: flex; gap: 6px;">
-                                <button onclick="addApprovalRow(${quotationId}, 'Default', '${newHeaderRow.id}')" title="Add item row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">➕</button>
-                                <button onclick="addApprovalRow(${quotationId}, '__NEW_HEADER__', '${newHeaderRow.id}')" title="Add pipe type" style="background: #2196F3; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">H+</button>
-                                <button onclick="deleteApprovalRow(${quotationId}, '${newHeaderRow.id}')" title="Delete pipe type" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
+                                <button onclick="addApprovalRow('${quotationId}', 'Default', '${newHeaderRow.id}')" title="Add item row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">➕</button>
+                                <button onclick="addApprovalRow('${quotationId}', '__NEW_HEADER__', '${newHeaderRow.id}')" title="Add pipe type" style="background: #2196F3; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">H+</button>
+                                <button onclick="deleteApprovalRow('${quotationId}', '${newHeaderRow.id}')" title="Delete pipe type" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
                             </div>
                         </div>
                     </td>
@@ -4530,7 +4537,7 @@ value="0"
                             min="0" 
                             step="1" style="width: 100px;"></td>
                 <td>
-                    <button class="delete-row-btn" onclick="deleteApprovalRow(${quotationId}, '${rowId}')" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
+                    <button class="delete-row-btn" onclick="deleteApprovalRow('${quotationId}', '${rowId}')" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
                 </td>
             `;
             
@@ -4623,7 +4630,7 @@ value="0"
             
             // Find the quotation in the array
             const quotationIndex = approvedQuotations.findIndex(function(q) {
-                return q.id === quotationId;
+                return idsMatch(q.id, quotationId);
             });
             
             if (quotationIndex === -1) {
@@ -4831,7 +4838,7 @@ value="0"
             }
             
             const quotationIndex = approvedQuotations.findIndex(function(q) {
-                return q.id === quotationId;
+                return idsMatch(q.id, quotationId);
             });
             
             if (quotationIndex !== -1) {
@@ -5043,7 +5050,7 @@ value="0"
             
             // Find the quotation in the array
             const quotationIndex = approvedQuotations.findIndex(function(q) {
-                return q.id === quotationId;
+                return idsMatch(q.id, quotationId);
             });
             
             if (quotationIndex === -1) {
@@ -5238,7 +5245,7 @@ value="0"
             Text-based PDF generation (selectable text).
         */
         async function downloadQuotationPdf(quotationId) {
-            const quotation = approvedQuotations.find(q => q.id === quotationId);
+            const quotation = approvedQuotations.find(q => idsMatch(q.id, quotationId));
             if (!quotation) {
                 alert('Quotation not found');
                 return;
