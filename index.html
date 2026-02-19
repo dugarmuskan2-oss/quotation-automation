@@ -3702,7 +3702,7 @@
                 
                 // Show Approve button only if not saved yet
                 const approveButtonHTML = `<button class="save-btn" onclick="saveQuotation(${quotation.id})">✅ Approve</button>`;
-                
+                const saveButtonHTML = `<button class="save-btn" onclick="saveQuotationChanges(${quotation.id})">💾 Save</button>`;
                 const downloadButtonHTML = `<button class="save-btn" onclick="downloadQuotationPdf(${quotation.id})">⬇️ Download PDF</button>`;
 
                 allQuotationsHTML += `
@@ -3721,6 +3721,7 @@
                                 quotation,
                                 termsText,
                                 approveButtonHTML,
+                                saveButtonHTML,
                                 downloadButtonHTML
                             })}
                         </div>
@@ -3828,7 +3829,7 @@
             searchInput.dataset.bound = 'true';
         }
 
-        function buildApprovalSplitLayout({ quotation, termsText, approveButtonHTML, downloadButtonHTML }) {
+        function buildApprovalSplitLayout({ quotation, termsText, approveButtonHTML, saveButtonHTML, downloadButtonHTML }) {
             const sidePanelHTML = buildApprovalSidePanelHTML(quotation);
 
             return `
@@ -3840,8 +3841,9 @@
                             <span>Total: ₹${quotation.grandTotal}</span>
                         </div>
                         ${buildEditableTermsBoxHtml(termsText)}
-                        <div style="margin-top: 10px; display: flex; gap: 10px;">
+                        <div style="margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
                             ${approveButtonHTML}
+                            ${saveButtonHTML || ''}
                             ${downloadButtonHTML}
                         </div>
                     </div>
@@ -5062,6 +5064,79 @@ value="0"
             return lineItems;
         }
         
+        /*
+            ============================================
+            SAVE QUOTATION CHANGES FUNCTION
+            ============================================
+            Saves edits made in the Approval section without approving.
+        */
+        function saveQuotationChanges(quotationId) {
+            const quotationIndex = approvedQuotations.findIndex(function(q) {
+                return idsMatch(q.id, quotationId);
+            });
+            if (quotationIndex === -1) {
+                alert('Quotation not found!');
+                return;
+            }
+            const quotation = approvedQuotations[quotationIndex];
+            const folderContent = document.getElementById('folder-content-' + quotationId);
+            if (!folderContent) {
+                alert('Cannot save: quotation content not found.');
+                return;
+            }
+            const allInputs = folderContent.querySelectorAll('input, textarea');
+            allInputs.forEach(function(input) {
+                if (input.type === 'number') {
+                    const normalizedValue = normalizeNumberValue(input.value);
+                    input.value = normalizedValue;
+                    input.setAttribute('value', normalizedValue);
+                } else {
+                    input.setAttribute('value', input.value);
+                }
+                if (input.tagName === 'TEXTAREA') {
+                    input.textContent = input.value;
+                }
+            });
+            recalculateApprovalQuotationTotals(quotationId, false);
+            const updatedContent = folderContent.cloneNode(true);
+            const headerElement = updatedContent.querySelector('.quotation-header');
+            if (headerElement) {
+                quotation.headerHTML = headerElement.outerHTML;
+            }
+            const tableElement = updatedContent.querySelector('table');
+            if (tableElement) {
+                quotation.tableHTML = tableElement.outerHTML;
+            }
+            const headerInputs = folderContent.querySelectorAll('.quotation-header input');
+            headerInputs.forEach(function(input) {
+                const inputId = input.id;
+                if (inputId === 'quotationDate') quotation.quotationDate = input.value;
+                else if (inputId === 'preparedBy') quotation.preparedBy = input.value;
+                else if (inputId === 'assignedTo') quotation.assignedTo = input.value;
+                else if (inputId === 'checkedBy') quotation.checkedBy = input.value;
+                else if (inputId === 'quoteNumber') quotation.quoteNumber = input.value;
+                else if (inputId === 'kindAttn') quotation.customerName = input.value;
+                else if (inputId === 'phoneNumber') quotation.phoneNumber = input.value;
+                else if (inputId === 'mobileNumber') quotation.mobileNumber = input.value;
+                else if (inputId === 'billTo') quotation.projectName = input.value;
+                else if (inputId === 'shipTo') quotation.shipTo = input.value;
+            });
+            quotation.contactDetails = quotation.mobileNumber || quotation.phoneNumber || '';
+            const termsTextarea = folderContent.querySelector('.terms-box textarea');
+            if (termsTextarea) {
+                quotation.termsText = termsTextarea.value || '';
+            }
+            const grandTotalElement = folderContent.querySelector('.grand-total span');
+            if (grandTotalElement) {
+                const grandTotalText = grandTotalElement.textContent.replace('Total: ₹', '').replace(/,/g, '');
+                quotation.grandTotal = grandTotalText;
+            }
+            quotation.updatedAt = new Date().toISOString();
+            saveToLocalStorage();
+            saveQuotationToBackend(quotation);
+            alert('Changes saved.');
+        }
+
         /*
             ============================================
             SAVE QUOTATION FUNCTION
