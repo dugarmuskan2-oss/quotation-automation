@@ -990,8 +990,11 @@
                 if (!response.ok) {
                     throw new Error(result.error || 'Failed to save quotation');
                 }
+                return true;
             } catch (error) {
                 console.error('Error saving quotation to backend:', error);
+                alert('Failed to save to server: ' + (error.message || 'Network error'));
+                return false;
             }
         }
 
@@ -1928,11 +1931,17 @@
             if (!cloneRoot) {
                 return;
             }
+            const nodesWithId = cloneRoot.querySelectorAll ? cloneRoot.querySelectorAll('[id]') : [];
+            nodesWithId.forEach(function(node) {
+                const id = node.getAttribute('id');
+                if (id && !node.getAttribute('data-field')) {
+                    node.setAttribute('data-field', id);
+                }
+                node.removeAttribute('id');
+            });
             if (cloneRoot.getAttribute && cloneRoot.getAttribute('id')) {
                 cloneRoot.removeAttribute('id');
             }
-            const nodesWithId = cloneRoot.querySelectorAll ? cloneRoot.querySelectorAll('[id]') : [];
-            nodesWithId.forEach(node => node.removeAttribute('id'));
         }
 
         function buildCreationFolderContentFromData(quotationData) {
@@ -3550,7 +3559,7 @@
             quotationData.emailContentHtml = lastEmailHtmlContent || '';
             quotationData.fileContent = lastFileContent || '';
             const quotationWithStatus = addQuotationToApprovedQuotations(quotationData);
-            saveQuotationToBackend(quotationWithStatus);
+            await saveQuotationToBackend(quotationWithStatus);
             persistAndRefreshApprovals();
             scrollToApprovalSection();
         }
@@ -3644,7 +3653,7 @@
             quotationData.emailContentHtml = folderState.emailContentHtml || '';
             quotationData.fileContent = folderState.fileContent || '';
             const quotationWithStatus = addQuotationToApprovedQuotations(quotationData);
-            saveQuotationToBackend(quotationWithStatus);
+            await saveQuotationToBackend(quotationWithStatus);
             persistAndRefreshApprovals();
             scrollToApprovalSection();
         }
@@ -5079,7 +5088,8 @@ value="0"
                 return;
             }
             const quotation = approvedQuotations[quotationIndex];
-            const folderContent = document.getElementById('folder-content-' + quotationId);
+            const folderId = 'folder-content-' + quotationId;
+            const folderContent = document.getElementById(folderId);
             if (!folderContent) {
                 alert('Cannot save: quotation content not found.');
                 return;
@@ -5107,34 +5117,36 @@ value="0"
             if (tableElement) {
                 quotation.tableHTML = tableElement.outerHTML;
             }
-            const headerInputs = folderContent.querySelectorAll('.quotation-header input');
-            headerInputs.forEach(function(input) {
-                const inputId = input.id;
-                if (inputId === 'quotationDate') quotation.quotationDate = input.value;
-                else if (inputId === 'preparedBy') quotation.preparedBy = input.value;
-                else if (inputId === 'assignedTo') quotation.assignedTo = input.value;
-                else if (inputId === 'checkedBy') quotation.checkedBy = input.value;
-                else if (inputId === 'quoteNumber') quotation.quoteNumber = input.value;
-                else if (inputId === 'kindAttn') quotation.customerName = input.value;
-                else if (inputId === 'phoneNumber') quotation.phoneNumber = input.value;
-                else if (inputId === 'mobileNumber') quotation.mobileNumber = input.value;
-                else if (inputId === 'billTo') quotation.projectName = input.value;
-                else if (inputId === 'shipTo') quotation.shipTo = input.value;
-            });
-            quotation.contactDetails = quotation.mobileNumber || quotation.phoneNumber || '';
-            const termsTextarea = folderContent.querySelector('.terms-box textarea');
-            if (termsTextarea) {
-                quotation.termsText = termsTextarea.value || '';
-            }
-            const grandTotalElement = folderContent.querySelector('.grand-total span');
-            if (grandTotalElement) {
-                const grandTotalText = grandTotalElement.textContent.replace('Total: ₹', '').replace(/,/g, '');
-                quotation.grandTotal = grandTotalText;
+            const headerValues = getQuotationHeaderValuesFromContainer(folderContent);
+            var domReadOk = (headerValues.customerName || '').toString().trim().length > 0;
+            if (domReadOk) {
+                function applyOrKeep(field, domVal) {
+                    var v = (domVal || '').toString().trim();
+                    if (v) quotation[field] = domVal;
+                }
+                applyOrKeep('quotationDate', headerValues.quotationDate);
+                applyOrKeep('preparedBy', headerValues.preparedBy);
+                applyOrKeep('assignedTo', headerValues.assignedTo);
+                applyOrKeep('checkedBy', headerValues.checkedBy);
+                applyOrKeep('quoteNumber', headerValues.quoteNumber);
+                applyOrKeep('customerName', headerValues.customerName);
+                applyOrKeep('phoneNumber', headerValues.phoneNumber);
+                applyOrKeep('mobileNumber', headerValues.mobileNumber);
+                applyOrKeep('projectName', headerValues.projectName);
+                applyOrKeep('shipTo', headerValues.shipTo);
+                if ((headerValues.contactDetails || '').toString().trim()) quotation.contactDetails = headerValues.contactDetails;
+                else quotation.contactDetails = quotation.mobileNumber || quotation.phoneNumber || '';
+                if ((headerValues.grandTotal || '').toString().trim()) quotation.grandTotal = headerValues.grandTotal;
+                if ((headerValues.termsText || '').toString().trim()) quotation.termsText = headerValues.termsText;
             }
             quotation.updatedAt = new Date().toISOString();
             saveToLocalStorage();
-            saveQuotationToBackend(quotation);
-            alert('Changes saved.');
+            (async function() {
+                const ok = await saveQuotationToBackend(quotation);
+                if (ok) alert('Changes saved.');
+            })().catch(function(e) {
+                console.error('saveQuotationChanges async error:', e);
+            });
         }
 
         /*

@@ -1082,11 +1082,18 @@ app.get('/api/quotations', async (req, res) => {
             return res.status(500).json({ error: 'DynamoDB not configured. Set DYNAMODB_TABLE in environment variables.' });
         }
         const { ScanCommand } = require('@aws-sdk/lib-dynamodb');
-        const result = await ddbDocClient.send(new ScanCommand({
-            TableName: ddbTableName,
-            ConsistentRead: true
-        }));
-        const items = result.Items || [];
+        let items = [];
+        let lastKey = null;
+        do {
+            const scanParams = {
+                TableName: ddbTableName,
+                ConsistentRead: true
+            };
+            if (lastKey) scanParams.ExclusiveStartKey = lastKey;
+            const result = await ddbDocClient.send(new ScanCommand(scanParams));
+            items = items.concat(result.Items || []);
+            lastKey = result.LastEvaluatedKey || null;
+        } while (lastKey);
         const quotations = items.map(item => item.data || item).filter(Boolean);
         quotations.sort((a, b) => {
             const aTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
