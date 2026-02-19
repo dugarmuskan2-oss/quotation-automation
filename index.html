@@ -3975,6 +3975,23 @@
                 4. Adds change listeners to update quotation data
             */
             
+            // Event delegation for delete-row buttons
+            const container = document.getElementById('approvedQuotationsContainer');
+            if (container && !container.dataset.approvalDeleteDelegationBound) {
+                container.dataset.approvalDeleteDelegationBound = 'true';
+                container.addEventListener('click', function(e) {
+                    const btn = e.target.closest('.delete-row-btn');
+                    if (!btn) return;
+                    const row = btn.closest('tr');
+                    const folder = btn.closest('.quotation-folder');
+                    if (!row || !folder || !folder.id) return;
+                    const quotationId = folder.id.replace('folder-', '');
+                    e.preventDefault();
+                    e.stopPropagation();
+                    deleteApprovalRow(quotationId, row.id || row.getAttribute('data-row-id'));
+                });
+            }
+            
             // Find all quotation folders in Approval section
             const quotationFolders = document.querySelectorAll('#approvedQuotationsContainer .quotation-folder');
             
@@ -4060,7 +4077,7 @@
                         }
                     });
                     
-                    // Add controls for pipe type header rows
+                    // Add controls for pipe type header rows (replace Creation addRow/deleteRow)
                     const pipeHeaderRows = table.querySelectorAll('.pipe-type-header');
                     pipeHeaderRows.forEach(function(headerRow) {
                         if (!headerRow.id) {
@@ -4072,62 +4089,79 @@
                         if (headerInput && !headerRow.getAttribute('data-pipe-type')) {
                             headerRow.setAttribute('data-pipe-type', headerInput.value || 'Default');
                         }
-                        if (!headerCell.querySelector('.pipe-header-actions')) {
-                            const actions = document.createElement('div');
-                            actions.className = 'pipe-header-actions';
-                            actions.style.display = 'flex';
-                            actions.style.gap = '6px';
-                            const addItemBtn = document.createElement('button');
-                            addItemBtn.textContent = '➕';
-                            addItemBtn.title = 'Add item row';
-                            addItemBtn.style.cssText = 'background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;';
-                            addItemBtn.onclick = function() {
-                                const pipeValue = headerInput ? (headerInput.value || 'Default') : (headerRow.getAttribute('data-pipe-type') || 'Default');
-                                addApprovalRow(quotationId, pipeValue, headerRow.id);
-                            };
-                            const addHeaderBtn = document.createElement('button');
-                            addHeaderBtn.textContent = 'H+';
-                            addHeaderBtn.title = 'Add pipe type';
-                            addHeaderBtn.style.cssText = 'background: #2196F3; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;';
-                            addHeaderBtn.onclick = function() {
-                                addApprovalRow(quotationId, '__NEW_HEADER__', headerRow.id);
-                            };
-                            const deleteHeaderBtn = document.createElement('button');
-                            deleteHeaderBtn.textContent = '🗑️';
-                            deleteHeaderBtn.title = 'Delete pipe type';
-                            deleteHeaderBtn.style.cssText = 'background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;';
-                            deleteHeaderBtn.onclick = function() {
-                                deleteApprovalRow(quotationId, headerRow.id);
-                            };
-                            actions.appendChild(addItemBtn);
-                            actions.appendChild(addHeaderBtn);
-                            actions.appendChild(deleteHeaderBtn);
-                            headerCell.appendChild(actions);
+                        var actions = headerCell.querySelector('.pipe-header-actions');
+                        if (!actions) {
+                            var oldContainer = headerCell.querySelector('div[style*="gap: 6px"], div[style*="gap:6px"]');
+                            if (oldContainer) {
+                                oldContainer.innerHTML = '';
+                                oldContainer.className = 'pipe-header-actions';
+                                oldContainer.style.cssText = 'display: flex; gap: 6px;';
+                                actions = oldContainer;
+                            } else {
+                                actions = document.createElement('div');
+                                actions.className = 'pipe-header-actions';
+                                actions.style.cssText = 'display: flex; gap: 6px;';
+                                headerCell.appendChild(actions);
+                            }
                         }
+                        actions.innerHTML = '';
+                        const addItemBtn = document.createElement('button');
+                        addItemBtn.type = 'button';
+                        addItemBtn.textContent = '➕';
+                        addItemBtn.title = 'Add item row';
+                        addItemBtn.style.cssText = 'background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;';
+                        addItemBtn.onclick = function() {
+                            const pipeValue = headerInput ? (headerInput.value || 'Default') : (headerRow.getAttribute('data-pipe-type') || 'Default');
+                            addApprovalRow(quotationId, pipeValue, headerRow.id);
+                        };
+                        const addHeaderBtn = document.createElement('button');
+                        addHeaderBtn.type = 'button';
+                        addHeaderBtn.textContent = 'H+';
+                        addHeaderBtn.title = 'Add pipe type';
+                        addHeaderBtn.style.cssText = 'background: #2196F3; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;';
+                        addHeaderBtn.onclick = function() {
+                            addApprovalRow(quotationId, '__NEW_HEADER__', headerRow.id);
+                        };
+                        const deleteHeaderBtn = document.createElement('button');
+                        deleteHeaderBtn.type = 'button';
+                        deleteHeaderBtn.textContent = '🗑️';
+                        deleteHeaderBtn.title = 'Delete pipe type';
+                        deleteHeaderBtn.style.cssText = 'background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;';
+                        deleteHeaderBtn.onclick = function() {
+                            deleteApprovalRow(quotationId, headerRow.id);
+                        };
+                        actions.appendChild(addItemBtn);
+                        actions.appendChild(addHeaderBtn);
+                        actions.appendChild(deleteHeaderBtn);
                     });
                     
-                    // Process each item row
-                    const itemRows = table.querySelectorAll('.item-row');
+                    // Process each item row (all tbody rows that aren't pipe-type-header)
+                    const itemRows = table.querySelectorAll('tbody tr:not(.pipe-type-header)');
                     itemRows.forEach(function(row, index) {
-                        // Generate row ID if it doesn't have one
+                        if (!row.classList.contains('item-row')) row.classList.add('item-row');
                         if (!row.id) {
                             row.id = `approval-row-${quotationId}-${Date.now()}-${index}`;
                         }
-                        
-                        // Check if row already has delete button
+                        var actionsCell = row.querySelector('.delete-row-btn')?.closest('td');
+                        row.querySelectorAll('button[onclick*="addRow"], button[onclick*="deleteRow"]').forEach(function(b) {
+                            var cell = b.closest('td');
+                            b.remove();
+                            if (cell && !cell.querySelector('button') && !cell.querySelector('input')) actionsCell = cell;
+                        });
                         if (!row.querySelector('.delete-row-btn')) {
-                            // Add delete button
-                            const actionsCell = document.createElement('td');
+                            if (!actionsCell) {
+                                actionsCell = document.createElement('td');
+                                row.appendChild(actionsCell);
+                            }
+                            actionsCell.innerHTML = '';
+                            actionsCell.style.cssText = 'text-align: center; vertical-align: middle; padding: 5px;';
                             const deleteBtn = document.createElement('button');
+                            deleteBtn.type = 'button';
                             deleteBtn.className = 'delete-row-btn';
                             deleteBtn.textContent = '🗑️';
                             deleteBtn.title = 'Delete row';
                             deleteBtn.style.cssText = 'background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;';
-                            deleteBtn.onclick = function() {
-                                deleteApprovalRow(quotationId, row.id);
-                            };
                             actionsCell.appendChild(deleteBtn);
-                            row.appendChild(actionsCell);
                         }
                         
                         // Make rate-per-mtr editable if it's a span

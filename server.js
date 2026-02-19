@@ -1083,7 +1083,8 @@ app.get('/api/quotations', async (req, res) => {
         }
         const { ScanCommand } = require('@aws-sdk/lib-dynamodb');
         const result = await ddbDocClient.send(new ScanCommand({
-            TableName: ddbTableName
+            TableName: ddbTableName,
+            ConsistentRead: true
         }));
         const items = result.Items || [];
         const quotations = items.map(item => item.data || item).filter(Boolean);
