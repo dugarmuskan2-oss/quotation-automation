@@ -4009,9 +4009,9 @@
                 4. Adds change listeners to update quotation data
             */
             
-            // Event delegation for delete-row buttons
             const container = document.getElementById('approvedQuotationsContainer');
-            if (container && !container.dataset.approvalDeleteDelegationBound) {
+            if (!container) return;
+            if (!container.dataset.approvalDeleteDelegationBound) {
                 container.dataset.approvalDeleteDelegationBound = 'true';
                 container.addEventListener('click', function(e) {
                     const btn = e.target.closest('.delete-row-btn');
@@ -4024,6 +4024,19 @@
                     e.stopPropagation();
                     deleteApprovalRow(quotationId, row.id || row.getAttribute('data-row-id'));
                 });
+            }
+            if (!container.dataset.approvalAutosaveDelegationBound) {
+                container.dataset.approvalAutosaveDelegationBound = 'true';
+                var autosaveHandler = function(e) {
+                    var input = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' ? e.target : null;
+                    if (!input) return;
+                    var folder = input.closest('.quotation-folder');
+                    if (!folder || !folder.id) return;
+                    var quotationId = folder.id.replace('folder-', '');
+                    updateQuotationFromApprovalSection(quotationId, input);
+                };
+                container.addEventListener('change', autosaveHandler);
+                container.addEventListener('focusout', autosaveHandler);
             }
             
             // Find all quotation folders in Approval section
@@ -4298,19 +4311,6 @@
                         }
                     }
                 }
-
-                const autosaveInputs = folderContent.querySelectorAll('input, textarea');
-                autosaveInputs.forEach(function(input) {
-                    if (input.dataset.approvalAutosaveBound === 'true') {
-                        return;
-                    }
-                    const handler = function() {
-                        updateQuotationFromApprovalSection(quotationId, input);
-                    };
-                    input.addEventListener('change', handler);
-                    input.addEventListener('blur', handler);
-                    input.dataset.approvalAutosaveBound = 'true';
-                });
 
                 attachApprovalSidePanelDrag(folderContent);
                 updateEmailPreviewScroll(folderContent);
