@@ -1284,8 +1284,10 @@ async function handleGenerateQuotation({ emailContent, fileContent, instructions
 
 {
   "customerName": "",
+  "companyName": "",
   "projectName": "",
-  "shipTo": "",
+  "phoneNumber": "",
+  "mobileNumber": "",
   "quotationDate": "",
   "lineItems": [
     {
@@ -1611,8 +1613,10 @@ app.post('/api/generate-quotation', async (req, res) => {
 
 {
   "customerName": "",
+  "companyName": "",
   "projectName": "",
-  "contactDetails": "",
+  "phoneNumber": "",
+  "mobileNumber": "",
   "quotationDate": "",
   "lineItems": [
     {

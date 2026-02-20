@@ -2296,9 +2296,13 @@
         function populateQuotationHeader(data) {
             // Step 1: Fill in the header information (make editable)
             document.getElementById('quotationDate').value = data.quotationDate;
-            document.getElementById('billTo').value = data.projectName || '';
-            document.getElementById('shipTo').value = data.shipTo || '';
+            document.getElementById('billTo').value = data.companyName || data.billTo || '';
+            document.getElementById('shipTo').value = data.projectName || data.shipTo || '';
             document.getElementById('kindAttn').value = data.customerName || '';
+            const phoneEl = document.getElementById('phoneNumber');
+            const mobileEl = document.getElementById('mobileNumber');
+            if (phoneEl) phoneEl.value = data.phoneNumber || data['Phone Number'] || '';
+            if (mobileEl) mobileEl.value = data.mobileNumber || data['Mobile Number'] || '';
         }
 
         function getQuotationTableBody() {
@@ -3715,11 +3719,11 @@
             // Show all quotations as collapsible folders (list is already newest-first from caller)
             sourceList.forEach(function(quotation, index) {
                 const quotationNumber = sourceList.length - index;
-                const contactNumber = extractContactNumber(quotation.contactDetails);
-                let folderName = quotation.customerName;
-                if (contactNumber) {
-                    folderName += ` (${contactNumber})`;
-                }
+                const companyName = (quotation.companyName || quotation.projectName || '').trim();
+                const kindAttn = (quotation.customerName || '').trim();
+                const quoteNumber = (quotation.quoteNumber || '').trim();
+                let folderName = [companyName, kindAttn, quoteNumber].filter(Boolean).join(' - ');
+                if (!folderName) folderName = quotation.customerName || 'Quotation';
                 const termsText = quotation.termsText || defaultTermsText || '';
                 
                 // Show APPROVED badge only if saved, with checked by name
@@ -4664,6 +4668,28 @@ value="0"
             ============================================
             This function updates the quotation object when changes are made in Approval section.
         */
+        function getFolderDisplayName(quotation) {
+            const companyName = (quotation.companyName || quotation.projectName || '').trim();
+            const kindAttn = (quotation.customerName || '').trim();
+            const quoteNumber = (quotation.quoteNumber || '').trim();
+            const parts = [companyName, kindAttn, quoteNumber].filter(Boolean);
+            return parts.length ? parts.join(' - ') : (quotation.customerName || 'Quotation');
+        }
+
+        function updateFolderHeaderDisplay(quotationId, quotation) {
+            const folder = document.getElementById('folder-' + quotationId);
+            if (!folder) return;
+            const headerSpan = folder.querySelector('.quotation-folder-header span:first-child');
+            if (!headerSpan) return;
+            const icon = headerSpan.querySelector('.folder-icon');
+            const badges = headerSpan.querySelectorAll('.saved-badge');
+            const displayName = getFolderDisplayName(quotation);
+            headerSpan.innerHTML = '';
+            if (icon) headerSpan.appendChild(icon);
+            headerSpan.appendChild(document.createTextNode(' ' + displayName + ' '));
+            badges.forEach(function(b) { headerSpan.appendChild(b); });
+        }
+
         function updateApprovalBadge(quotationId, quotation) {
             const folder = document.getElementById('folder-' + quotationId);
             if (!folder) {
@@ -4782,6 +4808,9 @@ value="0"
                     quotation.projectName = changedInput.value;
                 } else if (inputId === 'shipTo') {
                     quotation.shipTo = changedInput.value;
+                }
+                if (inputId === 'billTo' || inputId === 'kindAttn' || inputId === 'quoteNumber') {
+                    updateFolderHeaderDisplay(quotationId, quotation);
                 }
             }
 
@@ -5159,6 +5188,7 @@ value="0"
                 applyOrKeep('shipTo', headerValues.shipTo);
                 if ((headerValues.contactDetails || '').toString().trim()) quotation.contactDetails = headerValues.contactDetails;
                 else quotation.contactDetails = quotation.mobileNumber || quotation.phoneNumber || '';
+                updateFolderHeaderDisplay(quotationId, quotation);
                 if ((headerValues.grandTotal || '').toString().trim()) quotation.grandTotal = headerValues.grandTotal;
                 if ((headerValues.termsText || '').toString().trim()) quotation.termsText = headerValues.termsText;
             }
@@ -5298,11 +5328,8 @@ value="0"
             }
             
             // Show confirmation
-            const contactNumber = extractContactNumber(approvedQuotations[quotationIndex].contactDetails);
-            let filename = approvedQuotations[quotationIndex].customerName.trim();
-            if (contactNumber) {
-                filename += ` (${contactNumber})`;
-            }
+            const q = approvedQuotations[quotationIndex];
+            const filename = getFolderDisplayName(q);
             alert(`Quotation saved as file: ${filename}`);
         }
 
@@ -5657,7 +5684,7 @@ value="0"
                 });
             }
 
-            const filename = `Quotation-${quotation.customerName || 'Customer'}.pdf`;
+            const filename = `Quotation-${getFolderDisplayName(quotation).replace(/[/\\?%*:|"<>]/g, '-')}.pdf`;
             doc.save(filename);
         }
         
