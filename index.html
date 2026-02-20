@@ -4974,22 +4974,22 @@ value="0"
                 noCreationMsg.style.display = 'block';
             }
             
-            // Clear all header input fields
+            // Clear all header input fields (except emailContent/fileUpload - user may have
+            // pasted new content while creation was in progress; preserve it)
             document.getElementById('quotationDate').value = '';
             document.getElementById('billTo').value = '';
             document.getElementById('shipTo').value = '';
             document.getElementById('kindAttn').value = '';
-            document.getElementById('emailContent').value = '';
-            document.getElementById('fileUpload').value = '';
+            // emailContent and fileUpload intentionally NOT cleared - see bug: pasted content
+            // during creation was being wiped when creation completed
             document.getElementById('preparedBy').value = '';
             document.getElementById('assignedTo').value = '';
             document.getElementById('checkedBy').value = '';
             document.getElementById('quoteNumber').value = '';
             document.getElementById('phoneNumber').value = '';
             document.getElementById('mobileNumber').value = '';
-            lastEmailContent = '';
-            lastFileContent = '';
-            
+            // lastEmailContent/lastFileContent left intact - next generate reads from textarea/file input
+            // and will set them; clearing here would be redundant with preserving emailContent
             // Clear terms and conditions
             if (document.getElementById('termsText')) {
                 document.getElementById('termsText').value = '';
