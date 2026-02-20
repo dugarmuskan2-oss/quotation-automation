@@ -979,12 +979,22 @@
                 .replace(/'/g, '&#39;');
         }
 
+        function sanitizeQuotationForSave(quotation) {
+            const q = { ...quotation };
+            const fc = (q.fileContent || '').trim();
+            if (fc && (fc.startsWith('%PDF') || fc.length > 500000)) {
+                q.fileContent = PDF_PLACEHOLDER;
+            }
+            return q;
+        }
+
         async function saveQuotationToBackend(quotation) {
             try {
+                const sanitized = sanitizeQuotationForSave(quotation);
                 const response = await fetch(`${API_BASE_URL}/save-quotation`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ quotation })
+                    body: JSON.stringify({ quotation: sanitized })
                 });
                 const result = await safeJsonParse(response);
                 if (!response.ok) {
@@ -1815,10 +1825,23 @@
             return { emailContent, fileInput, file };
         }
 
+        const PDF_PLACEHOLDER = '(PDF uploaded - content extracted by AI)';
+
+        function isPdfFile(file) {
+            if (!file) return false;
+            const type = (file.type || '').toLowerCase();
+            const name = (file.name || '').toLowerCase();
+            return type === 'application/pdf' || name.endsWith('.pdf');
+        }
+
         async function readUploadedFileContent(file) {
             let fileContent = "";
             if (file) {
-                fileContent = await readFileContent(file);
+                if (isPdfFile(file)) {
+                    fileContent = PDF_PLACEHOLDER;
+                } else {
+                    fileContent = await readFileContent(file);
+                }
             }
             return fileContent;
         }

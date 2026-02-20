@@ -107,7 +107,7 @@ const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
-app.use(express.json({ limit: '15mb' }));
+app.use(express.json({ limit: '30mb' }));
 app.use(express.static('public')); // Serve static files if needed
 app.use(express.static(__dirname)); // Serve root files like index.html/logo.png
 
@@ -1126,17 +1126,17 @@ async function uploadEnquiryFileToOpenAI(uploadedFile) {
     }
     let fileBuffer;
     if (uploadedFile.buffer) {
-        fileBuffer = uploadedFile.buffer;
+        fileBuffer = Buffer.concat([uploadedFile.buffer]);
     } else if (uploadedFile.path) {
         fileBuffer = fs.readFileSync(uploadedFile.path);
     }
     if (!fileBuffer) {
         return null;
     }
-    const cleanBuffer = Buffer.from(fileBuffer);
     const fileName = uploadedFile.originalname || 'enquiry-file';
+    const openAiUploadFile = await toFile(fileBuffer, fileName, { type: 'application/pdf' });
     const file = await openai.files.create({
-        file: cleanBuffer,
+        file: openAiUploadFile,
         purpose: 'assistants'
     });
     console.log(`Uploaded enquiry file to OpenAI with ID: ${file.id} (${fileName})`);
