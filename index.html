@@ -770,11 +770,11 @@
             ></textarea>
             
             <!-- File upload input -->
-            <label for="fileUpload" style="margin-top: 20px;">Or Upload File (PDF/Word/Text):</label>
+            <label for="fileUpload" style="margin-top: 20px;">Or Upload File (PDF, Word, Excel, Text, or Image):</label>
             <input 
                 type="file" 
                 id="fileUpload" 
-                accept=".pdf,.doc,.docx,.txt"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.png,.jpg,.jpeg,.gif,.webp"
             >
             
             <!-- Generate button -->
@@ -2222,8 +2222,8 @@
             return await extractQuotationWithAI(emailContent, fileContent);
         }
 
-        function renderQuotation(quotationData) {
-            displayQuotation(quotationData);
+        function renderQuotation(quotationData, creationFolderId) {
+            displayQuotation(quotationData, !!creationFolderId);
         }
 
         async function generateQuotation() {
@@ -2265,7 +2265,7 @@
                 const quotationData = await fetchQuotationData(emailContent, fileContent, file);
 
                 // Step 6: Display the quotation
-                renderQuotation(quotationData);
+                renderQuotation(quotationData, creationFolderId);
                 if (creationFolderId) {
                     await finalizeCreationFolderEntry(creationFolderId);
                     updateCreationContainerScrollLimit();
@@ -2579,8 +2579,10 @@
             }
         }
 
-        function showCreationQuotationContent() {
+        function showCreationQuotationContent(hasCreationFolder) {
             // Step 9: Show the quotation content (header, table, totals, approve button, terms)
+            // When hasCreationFolder: finalizeCreationFolderEntry consumes the quote number (single source).
+            // When no folder: we must consume here.
             document.getElementById('creationQuotationHeader').style.display = 'block';
             document.getElementById('quotationTable').style.display = 'table';
             document.getElementById('creationGrandTotal').style.display = 'block';
@@ -2592,7 +2594,7 @@
                 termsText.value = defaultTermsText;
             }
             const quoteNumberInput = document.getElementById('quoteNumber');
-            if (quoteNumberInput && !quoteNumberInput.value.trim()) {
+            if (quoteNumberInput && !quoteNumberInput.value.trim() && !hasCreationFolder) {
                 consumeNextQuoteNumber()
                     .then(nextNumber => {
                         quoteNumberInput.value = nextNumber;
@@ -2615,7 +2617,7 @@
             });
         }
 
-        function displayQuotation(data) {
+        function displayQuotation(data, hasCreationFolder) {
             /*
                 Parameter:
                 - data: The quotation data object from mockAIExtraction
@@ -2646,7 +2648,7 @@
             hideNoCreationQuotationMessage();
             
             // Step 9: Show the quotation content (header, table, totals, approve button, terms)
-            showCreationQuotationContent();
+            showCreationQuotationContent(hasCreationFolder);
             
             // Step 10: Add event listeners to all editable fields for real-time calculation
             attachCreationCalculationListeners();

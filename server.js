@@ -1120,8 +1120,94 @@ async function getUploadedFileContent(uploadedFile) {
     return '';
 }
 
+function getMimeTypeForEnquiryFile(fileName) {
+    const ext = (path.extname(fileName || '').toLowerCase());
+    const mime = {
+        '.pdf': 'application/pdf',
+        '.doc': 'application/msword',
+        '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        '.txt': 'text/plain',
+        '.xls': 'application/vnd.ms-excel',
+        '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    }[ext];
+    return mime || 'application/octet-stream';
+}
+
+function isWordEnquiryFile(fileName) {
+    const ext = (path.extname(fileName || '').toLowerCase());
+    return ext === '.doc' || ext === '.docx';
+}
+
+function isExcelEnquiryFile(fileName) {
+    const ext = (path.extname(fileName || '').toLowerCase());
+    return ext === '.xls' || ext === '.xlsx';
+}
+
+function isImageEnquiryFile(fileName) {
+    const ext = (path.extname(fileName || '').toLowerCase());
+    return ['.png', '.jpg', '.jpeg', '.gif', '.webp'].includes(ext);
+}
+
+function getImageDataUrl(uploadedFile) {
+    let fileBuffer;
+    if (uploadedFile.buffer) {
+        fileBuffer = uploadedFile.buffer;
+    } else if (uploadedFile.path) {
+        fileBuffer = fs.readFileSync(uploadedFile.path);
+    }
+    if (!fileBuffer) return null;
+    const ext = (path.extname(uploadedFile.originalname || '').toLowerCase());
+    const mime = {
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.gif': 'image/gif',
+        '.webp': 'image/webp'
+    }[ext] || 'image/png';
+    const base64 = fileBuffer.toString('base64');
+    return `data:${mime};base64,${base64}`;
+}
+
+async function extractTextFromWordFile(uploadedFile) {
+    const mammoth = require('mammoth');
+    let fileBuffer;
+    if (uploadedFile.buffer) {
+        fileBuffer = uploadedFile.buffer;
+    } else if (uploadedFile.path) {
+        fileBuffer = fs.readFileSync(uploadedFile.path);
+    }
+    if (!fileBuffer) return '';
+    const result = await mammoth.extractRawText({ buffer: fileBuffer });
+    return result.value || '';
+}
+
+function extractTextFromExcelFile(uploadedFile) {
+    const XLSX = require('xlsx');
+    let fileBuffer;
+    if (uploadedFile.buffer) {
+        fileBuffer = uploadedFile.buffer;
+    } else if (uploadedFile.path) {
+        fileBuffer = fs.readFileSync(uploadedFile.path);
+    }
+    if (!fileBuffer) return '';
+    const workbook = XLSX.read(fileBuffer, { type: 'buffer', raw: true });
+    const parts = [];
+    for (const sheetName of workbook.SheetNames) {
+        const sheet = workbook.Sheets[sheetName];
+        if (!sheet) continue;
+        const csv = XLSX.utils.sheet_to_csv(sheet);
+        if (csv.trim()) {
+            parts.push(`[Sheet: ${sheetName}]\n${csv}`);
+        }
+    }
+    return parts.join('\n\n');
+}
+
 async function uploadEnquiryFileToOpenAI(uploadedFile) {
     if (!uploadedFile) {
+        return null;
+    }
+    if (isWordEnquiryFile(uploadedFile.originalname) || isExcelEnquiryFile(uploadedFile.originalname) || isImageEnquiryFile(uploadedFile.originalname)) {
         return null;
     }
     let fileBuffer;
@@ -1134,7 +1220,8 @@ async function uploadEnquiryFileToOpenAI(uploadedFile) {
         return null;
     }
     const fileName = uploadedFile.originalname || 'enquiry-file';
-    const openAiUploadFile = await toFile(fileBuffer, fileName, { type: 'application/pdf' });
+    const mimeType = getMimeTypeForEnquiryFile(fileName);
+    const openAiUploadFile = await toFile(fileBuffer, fileName, { type: mimeType });
     const file = await openai.files.create({
         file: openAiUploadFile,
         purpose: 'assistants'
@@ -1143,9 +1230,9 @@ async function uploadEnquiryFileToOpenAI(uploadedFile) {
     return file.id;
 }
 
-async function handleGenerateQuotation({ emailContent, fileContent, instructions, enquiryFileId }, res) {
+async function handleGenerateQuotation({ emailContent, fileContent, instructions, enquiryFileId, enquiryImageDataUrl }, res) {
     try {
-        if (!emailContent && !fileContent && !enquiryFileId) {
+        if (!emailContent && !fileContent && !enquiryFileId && !enquiryImageDataUrl) {
             return res.status(400).json({ error: 'No content provided' });
         }
 
@@ -1154,7 +1241,10 @@ async function handleGenerateQuotation({ emailContent, fileContent, instructions
         }
 
         // Prepare content for OpenAI
-        const enquiryText = emailContent || fileContent || '';
+        let enquiryText = emailContent || fileContent || '';
+        if (enquiryImageDataUrl && !enquiryText.trim()) {
+            enquiryText = '(Enquiry is in the attached image. Please extract all relevant details from the image.)';
+        }
 
         // Try to use existing OpenAI file IDs from the rate index (fast path - no S3 read, no upload)
         let uploadedFileIds = [];
@@ -1315,6 +1405,12 @@ Extract all pipe information from the enquiry, match with rates from the uploade
             userContentParts.push({
                 type: 'input_file',
                 file_id: enquiryFileId
+            });
+        }
+        if (enquiryImageDataUrl) {
+            userContentParts.push({
+                type: 'input_image',
+                image_url: enquiryImageDataUrl
             });
         }
 
@@ -1788,14 +1884,33 @@ Extract all pipe information from the enquiry, match with rates from the uploade
 app.post('/api/generate-quotation-file', upload.single('enquiryFile'), async (req, res) => {
     const emailContent = req.body?.emailContent || '';
     const instructions = req.body?.instructions || '';
+    let fileContent = '';
     let enquiryFileId = null;
+    let enquiryImageDataUrl = null;
     try {
-        enquiryFileId = await uploadEnquiryFileToOpenAI(req.file);
+        if (req.file && isWordEnquiryFile(req.file.originalname)) {
+            fileContent = await extractTextFromWordFile(req.file);
+            if (!fileContent.trim() && !emailContent.trim()) {
+                return res.status(400).json({ error: 'Could not extract text from Word document or document is empty.' });
+            }
+        } else if (req.file && isExcelEnquiryFile(req.file.originalname)) {
+            fileContent = extractTextFromExcelFile(req.file);
+            if (!fileContent.trim() && !emailContent.trim()) {
+                return res.status(400).json({ error: 'Could not extract text from Excel file or file is empty.' });
+            }
+        } else if (req.file && isImageEnquiryFile(req.file.originalname)) {
+            enquiryImageDataUrl = getImageDataUrl(req.file);
+            if (!enquiryImageDataUrl && !emailContent.trim()) {
+                return res.status(400).json({ error: 'Could not read image file.' });
+            }
+        } else if (req.file) {
+            enquiryFileId = await uploadEnquiryFileToOpenAI(req.file);
+        }
     } catch (error) {
-        console.error('Failed to upload enquiry file to OpenAI:', error);
-        return res.status(500).json({ error: 'Failed to upload enquiry file', details: error.message });
+        console.error('Failed to process enquiry file:', error);
+        return res.status(500).json({ error: 'Failed to process enquiry file', details: error.message });
     }
-    await handleGenerateQuotation({ emailContent, fileContent: '', instructions, enquiryFileId }, res);
+    await handleGenerateQuotation({ emailContent, fileContent, instructions, enquiryFileId, enquiryImageDataUrl }, res);
 });
 
 // Chat with AI about the last response
