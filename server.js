@@ -2068,6 +2068,13 @@ const gmailIngestContext = {
 const ingestFromGmailHandler = createIngestFromGmailRoute(gmailIngestContext);
 app.post('/api/ingest-from-gmail', ingestFromGmailHandler);
 app.post('/ingest-from-gmail', ingestFromGmailHandler);
+// Gmail ingest via POST /api/health (workaround when /api/ingest-from-gmail 404s on Vercel)
+app.post('/api/health', express.json({ limit: '30mb' }), (req, res, next) => {
+    if (req.body && Array.isArray(req.body.emails)) {
+        return ingestFromGmailHandler(req, res);
+    }
+    res.json({ status: 'ok', message: 'Server is running' });
+});
 
 // Explicit catch for ingest (Vercel may pass path differently)
 app.use((req, res, next) => {
