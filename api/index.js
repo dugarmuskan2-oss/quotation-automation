@@ -24,23 +24,14 @@ try {
     };
 }
 
-function isIngestPath(req) {
-    // Vercel can pass Web Request (req.url = full URL) or Node (req.url = path)
-    const raw = req.url || req.path || (req.originalUrl);
-    const path = typeof raw === 'string' ? raw.split('?')[0] : '';
-    const pathPart = path.includes('://') ? new URL(path).pathname : path;
-    const isPost = (req.method || '').toUpperCase() === 'POST';
-return isPost && pathPart && pathPart.includes('ingest-from-gmail');
-}
-
 function handler(req, res) {
-    if (isIngestPath(req)) {
+    const isPost = (req.method || '').toUpperCase() === 'POST';
+    if (isPost) {
         jsonParser(req, res, () => {
-            if (app.ingestFromGmailHandler) {
-                app.ingestFromGmailHandler(req, res);
-            } else {
-                res.status(500).json({ error: 'Ingest handler not available' });
+            if (req.body && Array.isArray(req.body.emails) && app.ingestFromGmailHandler) {
+                return app.ingestFromGmailHandler(req, res);
             }
+            app(req, res);
         });
         return;
     }
