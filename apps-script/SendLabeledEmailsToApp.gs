@@ -119,7 +119,7 @@ function getEmailsWithLabel(labelName) {
  * @return {Object} Response object with status and body
  */
 function postEmailsToApp(appUrl, emails, secret) {
-  var endpoint = appUrl + '/api/ingest-from-gmail';
+  var endpoint = appUrl + '/ingest-from-gmail';
   var payload = JSON.stringify({ emails: emails });
   var options = {
     method: 'post',

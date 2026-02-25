@@ -1,6 +1,6 @@
 {
   "rewrites": [
-    { "source": "/api/ingest-from-gmail", "destination": "/api/ingest-from-gmail.js" },
+    { "source": "/ingest-from-gmail", "destination": "/api/ingest-from-gmail" },
     { "source": "/api/:path*", "destination": "/api/index.js" }
   ],
   "functions": {
