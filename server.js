@@ -2065,7 +2065,17 @@ const gmailIngestContext = {
     findQuotationByGmailMessageId,
     uploadEnquiryFileToOpenAI: uploadEnquiryFileFromBuffer
 };
-app.post('/api/ingest-from-gmail', createIngestFromGmailRoute(gmailIngestContext));
+const ingestFromGmailHandler = createIngestFromGmailRoute(gmailIngestContext);
+app.post('/api/ingest-from-gmail', ingestFromGmailHandler);
+app.post('/ingest-from-gmail', ingestFromGmailHandler);
+
+// Explicit catch for ingest (Vercel may pass path differently)
+app.use((req, res, next) => {
+    if (req.method === 'POST' && (req.path === '/api/ingest-from-gmail' || req.path === '/ingest-from-gmail' || req.originalUrl === '/api/ingest-from-gmail')) {
+        return ingestFromGmailHandler(req, res);
+    }
+    next();
+});
 
 // Error handling middleware - must be after all routes
 app.use((err, req, res, next) => {
