@@ -1,10 +1,8 @@
 {
   "rewrites": [
-    { "source": "/ingest-from-gmail", "destination": "/api/ingest-from-gmail" },
-    { "source": "/api/:path*", "destination": "/api" }
+    { "source": "/(.*)", "destination": "/api" }
   ],
   "functions": {
-    "api/index.js": { "maxDuration": 60 },
-    "api/ingest-from-gmail.js": { "maxDuration": 60 }
+    "api/index.js": { "maxDuration": 60 }
   }
 }
