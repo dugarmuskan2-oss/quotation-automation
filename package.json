@@ -3,15 +3,14 @@
   "version": "1.0.0",
   "description": "Quotation Automation with OpenAI Integration",
   "main": "server.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js"
   },
-  "keywords": [
-    "quotation",
-    "automation",
-    "openai"
-  ],
+  "keywords": ["quotation", "automation", "openai"],
   "author": "",
   "license": "ISC",
   "dependencies": {
