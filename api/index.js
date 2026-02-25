@@ -2,21 +2,19 @@
     ============================================
     VERCEL SERVERLESS FUNCTION - EXPRESS APP
     ============================================
-    Exports the Express app from server.js so Vercel's zero-config
-    treats it as the serverless handler. All routes (including
-    /api/health, /api/ingest-from-gmail) are handled by the app.
-    See: https://vercel.com/docs/frameworks/backend/express
-
-    Vercel rewrite sends path as query param (path=ingest-from-gmail);
-    we restore req.url so Express routing matches.
+    Vercel rewrite /api/(.*) -> /api?path=$1 so we get req.query.path.
+    For ingest and health we call the handler directly (bypass Express routing).
+    All other paths go through the Express app.
 */
+
+const express = require('express');
+const jsonParser = express.json({ limit: '30mb' });
 
 let app;
 try {
     app = require('../server.js');
 } catch (error) {
     console.error('Error loading server.js:', error);
-    const express = require('express');
     app = express();
     app.use((req, res) => {
         res.status(500).json({
@@ -27,18 +25,39 @@ try {
 }
 
 function handler(req, res) {
-    // [ingest-debug] One-line so it's easy to find in Vercel: method, url, query
-    console.log('[ingest-debug]', req.method, req.url, JSON.stringify(req.query || {}));
-    // Rewrite /api/(.*) -> /api?path=$1 sends path in req.query.path; restore for Express routing
+    const pathSeg = (req.query && req.query.path) || '';
+    const method = (req.method || '').toUpperCase();
+
+    // [ingest-debug] method, path segment, query
+    console.log('[ingest-debug]', method, pathSeg, Object.keys(req.query || {}).length);
+
+    // Bypass Express routing: call handler directly so Vercel req.path doesn't matter
+    if (pathSeg === 'ingest-from-gmail' && method === 'POST' && app.ingestFromGmailHandler) {
+        jsonParser(req, res, () => app.ingestFromGmailHandler(req, res));
+        return;
+    }
+    if (pathSeg === 'health') {
+        if (method === 'POST') {
+            jsonParser(req, res, () => {
+                if (req.body && Array.isArray(req.body.emails) && app.ingestFromGmailHandler) {
+                    return app.ingestFromGmailHandler(req, res);
+                }
+                res.status(200).json({ status: 'ok', message: 'Server is running' });
+            });
+            return;
+        }
+        res.status(200).json({ status: 'ok', message: 'Server is running' });
+        return;
+    }
+
+    // Restore path for other routes
     if (req.query && req.query.path) {
         const rest = { ...req.query };
         delete rest.path;
         const qs = Object.keys(rest).length ? '?' + new URLSearchParams(rest).toString() : '';
-        const pathname = '/api/' + req.query.path;
-        req.url = pathname + qs;
-        req.path = pathname;       // Express route matching uses req.path
+        req.url = '/api/' + req.query.path + qs;
+        req.path = '/api/' + req.query.path;
         req.originalUrl = req.url;
-        console.log('[ingest-debug] path restored ->', req.path);
     }
     app(req, res);
 }
