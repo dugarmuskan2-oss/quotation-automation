@@ -29,13 +29,16 @@ try {
 function handler(req, res) {
     // [ingest-debug] One-line so it's easy to find in Vercel: method, url, query
     console.log('[ingest-debug]', req.method, req.url, JSON.stringify(req.query || {}));
-    // Rewrite /api/(.*) -> /api?path=$1 sends path in req.query.path; restore req.url for Express
+    // Rewrite /api/(.*) -> /api?path=$1 sends path in req.query.path; restore for Express routing
     if (req.query && req.query.path) {
         const rest = { ...req.query };
         delete rest.path;
         const qs = Object.keys(rest).length ? '?' + new URLSearchParams(rest).toString() : '';
-        req.url = '/api/' + req.query.path + qs;
-        console.log('[ingest-debug] path restored ->', req.url);
+        const pathname = '/api/' + req.query.path;
+        req.url = pathname + qs;
+        req.path = pathname;       // Express route matching uses req.path
+        req.originalUrl = req.url;
+        console.log('[ingest-debug] path restored ->', req.path);
     }
     app(req, res);
 }
