@@ -2096,6 +2096,7 @@ app.use((req, res) => {
 
 // Export app for Vercel serverless functions
 module.exports = app;
+module.exports.ingestFromGmailHandler = ingestFromGmailHandler;
 
 // Start server only when running locally (not on Vercel)
 // Check for Vercel environment variables
