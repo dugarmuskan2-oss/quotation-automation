@@ -25,8 +25,12 @@ try {
 }
 
 function isIngestPath(req) {
-    const path = (req.url || req.path || '').split('?')[0];
-    return req.method === 'POST' && path && path.includes('ingest-from-gmail');
+    // Vercel can pass Web Request (req.url = full URL) or Node (req.url = path)
+    const raw = req.url || req.path || (req.originalUrl);
+    const path = typeof raw === 'string' ? raw.split('?')[0] : '';
+    const pathPart = path.includes('://') ? new URL(path).pathname : path;
+    const isPost = (req.method || '').toUpperCase() === 'POST';
+return isPost && pathPart && pathPart.includes('ingest-from-gmail');
 }
 
 function handler(req, res) {
