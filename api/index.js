@@ -27,12 +27,20 @@ try {
 }
 
 function handler(req, res) {
+    // [ingest-debug] Log what Vercel passes so we can fix 404
+    console.log('[ingest-debug] handler invoked', {
+        method: req.method,
+        url: req.url,
+        query: req.query,
+        path: req.path
+    });
     // Vercel rewrite (.*) -> /api puts the path in req.query.path; restore it so Express matches
     if (req.query && req.query.path) {
         const rest = { ...req.query };
         delete rest.path;
         const qs = Object.keys(rest).length ? '?' + new URLSearchParams(rest).toString() : '';
         req.url = '/api/' + req.query.path + qs;
+        console.log('[ingest-debug] path restored, req.url=', req.url);
     }
     app(req, res);
 }
