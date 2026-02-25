@@ -1960,6 +1960,113 @@ app.post('/api/ai-chat', async (req, res) => {
     }
 });
 
+// ---------- Gmail ingest (new files: gmail-ingest/*.js) ----------
+async function getInstructionsContent() {
+    if (useGoogleCloud && bucket) {
+        const c = await readInstructionsFromGCS();
+        return c || '';
+    }
+    if (useAWS && s3Client) {
+        const c = await readInstructionsFromS3();
+        return c || '';
+    }
+    const p = path.join(baseDir, 'instructions.txt');
+    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
+}
+async function getDefaultTermsContent() {
+    if (useGoogleCloud && bucket) {
+        const c = await readDefaultTermsFromGCS();
+        return c || '';
+    }
+    if (useAWS && s3Client) {
+        const c = await readDefaultTermsFromS3();
+        return c || '';
+    }
+    const p = path.join(baseDir, 'default-terms.txt');
+    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
+}
+function generateQuotationData(opts) {
+    return new Promise((resolve, reject) => {
+        const res = {
+            _status: 200,
+            status(code) { this._status = code; return this; },
+            json(data) {
+                if (this._status >= 400) reject(data);
+                else resolve(data);
+            }
+        };
+        handleGenerateQuotation(opts, res).catch(reject);
+    });
+}
+async function getNextQuoteNumberInternal() {
+    if (!ddbDocClient || !ddbTableName) return null;
+    const { UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+    const startValue = 107;
+    const result = await ddbDocClient.send(new UpdateCommand({
+        TableName: ddbTableName,
+        Key: { id: 'QUOTE_NUMBER_COUNTER' },
+        UpdateExpression: 'SET #v = if_not_exists(#v, :start) + :inc, #t = :type',
+        ExpressionAttributeNames: { '#v': 'value', '#t': 'type' },
+        ExpressionAttributeValues: { ':start': startValue, ':inc': 1, ':type': 'counter' },
+        ReturnValues: 'UPDATED_NEW'
+    }));
+    return result?.Attributes?.value ?? null;
+}
+async function findQuotationByGmailMessageId(messageId) {
+    if (!ddbDocClient || !ddbTableName || !messageId) return null;
+    const { ScanCommand } = require('@aws-sdk/lib-dynamodb');
+    let items = [];
+    let lastKey = null;
+    do {
+        const result = await ddbDocClient.send(new ScanCommand({
+            TableName: ddbTableName,
+            FilterExpression: 'data.gmailMessageId = :mid',
+            ExpressionAttributeValues: { ':mid': String(messageId) },
+            ConsistentRead: true,
+            ...(lastKey && { ExclusiveStartKey: lastKey })
+        }));
+        items = items.concat(result.Items || []);
+        lastKey = result.LastEvaluatedKey || null;
+    } while (lastKey);
+    const found = items[0];
+    return found ? (found.data || found) : null;
+}
+async function saveQuotationInternal(quotation) {
+    if (!ddbDocClient || !ddbTableName) throw new Error('DynamoDB not configured');
+    const { PutCommand } = require('@aws-sdk/lib-dynamodb');
+    const now = new Date().toISOString();
+    const updated = { ...quotation, updatedAt: now, createdAt: quotation.createdAt || now };
+    await ddbDocClient.send(new PutCommand({
+        TableName: ddbTableName,
+        Item: {
+            id: String(updated.id),
+            updatedAt: updated.updatedAt,
+            createdAt: updated.createdAt,
+            data: updated
+        }
+    }));
+}
+async function uploadEnquiryFileFromBuffer(fileLike) {
+    if (!fileLike || !fileLike.buffer) return null;
+    return uploadEnquiryFileToOpenAI({
+        buffer: fileLike.buffer,
+        originalname: fileLike.originalname || 'enquiry.pdf',
+        path: null
+    });
+}
+
+const { createIngestFromGmailRoute } = require('./gmail-ingest/route');
+const gmailIngestContext = {
+    getInstructionsContent,
+    getDefaultTermsContent,
+    generateQuotationData,
+    getNextQuoteNumber: getNextQuoteNumberInternal,
+    saveQuotation: saveQuotationInternal,
+    findQuotationByGmailMessageId,
+    uploadEnquiryFileToOpenAI: uploadEnquiryFileFromBuffer
+};
+app.post('/api/ingest-from-gmail', createIngestFromGmailRoute(gmailIngestContext));
+
 // Error handling middleware - must be after all routes
 app.use((err, req, res, next) => {
     console.error('Unhandled error:', err);

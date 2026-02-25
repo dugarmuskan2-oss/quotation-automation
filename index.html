@@ -3743,6 +3743,9 @@
                 const saveButtonHTML = `<button class="save-btn" onclick="saveQuotationChanges(${quotation.id})">💾 Save</button>`;
                 const downloadButtonHTML = `<button class="save-btn" onclick="downloadQuotationPdf(${quotation.id})">⬇️ Download PDF</button>`;
 
+                const gmailLinkUrl = quotation.emailLink || (quotation.gmailMessageId ? 'https://mail.google.com/mail/u/0/#inbox/' + quotation.gmailMessageId : '');
+                const gmailLinkHTML = gmailLinkUrl ? `<a href="${escapeHtml(gmailLinkUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation();" class="gmail-link" style="margin-left:8px;font-size:12px;">View in Gmail</a>` : '';
+
                 allQuotationsHTML += `
                     <div class="quotation-folder" id="folder-${quotation.id}">
                         <div class="quotation-folder-header" onclick="toggleQuotationFolder(${quotation.id})">
@@ -3751,6 +3754,7 @@
                                 ${folderName}
                                 ${approvedBadgeHTML}
                                 ${assignedBadgeHTML}
+                                ${gmailLinkHTML}
                             </span>
                             <span class="folder-toggle-icon">▶</span>
                         </div>
@@ -3892,9 +3896,11 @@
         }
 
         function buildApprovalSidePanelHTML(quotation) {
+            const gmailLinkUrl = quotation.emailLink || (quotation.gmailMessageId ? 'https://mail.google.com/mail/u/0/#inbox/' + quotation.gmailMessageId : '');
+            const gmailLinkBlock = gmailLinkUrl ? `<div style="margin-bottom:8px;"><a href="${escapeHtml(gmailLinkUrl)}" target="_blank" rel="noopener" class="gmail-link">📧 View in Gmail</a></div>` : '';
             const emailBlock = quotation.emailContent || quotation.emailContentHtml
-                ? `<div style="margin-top:10px;"><strong>Email Content</strong>${buildEmailContentPreviewHTML(quotation)}</div>`
-                : '';
+                ? `<div style="margin-top:10px;">${gmailLinkBlock}<strong>Email Content</strong>${buildEmailContentPreviewHTML(quotation)}</div>`
+                : (gmailLinkBlock ? `<div style="margin-top:10px;">${gmailLinkBlock}</div>` : '');
             const fileBlock = quotation.fileContent
                 ? `<div style="margin-top:10px;"><strong>File Content</strong><div style="white-space: pre-wrap; font-size: 12px; background:#fafafa; border:1px solid #eee; padding:8px; border-radius:4px;">${escapeHtml(quotation.fileContent)}</div></div>`
                 : '';
