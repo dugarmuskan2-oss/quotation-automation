@@ -51,7 +51,7 @@ async function scanAllItems(ddbDocClient) {
 
 async function deleteExpiredItems(ddbDocClient, items) {
     const expiredItems = (items || []).filter(item => {
-        const quotation = item.data || item;
+        const quotation = item.payload || item.data || item;
         return isQuotationExpired(quotation);
     });
 

@@ -3,6 +3,9 @@
     QUOTATION AUTOMATION SERVER
     ============================================
     Node.js backend server for quotation automation with OpenAI
+
+    Log noise: DEP0169 (url.parse) comes from a dependency (e.g. Express), not this file.
+    To hide it, set in env: NODE_NO_DEPRECATION=1 or NODE_OPTIONS=--disable-warning=DEP0169
 */
 
 const express = require('express');
@@ -1028,7 +1031,7 @@ app.post('/api/save-quotation', async (req, res) => {
             id: String(updatedQuotation.id),
             updatedAt: updatedQuotation.updatedAt,
             createdAt: updatedQuotation.createdAt,
-            data: updatedQuotation
+            payload: updatedQuotation
         };
         await ddbDocClient.send(new PutCommand({
             TableName: ddbTableName,
@@ -1094,7 +1097,7 @@ app.get('/api/quotations', async (req, res) => {
             items = items.concat(result.Items || []);
             lastKey = result.LastEvaluatedKey || null;
         } while (lastKey);
-        const quotations = items.map(item => item.data || item).filter(Boolean);
+        const quotations = items.map(item => item.payload || item.data || item).filter(Boolean);
         quotations.sort((a, b) => {
             const aTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
             const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
@@ -2020,8 +2023,8 @@ async function findQuotationByGmailMessageId(messageId) {
     do {
         const result = await ddbDocClient.send(new ScanCommand({
             TableName: ddbTableName,
-            FilterExpression: '#data.#gmid = :mid',
-            ExpressionAttributeNames: { '#data': 'data', '#gmid': 'gmailMessageId' },
+            FilterExpression: '#p.gmailMessageId = :mid',
+            ExpressionAttributeNames: { '#p': 'payload' },
             ExpressionAttributeValues: { ':mid': String(messageId) },
             ConsistentRead: true,
             ...(lastKey && { ExclusiveStartKey: lastKey })
@@ -2030,7 +2033,7 @@ async function findQuotationByGmailMessageId(messageId) {
         lastKey = result.LastEvaluatedKey || null;
     } while (lastKey);
     const found = items[0];
-    return found ? (found.data || found) : null;
+    return found ? (found.payload || found.data || found) : null;
 }
 async function saveQuotationInternal(quotation) {
     if (!ddbDocClient || !ddbTableName) throw new Error('DynamoDB not configured');
@@ -2043,7 +2046,7 @@ async function saveQuotationInternal(quotation) {
             id: String(updated.id),
             updatedAt: updated.updatedAt,
             createdAt: updated.createdAt,
-            data: updated
+            payload: updated
         }
     }));
 }
@@ -2107,12 +2110,11 @@ module.exports = app;
 module.exports.ingestFromGmailHandler = ingestFromGmailHandler;
 
 // Start server only when running locally (not on Vercel)
-// Check for Vercel environment variables
 const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV || process.env.VERCEL_URL;
 if (!isVercel) {
-    app.listen(PORT, () => {
-        console.log(`Server running on http://localhost:${PORT}`);
-        console.log(`Make sure to set OPENAI_API_KEY in .env file`);
+    app.listen(PORT, '0.0.0.0', () => {
+        console.log(`Server running on port ${PORT}`);
+        if (!process.env.OPENAI_API_KEY) console.log('Set OPENAI_API_KEY in env');
     });
 }
 
