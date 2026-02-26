@@ -3739,9 +3739,9 @@
                     : '';
                 
                 // Show Approve button only if not saved yet
-                const approveButtonHTML = `<button class="save-btn" onclick="saveQuotation(${quotation.id})">✅ Approve</button>`;
-                const saveButtonHTML = `<button class="save-btn" onclick="saveQuotationChanges(${quotation.id})">💾 Save</button>`;
-                const downloadButtonHTML = `<button class="save-btn" onclick="downloadQuotationPdf(${quotation.id})">⬇️ Download PDF</button>`;
+                const approveButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); saveQuotation(${JSON.stringify(quotation.id)})">✅ Approve</button>`;
+                const saveButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); saveQuotationChanges(${JSON.stringify(quotation.id)})">💾 Save</button>`;
+                const downloadButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); downloadQuotationPdf(${JSON.stringify(quotation.id)})">⬇️ Download PDF</button>`;
 
                 const gmailLinkUrl = quotation.emailLink || (quotation.gmailMessageId ? 'https://mail.google.com/mail/u/0/#inbox/' + quotation.gmailMessageId : '');
                 const gmailLinkHTML = gmailLinkUrl ? `<a href="${escapeHtml(gmailLinkUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation();" class="gmail-link" style="margin-left:8px;font-size:12px;">View in Gmail</a>` : '';
@@ -5148,7 +5148,7 @@ value="0"
                 return;
             }
             const quotation = approvedQuotations[quotationIndex];
-            const folderId = 'folder-content-' + quotationId;
+            const folderId = 'folder-content-' + String(quotation.id);
             const folderContent = document.getElementById(folderId);
             if (!folderContent) {
                 alert('Cannot save: quotation content not found.');
@@ -5167,7 +5167,7 @@ value="0"
                     input.textContent = input.value;
                 }
             });
-            recalculateApprovalQuotationTotals(quotationId, false);
+            recalculateApprovalQuotationTotals(quotation.id, false);
             const updatedContent = folderContent.cloneNode(true);
             const headerElement = updatedContent.querySelector('.quotation-header');
             if (headerElement) {
@@ -5196,7 +5196,7 @@ value="0"
                 applyOrKeep('shipTo', headerValues.shipTo);
                 if ((headerValues.contactDetails || '').toString().trim()) quotation.contactDetails = headerValues.contactDetails;
                 else quotation.contactDetails = quotation.mobileNumber || quotation.phoneNumber || '';
-                updateFolderHeaderDisplay(quotationId, quotation);
+                updateFolderHeaderDisplay(quotation.id, quotation);
                 if ((headerValues.grandTotal || '').toString().trim()) quotation.grandTotal = headerValues.grandTotal;
                 if ((headerValues.termsText || '').toString().trim()) quotation.termsText = headerValues.termsText;
             }
