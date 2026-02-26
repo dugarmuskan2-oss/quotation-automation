@@ -74,12 +74,13 @@ function buildItemRowHTML(item, rowIndex, lineTotal) {
  * @returns {{ tableHTML: string, grandTotal: number, grandTotalFormatted: string }}
  */
 function buildTableHTMLFromLineItems(lineItems) {
-    const emptyTable = '<table id="quotationTable"><thead><tr><th style="width:50px"></th><th>S. NO</th><th>ITEMS AND DESCRIPTION</th><th>QTY (Mtrs)</th><th class="col-base-rate">BASE RATE</th><th class="col-margin">MARGIN %</th><th>Rate per Mtr</th><th>AMOUNT</th></tr></thead><tbody></tbody></table>';
+    // 7 columns so Approval can add ACTIONS (8th) without removing our first column; first th must be S.NO so "remove empty first" does not run
+    const emptyTable = '<table id="quotationTable"><thead><tr><th style="width:50px">S. NO</th><th>ITEMS AND DESCRIPTION</th><th>QTY (Mtrs)</th><th class="col-base-rate">BASE RATE</th><th class="col-margin">MARGIN %</th><th>Rate per Mtr</th><th>AMOUNT</th></tr></thead><tbody></tbody></table>';
     if (!lineItems || !Array.isArray(lineItems) || lineItems.length === 0) {
         return { tableHTML: emptyTable, grandTotal: 0, grandTotalFormatted: '0.00' };
     }
 
-    const thead = '<thead><tr><th style="width:50px"></th><th>S. NO</th><th>ITEMS AND DESCRIPTION</th><th>QTY (Mtrs)</th><th class="col-base-rate">BASE RATE</th><th class="col-margin">MARGIN %</th><th>Rate per Mtr</th><th>AMOUNT</th></tr></thead>';
+    const thead = '<thead><tr><th style="width:50px">S. NO</th><th>ITEMS AND DESCRIPTION</th><th>QTY (Mtrs)</th><th class="col-base-rate">BASE RATE</th><th class="col-margin">MARGIN %</th><th>Rate per Mtr</th><th>AMOUNT</th></tr></thead>';
     const rows = [];
     let grandTotal = 0;
 
@@ -92,7 +93,7 @@ function buildTableHTMLFromLineItems(lineItems) {
         rows.push(buildItemRowHTML(item, i, lineTotal));
     }
 
-    const pipeHeaderRow = '<tr class="pipe-type-header"><td colspan="8"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px;"><input type="text" class="editable-field" data-field="pipeTypeHeader" value="Items" style="flex:1;border:none;background:transparent;font-weight:bold;"><div class="pipe-header-actions" style="display:flex;gap:6px;"></div></div></td></tr>';
+    const pipeHeaderRow = '<tr class="pipe-type-header"><td colspan="7"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px;"><input type="text" class="editable-field" data-field="pipeTypeHeader" value="Items" style="flex:1;border:none;background:transparent;font-weight:bold;"><div class="pipe-header-actions" style="display:flex;gap:6px;"></div></div></td></tr>';
     const tableHTML = '<table id="quotationTable">' + thead + '<tbody>' + pipeHeaderRow + rows.join('') + '</tbody></table>';
     return {
         tableHTML,
