@@ -3,6 +3,8 @@
  * Builds table and header HTML for quotations created from Gmail (no DOM).
  */
 
+const { formatItemDescriptionByPipeType, getPipeHeaderLabel } = require('./descriptionFormatter');
+
 /**
  * Escape a string for safe use in HTML text/attributes.
  * @param {string} str - Raw string (e.g. from email or AI)
@@ -48,12 +50,13 @@ function computeGrandTotalFromLineItems(lineItems) {
  * @returns {string} HTML for one <tr class="item-row"> with 7 <td>s (row#, desc input, qty span, base input, margin input, rate span, amount span)
  */
 function buildItemRowHTML(item, rowIndex, lineTotal) {
-    const desc = escapeHtmlForTable(item.originalDescription || item.identifiedPipeType || '');
+    const formattedDesc = formatItemDescriptionByPipeType(item) || item.originalDescription || item.identifiedPipeType || '';
+    const desc = escapeHtmlForTable(formattedDesc);
     const quantityStr = escapeHtmlForTable(item.quantity);
     const unitRateStr = escapeHtmlForTable(item.unitRate || '');
     const marginStr = escapeHtmlForTable(item.marginPercent || '');
     const finalRateStr = escapeHtmlForTable(item.finalRate || '');
-    const amountStr = Number(lineTotal).toFixed(2);
+    const amountStr = String(Math.round(Number(lineTotal)));
     return (
         '<tr class="item-row">' +
         '<td></td>' +
@@ -77,7 +80,7 @@ function buildTableHTMLFromLineItems(lineItems) {
     // 7 columns so Approval can add ACTIONS (8th) without removing our first column; first th must be S.NO so "remove empty first" does not run
     const emptyTable = '<table id="quotationTable"><thead><tr><th style="width:50px">S. NO</th><th>ITEMS AND DESCRIPTION</th><th>QTY (Mtrs)</th><th class="col-base-rate">BASE RATE</th><th class="col-margin">MARGIN %</th><th>Rate per Mtr</th><th>AMOUNT</th></tr></thead><tbody></tbody></table>';
     if (!lineItems || !Array.isArray(lineItems) || lineItems.length === 0) {
-        return { tableHTML: emptyTable, grandTotal: 0, grandTotalFormatted: '0.00' };
+        return { tableHTML: emptyTable, grandTotal: 0, grandTotalFormatted: '0' };
     }
 
     const thead = '<thead><tr><th style="width:50px">S. NO</th><th>ITEMS AND DESCRIPTION</th><th>QTY (Mtrs)</th><th class="col-base-rate">BASE RATE</th><th class="col-margin">MARGIN %</th><th>Rate per Mtr</th><th>AMOUNT</th></tr></thead>';
@@ -90,15 +93,19 @@ function buildTableHTMLFromLineItems(lineItems) {
         const finalRate = parseFloat(item.finalRate) || 0;
         const lineTotal = qty * finalRate;
         grandTotal += lineTotal;
-        rows.push(buildItemRowHTML(item, i, lineTotal));
+        rows.push(buildItemRowHTML(item, i, Math.round(lineTotal)));
     }
+    const roundedGrandTotal = Math.round(grandTotal);
 
-    const pipeHeaderRow = '<tr class="pipe-type-header"><td colspan="7"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px;"><input type="text" class="editable-field" data-field="pipeTypeHeader" value="Items" style="flex:1;border:none;background:transparent;font-weight:bold;"><div class="pipe-header-actions" style="display:flex;gap:6px;"></div></div></td></tr>';
+    const firstItem = lineItems[0];
+    const pipeHeaderLabel = getPipeHeaderLabel(firstItem && firstItem.identifiedPipeType) || 'Items';
+    const pipeHeaderValue = escapeHtmlForTable(pipeHeaderLabel);
+    const pipeHeaderRow = '<tr class="pipe-type-header"><td colspan="7"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px;"><input type="text" class="editable-field" data-field="pipeTypeHeader" value="' + pipeHeaderValue + '" style="flex:1;border:none;background:transparent;font-weight:bold;"><div class="pipe-header-actions" style="display:flex;gap:6px;"></div></div></td></tr>';
     const tableHTML = '<table id="quotationTable">' + thead + '<tbody>' + pipeHeaderRow + rows.join('') + '</tbody></table>';
     return {
         tableHTML,
-        grandTotal,
-        grandTotalFormatted: Number(grandTotal).toFixed(2)
+        grandTotal: roundedGrandTotal,
+        grandTotalFormatted: String(roundedGrandTotal)
     };
 }
 

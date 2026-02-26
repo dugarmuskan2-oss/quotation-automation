@@ -31,11 +31,12 @@ function formatQuoteNumber(value) {
  * @param {string} params.quoteNumber
  * @param {string} params.termsText
  * @param {string} params.emailContent
+ * @param {string} [params.emailContentHtml] - HTML body for display with tables intact
  * @param {string} params.gmailMessageId
  * @param {string} params.emailLink
  * @returns {object} Quotation object with id, tableHTML, headerHTML, grandTotal, saved, etc.
  */
-function buildQuotationToSave({ aiResult, quoteNumber, termsText, emailContent, gmailMessageId, emailLink }) {
+function buildQuotationToSave({ aiResult, quoteNumber, termsText, emailContent, emailContentHtml, gmailMessageId, emailLink }) {
     const { tableHTML, grandTotalFormatted } = buildTableHTMLFromLineItems(aiResult.lineItems || []);
     const headerHTML = buildHeaderHTMLFromQuotation({
         ...aiResult,
@@ -62,6 +63,7 @@ function buildQuotationToSave({ aiResult, quoteNumber, termsText, emailContent, 
         tableHTML,
         headerHTML,
         emailContent: emailContent || '',
+        emailContentHtml: emailContentHtml || '',
         emailLink: emailLink || (gmailMessageId ? GMAIL_INBOX_URL + gmailMessageId : ''),
         gmailMessageId: gmailMessageId || '',
         saved: false
@@ -145,6 +147,7 @@ async function processOneEmail(ctx, email) {
         quoteNumber,
         termsText: defaultTerms,
         emailContent: body,
+        emailContentHtml: email.bodyHtml || '',
         gmailMessageId: emailId,
         emailLink
     });

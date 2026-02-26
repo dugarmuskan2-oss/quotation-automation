@@ -1,7 +1,7 @@
 /**
  * Gmail Ingest – Express route
  * POST /api/ingest-from-gmail
- * Body: { emails: [ { id, subject, from, date, body, attachments: [ { name, contentType, base64 } ] } ] }
+ * Body: { emails: [ { id, subject, from, date, body, bodyHtml?, attachments: [ { name, contentType, base64 } ] } ] }
  * Optional header: X-Ingest-Secret (required if INGEST_SECRET env is set)
  */
 

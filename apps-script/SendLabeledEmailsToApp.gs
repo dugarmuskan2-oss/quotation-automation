@@ -44,7 +44,7 @@ function getIngestSecret() {
 }
 
 /**
- * Build the payload for one message: id, subject, from, date, body, attachments (name, contentType, base64).
+ * Build the payload for one message: id, subject, from, date, body, bodyHtml, attachments (name, contentType, base64).
  * @param {GmailApp.GmailMessage} message
  * @return {Object}
  */
@@ -54,6 +54,12 @@ function buildEmailPayload(message) {
   var from = message.getFrom();
   var date = message.getDate();
   var body = message.getPlainBody();
+  var bodyHtml = '';
+  try {
+    bodyHtml = message.getBody() || '';
+  } catch (e) {
+    // Some messages may not support getBody(); keep bodyHtml empty
+  }
   var attachments = [];
   var attachmentBlobs = message.getAttachments();
   for (var i = 0; i < attachmentBlobs.length; i++) {
@@ -80,6 +86,7 @@ function buildEmailPayload(message) {
     from: from,
     date: date ? date.toISOString() : '',
     body: body || '',
+    bodyHtml: bodyHtml || '',
     attachments: attachments
   };
 }
