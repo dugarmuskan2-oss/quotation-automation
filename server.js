@@ -2020,8 +2020,8 @@ async function findQuotationByGmailMessageId(messageId) {
     do {
         const result = await ddbDocClient.send(new ScanCommand({
             TableName: ddbTableName,
-            FilterExpression: '#data.gmailMessageId = :mid',
-            ExpressionAttributeNames: { '#data': 'data' },
+            FilterExpression: '#data.#gmid = :mid',
+            ExpressionAttributeNames: { '#data': 'data', '#gmid': 'gmailMessageId' },
             ExpressionAttributeValues: { ':mid': String(messageId) },
             ConsistentRead: true,
             ...(lastKey && { ExclusiveStartKey: lastKey })
