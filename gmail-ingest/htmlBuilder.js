@@ -66,11 +66,20 @@ function buildTableHTMLFromLineItems(lineItems) {
         const marginStr = escapeHtmlForTable(item.marginPercent || '');
         const finalRateStr = escapeHtmlForTable(item.finalRate);
         rows.push(
-            `<tr class="item-row"><td></td><td class="row-number">${i + 1}</td><td>${desc}</td><td>${quantityStr}</td><td class="col-base-rate">₹${unitRateStr}</td><td class="col-margin">${marginStr}</td><td>₹${finalRateStr}</td><td>₹${Number(lineTotal).toFixed(2)}</td></tr>`
+            '<tr class="item-row">' +
+            '<td></td>' +
+            '<td>' + desc + '</td>' +
+            '<td><span data-field="quantity">' + quantityStr + '</span></td>' +
+            '<td class="col-base-rate">₹' + unitRateStr + '</td>' +
+            '<td class="col-margin">' + marginStr + '</td>' +
+            '<td><span class="rate-per-mtr">₹' + finalRateStr + '</span></td>' +
+            '<td><span class="line-total">₹' + Number(lineTotal).toFixed(2) + '</span></td>' +
+            '</tr>'
         );
     }
 
-    const tableHTML = `<table id="quotationTable">${thead}<tbody>${rows.join('')}</tbody></table>`;
+    const pipeHeaderRow = '<tr class="pipe-type-header"><td colspan="8"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px;"><input type="text" class="editable-field" data-field="pipeTypeHeader" value="Items" style="flex:1;border:none;background:transparent;font-weight:bold;"><div class="pipe-header-actions" style="display:flex;gap:6px;"></div></div></td></tr>';
+    const tableHTML = '<table id="quotationTable">' + thead + '<tbody>' + pipeHeaderRow + rows.join('') + '</tbody></table>';
     return {
         tableHTML,
         grandTotal,
