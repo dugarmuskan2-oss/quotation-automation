@@ -39,6 +39,35 @@ function computeGrandTotalFromLineItems(lineItems) {
 }
 
 /**
+ * Build HTML for a single item row so Approval section can add buttons and bind handlers.
+ * Column order matches manual Creation: row#, description, qty, base rate, margin, rate-per-mtr, amount; Approval appends actions td.
+ * Description, base rate, and margin are inputs (editable); quantity, rate-per-mtr, and amount are spans so Approval replaces them with inputs.
+ * @param {{ originalDescription?: string, identifiedPipeType?: string, quantity?: string, unitRate?: string, marginPercent?: string, finalRate?: string }} item
+ * @param {number} rowIndex - 0-based index for row number
+ * @param {number} lineTotal - precomputed quantity * finalRate for this row
+ * @returns {string} HTML for one <tr class="item-row"> with 7 <td>s (row#, desc input, qty span, base input, margin input, rate span, amount span)
+ */
+function buildItemRowHTML(item, rowIndex, lineTotal) {
+    const desc = escapeHtmlForTable(item.originalDescription || item.identifiedPipeType || '');
+    const quantityStr = escapeHtmlForTable(item.quantity);
+    const unitRateStr = escapeHtmlForTable(item.unitRate || '');
+    const marginStr = escapeHtmlForTable(item.marginPercent || '');
+    const finalRateStr = escapeHtmlForTable(item.finalRate || '');
+    const amountStr = Number(lineTotal).toFixed(2);
+    return (
+        '<tr class="item-row">' +
+        '<td></td>' +
+        '<td><input type="text" class="editable-field" data-field="originalDescription" value="' + desc + '" placeholder="Enter description" style="width:100%;border:none;background:transparent;"></td>' +
+        '<td><span data-field="quantity">' + quantityStr + '</span></td>' +
+        '<td class="col-base-rate">₹<input type="number" class="editable-field" data-field="unitRate" value="' + unitRateStr + '" min="0" step="0.01" style="width:80px;"></td>' +
+        '<td class="col-margin"><input type="number" class="editable-field" data-field="marginPercent" value="' + marginStr + '" min="0" step="0.01" style="width:60px;"></td>' +
+        '<td><span class="rate-per-mtr">₹' + finalRateStr + '</span></td>' +
+        '<td><span class="line-total">₹' + amountStr + '</span></td>' +
+        '</tr>'
+    );
+}
+
+/**
  * Build a quotation table HTML string from AI line items.
  * Matches the structure expected by the Approval section (same column count/headers).
  * @param {Array<{ originalDescription?: string, identifiedPipeType?: string, quantity?: string, unitRate?: string, marginPercent?: string, finalRate?: string, lineTotal?: string }>} lineItems
@@ -60,22 +89,7 @@ function buildTableHTMLFromLineItems(lineItems) {
         const finalRate = parseFloat(item.finalRate) || 0;
         const lineTotal = qty * finalRate;
         grandTotal += lineTotal;
-        const desc = escapeHtmlForTable(item.originalDescription || item.identifiedPipeType || '');
-        const quantityStr = escapeHtmlForTable(item.quantity);
-        const unitRateStr = escapeHtmlForTable(item.unitRate);
-        const marginStr = escapeHtmlForTable(item.marginPercent || '');
-        const finalRateStr = escapeHtmlForTable(item.finalRate);
-        rows.push(
-            '<tr class="item-row">' +
-            '<td></td>' +
-            '<td>' + desc + '</td>' +
-            '<td><span data-field="quantity">' + quantityStr + '</span></td>' +
-            '<td class="col-base-rate">₹' + unitRateStr + '</td>' +
-            '<td class="col-margin">' + marginStr + '</td>' +
-            '<td><span class="rate-per-mtr">₹' + finalRateStr + '</span></td>' +
-            '<td><span class="line-total">₹' + Number(lineTotal).toFixed(2) + '</span></td>' +
-            '</tr>'
-        );
+        rows.push(buildItemRowHTML(item, i, lineTotal));
     }
 
     const pipeHeaderRow = '<tr class="pipe-type-header"><td colspan="8"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px;"><input type="text" class="editable-field" data-field="pipeTypeHeader" value="Items" style="flex:1;border:none;background:transparent;font-weight:bold;"><div class="pipe-header-actions" style="display:flex;gap:6px;"></div></div></td></tr>';
@@ -144,6 +158,7 @@ function buildHeaderHTMLFromQuotation(q) {
 module.exports = {
     escapeHtmlForTable,
     computeGrandTotalFromLineItems,
+    buildItemRowHTML,
     buildTableHTMLFromLineItems,
     buildHeaderHTMLFromQuotation
 };
