@@ -11,6 +11,19 @@ const { getFirstPdfAttachment } = require('./attachmentUtils');
  */
 const GMAIL_INBOX_URL = 'https://mail.google.com/mail/u/0/#inbox/';
 
+/** Quote number display prefix; must match frontend formatQuoteNumber (DSC-xxx). */
+const QUOTE_NUMBER_PREFIX = 'DSC-';
+
+/**
+ * Format the numeric quote counter as the display quote number (e.g. 108 -> "DSC-108").
+ * @param {number|string} value - Raw value from getNextQuoteNumber
+ * @returns {string}
+ */
+function formatQuoteNumber(value) {
+    if (value == null || value === '') return '';
+    return QUOTE_NUMBER_PREFIX + String(value);
+}
+
 /**
  * Build the full quotation object to save (Approval section shape).
  * @param {object} params
@@ -120,7 +133,7 @@ async function processOneEmail(ctx, email) {
     if (ctx.getNextQuoteNumber) {
         try {
             const num = await ctx.getNextQuoteNumber();
-            quoteNumber = String(num);
+            quoteNumber = formatQuoteNumber(num);
         } catch (err) {
             console.warn('Gmail ingest: getNextQuoteNumber failed', err.message);
         }
