@@ -28,9 +28,6 @@ function handler(req, res) {
     const pathSeg = (req.query && req.query.path) || '';
     const method = (req.method || '').toUpperCase();
 
-    // [ingest-debug] method, path segment, query
-    console.log('[ingest-debug]', method, pathSeg, Object.keys(req.query || {}).length);
-
     // Bypass Express routing: call handler directly so Vercel req.path doesn't matter
     if (pathSeg === 'ingest-from-gmail' && method === 'POST' && app.ingestFromGmailHandler) {
         jsonParser(req, res, () => app.ingestFromGmailHandler(req, res));
