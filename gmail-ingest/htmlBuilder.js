@@ -157,8 +157,8 @@ function buildHeaderHTMLFromQuotation(q) {
   </div>
 </div>
 <div class="bill-ship">
-  <div><strong>Bill To</strong><br><input type="text" data-field="billTo" class="header-editable" style="width:100%;" value="${billTo}"></div>
-  <div><strong>Ship To</strong><br><input type="text" data-field="shipTo" class="header-editable" style="width:100%;" value="${shipTo}"></div>
+  <div><strong>Bill To</strong><br><textarea data-field="billTo" class="header-editable" rows="2" style="width:100%; resize:vertical;">${billTo}</textarea></div>
+  <div><strong>Ship To</strong><br><textarea data-field="shipTo" class="header-editable" rows="2" style="width:100%; resize:vertical;">${shipTo}</textarea></div>
 </div>
 </div>`;
 }

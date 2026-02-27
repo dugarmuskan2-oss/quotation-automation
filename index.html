@@ -499,11 +499,18 @@
             gap: 12px;
             font-size: 12px;
             margin-bottom: 12px;
+            min-width: 0;
         }
 
         .quote-meta .meta-row {
             display: flex;
             justify-content: space-between;
+            min-width: 0;
+        }
+        .quote-meta .meta-row span,
+        .quote-meta .meta-row input {
+            overflow-wrap: break-word;
+            word-break: break-word;
         }
 
         .bill-ship {
@@ -513,6 +520,50 @@
             border-top: 1px solid #ddd;
             padding-top: 10px;
             font-size: 12px;
+        }
+        .bill-ship > div {
+            min-width: 0;
+            overflow-wrap: break-word;
+            word-break: break-word;
+        }
+
+        /* Ensure header fields and table cells wrap instead of overflowing */
+        .quotation-header {
+            overflow-wrap: break-word;
+            word-break: break-word;
+        }
+        .quotation-header .quote-meta,
+        .quotation-header .bill-ship {
+            min-width: 0;
+        }
+        .quotation-header input,
+        .quotation-header textarea {
+            max-width: 100%;
+            box-sizing: border-box;
+        }
+        .quotation-header textarea {
+            resize: vertical;
+            min-height: 2.5em;
+        }
+
+        /* Table cells - wrap long text */
+        #quotationTable td,
+        #quotationTable th,
+        .approval-quotation table td,
+        .approval-quotation table th {
+            overflow-wrap: break-word;
+            word-break: break-word;
+        }
+        #quotationTable td input[type="text"],
+        .approval-quotation table td input[type="text"] {
+            max-width: 100%;
+            box-sizing: border-box;
+        }
+
+        /* Folder header - wrap long names */
+        .quotation-folder-header {
+            overflow-wrap: break-word;
+            word-break: break-word;
         }
 
         .terms-box {
@@ -829,8 +880,8 @@
                 </div>
 
                 <div class="bill-ship">
-                    <div><strong>Bill To</strong><br><input type="text" id="billTo" class="header-editable" style="width: 100%;"></div>
-                    <div><strong>Ship To</strong><br><input type="text" id="shipTo" class="header-editable" style="width: 100%;"></div>
+                    <div><strong>Bill To</strong><br><textarea id="billTo" class="header-editable" data-field="billTo" rows="2" style="width: 100%; resize: vertical;"></textarea></div>
+                    <div><strong>Ship To</strong><br><textarea id="shipTo" class="header-editable" data-field="shipTo" rows="2" style="width: 100%; resize: vertical;"></textarea></div>
                 </div>
             </div>
             
@@ -5280,10 +5331,10 @@ value="0"
                     quotation.tableHTML = tableElement.outerHTML;
                 }
                 
-                // Update specific fields from header inputs
-                const headerInputs = folderContent.querySelectorAll('.quotation-header input');
+                // Update specific fields from header inputs (includes textarea for billTo/shipTo)
+                const headerInputs = folderContent.querySelectorAll('.quotation-header input, .quotation-header textarea');
                 headerInputs.forEach(function(input) {
-                    const inputId = input.id;
+                    const inputId = input.id || input.getAttribute('data-field') || '';
                     if (inputId === 'quotationDate') {
                         quotation.quotationDate = input.value;
                     } else if (inputId === 'preparedBy') {
@@ -5455,7 +5506,7 @@ value="0"
                     const gt = grandTotalEl.textContent.replace(/Total:\s*₹/i, '').replace(/,/g, '').trim();
                     if (gt) quotation.grandTotal = gt;
                 }
-                const headerInputs = folderContent.querySelectorAll('.quotation-header input');
+                const headerInputs = folderContent.querySelectorAll('.quotation-header input, .quotation-header textarea');
                 headerInputs.forEach(function(input) {
                     const inputId = input.getAttribute('id') || input.getAttribute('data-field') || '';
                     const val = input.value || '';
