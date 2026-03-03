@@ -4014,15 +4014,20 @@
             // Hide the "no quotations" message
             hideNoApprovedQuotationsMessage();
             
-            // Build HTML for all approved quotations (latest first)
+            // Build HTML for all approved quotations (by quotation date, newest first)
             attachApprovalSearchListener();
             const filteredQuotations = getFilteredApprovedQuotations(approvalSearchQuery);
-            const sortedByNewest = filteredQuotations.slice().sort(function (a, b) {
-                const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : (a.createdAt ? new Date(a.createdAt).getTime() : (Number(a.id) || 0));
-                const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : (Number(b.id) || 0));
-                return bTime - aTime;
+            const sortedByQuotationDate = filteredQuotations.slice().sort(function (a, b) {
+                const parseDate = function(q) {
+                    if (q.quotationDate) {
+                        const t = new Date(q.quotationDate).getTime();
+                        if (!isNaN(t)) return t;
+                    }
+                    return q.updatedAt ? new Date(q.updatedAt).getTime() : (q.createdAt ? new Date(q.createdAt).getTime() : 0);
+                };
+                return parseDate(b) - parseDate(a);
             });
-            const allQuotationsHTML = buildAllApprovedQuotationsHTMLForList(sortedByNewest);
+            const allQuotationsHTML = buildAllApprovedQuotationsHTMLForList(sortedByQuotationDate);
             
             // Update the container
             renderApprovedQuotationsHTML(container, allQuotationsHTML);
@@ -5243,7 +5248,7 @@ value="0"
             if ((headerValues.grandTotal || '').toString().trim()) quotation.grandTotal = headerValues.grandTotal;
             if ((headerValues.termsText || '').toString().trim()) quotation.termsText = headerValues.termsText;
             quotation.updatedAt = new Date().toISOString();
-            // Do NOT set quotation.saved = true here. That flag is only for Approve; Save just persists data (assignedTo, etc.).
+            quotation.saved = false;  // Save = persist changes only; Approve = mark as approved
             if (typeof window._cancelApprovalAutosave === 'function') {
                 window._cancelApprovalAutosave(quotationId);
             }
