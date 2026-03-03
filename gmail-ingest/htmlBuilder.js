@@ -55,7 +55,7 @@ function buildItemRowHTML(item, rowIndex, lineTotal) {
     const quantityStr = escapeHtmlForTable(item.quantity);
     const unitRateStr = escapeHtmlForTable(item.unitRate || '');
     const marginStr = escapeHtmlForTable(item.marginPercent || '');
-    const finalRateStr = escapeHtmlForTable(item.finalRate || '');
+    const finalRateStr = escapeHtmlForTable(String(Math.round(parseFloat(item.finalRate) || 0)));
     const amountStr = String(Math.round(Number(lineTotal)));
     return (
         '<tr class="item-row">' +

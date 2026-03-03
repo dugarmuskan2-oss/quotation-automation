@@ -1474,7 +1474,7 @@ Extract all pipe information from the enquiry (including all attached enquiry PD
             const marginPercent = Number.isFinite(marginPercentRaw) ? marginPercentRaw : 0;
             const quantity = parseFloat(item.quantity) || 0;
 
-            const finalRate = unitRate * (1 + marginPercent / 100);
+            const finalRate = Math.round(unitRate * (1 + marginPercent / 100));
             const lineTotal = quantity * finalRate;
 
             return {
@@ -1483,7 +1483,7 @@ Extract all pipe information from the enquiry (including all attached enquiry PD
                 quantity: quantity.toString(),
                 unitRate: unitRate.toFixed(2),
                 marginPercent: marginPercent.toString(),
-                finalRate: finalRate.toFixed(2),
+                finalRate: String(finalRate),
                 lineTotal: lineTotal.toFixed(2)
             };
         });
@@ -1842,7 +1842,7 @@ Extract all pipe information from the enquiry, match with rates from the uploade
             const marginPercent = Number.isFinite(marginPercentRaw) ? marginPercentRaw : 0;
             const quantity = parseFloat(item.quantity) || 0;
             
-            const finalRate = unitRate * (1 + marginPercent / 100);
+            const finalRate = Math.round(unitRate * (1 + marginPercent / 100));
             const lineTotal = quantity * finalRate;
             
             return {
@@ -1851,7 +1851,7 @@ Extract all pipe information from the enquiry, match with rates from the uploade
                 quantity: quantity.toString(),
                 unitRate: unitRate.toFixed(2),
                 marginPercent: marginPercent.toString(),
-                finalRate: finalRate.toFixed(2),
+                finalRate: String(finalRate),
                 lineTotal: lineTotal.toFixed(2)
             };
         });

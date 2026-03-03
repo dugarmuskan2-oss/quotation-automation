@@ -2544,9 +2544,9 @@
                                    data-field="finalRate"
                                    data-pipe-type="${pipeType}"
                                    data-row-id="${rowId}"
-                                   value="${parseFloat(item.finalRate || 0).toFixed(2)}" 
+                                   value="${Math.round(parseFloat(item.finalRate || 0))}" 
                                    min="0" 
-                                   step="0.01" style="width: 100px;"></td>
+                                   step="1" style="width: 100px;"></td>
                         <td>₹<input type="number" 
                                    class="editable-field line-total-input" 
                                    data-field="lineTotal"
@@ -2724,23 +2724,23 @@
             if (fieldChanged === 'lineTotal' && lineTotalInput && lineTotalInput.dataset.manual === 'true') {
                 const manualLineTotal = parseFloat(lineTotalInput.value || 0) || 0;
                 if (quantity > 0) {
-                    finalRate = manualLineTotal / quantity;
+                    finalRate = Math.round(manualLineTotal / quantity);
                     if (finalRateInput) {
-                        finalRateInput.value = finalRate.toFixed(2);
+                        finalRateInput.value = String(finalRate);
                     }
                 } else {
                     finalRate = 0;
                 }
                 lineTotalInput.dataset.manual = '';
             } else if (fieldChanged === 'finalRate') {
-                // User edited finalRate directly - use that value
-                finalRate = parseFloat(changedField.value || 0) || 0;
+                // User edited finalRate directly - use that value (rounded to whole)
+                finalRate = Math.round(parseFloat(changedField.value || 0) || 0);
             } else {
-                // Calculate final rate from unitRate and margin
-                finalRate = unitRate * (1 + marginPercent / 100);
+                // Calculate final rate from unitRate and margin, rounded to whole
+                finalRate = Math.round(unitRate * (1 + marginPercent / 100));
                 // Update the finalRate input if it exists
                 if (finalRateInput) {
-                    finalRateInput.value = finalRate.toFixed(2);
+                    finalRateInput.value = String(finalRate);
                 }
             }
             
@@ -2891,7 +2891,7 @@
                 <td><input type="number" class="editable-field" data-field="quantity" data-pipe-type="${resolvedPipeType}" value="0" min="0" step="1"></td>
                 <td class="col-base-rate">₹<input type="number" class="editable-field" data-field="unitRate" data-pipe-type="${resolvedPipeType}" value="0" min="0" step="0.01" style="width: 80px;"></td>
                 <td class="col-margin"><input type="number" class="editable-field" data-field="marginPercent" data-pipe-type="${resolvedPipeType}" value="" min="0" step="0.01" style="width: 60px;"></td>
-                <td>₹<input type="number" class="editable-field rate-per-mtr" data-field="finalRate" data-pipe-type="${resolvedPipeType}" value="0.00" min="0" step="0.01" style="width: 100px;"></td>
+                <td>₹<input type="number" class="editable-field rate-per-mtr" data-field="finalRate" data-pipe-type="${resolvedPipeType}" value="0" min="0" step="1" style="width: 100px;"></td>
                 <td>₹<input type="number" class="editable-field line-total-input" data-field="lineTotal" value="0" min="0" step="1" style="width: 100px;"></td>
             `;
             if (insertAfterRow && insertAfterRow.parentNode === tableBody) {
@@ -2978,20 +2978,20 @@
             if (fieldChanged === 'lineTotal' && lineTotalInput && lineTotalInput.dataset.manual === 'true') {
                 const manualLineTotal = parseFloat(lineTotalInput.value || 0) || 0;
                 if (quantity > 0) {
-                    finalRate = manualLineTotal / quantity;
+                    finalRate = Math.round(manualLineTotal / quantity);
                     if (finalRateInput) {
-                        finalRateInput.value = finalRate.toFixed(2);
+                        finalRateInput.value = String(finalRate);
                     }
                 } else {
                     finalRate = 0;
                 }
                 lineTotalInput.dataset.manual = '';
             } else if (fieldChanged === 'finalRate') {
-                finalRate = parseFloat(changedField.value || 0) || 0;
+                finalRate = Math.round(parseFloat(changedField.value || 0) || 0);
             } else {
-                finalRate = unitRate * (1 + marginPercent / 100);
+                finalRate = Math.round(unitRate * (1 + marginPercent / 100));
                 if (finalRateInput) {
-                    finalRateInput.value = finalRate.toFixed(2);
+                    finalRateInput.value = String(finalRate);
                 }
             }
 
@@ -3226,9 +3226,9 @@
                            data-field="finalRate"
                            data-pipe-type="${resolvedPipeType}"
                            data-row-id="${rowId}"
-                           value="0.00" 
+                           value="0" 
                            min="0" 
-                           step="0.01" style="width: 100px;"></td>
+                           step="1" style="width: 100px;"></td>
                 <td>₹<input type="number" 
                            class="editable-field line-total-input" 
                            data-field="lineTotal"
@@ -4229,14 +4229,14 @@
                         // Make rate-per-mtr editable if it's a span
                         const ratePerMtrSpan = row.querySelector('.rate-per-mtr');
                         if (ratePerMtrSpan && ratePerMtrSpan.tagName === 'SPAN') {
-                            const currentValue = ratePerMtrSpan.textContent.replace('₹', '').replace(/,/g, '');
+                            const currentValue = String(Math.round(parseFloat(ratePerMtrSpan.textContent.replace('₹', '').replace(/,/g, '')) || 0));
                             const input = document.createElement('input');
                             input.type = 'number';
                             input.className = 'editable-field rate-per-mtr';
                             input.setAttribute('data-field', 'finalRate');
                             input.value = currentValue;
                             input.min = '0';
-                            input.step = '0.01';
+                            input.step = '1';
                             input.style.width = '100px';
                             ratePerMtrSpan.parentNode.replaceChild(input, ratePerMtrSpan);
                         }
@@ -4610,9 +4610,9 @@
                            data-field="finalRate"
                            data-pipe-type="${resolvedPipeType}"
                            data-row-id="${rowId}"
-                           value="0.00" 
+                           value="0" 
                            min="0" 
-                           step="0.01" style="width: 100px;"></td>
+                           step="1" style="width: 100px;"></td>
                 <td>₹<input type="number" 
                            class="editable-field line-total-input" 
                            data-field="lineTotal"
@@ -4877,26 +4877,26 @@ value="0"
                 const calculatedOk = calculatedFromFormula === calculatedFromFormula && (unitRate > 0 || marginPercent !== 0);
 
                 if (finalRateInput && finalRateInput.tagName === 'INPUT' && finalRateInput.dataset.manual === 'true') {
-                    // User edited finalRate directly - use that value
-                    const manualVal = parseFloat(finalRateInput.value || 0) || 0;
+                    // User edited finalRate directly - use that value (rounded to whole)
+                    const manualVal = Math.round(parseFloat(finalRateInput.value || 0) || 0);
                     // If user cleared the field and we can calculate from base rate + margin, switch back to calculated
                     if (manualVal === 0 && calculatedOk) {
                         finalRateInput.dataset.manual = '';
-                        finalRate = calculatedFromFormula;
-                        finalRateInput.value = finalRate.toFixed(2);
+                        finalRate = Math.round(calculatedFromFormula);
+                        finalRateInput.value = String(finalRate);
                     } else {
                         finalRate = manualVal;
                     }
                 } else {
-                    // Calculate final rate from unitRate and margin
-                    finalRate = calculatedOk ? calculatedFromFormula : 0;
+                    // Calculate final rate from unitRate and margin, rounded to whole
+                    finalRate = calculatedOk ? Math.round(calculatedFromFormula) : 0;
                     if (finalRate !== finalRate) finalRate = 0;
-                    const currentVal = finalRateInput ? (parseFloat(finalRateInput.value || 0) || 0) : 0;
+                    const currentVal = finalRateInput ? Math.round(parseFloat(finalRateInput.value || 0) || 0) : 0;
                     // Don't overwrite with 0 when the row already has a non-zero rate (e.g. from AI or previous manual)
                     if (finalRate === 0 && currentVal > 0) {
                         finalRate = currentVal;
                     } else if (finalRateInput) {
-                        finalRateInput.value = finalRate.toFixed(2);
+                        finalRateInput.value = String(finalRate);
                     }
                 }
                 
@@ -4907,10 +4907,10 @@ value="0"
                 if (lineTotalInput && lineTotalInput.tagName === 'INPUT' && lineTotalInput.dataset.manual === 'true') {
                     const manualLineTotal = parseFloat(lineTotalInput.value || 0) || 0;
                     if (quantity > 0) {
-                        finalRate = manualLineTotal / quantity;
+                        finalRate = Math.round(manualLineTotal / quantity);
                         if (finalRate !== finalRate) finalRate = 0;
                         if (finalRateInput) {
-                            finalRateInput.value = finalRate.toFixed(2);
+                            finalRateInput.value = String(finalRate);
                         }
                         lineTotal = quantity * finalRate;
                     } else {
@@ -4926,7 +4926,7 @@ value="0"
                     if (ratePerMtrElement.tagName === 'INPUT') {
                         // Already an input, value is already set
                     } else {
-                        ratePerMtrElement.textContent = formatIndianNumber(finalRate.toFixed(2));
+                        ratePerMtrElement.textContent = formatIndianNumber(finalRate, true);
                     }
                 }
                 
@@ -5694,7 +5694,7 @@ value="0"
                 doc.text(row.sno || '', colX[0] + 6, cursorY + 12);
                 doc.text(descLines, colX[1] + 6, cursorY + 12);
                 doc.text(formatNumber(row.qty, false), colX[2] + colWidths[2] - 6, cursorY + 12, { align: 'right' });
-                doc.text(formatNumber(row.rate, true), colX[3] + colWidths[3] - 6, cursorY + 12, { align: 'right' });
+                doc.text(formatNumber(Math.round(parseFloat(row.rate) || 0), false), colX[3] + colWidths[3] - 6, cursorY + 12, { align: 'right' });
                 doc.text(formatNumber(roundAmountToWhole(row.amount), false), colX[4] + colWidths[4] - 6, cursorY + 12, { align: 'right' });
                 doc.setDrawColor(230);
                 doc.setLineWidth(0.5);
