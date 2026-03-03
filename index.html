@@ -5226,6 +5226,8 @@ value="0"
                 if ((headerValues.termsText || '').toString().trim()) quotation.termsText = headerValues.termsText;
             }
             quotation.updatedAt = new Date().toISOString();
+            quotation.saved = true;
+            updateApprovalBadge(quotationId, quotation);
             saveToLocalStorage();
             (async function() {
                 const ok = await saveQuotationToBackend(quotation);
