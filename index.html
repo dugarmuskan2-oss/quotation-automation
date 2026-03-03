@@ -4067,6 +4067,12 @@
             if (!container.dataset.approvalAutosaveDelegationBound) {
                 container.dataset.approvalAutosaveDelegationBound = 'true';
                 var autosavePending = {};
+                window._cancelApprovalAutosave = function(quotationId) {
+                    if (autosavePending[quotationId]) {
+                        clearTimeout(autosavePending[quotationId]);
+                        autosavePending[quotationId] = null;
+                    }
+                };
                 var autosaveHandler = function(e) {
                     var input = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' ? e.target : null;
                     if (!input) return;
@@ -5238,6 +5244,9 @@ value="0"
             if ((headerValues.termsText || '').toString().trim()) quotation.termsText = headerValues.termsText;
             quotation.updatedAt = new Date().toISOString();
             quotation.saved = true;
+            if (typeof window._cancelApprovalAutosave === 'function') {
+                window._cancelApprovalAutosave(quotationId);
+            }
             saveToLocalStorage();
             setTimeout(function() { displayAllApprovedQuotations(); }, 0);
             (async function() {
@@ -5356,7 +5365,9 @@ value="0"
             
             // Mark quotation as saved (now it's approved)
             quotation.saved = true;
-            
+            if (typeof window._cancelApprovalAutosave === 'function') {
+                window._cancelApprovalAutosave(quotationId);
+            }
             // Save all quotations to backend (including this newly approved one with all updates)
             saveToLocalStorage();
             saveQuotationToBackend(quotation);
