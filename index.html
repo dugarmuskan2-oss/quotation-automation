@@ -4045,7 +4045,10 @@
                     var folder = input.closest('.quotation-folder');
                     if (!folder || !folder.id) return;
                     var quotationId = folder.id.replace('folder-', '');
-                    updateQuotationFromApprovalSection(quotationId, input);
+                    var capturedInput = input;
+                    setTimeout(function() {
+                        updateQuotationFromApprovalSection(quotationId, capturedInput);
+                    }, 0);
                 };
                 container.addEventListener('change', autosaveHandler);
                 container.addEventListener('focusout', autosaveHandler);
@@ -4296,7 +4299,8 @@
                                 });
                             }
                             field.addEventListener('blur', function() {
-                                recalculateApprovalQuotationTotals(quotationId, false);
+                                var qid = quotationId;
+                                setTimeout(function() { recalculateApprovalQuotationTotals(qid, false); }, 0);
                             });
                         });
                     });
@@ -4662,7 +4666,8 @@ value="0"
                     });
                 }
                 field.addEventListener('blur', function() {
-                    recalculateApprovalQuotationTotals(quotationId, false);
+                    var qid = quotationId;
+                    setTimeout(function() { recalculateApprovalQuotationTotals(qid, false); }, 0);
                 });
             });
             
