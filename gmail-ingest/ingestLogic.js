@@ -4,7 +4,7 @@
  */
 
 const { buildTableHTMLFromLineItems, buildHeaderHTMLFromQuotation } = require('./htmlBuilder');
-const { getFirstPdfAttachment } = require('./attachmentUtils');
+const { getAllPdfAttachments } = require('./attachmentUtils');
 
 /**
  * Default Gmail inbox URL template. Use 0 for first account.
@@ -97,21 +97,24 @@ async function processOneEmail(ctx, email) {
     const defaultTerms = await ctx.getDefaultTermsContent();
     const body = email.body || '';
 
-    let enquiryFileId = null;
-    const pdfAttachment = getFirstPdfAttachment(email.attachments || []);
-    if (pdfAttachment && ctx.uploadEnquiryFileToOpenAI) {
-        try {
-            enquiryFileId = await ctx.uploadEnquiryFileToOpenAI({
-                buffer: pdfAttachment.buffer,
-                originalname: pdfAttachment.name,
-                contentType: pdfAttachment.contentType
-            });
-        } catch (err) {
-            console.warn('Gmail ingest: failed to upload attachment to OpenAI for email ' + emailId, err.message);
+    const enquiryFileIds = [];
+    const pdfAttachments = getAllPdfAttachments(email.attachments || []);
+    if (pdfAttachments.length > 0 && ctx.uploadEnquiryFileToOpenAI) {
+        for (const pdf of pdfAttachments) {
+            try {
+                const fileId = await ctx.uploadEnquiryFileToOpenAI({
+                    buffer: pdf.buffer,
+                    originalname: pdf.name,
+                    contentType: pdf.contentType
+                });
+                if (fileId) enquiryFileIds.push(fileId);
+            } catch (err) {
+                console.warn('Gmail ingest: failed to upload attachment ' + pdf.name + ' to OpenAI for email ' + emailId, err.message);
+            }
         }
     }
 
-    if (!body.trim() && !enquiryFileId) {
+    if (!body.trim() && enquiryFileIds.length === 0) {
         return { success: false, error: 'Email has no body and no PDF attachment', emailId };
     }
 
@@ -120,7 +123,7 @@ async function processOneEmail(ctx, email) {
         aiResult = await ctx.generateQuotationData({
             emailContent: body,
             instructions,
-            enquiryFileId: enquiryFileId || undefined
+            enquiryFileIds: enquiryFileIds.length > 0 ? enquiryFileIds : undefined
         });
     } catch (err) {
         const message = err && (err.message || err.error || String(err));

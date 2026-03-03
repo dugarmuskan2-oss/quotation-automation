@@ -499,18 +499,11 @@
             gap: 12px;
             font-size: 12px;
             margin-bottom: 12px;
-            min-width: 0;
         }
 
         .quote-meta .meta-row {
             display: flex;
             justify-content: space-between;
-            min-width: 0;
-        }
-        .quote-meta .meta-row span,
-        .quote-meta .meta-row input {
-            overflow-wrap: break-word;
-            word-break: break-word;
         }
 
         .bill-ship {
@@ -520,50 +513,6 @@
             border-top: 1px solid #ddd;
             padding-top: 10px;
             font-size: 12px;
-        }
-        .bill-ship > div {
-            min-width: 0;
-            overflow-wrap: break-word;
-            word-break: break-word;
-        }
-
-        /* Ensure header fields and table cells wrap instead of overflowing */
-        .quotation-header {
-            overflow-wrap: break-word;
-            word-break: break-word;
-        }
-        .quotation-header .quote-meta,
-        .quotation-header .bill-ship {
-            min-width: 0;
-        }
-        .quotation-header input,
-        .quotation-header textarea {
-            max-width: 100%;
-            box-sizing: border-box;
-        }
-        .quotation-header textarea {
-            resize: vertical;
-            min-height: 2.5em;
-        }
-
-        /* Table cells - wrap long text */
-        #quotationTable td,
-        #quotationTable th,
-        .approval-quotation table td,
-        .approval-quotation table th {
-            overflow-wrap: break-word;
-            word-break: break-word;
-        }
-        #quotationTable td input[type="text"],
-        .approval-quotation table td input[type="text"] {
-            max-width: 100%;
-            box-sizing: border-box;
-        }
-
-        /* Folder header - wrap long names */
-        .quotation-folder-header {
-            overflow-wrap: break-word;
-            word-break: break-word;
         }
 
         .terms-box {
@@ -880,8 +829,8 @@
                 </div>
 
                 <div class="bill-ship">
-                    <div><strong>Bill To</strong><br><textarea id="billTo" class="header-editable" data-field="billTo" rows="2" style="width: 100%; resize: vertical;"></textarea></div>
-                    <div><strong>Ship To</strong><br><textarea id="shipTo" class="header-editable" data-field="shipTo" rows="2" style="width: 100%; resize: vertical;"></textarea></div>
+                    <div><strong>Bill To</strong><br><input type="text" id="billTo" class="header-editable" data-field="billTo" style="width: 100%;"></div>
+                    <div><strong>Ship To</strong><br><input type="text" id="shipTo" class="header-editable" data-field="shipTo" style="width: 100%;"></div>
                 </div>
             </div>
             
@@ -5602,7 +5551,9 @@ value="0"
             doc.setFont('helvetica', 'normal');
             const leftX = margin;
             const rightX = margin + contentWidth / 2 + 10;
-            const rowGap = 12;
+            const labelWidth = 120;
+            const metaValueWidth = contentWidth / 2 - labelWidth - 15;
+            const metaLineHeight = 6;
             const metaLeft = [
                 ['QUOTATION DATE', quotation.quotationDate || ''],
                 ['KIND ATTN', quotation.customerName || ''],
@@ -5615,15 +5566,26 @@ value="0"
                 ['CHECKED BY', quotation.checkedBy || ''],
                 ['QUOTE NUMBER', quotation.quoteNumber || '']
             ];
-            metaLeft.forEach((row, idx) => {
-                doc.text(row[0], leftX, cursorY + idx * rowGap);
-                doc.text(row[1], leftX + 120, cursorY + idx * rowGap);
-            });
-            metaRight.forEach((row, idx) => {
-                doc.text(row[0], rightX, cursorY + idx * rowGap);
-                doc.text(row[1], rightX + 120, cursorY + idx * rowGap);
-            });
-            cursorY += Math.max(metaLeft.length, metaRight.length) * rowGap + 10;
+            let metaCursorY = cursorY;
+            for (let idx = 0; idx < Math.max(metaLeft.length, metaRight.length); idx++) {
+                const leftRow = metaLeft[idx];
+                const rightRow = metaRight[idx];
+                const leftVal = leftRow ? leftRow[1] : '';
+                const rightVal = rightRow ? rightRow[1] : '';
+                const leftLines = doc.splitTextToSize(leftVal, metaValueWidth);
+                const rightLines = doc.splitTextToSize(rightVal, metaValueWidth);
+                const rowHeight = Math.max(leftLines.length, rightLines.length, 1) * metaLineHeight + 4;
+                if (leftRow) {
+                    doc.text(leftRow[0], leftX, metaCursorY + metaLineHeight);
+                    doc.text(leftLines, leftX + labelWidth, metaCursorY + metaLineHeight);
+                }
+                if (rightRow) {
+                    doc.text(rightRow[0], rightX, metaCursorY + metaLineHeight);
+                    doc.text(rightLines, rightX + labelWidth, metaCursorY + metaLineHeight);
+                }
+                metaCursorY += rowHeight;
+            }
+            cursorY = metaCursorY + 10;
 
             doc.setDrawColor(220);
             doc.setLineWidth(1);
@@ -5635,9 +5597,13 @@ value="0"
             cursorY += 12;
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(9);
-            doc.text(quotation.projectName || '', leftX, cursorY);
-            doc.text(quotation.shipTo || '', rightX, cursorY);
-            cursorY += 18;
+            const billToWidth = contentWidth / 2 - 15;
+            const billToLines = doc.splitTextToSize(quotation.projectName || '', billToWidth);
+            const shipToLines = doc.splitTextToSize(quotation.shipTo || '', billToWidth);
+            doc.text(billToLines, leftX, cursorY);
+            doc.text(shipToLines, rightX, cursorY);
+            const blockHeight = Math.max(billToLines.length, shipToLines.length, 1) * 7 + 6;
+            cursorY += blockHeight;
 
             const rows = parseQuotationTableForPdf(quotation.tableHTML);
             const colWidths = [35, 225, 70, 95, 110];

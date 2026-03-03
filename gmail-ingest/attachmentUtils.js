@@ -42,22 +42,33 @@ function isPdfAttachment(att) {
  * @returns {{ name: string, contentType: string, buffer: Buffer } | null}
  */
 function getFirstPdfAttachment(attachments) {
-    if (!attachments || !Array.isArray(attachments)) return null;
+    const all = getAllPdfAttachments(attachments);
+    return all.length > 0 ? all[0] : null;
+}
+
+/**
+ * Get all PDF attachments from the list (for use as enquiry files).
+ * @param {Array<{ name?: string, contentType?: string, base64?: string }>} attachments
+ * @returns {Array<{ name: string, contentType: string, buffer: Buffer }>}
+ */
+function getAllPdfAttachments(attachments) {
+    const result = [];
+    if (!attachments || !Array.isArray(attachments)) return result;
     for (const att of attachments) {
         if (!att.base64) continue;
         if (!isPdfAttachment(att)) continue;
         try {
             const buffer = decodeBase64Attachment(att.base64);
-            return {
+            result.push({
                 name: att.name || 'enquiry.pdf',
                 contentType: att.contentType || 'application/pdf',
                 buffer
-            };
+            });
         } catch (e) {
             continue;
         }
     }
-    return null;
+    return result;
 }
 
 /**
@@ -87,5 +98,6 @@ module.exports = {
     decodeBase64Attachment,
     isPdfAttachment,
     getFirstPdfAttachment,
+    getAllPdfAttachments,
     getFirstAttachment
 };

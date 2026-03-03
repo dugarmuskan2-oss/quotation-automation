@@ -1233,9 +1233,10 @@ async function uploadEnquiryFileToOpenAI(uploadedFile) {
     return file.id;
 }
 
-async function handleGenerateQuotation({ emailContent, fileContent, instructions, enquiryFileId, enquiryImageDataUrl }, res) {
+async function handleGenerateQuotation({ emailContent, fileContent, instructions, enquiryFileId, enquiryFileIds, enquiryImageDataUrl }, res) {
     try {
-        if (!emailContent && !fileContent && !enquiryFileId && !enquiryImageDataUrl) {
+        const hasEnquiryFile = enquiryFileId || (enquiryFileIds && enquiryFileIds.length > 0);
+        if (!emailContent && !fileContent && !hasEnquiryFile && !enquiryImageDataUrl) {
             return res.status(400).json({ error: 'No content provided' });
         }
 
@@ -1395,7 +1396,7 @@ async function handleGenerateQuotation({ emailContent, fileContent, instructions
   ]
 }
 
-Extract all pipe information from the enquiry, match with rates from the uploaded PDF rate files, calculate final rates with margins, and return the complete JSON.`;
+Extract all pipe information from the enquiry (including all attached enquiry PDFs if any). Read every enquiry document and combine relevant data. Match with rates from the uploaded PDF rate files, calculate final rates with margins, and return the complete JSON.`;
 
         const userContentParts = [
             {
@@ -1404,11 +1405,11 @@ Extract all pipe information from the enquiry, match with rates from the uploade
             }
         ];
 
-        if (enquiryFileId) {
-            userContentParts.push({
-                type: 'input_file',
-                file_id: enquiryFileId
-            });
+        const enquiryIds = Array.isArray(enquiryFileIds) && enquiryFileIds.length > 0
+            ? enquiryFileIds
+            : (enquiryFileId ? [enquiryFileId] : []);
+        for (const fid of enquiryIds) {
+            userContentParts.push({ type: 'input_file', file_id: fid });
         }
         if (enquiryImageDataUrl) {
             userContentParts.push({
