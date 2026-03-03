@@ -49,10 +49,10 @@ function isPdfAttachment(att) {
  */
 function isExcelAttachment(att) {
     if (!att) return false;
-    const name = (att.name || '').toLowerCase();
+    const name = (att.name || '').trim().toLowerCase();
     const contentType = (att.contentType || '').toLowerCase();
     const ext = name.includes('.') ? name.slice(name.lastIndexOf('.')) : '';
-    return EXCEL_EXTENSIONS.has(ext) || contentType.includes('spreadsheet') || contentType.includes('ms-excel') || contentType.includes('opendocument.spreadsheet');
+    return EXCEL_EXTENSIONS.has(ext) || contentType.includes('spreadsheet') || contentType.includes('ms-excel') || contentType.includes('opendocument.spreadsheet') || contentType.includes('excel');
 }
 
 /**
@@ -60,7 +60,7 @@ function isExcelAttachment(att) {
  */
 function isWordAttachment(att) {
     if (!att) return false;
-    const name = (att.name || '').toLowerCase();
+    const name = (att.name || '').trim().toLowerCase();
     const contentType = (att.contentType || '').toLowerCase();
     const ext = name.includes('.') ? name.slice(name.lastIndexOf('.')) : '';
     return WORD_EXTENSIONS.has(ext) || contentType.includes('msword') || contentType.includes('wordprocessingml') || contentType.includes('rtf');

@@ -79,6 +79,9 @@ function buildEmailPayload(message) {
   }
   var attachments = [];
   var attachmentBlobs = message.getAttachments();
+  if (attachmentBlobs.length > 0) {
+    Logger.log('Email has ' + attachmentBlobs.length + ' attachment(s) from getAttachments()');
+  }
   for (var i = 0; i < attachmentBlobs.length; i++) {
     var att = attachmentBlobs[i];
     var bytes = att.getBytes();
@@ -89,7 +92,8 @@ function buildEmailPayload(message) {
     } catch (e) {
       attName = 'attachment_' + i;
     }
-    var nameLow = (attName || '').toLowerCase();
+    Logger.log('Attachment[' + i + ']: name="' + attName + '", contentType="' + ct + '", size=' + bytes.length + ' bytes');
+    var nameLow = (attName || '').trim().toLowerCase();
     if (bytes.length > MAX_ATTACHMENT_BYTES) {
       Logger.log('Skipping attachment (too large): ' + attName + ' (' + (bytes.length / 1024).toFixed(1) + ' KB)');
       continue;
@@ -163,16 +167,11 @@ function getEmailsWithLabelInWindow(labelName, startDateStr, endDatePlusOneStr, 
   for (var t = 0; t < threads.length; t++) {
     var thread = threads[t];
     var messages = thread.getMessages();
-    var inWindow = false;
-    for (var m = 0; m < messages.length; m++) {
-      var ts = messages[m].getDate().getTime();
-      if (ts >= startMs && ts <= endMs) {
-        inWindow = true;
-        break;
-      }
-    }
-    if (inWindow && messages.length > 0) {
-      emails.push(buildEmailPayload(messages[0]));
+    if (messages.length === 0) continue;
+    var firstMsg = messages[0];
+    var firstTs = firstMsg.getDate().getTime();
+    if (firstTs >= startMs && firstTs <= endMs) {
+      emails.push(buildEmailPayload(firstMsg));
     }
   }
   return emails;
