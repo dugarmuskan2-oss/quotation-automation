@@ -17,6 +17,7 @@ const { processAllEmails } = require('./ingestLogic');
  *   - saveQuotation: (quotation) => Promise<void>
  *   - findQuotationByGmailMessageId: (messageId) => Promise<object|null>
  *   - uploadEnquiryFileToOpenAI: (file) => Promise<string|null>
+ *   - extractTextFromAttachment: (fileLike) => Promise<string> (for Excel/Word)
  * @returns {function(req, res)} Express middleware
  */
 function createIngestFromGmailRoute(ctx) {

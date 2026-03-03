@@ -1206,6 +1206,19 @@ function extractTextFromExcelFile(uploadedFile) {
     return parts.join('\n\n');
 }
 
+async function extractTextFromAttachment(fileLike) {
+    if (!fileLike || !fileLike.buffer) return '';
+    const name = fileLike.originalname || fileLike.name || '';
+    const ext = (path.extname(name) || '').toLowerCase();
+    if (ext === '.xls' || ext === '.xlsx') {
+        return extractTextFromExcelFile({ buffer: fileLike.buffer, originalname: name });
+    }
+    if (ext === '.doc' || ext === '.docx') {
+        return await extractTextFromWordFile({ buffer: fileLike.buffer, originalname: name });
+    }
+    return '';
+}
+
 async function uploadEnquiryFileToOpenAI(uploadedFile) {
     if (!uploadedFile) {
         return null;
@@ -2068,7 +2081,8 @@ const gmailIngestContext = {
     getNextQuoteNumber: getNextQuoteNumberInternal,
     saveQuotation: saveQuotationInternal,
     findQuotationByGmailMessageId,
-    uploadEnquiryFileToOpenAI: uploadEnquiryFileFromBuffer
+    uploadEnquiryFileToOpenAI: uploadEnquiryFileFromBuffer,
+    extractTextFromAttachment
 };
 const ingestFromGmailHandler = createIngestFromGmailRoute(gmailIngestContext);
 app.post('/api/ingest-from-gmail', ingestFromGmailHandler);

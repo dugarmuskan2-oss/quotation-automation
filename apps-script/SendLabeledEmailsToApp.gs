@@ -90,8 +90,11 @@ function buildEmailPayload(message) {
     } catch (e) {
       attName = 'attachment_' + i;
     }
-    var isPdf = ct.indexOf('pdf') !== -1 || (attName && attName.toLowerCase().indexOf('.pdf') !== -1);
-    if (!isPdf) continue;
+    var nameLow = (attName || '').toLowerCase();
+    var isPdf = ct.indexOf('pdf') !== -1 || nameLow.indexOf('.pdf') !== -1;
+    var isExcel = ct.indexOf('spreadsheet') !== -1 || ct.indexOf('ms-excel') !== -1 || nameLow.indexOf('.xlsx') !== -1 || nameLow.indexOf('.xls') !== -1;
+    var isWord = ct.indexOf('msword') !== -1 || ct.indexOf('wordprocessingml') !== -1 || nameLow.indexOf('.docx') !== -1 || nameLow.indexOf('.doc') !== -1;
+    if (!isPdf && !isExcel && !isWord) continue;
     attachments.push({
       name: attName,
       contentType: att.getContentType(),

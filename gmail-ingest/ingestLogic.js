@@ -4,7 +4,7 @@
  */
 
 const { buildTableHTMLFromLineItems, buildHeaderHTMLFromQuotation } = require('./htmlBuilder');
-const { getAllPdfAttachments } = require('./attachmentUtils');
+const { getAllPdfAttachments, getAllExcelAttachments, getAllWordAttachments } = require('./attachmentUtils');
 
 /**
  * Default Gmail inbox URL template. Use 0 for first account.
@@ -95,7 +95,7 @@ async function processOneEmail(ctx, email) {
     }
 
     const defaultTerms = await ctx.getDefaultTermsContent();
-    const body = email.body || '';
+    let body = email.body || '';
 
     const enquiryFileIds = [];
     const pdfAttachments = getAllPdfAttachments(email.attachments || []);
@@ -114,8 +114,33 @@ async function processOneEmail(ctx, email) {
         }
     }
 
+    const extractedTextParts = [];
+    if (ctx.extractTextFromAttachment) {
+        const excelAttachments = getAllExcelAttachments(email.attachments || []);
+        const wordAttachments = getAllWordAttachments(email.attachments || []);
+        for (const att of excelAttachments) {
+            try {
+                const text = await ctx.extractTextFromAttachment({ buffer: att.buffer, originalname: att.name });
+                if (text && text.trim()) extractedTextParts.push(`[Excel: ${att.name}]\n${text.trim()}`);
+            } catch (err) {
+                console.warn('Gmail ingest: failed to extract text from Excel ' + att.name + ' for email ' + emailId, err.message);
+            }
+        }
+        for (const att of wordAttachments) {
+            try {
+                const text = await ctx.extractTextFromAttachment({ buffer: att.buffer, originalname: att.name });
+                if (text && text.trim()) extractedTextParts.push(`[Word: ${att.name}]\n${text.trim()}`);
+            } catch (err) {
+                console.warn('Gmail ingest: failed to extract text from Word ' + att.name + ' for email ' + emailId, err.message);
+            }
+        }
+    }
+    if (extractedTextParts.length > 0) {
+        body = (body ? body + '\n\n' : '') + extractedTextParts.join('\n\n');
+    }
+
     if (!body.trim() && enquiryFileIds.length === 0) {
-        return { success: false, error: 'Email has no body and no PDF attachment', emailId };
+        return { success: false, error: 'Email has no body and no supported attachment (PDF, Excel, Word)', emailId };
     }
 
     let aiResult;

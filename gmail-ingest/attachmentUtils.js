@@ -1,6 +1,7 @@
 /**
  * Gmail Ingest – Attachment helpers
- * Decode base64 attachments from the ingest payload and pick the first PDF.
+ * Decode base64 attachments from the ingest payload.
+ * Supports PDF (upload to OpenAI), Excel and Word (text extraction).
  */
 
 /**
@@ -23,6 +24,9 @@ const PDF_MIME_TYPES = new Set([
 ]);
 const PDF_EXTENSIONS = new Set(['.pdf']);
 
+const EXCEL_EXTENSIONS = new Set(['.xlsx', '.xls']);
+const WORD_EXTENSIONS = new Set(['.docx', '.doc']);
+
 /**
  * Check if an attachment looks like a PDF by name or contentType.
  * @param {{ name?: string, contentType?: string }} att
@@ -34,6 +38,28 @@ function isPdfAttachment(att) {
     const contentType = (att.contentType || '').toLowerCase();
     const ext = name.includes('.') ? name.slice(name.lastIndexOf('.')) : '';
     return PDF_MIME_TYPES.has(contentType) || PDF_EXTENSIONS.has(ext);
+}
+
+/**
+ * Check if an attachment is Excel (xlsx, xls).
+ */
+function isExcelAttachment(att) {
+    if (!att) return false;
+    const name = (att.name || '').toLowerCase();
+    const contentType = (att.contentType || '').toLowerCase();
+    const ext = name.includes('.') ? name.slice(name.lastIndexOf('.')) : '';
+    return EXCEL_EXTENSIONS.has(ext) || contentType.includes('spreadsheet') || contentType.includes('ms-excel');
+}
+
+/**
+ * Check if an attachment is Word (docx, doc).
+ */
+function isWordAttachment(att) {
+    if (!att) return false;
+    const name = (att.name || '').toLowerCase();
+    const contentType = (att.contentType || '').toLowerCase();
+    const ext = name.includes('.') ? name.slice(name.lastIndexOf('.')) : '';
+    return WORD_EXTENSIONS.has(ext) || contentType.includes('msword') || contentType.includes('wordprocessingml');
 }
 
 /**
@@ -97,7 +123,11 @@ function getFirstAttachment(attachments) {
 module.exports = {
     decodeBase64Attachment,
     isPdfAttachment,
+    isExcelAttachment,
+    isWordAttachment,
     getFirstPdfAttachment,
     getAllPdfAttachments,
+    getAllExcelAttachments,
+    getAllWordAttachments,
     getFirstAttachment
 };
