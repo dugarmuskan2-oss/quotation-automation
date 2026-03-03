@@ -5243,7 +5243,7 @@ value="0"
             if ((headerValues.grandTotal || '').toString().trim()) quotation.grandTotal = headerValues.grandTotal;
             if ((headerValues.termsText || '').toString().trim()) quotation.termsText = headerValues.termsText;
             quotation.updatedAt = new Date().toISOString();
-            quotation.saved = true;
+            // Do NOT set quotation.saved = true here. That flag is only for Approve; Save just persists data (assignedTo, etc.).
             if (typeof window._cancelApprovalAutosave === 'function') {
                 window._cancelApprovalAutosave(quotationId);
             }
