@@ -5759,7 +5759,7 @@ value="0"
                 doc.setFont('helvetica', 'normal');
                 doc.setTextColor(0, 0, 0);
                 doc.setFontSize(9);
-                const termLines = wrapTextKeepWords(doc, termsText, contentWidth);
+                const termLines = doc.splitTextToSize(termsText, contentWidth);
                 termLines.forEach(line => {
                     ensureSpace(12);
                     doc.text(line, margin, cursorY);
