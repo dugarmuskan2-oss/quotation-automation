@@ -44,8 +44,8 @@ function getIngestSecret() {
   return PropertiesService.getScriptProperties().getProperty('INGEST_SECRET');
 }
 
-/** Max attachment size in bytes (1.5 MB). Larger attachments are skipped to avoid 413. */
-var MAX_ATTACHMENT_BYTES = 1.5 * 1024 * 1024;
+/** Max attachment size in bytes (3 MB). Larger attachments are skipped to avoid 413. */
+var MAX_ATTACHMENT_BYTES = 3 * 1024 * 1024;
 
 /** Max bodyHtml length; truncate if larger to reduce payload. */
 var MAX_BODYHTML_LENGTH = 200000;
@@ -82,7 +82,6 @@ function buildEmailPayload(message) {
   for (var i = 0; i < attachmentBlobs.length; i++) {
     var att = attachmentBlobs[i];
     var bytes = att.getBytes();
-    if (bytes.length > MAX_ATTACHMENT_BYTES) continue;
     var ct = (att.getContentType() || '').toLowerCase();
     var attName;
     try {
@@ -91,11 +90,19 @@ function buildEmailPayload(message) {
       attName = 'attachment_' + i;
     }
     var nameLow = (attName || '').toLowerCase();
-    var isPdf = ct.indexOf('pdf') !== -1 || nameLow.indexOf('.pdf') !== -1;
+    if (bytes.length > MAX_ATTACHMENT_BYTES) {
+      Logger.log('Skipping attachment (too large): ' + attName + ' (' + (bytes.length / 1024).toFixed(1) + ' KB)');
+      continue;
+    }
+    var isPdf = ct.indexOf('pdf') !== -1 || nameLow.endsWith('.pdf');
     var excelExts = ['.xlsx', '.xlsm', '.xlsb', '.xls', '.xlx', '.xlw', '.ods', '.fods', '.csv', '.dif', '.sylk', '.slk', '.prn', '.xml'];
-    var isExcel = ct.indexOf('spreadsheet') !== -1 || ct.indexOf('ms-excel') !== -1 || ct.indexOf('opendocument.spreadsheet') !== -1 || excelExts.some(function(e) { return nameLow.indexOf(e) !== -1; });
-    var isWord = ct.indexOf('msword') !== -1 || ct.indexOf('wordprocessingml') !== -1 || ct.indexOf('rtf') !== -1 || nameLow.indexOf('.docx') !== -1 || nameLow.indexOf('.doc') !== -1 || nameLow.indexOf('.rtf') !== -1;
-    if (!isPdf && !isExcel && !isWord) continue;
+    var isExcel = ct.indexOf('spreadsheet') !== -1 || ct.indexOf('ms-excel') !== -1 || ct.indexOf('opendocument.spreadsheet') !== -1 || excelExts.some(function(e) { return nameLow.endsWith(e); });
+    var isWord = ct.indexOf('msword') !== -1 || ct.indexOf('wordprocessingml') !== -1 || ct.indexOf('rtf') !== -1 || nameLow.endsWith('.docx') || nameLow.endsWith('.doc') || nameLow.endsWith('.rtf');
+    if (!isPdf && !isExcel && !isWord) {
+      Logger.log('Skipping attachment (unsupported type): ' + attName + ' (contentType: ' + ct + ')');
+      continue;
+    }
+    Logger.log('Including attachment: ' + attName + ' (' + (bytes.length / 1024).toFixed(1) + ' KB, ' + (isPdf ? 'PDF' : isExcel ? 'Excel' : 'Word') + ')');
     attachments.push({
       name: attName,
       contentType: att.getContentType(),

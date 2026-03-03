@@ -115,13 +115,25 @@ async function processOneEmail(ctx, email) {
     }
 
     const extractedTextParts = [];
+    const allAttachments = email.attachments || [];
+    if (allAttachments.length > 0) {
+        console.log('Gmail ingest: email ' + emailId + ' has ' + allAttachments.length + ' attachment(s): ' + allAttachments.map(a => a.name || 'unnamed').join(', '));
+    }
     if (ctx.extractTextFromAttachment) {
-        const excelAttachments = getAllExcelAttachments(email.attachments || []);
-        const wordAttachments = getAllWordAttachments(email.attachments || []);
+        const excelAttachments = getAllExcelAttachments(allAttachments);
+        const wordAttachments = getAllWordAttachments(allAttachments);
+        if (excelAttachments.length > 0 || wordAttachments.length > 0) {
+            console.log('Gmail ingest: Excel=' + excelAttachments.length + ', Word=' + wordAttachments.length);
+        }
         for (const att of excelAttachments) {
             try {
                 const text = await ctx.extractTextFromAttachment({ buffer: att.buffer, originalname: att.name });
-                if (text && text.trim()) extractedTextParts.push(`[Excel: ${att.name}]\n${text.trim()}`);
+                if (text && text.trim()) {
+                    extractedTextParts.push(`[Excel: ${att.name}]\n${text.trim()}`);
+                    console.log('Gmail ingest: extracted ' + text.length + ' chars from Excel ' + att.name);
+                } else {
+                    console.warn('Gmail ingest: Excel ' + att.name + ' extracted empty text');
+                }
             } catch (err) {
                 console.warn('Gmail ingest: failed to extract text from Excel ' + att.name + ' for email ' + emailId, err.message);
             }
