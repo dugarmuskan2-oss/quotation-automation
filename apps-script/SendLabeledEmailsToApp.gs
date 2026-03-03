@@ -92,8 +92,9 @@ function buildEmailPayload(message) {
     }
     var nameLow = (attName || '').toLowerCase();
     var isPdf = ct.indexOf('pdf') !== -1 || nameLow.indexOf('.pdf') !== -1;
-    var isExcel = ct.indexOf('spreadsheet') !== -1 || ct.indexOf('ms-excel') !== -1 || nameLow.indexOf('.xlsx') !== -1 || nameLow.indexOf('.xls') !== -1;
-    var isWord = ct.indexOf('msword') !== -1 || ct.indexOf('wordprocessingml') !== -1 || nameLow.indexOf('.docx') !== -1 || nameLow.indexOf('.doc') !== -1;
+    var excelExts = ['.xlsx', '.xlsm', '.xlsb', '.xls', '.xlx', '.xlw', '.ods', '.fods', '.csv', '.dif', '.sylk', '.slk', '.prn', '.xml'];
+    var isExcel = ct.indexOf('spreadsheet') !== -1 || ct.indexOf('ms-excel') !== -1 || ct.indexOf('opendocument.spreadsheet') !== -1 || excelExts.some(function(e) { return nameLow.indexOf(e) !== -1; });
+    var isWord = ct.indexOf('msword') !== -1 || ct.indexOf('wordprocessingml') !== -1 || ct.indexOf('rtf') !== -1 || nameLow.indexOf('.docx') !== -1 || nameLow.indexOf('.doc') !== -1 || nameLow.indexOf('.rtf') !== -1;
     if (!isPdf && !isExcel && !isWord) continue;
     attachments.push({
       name: attName,

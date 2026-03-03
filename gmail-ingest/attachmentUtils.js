@@ -24,8 +24,12 @@ const PDF_MIME_TYPES = new Set([
 ]);
 const PDF_EXTENSIONS = new Set(['.pdf']);
 
-const EXCEL_EXTENSIONS = new Set(['.xlsx', '.xls']);
-const WORD_EXTENSIONS = new Set(['.docx', '.doc']);
+const EXCEL_EXTENSIONS = new Set([
+    '.xlsx', '.xlsm', '.xlsb', '.xls', '.xlx', '.xlw',
+    '.ods', '.fods', '.csv', '.dif', '.sylk', '.slk', '.prn',
+    '.xml'
+]);
+const WORD_EXTENSIONS = new Set(['.docx', '.doc', '.rtf']);
 
 /**
  * Check if an attachment looks like a PDF by name or contentType.
@@ -48,7 +52,7 @@ function isExcelAttachment(att) {
     const name = (att.name || '').toLowerCase();
     const contentType = (att.contentType || '').toLowerCase();
     const ext = name.includes('.') ? name.slice(name.lastIndexOf('.')) : '';
-    return EXCEL_EXTENSIONS.has(ext) || contentType.includes('spreadsheet') || contentType.includes('ms-excel');
+    return EXCEL_EXTENSIONS.has(ext) || contentType.includes('spreadsheet') || contentType.includes('ms-excel') || contentType.includes('opendocument.spreadsheet');
 }
 
 /**
@@ -59,7 +63,7 @@ function isWordAttachment(att) {
     const name = (att.name || '').toLowerCase();
     const contentType = (att.contentType || '').toLowerCase();
     const ext = name.includes('.') ? name.slice(name.lastIndexOf('.')) : '';
-    return WORD_EXTENSIONS.has(ext) || contentType.includes('msword') || contentType.includes('wordprocessingml');
+    return WORD_EXTENSIONS.has(ext) || contentType.includes('msword') || contentType.includes('wordprocessingml') || contentType.includes('rtf');
 }
 
 /**

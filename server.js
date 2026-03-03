@@ -798,7 +798,14 @@ app.get('/api/view-rate-file', async (req, res) => {
         const contentTypeMap = {
             '.pdf': 'application/pdf',
             '.xls': 'application/vnd.ms-excel',
-            '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            '.xlsm': 'application/vnd.ms-excel.sheet.macroEnabled.12',
+            '.xlsb': 'application/vnd.ms-excel.sheet.binary.macroEnabled.12',
+            '.xlx': 'application/vnd.ms-excel',
+            '.xlw': 'application/vnd.ms-excel',
+            '.ods': 'application/vnd.oasis.opendocument.spreadsheet',
+            '.fods': 'application/vnd.oasis.opendocument.spreadsheet.flat',
+            '.csv': 'text/csv'
         };
         res.setHeader('Content-Type', contentTypeMap[ext] || 'application/octet-stream');
         res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
@@ -1130,21 +1137,31 @@ function getMimeTypeForEnquiryFile(fileName) {
         '.pdf': 'application/pdf',
         '.doc': 'application/msword',
         '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        '.rtf': 'application/rtf',
         '.txt': 'text/plain',
         '.xls': 'application/vnd.ms-excel',
-        '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        '.xlsm': 'application/vnd.ms-excel.sheet.macroEnabled.12',
+        '.xlsb': 'application/vnd.ms-excel.sheet.binary.macroEnabled.12',
+        '.xlx': 'application/vnd.ms-excel',
+        '.xlw': 'application/vnd.ms-excel',
+        '.ods': 'application/vnd.oasis.opendocument.spreadsheet',
+        '.fods': 'application/vnd.oasis.opendocument.spreadsheet.flat',
+        '.csv': 'text/csv',
+        '.xml': 'application/xml'
     }[ext];
     return mime || 'application/octet-stream';
 }
 
 function isWordEnquiryFile(fileName) {
     const ext = (path.extname(fileName || '').toLowerCase());
-    return ext === '.doc' || ext === '.docx';
+    return ext === '.doc' || ext === '.docx' || ext === '.rtf';
 }
 
+const SPREADSHEET_EXTENSIONS = ['.xlsx', '.xlsm', '.xlsb', '.xls', '.xlx', '.xlw', '.ods', '.fods', '.csv', '.dif', '.sylk', '.slk', '.prn', '.xml'];
 function isExcelEnquiryFile(fileName) {
     const ext = (path.extname(fileName || '').toLowerCase());
-    return ext === '.xls' || ext === '.xlsx';
+    return SPREADSHEET_EXTENSIONS.includes(ext);
 }
 
 function isImageEnquiryFile(fileName) {
@@ -1211,10 +1228,10 @@ async function extractTextFromAttachment(fileLike) {
     if (!fileLike || !fileLike.buffer) return '';
     const name = fileLike.originalname || fileLike.name || '';
     const ext = (path.extname(name) || '').toLowerCase();
-    if (ext === '.xls' || ext === '.xlsx') {
+    if (SPREADSHEET_EXTENSIONS.includes(ext)) {
         return extractTextFromExcelFile({ buffer: fileLike.buffer, originalname: name });
     }
-    if (ext === '.doc' || ext === '.docx') {
+    if (ext === '.doc' || ext === '.docx' || ext === '.rtf') {
         return await extractTextFromWordFile({ buffer: fileLike.buffer, originalname: name });
     }
     return '';
