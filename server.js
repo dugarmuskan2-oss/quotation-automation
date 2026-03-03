@@ -1097,12 +1097,13 @@ app.get('/api/quotations', async (req, res) => {
             items = items.concat(result.Items || []);
             lastKey = result.LastEvaluatedKey || null;
         } while (lastKey);
-        const quotations = items.map(item => item.payload || item.data || item).filter(Boolean);
+        let quotations = items.map(item => item.payload || item.data || item).filter(Boolean);
         quotations.sort((a, b) => {
             const aTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
             const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
             return bTime - aTime;
         });
+        quotations = quotations.slice(0, 40);
         res.json({ quotations });
     } catch (error) {
         console.error('Error loading quotations:', error);

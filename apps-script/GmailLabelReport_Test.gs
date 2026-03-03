@@ -517,9 +517,27 @@ function runReportNow() {
 
 function runReportNow_Test() {
   SpreadsheetApp.getActive().toast('Running Gmail report (TEST)…');
-  const created = dailyLabelReport_Test();
-  const msg = DRY_RUN_MODE ? 'Dry run complete (no changes)' : (typeof created === 'number' ? 'Created ' + created + ' quotation(s)' : 'Report complete ✅');
-  SpreadsheetApp.getActive().toast(msg, 'Report complete', 5);
+  let created;
+  try {
+    created = dailyLabelReport_Test();
+  } catch (e) {
+    showReportCompleteAlert('Error: ' + (e.message || String(e)), true);
+    throw e;
+  }
+  const msg = DRY_RUN_MODE ? 'Dry run complete (no changes)' : (typeof created === 'number' ? 'Created ' + created + ' quotation(s) in the app.' : 'Report complete.');
+  showReportCompleteAlert(msg, false);
+  SpreadsheetApp.getActive().toast(msg, 'Report complete', 8);
+}
+
+function showReportCompleteAlert(message, isError) {
+  try {
+    const ui = SpreadsheetApp.getUi();
+    if (ui) {
+      ui.alert(isError ? 'Report Error' : 'Report complete', message, ui.ButtonSet.OK);
+    }
+  } catch (e) {
+    // getUi() may be unavailable when run from script editor; toast still shows
+  }
 }
 
 /***** ENQUIRY FOLLOW-UP HELPERS *****/

@@ -1045,7 +1045,8 @@
                 const response = await fetch(`${API_BASE_URL}/quotations`);
                 const result = await safeJsonParse(response);
                 if (!response.ok) {
-                    throw new Error(result.error || 'Failed to load quotations');
+                    const detailMsg = result.details ? ': ' + result.details : '';
+                    throw new Error((result.error || 'Failed to load quotations') + detailMsg);
                 }
                 const quotations = Array.isArray(result.quotations) ? result.quotations : [];
                 if (quotations.length > 0) {
