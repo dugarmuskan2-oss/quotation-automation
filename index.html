@@ -5428,6 +5428,31 @@ value="0"
             ============================================
             Text-based PDF generation (selectable text).
         */
+        function wrapTextKeepWords(doc, text, maxWidth) {
+            if (!text || !String(text).trim()) return [''];
+            var tokens = String(text).trim().split(/[\s\/,;]+/).filter(Boolean);
+            if (tokens.length === 0) return [''];
+            var lines = [];
+            var currentLine = '';
+            for (var i = 0; i < tokens.length; i++) {
+                var token = tokens[i];
+                var candidate = currentLine ? (currentLine + ' ' + token) : token;
+                var w = doc.getTextWidth(candidate);
+                if (w <= maxWidth) {
+                    currentLine = candidate;
+                } else {
+                    if (currentLine) lines.push(currentLine);
+                    if (doc.getTextWidth(token) > maxWidth) {
+                        lines = lines.concat(doc.splitTextToSize(token, maxWidth));
+                        currentLine = '';
+                    } else {
+                        currentLine = token;
+                    }
+                }
+            }
+            if (currentLine) lines.push(currentLine);
+            return lines;
+        }
         async function downloadQuotationPdf(quotationId) {
             const quotation = approvedQuotations.find(q => idsMatch(q.id, quotationId));
             if (!quotation) {
@@ -5577,8 +5602,8 @@ value="0"
                 const rightRow = metaRight[idx];
                 const leftVal = leftRow ? leftRow[1] : '';
                 const rightVal = rightRow ? rightRow[1] : '';
-                const leftLines = doc.splitTextToSize(leftVal, metaValueWidth);
-                const rightLines = doc.splitTextToSize(rightVal, metaValueWidth);
+                const leftLines = wrapTextKeepWords(doc, leftVal, metaValueWidth);
+                const rightLines = wrapTextKeepWords(doc, rightVal, metaValueWidth);
                 const rowHeight = Math.max(leftLines.length, rightLines.length, 1) * metaLineHeight + 4;
                 if (leftRow) {
                     doc.text(leftRow[0], leftX, metaCursorY + metaLineHeight);
@@ -5603,8 +5628,8 @@ value="0"
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(9);
             const billToWidth = contentWidth / 2 - 15;
-            const billToLines = doc.splitTextToSize(quotation.projectName || '', billToWidth);
-            const shipToLines = doc.splitTextToSize(quotation.shipTo || '', billToWidth);
+            const billToLines = wrapTextKeepWords(doc, quotation.projectName || '', billToWidth);
+            const shipToLines = wrapTextKeepWords(doc, quotation.shipTo || '', billToWidth);
             doc.text(billToLines, leftX, cursorY);
             doc.text(shipToLines, rightX, cursorY);
             const blockHeight = Math.max(billToLines.length, shipToLines.length, 1) * 7 + 6;
@@ -5657,7 +5682,7 @@ value="0"
                     cursorY += 22;
                     return;
                 }
-                const descLines = doc.splitTextToSize(row.desc || '', colWidths[1] - 10);
+                const descLines = wrapTextKeepWords(doc, row.desc || '', colWidths[1] - 10);
                 const rowHeight = Math.max(18, descLines.length * 10 + 6);
                 ensureSpace(rowHeight + 4);
                 if (idx % 2 === 0) {
@@ -5706,7 +5731,7 @@ value="0"
                 doc.setFont('helvetica', 'normal');
                 doc.setTextColor(0, 0, 0);
                 doc.setFontSize(9);
-                const termLines = doc.splitTextToSize(termsText, contentWidth);
+                const termLines = wrapTextKeepWords(doc, termsText, contentWidth);
                 termLines.forEach(line => {
                     ensureSpace(12);
                     doc.text(line, margin, cursorY);
