@@ -98,6 +98,56 @@ function getAllPdfAttachments(attachments) {
 }
 
 /**
+ * Get all Excel attachments (xlsx, xls) for text extraction.
+ * @param {Array<{ name?: string, contentType?: string, base64?: string }>} attachments
+ * @returns {Array<{ name: string, contentType: string, buffer: Buffer }>}
+ */
+function getAllExcelAttachments(attachments) {
+    const result = [];
+    if (!attachments || !Array.isArray(attachments)) return result;
+    for (const att of attachments) {
+        if (!att.base64) continue;
+        if (!isExcelAttachment(att)) continue;
+        try {
+            const buffer = decodeBase64Attachment(att.base64);
+            result.push({
+                name: att.name || 'enquiry.xlsx',
+                contentType: att.contentType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                buffer
+            });
+        } catch (e) {
+            continue;
+        }
+    }
+    return result;
+}
+
+/**
+ * Get all Word attachments (docx, doc) for text extraction.
+ * @param {Array<{ name?: string, contentType?: string, base64?: string }>} attachments
+ * @returns {Array<{ name: string, contentType: string, buffer: Buffer }>}
+ */
+function getAllWordAttachments(attachments) {
+    const result = [];
+    if (!attachments || !Array.isArray(attachments)) return result;
+    for (const att of attachments) {
+        if (!att.base64) continue;
+        if (!isWordAttachment(att)) continue;
+        try {
+            const buffer = decodeBase64Attachment(att.base64);
+            result.push({
+                name: att.name || 'enquiry.docx',
+                contentType: att.contentType || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                buffer
+            });
+        } catch (e) {
+            continue;
+        }
+    }
+    return result;
+}
+
+/**
  * Get the first attachment that has base64 data (any type), for fallback.
  * @param {Array<{ name?: string, contentType?: string, base64?: string }>} attachments
  * @returns {{ name: string, contentType: string, buffer: Buffer } | null}
