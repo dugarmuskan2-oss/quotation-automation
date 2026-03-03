@@ -2668,6 +2668,14 @@
             scrollToQuotationSection();
         }
         
+        function debounceRecalculate(fn, delay) {
+            var timeout;
+            return function() {
+                var self = this;
+                if (timeout) clearTimeout(timeout);
+                timeout = setTimeout(function() { fn.call(self); }, delay || 120);
+            };
+        }
         /*
             ============================================
             ATTACH CALCULATION LISTENERS
@@ -2686,16 +2694,14 @@
             
             // Add event listener to each field
             editableFields.forEach(function(field) {
-                field.addEventListener('input', function() {
+                field.addEventListener('input', debounceRecalculate(function() {
                     if (this.getAttribute('data-field') === 'lineTotal') {
                         this.dataset.manual = 'true';
                     }
-                    // When any field changes, recalculate that row
                     recalculateRow(this);
-                });
+                }));
                 
                 field.addEventListener('change', function() {
-                    // Also recalculate on change (when user leaves the field)
                     recalculateRow(this);
                 });
             });
@@ -2839,12 +2845,13 @@
             }
             const editableFields = folderContent.querySelectorAll('.editable-field');
             editableFields.forEach(function(field) {
-                field.addEventListener('input', function() {
+                var container = folderContent;
+                field.addEventListener('input', debounceRecalculate(function() {
                     if (this.getAttribute('data-field') === 'lineTotal') {
                         this.dataset.manual = 'true';
                     }
-                    recalculateRowInContainer(this, folderContent);
-                });
+                    recalculateRowInContainer(this, container);
+                }));
                 field.addEventListener('blur', function() {
                     recalculateRowInContainer(this, folderContent);
                 });
@@ -4305,13 +4312,14 @@
                                 });
                             }
                             if (['quantity', 'unitRate', 'marginPercent'].includes(fieldName)) {
-                                field.addEventListener('input', function() {
-                                    recalculateApprovalQuotationTotals(quotationId, false);
-                                });
+                                var qid = quotationId;
+                                field.addEventListener('input', debounceRecalculate(function() {
+                                    recalculateApprovalQuotationTotals(qid, false);
+                                }));
                             }
                             field.addEventListener('blur', function() {
                                 var qid = quotationId;
-                                setTimeout(function() { recalculateApprovalQuotationTotals(qid, false); }, 0);
+                                recalculateApprovalQuotationTotals(qid, false);
                             });
                         });
                     });
@@ -4672,13 +4680,14 @@ value="0"
                     });
                 }
                 if (['quantity', 'unitRate', 'marginPercent'].includes(fieldName)) {
-                    field.addEventListener('input', function() {
-                        recalculateApprovalQuotationTotals(quotationId, false);
-                    });
+                    var qid = quotationId;
+                    field.addEventListener('input', debounceRecalculate(function() {
+                        recalculateApprovalQuotationTotals(qid, false);
+                    }));
                 }
                 field.addEventListener('blur', function() {
                     var qid = quotationId;
-                    setTimeout(function() { recalculateApprovalQuotationTotals(qid, false); }, 0);
+                    recalculateApprovalQuotationTotals(qid, false);
                 });
             });
             
