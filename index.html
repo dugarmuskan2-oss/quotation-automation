@@ -355,6 +355,10 @@
             }
         }
         
+        #approvedQuotationsContainer {
+            contain: layout;
+        }
+
         /* Folder-like styling for saved quotations */
         .quotation-folder {
             background-color: #f5f5f5;
@@ -362,7 +366,7 @@
             border-radius: 4px;
             margin-bottom: 10px;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: background-color 0.3s, border-color 0.3s;
         }
         
         .quotation-folder:hover {
@@ -3882,9 +3886,14 @@
             if (!searchInput || searchInput.dataset.bound === 'true') {
                 return;
             }
+            var searchDebounceTimer;
             searchInput.addEventListener('input', function() {
                 approvalSearchQuery = searchInput.value || '';
-                displayAllApprovedQuotations();
+                if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+                searchDebounceTimer = setTimeout(function() {
+                    searchDebounceTimer = null;
+                    displayAllApprovedQuotations();
+                }, 150);
             });
             searchInput.dataset.bound = 'true';
         }
@@ -4057,6 +4066,7 @@
             }
             if (!container.dataset.approvalAutosaveDelegationBound) {
                 container.dataset.approvalAutosaveDelegationBound = 'true';
+                var autosavePending = {};
                 var autosaveHandler = function(e) {
                     var input = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' ? e.target : null;
                     if (!input) return;
@@ -4064,9 +4074,11 @@
                     if (!folder || !folder.id) return;
                     var quotationId = folder.id.replace('folder-', '');
                     var capturedInput = input;
-                    setTimeout(function() {
+                    if (autosavePending[quotationId]) clearTimeout(autosavePending[quotationId]);
+                    autosavePending[quotationId] = setTimeout(function() {
+                        autosavePending[quotationId] = null;
                         updateQuotationFromApprovalSection(quotationId, capturedInput);
-                    }, 0);
+                    }, 250);
                 };
                 container.addEventListener('change', autosaveHandler);
                 container.addEventListener('focusout', autosaveHandler);
@@ -4319,7 +4331,7 @@
                             }
                             field.addEventListener('blur', function() {
                                 var qid = quotationId;
-                                recalculateApprovalQuotationTotals(qid, false);
+                                setTimeout(function() { recalculateApprovalQuotationTotals(qid, false); }, 0);
                             });
                         });
                     });
@@ -4687,11 +4699,13 @@ value="0"
                 }
                 field.addEventListener('blur', function() {
                     var qid = quotationId;
-                    recalculateApprovalQuotationTotals(qid, false);
+                    setTimeout(function() { recalculateApprovalQuotationTotals(qid, false); }, 0);
                 });
             });
             
-            recalculateApprovalQuotationTotals(quotationId, false);
+            setTimeout(function() {
+                recalculateApprovalQuotationTotals(quotationId, false);
+            }, 0);
             updateQuotationFromApprovalSection(quotationId, null);
         }
         
@@ -5203,32 +5217,29 @@ value="0"
                 quotation.tableHTML = tableElement.outerHTML;
             }
             const headerValues = getQuotationHeaderValuesFromContainer(folderContent);
-            var domReadOk = (headerValues.customerName || '').toString().trim().length > 0;
-            if (domReadOk) {
-                function applyOrKeep(field, domVal) {
-                    var v = (domVal || '').toString().trim();
-                    if (v) quotation[field] = domVal;
-                }
-                applyOrKeep('quotationDate', headerValues.quotationDate);
-                applyOrKeep('preparedBy', headerValues.preparedBy);
-                applyOrKeep('assignedTo', headerValues.assignedTo);
-                applyOrKeep('checkedBy', headerValues.checkedBy);
-                applyOrKeep('quoteNumber', headerValues.quoteNumber);
-                applyOrKeep('customerName', headerValues.customerName);
-                applyOrKeep('phoneNumber', headerValues.phoneNumber);
-                applyOrKeep('mobileNumber', headerValues.mobileNumber);
-                applyOrKeep('projectName', headerValues.projectName);
-                applyOrKeep('shipTo', headerValues.shipTo);
-                if ((headerValues.contactDetails || '').toString().trim()) quotation.contactDetails = headerValues.contactDetails;
-                else quotation.contactDetails = quotation.mobileNumber || quotation.phoneNumber || '';
-                updateFolderHeaderDisplay(quotation.id, quotation);
-                if ((headerValues.grandTotal || '').toString().trim()) quotation.grandTotal = headerValues.grandTotal;
-                if ((headerValues.termsText || '').toString().trim()) quotation.termsText = headerValues.termsText;
+            function applyOrKeep(field, domVal) {
+                var v = (domVal || '').toString().trim();
+                if (v) quotation[field] = domVal;
             }
+            applyOrKeep('quotationDate', headerValues.quotationDate);
+            applyOrKeep('preparedBy', headerValues.preparedBy);
+            applyOrKeep('assignedTo', headerValues.assignedTo);
+            applyOrKeep('checkedBy', headerValues.checkedBy);
+            applyOrKeep('quoteNumber', headerValues.quoteNumber);
+            applyOrKeep('customerName', headerValues.customerName);
+            applyOrKeep('phoneNumber', headerValues.phoneNumber);
+            applyOrKeep('mobileNumber', headerValues.mobileNumber);
+            applyOrKeep('projectName', headerValues.projectName);
+            applyOrKeep('shipTo', headerValues.shipTo);
+            if ((headerValues.contactDetails || '').toString().trim()) quotation.contactDetails = headerValues.contactDetails;
+            else quotation.contactDetails = quotation.mobileNumber || quotation.phoneNumber || '';
+            updateFolderHeaderDisplay(quotation.id, quotation);
+            if ((headerValues.grandTotal || '').toString().trim()) quotation.grandTotal = headerValues.grandTotal;
+            if ((headerValues.termsText || '').toString().trim()) quotation.termsText = headerValues.termsText;
             quotation.updatedAt = new Date().toISOString();
             quotation.saved = true;
-            updateApprovalBadge(quotationId, quotation);
             saveToLocalStorage();
+            setTimeout(function() { displayAllApprovedQuotations(); }, 0);
             (async function() {
                 const ok = await saveQuotationToBackend(quotation);
                 if (ok) alert('Changes saved.');
@@ -5350,22 +5361,16 @@ value="0"
             saveToLocalStorage();
             saveQuotationToBackend(quotation);
             
-            // Update the display to show saved status (as folder)
-            displayAllApprovedQuotations();
-            
-            // Scroll to the saved quotation folder
-            const folderElement = document.getElementById('folder-' + quotationId);
-            if (folderElement) {
-                folderElement.scrollIntoView({ 
-                    behavior: 'smooth',
-                    block: 'center'
-                });
-            }
-            
-            // Show confirmation
-            const q = approvedQuotations[quotationIndex];
-            const filename = getFolderDisplayName(q);
-            alert(`Quotation saved as file: ${filename}`);
+            var q = approvedQuotations[quotationIndex];
+            var filename = getFolderDisplayName(q);
+            setTimeout(function() {
+                displayAllApprovedQuotations();
+                var folderElement = document.getElementById('folder-' + quotationId);
+                if (folderElement) {
+                    folderElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+                alert('Quotation saved as file: ' + filename);
+            }, 0);
         }
 
         function parseQuotationTableForPdf(tableHTML) {
