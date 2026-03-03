@@ -5430,13 +5430,21 @@ value="0"
         */
         function wrapTextKeepWords(doc, text, maxWidth) {
             if (!text || !String(text).trim()) return [''];
-            var tokens = String(text).trim().split(/[\s\/,;]+/).filter(Boolean);
+            var parts = String(text).trim().split(/([\s\/,;]+)/).filter(Boolean);
+            if (parts.length === 0) return [''];
+            var tokens = [];
+            var seps = [];
+            for (var j = 0; j < parts.length; j++) {
+                if (j % 2 === 0) tokens.push(parts[j]);
+                else seps.push(parts[j]);
+            }
             if (tokens.length === 0) return [''];
             var lines = [];
             var currentLine = '';
             for (var i = 0; i < tokens.length; i++) {
                 var token = tokens[i];
-                var candidate = currentLine ? (currentLine + ' ' + token) : token;
+                var sep = (i > 0 && i - 1 < seps.length) ? seps[i - 1] : '';
+                var candidate = currentLine ? (currentLine + sep + token) : token;
                 var w = doc.getTextWidth(candidate);
                 if (w <= maxWidth) {
                     currentLine = candidate;
