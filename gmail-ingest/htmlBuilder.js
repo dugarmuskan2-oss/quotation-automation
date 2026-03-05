@@ -43,13 +43,13 @@ function computeGrandTotalFromLineItems(lineItems) {
 /**
  * Build HTML for a single item row so Approval section can add buttons and bind handlers.
  * Column order matches manual Creation: row#, description, qty, base rate, margin, rate-per-mtr, amount; Approval appends actions td.
- * Description, base rate, and margin are inputs (editable); quantity, rate-per-mtr, and amount are spans so Approval replaces them with inputs.
  * @param {{ originalDescription?: string, identifiedPipeType?: string, quantity?: string, unitRate?: string, marginPercent?: string, finalRate?: string }} item
  * @param {number} rowIndex - 0-based index for row number
  * @param {number} lineTotal - precomputed quantity * finalRate for this row
- * @returns {string} HTML for one <tr class="item-row"> with 7 <td>s (row#, desc input, qty span, base input, margin input, rate span, amount span)
+ * @param {string} [pipeType] - pipe type for data-pipe-type attribute (for grouping)
+ * @returns {string} HTML for one <tr class="item-row"> with 7 <td>s
  */
-function buildItemRowHTML(item, rowIndex, lineTotal) {
+function buildItemRowHTML(item, rowIndex, lineTotal, pipeType) {
     const formattedDesc = formatItemDescriptionByPipeType(item) || item.originalDescription || item.identifiedPipeType || '';
     const desc = escapeHtmlForTable(formattedDesc);
     const quantityStr = escapeHtmlForTable(item.quantity);
@@ -57,8 +57,9 @@ function buildItemRowHTML(item, rowIndex, lineTotal) {
     const marginStr = escapeHtmlForTable(item.marginPercent || '');
     const finalRateStr = escapeHtmlForTable(String(Math.round(parseFloat(item.finalRate) || 0)));
     const amountStr = String(Math.round(Number(lineTotal)));
+    const dataPipeType = pipeType != null ? ' data-pipe-type="' + escapeHtmlForTable(pipeType) + '"' : '';
     return (
-        '<tr class="item-row">' +
+        '<tr class="item-row"' + dataPipeType + '>' +
         '<td></td>' +
         '<td><input type="text" class="editable-field" data-field="originalDescription" value="' + desc + '" placeholder="Enter description" style="width:100%;border:none;background:transparent;"></td>' +
         '<td><span data-field="quantity">' + quantityStr + '</span></td>' +
@@ -72,7 +73,7 @@ function buildItemRowHTML(item, rowIndex, lineTotal) {
 
 /**
  * Build a quotation table HTML string from AI line items.
- * Matches the structure expected by the Approval section (same column count/headers).
+ * Groups by identifiedPipeType and emits one pipe-type header per group (same as manual/Approval).
  * @param {Array<{ originalDescription?: string, identifiedPipeType?: string, quantity?: string, unitRate?: string, marginPercent?: string, finalRate?: string, lineTotal?: string }>} lineItems
  * @returns {{ tableHTML: string, grandTotal: number, grandTotalFormatted: string }}
  */
@@ -84,24 +85,35 @@ function buildTableHTMLFromLineItems(lineItems) {
     }
 
     const thead = '<thead><tr><th style="width:50px">S. NO</th><th>ITEMS AND DESCRIPTION</th><th>QTY (Mtrs)</th><th class="col-base-rate">BASE RATE</th><th class="col-margin">MARGIN %</th><th>Rate per Mtr</th><th>AMOUNT</th></tr></thead>';
-    const rows = [];
+    const tbodyParts = [];
     let grandTotal = 0;
+    let rowIndex = 0;
 
-    for (let i = 0; i < lineItems.length; i++) {
-        const item = lineItems[i];
-        const qty = parseFloat(item.quantity) || 0;
-        const finalRate = parseFloat(item.finalRate) || 0;
-        const lineTotal = qty * finalRate;
-        grandTotal += lineTotal;
-        rows.push(buildItemRowHTML(item, i, Math.round(lineTotal)));
+    // Group by identifiedPipeType so each pipe type gets its own header (GI and ERW separate)
+    const grouped = {};
+    for (const item of lineItems) {
+        const key = (item.identifiedPipeType || '').trim() || 'Items';
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(item);
     }
-    const roundedGrandTotal = Math.round(grandTotal);
 
-    const firstItem = lineItems[0];
-    const pipeHeaderLabel = getPipeHeaderLabel(firstItem && firstItem.identifiedPipeType) || 'Items';
-    const pipeHeaderValue = escapeHtmlForTable(pipeHeaderLabel);
-    const pipeHeaderRow = '<tr class="pipe-type-header"><td colspan="7"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px;"><input type="text" class="editable-field" data-field="pipeTypeHeader" value="' + pipeHeaderValue + '" style="flex:1;border:none;background:transparent;font-weight:bold;"><div class="pipe-header-actions" style="display:flex;gap:6px;"></div></div></td></tr>';
-    const tableHTML = '<table id="quotationTable">' + thead + '<tbody>' + pipeHeaderRow + rows.join('') + '</tbody></table>';
+    for (const pipeType of Object.keys(grouped)) {
+        const items = grouped[pipeType];
+        const pipeHeaderLabel = getPipeHeaderLabel(pipeType) || 'Items';
+        const pipeHeaderValue = escapeHtmlForTable(pipeHeaderLabel);
+        const pipeHeaderRow = '<tr class="pipe-type-header" data-pipe-type="' + escapeHtmlForTable(pipeType) + '"><td colspan="7"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px;"><input type="text" class="editable-field" data-field="pipeTypeHeader" value="' + pipeHeaderValue + '" style="flex:1;border:none;background:transparent;font-weight:bold;"><div class="pipe-header-actions" style="display:flex;gap:6px;"></div></div></td></tr>';
+        tbodyParts.push(pipeHeaderRow);
+        for (const item of items) {
+            const qty = parseFloat(item.quantity) || 0;
+            const finalRate = parseFloat(item.finalRate) || 0;
+            const lineTotal = qty * finalRate;
+            grandTotal += lineTotal;
+            tbodyParts.push(buildItemRowHTML(item, rowIndex++, Math.round(lineTotal), pipeType));
+        }
+    }
+
+    const roundedGrandTotal = Math.round(grandTotal);
+    const tableHTML = '<table id="quotationTable">' + thead + '<tbody>' + tbodyParts.join('') + '</tbody></table>';
     return {
         tableHTML,
         grandTotal: roundedGrandTotal,

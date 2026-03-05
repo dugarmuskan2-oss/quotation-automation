@@ -1,79 +1,53 @@
 /**
- * Gmail Label Report – TESTING VERSION (Modular)
- * ==============================================
- * Safe copy for experiments. Uses separate sheet, function names, and property.
- * Set DRY_RUN_MODE = true to simulate without writing to the sheet or Gmail.
+ * Gmail Label Report – PRODUCTION (Report sheet)
+ * ===============================================
+ * Writes label counts and Gmail links to the "Report" sheet.
+ * Sends labeled emails to the Quotation app at the end of each run.
+ * Only emails in the current run's time window are sent; first message per thread.
  *
  * Copy this file into your Apps Script project alongside SendLabeledEmailsToApp.gs.
- * Run runReportNow_Test() from the script editor or assign to a test button.
+ * Run runReportNow() from the script editor or assign to your report button.
  */
 
 /***** CONFIG *****/
-const SHEET_NAME_TEST = 'Report';
+const SHEET_NAME = 'Report';
 const START_ROW_OFFSET = 5;
 const HEADER_ROWS = 3;
 const MAX_DATA_ROWS = 30;
 const VISIBLE_DATA_ROWS = 5;
 const INCLUDE_NO_LABEL = true;
-const PROP_LAST_END_TEST = 'LAST_RUN_END_MS_TEST';
+const PROP_LAST_END = 'LAST_RUN_END_MS';
 const FLAG_LABEL = 'Enquiry - Needs Reply';
 const ENQUIRY_LABEL = 'Enquiry';
 const QUOTATION_LABEL = 'Quotation';
 const OVERDUE_DAYS = 2;
-const DRY_RUN_MODE = true;
 
-const COMMON_EMAIL_PREFIX = 'Common Email';
+function isCommonLabel_(label) {
+  if (typeof label !== 'string') return false;
+  return label.trim().toLowerCase().indexOf('common') === 0;
+}
 
-/***** LABELS (Common Email* first, then rest) *****/
-const LABELS = [
-  "Common Email",
-  "Common Email/Deekshit",
-  "Common Email/Jayanthi",
-  "Common Email/Pavithra",
-  "Common Email/Ramesh",
-  "Common Email/Ramya",
-  "Auditor",
-  "Bank Statement/ Related",
-  "Bigin",
-  "COMMON VIMAL",
-  "Common Martin",
-  "Credit Note",
-  "Debit Note",
-  "Enquiry Client",
-  "Enquiry Market",
-  "Quotation Automation/Create Quotation",
-  "Expense",
-  "Expense Bill",
-  "FORMAT",
-  "Freight Bill",
-  "GRN",
-  "Income Tax/ GST/ MCA",
-  "MC JAIN",
-  "OC(ORDER CONFIRMATION)/S.O(ORDER CONFIRMATION)/F.G/STOCK POSITION",
-  "Other",
-  "PAYMENT ADVICE",
-  "PO Sent to Manufacturer Vendor",
-  "POARTAL/DALMIA",
-  "PURCHASE BILL",
-  "Payment Reminders",
-  "Portal",
-  "Portal/Direct from Company",
-  "Portal/E-Auction",
-  "Portal/Gem",
-  "Portal/LnT",
-  "Portal/Portal - Dalmia",
-  "Portal/Tender 24/7",
-  "Prepaid Card",
-  "Price List",
-  "Purchase Order Client",
-  "Purchase Order Market",
-  "Quotation",
-  "Returned Email",
-  "TC",
-  "mca",
-  "new manufactures",
-  "purchase enq"
-];
+function buildLabelsWithCommonFirst_() {
+  const all = [
+    "Auditor", "Bank Statement/ Related", "Bigin", "COMMON VIMAL", "Common Email",
+    "Common Email/Deekshit", "Common Email/Jayanthi", "Common Email/Pavithra",
+    "Common Email/Ramesh", "Common Email/Ramya", "Common Martin", "Credit Note",
+    "Debit Note", "Enquiry Client", "Enquiry Market", "Quotation Automation/Create Quotation",
+    "Expense", "Expense Bill", "FORMAT", "Freight Bill", "GRN", "Income Tax/ GST/ MCA",
+    "MC JAIN", "OC(ORDER CONFIRMATION)/S.O(ORDER CONFIRMATION)/F.G/STOCK POSITION",
+    "Other", "PAYMENT ADVICE", "PO Sent to Manufacturer Vendor", "POARTAL/DALMIA",
+    "PURCHASE BILL", "Payment Reminders", "Portal", "Portal/Direct from Company",
+    "Portal/E-Auction", "Portal/Gem", "Portal/LnT", "Portal/Portal - Dalmia",
+    "Portal/Tender 24/7", "Prepaid Card", "Price List", "Purchase Order Client",
+    "Purchase Order Market", "Quotation", "Returned Email", "TC", "mca",
+    "new manufactures", "purchase enq"
+  ];
+  const common = all.filter(isCommonLabel_);
+  const rest = all.filter(function (l) { return !isCommonLabel_(l); });
+  return common.concat(rest);
+}
+
+const LABELS = buildLabelsWithCommonFirst_();
 
 /***** TIME / DATE HELPERS *****/
 function getStartMsFromProps_(props, now, propKey) {
@@ -168,9 +142,15 @@ function getEndMs_(maxLabelMsgTs, nowMs) {
 }
 
 function getDisplayDateAndTimeWindow_(now, startMs, endMs, tz) {
-  const dateTxt = Utilities.formatDate(now, tz, 'dd MMM yyyy');
-  const startTimeTxt = Utilities.formatDate(new Date(startMs), tz, 'HH:mm');
-  const endTimeTxt = Utilities.formatDate(new Date(endMs), tz, 'HH:mm');
+  const startDate = new Date(startMs);
+  const endDate = new Date(endMs);
+  const startDateStr = Utilities.formatDate(startDate, tz, 'dd MMM yyyy');
+  const endDateStr = Utilities.formatDate(endDate, tz, 'dd MMM yyyy');
+  const dateTxt = (startDateStr === endDateStr)
+    ? startDateStr
+    : startDateStr + ' – ' + endDateStr;
+  const startTimeTxt = Utilities.formatDate(startDate, tz, 'HH:mm');
+  const endTimeTxt = Utilities.formatDate(endDate, tz, 'HH:mm');
   const timeWindowTxt = startTimeTxt + ' → ' + endTimeTxt;
   const windowKey = dateTxt + ' ' + timeWindowTxt;
   return { dateTxt: dateTxt, timeWindowTxt: timeWindowTxt, windowKey: windowKey };
@@ -199,12 +179,12 @@ function buildHyperlinkFormula_(url) {
 }
 
 /***** LABEL / COUNT HELPERS *****/
-function searchLabelWithinWindow_Test(label, startDateStr, endDatePlusOneStr, startMs, endMs) {
+function searchLabelWithinWindow_(label, startDateStr, endDatePlusOneStr, startMs, endMs) {
   try {
     const threads = GmailApp.search('label:"' + label + '" after:' + startDateStr + ' before:' + endDatePlusOneStr + ' -in:spam -in:trash');
     const kept = [];
     for (let i = 0; i < threads.length; i++) {
-      if (threadHasMessageInWindow_Test(threads[i], startMs, endMs)) kept.push(threads[i]);
+      if (threadHasMessageInWindow_(threads[i], startMs, endMs)) kept.push(threads[i]);
     }
     return { count: kept.length, threadIds: kept.map(function (t) { return t.getId(); }) };
   } catch (e) {
@@ -212,7 +192,7 @@ function searchLabelWithinWindow_Test(label, startDateStr, endDatePlusOneStr, st
   }
 }
 
-function threadHasMessageInWindow_Test(thread, startMs, endMs) {
+function threadHasMessageInWindow_(thread, startMs, endMs) {
   const msgs = thread.getMessages();
   for (let i = 0; i < msgs.length; i++) {
     const ts = msgs[i].getDate().getTime();
@@ -225,7 +205,7 @@ function buildLabelPairs_(labels, startDateStr, endDatePlusOneStr, startMs, endM
   const pairs = [];
   for (let i = 0; i < labels.length; i++) {
     const lbl = labels[i];
-    const res = searchLabelWithinWindow_Test(lbl, startDateStr, endDatePlusOneStr, startMs, endMs);
+    const res = searchLabelWithinWindow_(lbl, startDateStr, endDatePlusOneStr, startMs, endMs);
     const count = res.count || 0;
     const quotedLabel = quoteLabelForSearch_(lbl);
     const query = buildGmailSearchQuery_(quotedLabel, startSec, endSec);
@@ -241,7 +221,7 @@ function buildNoLabelPair_(trackedLabels, startDateStr, endDatePlusOneStr, start
   const unlabeled = [];
   for (let t = 0; t < allThreads.length; t++) {
     const thread = allThreads[t];
-    if (!threadHasMessageInWindow_Test(thread, startMs, endMs)) continue;
+    if (!threadHasMessageInWindow_(thread, startMs, endMs)) continue;
     const tLabels = thread.getLabels().map(function (l) { return l.getName(); });
     let hasTracked = false;
     for (let k = 0; k < trackedLabels.length; k++) {
@@ -263,7 +243,7 @@ function buildFlagPair_(flagLabel, startMs, endMs, startSec, endSec) {
   const flagThreads = GmailApp.search('label:"' + flagLabel + '" -in:spam -in:trash newer_than:365d');
   const keptFlag = [];
   for (let t = 0; t < flagThreads.length; t++) {
-    if (threadHasMessageInWindow_Test(flagThreads[t], startMs, endMs)) keptFlag.push(flagThreads[t]);
+    if (threadHasMessageInWindow_(flagThreads[t], startMs, endMs)) keptFlag.push(flagThreads[t]);
   }
   const flagCount = keptFlag.length;
   const flagQuery = buildGmailSearchQuery_('label:"' + flagLabel + '"', startSec, endSec);
@@ -285,11 +265,13 @@ function getOrCreateSheet_(ss, sheetName) {
   return ss.getSheetByName(sheetName) || ss.insertSheet(sheetName);
 }
 
-function ensureHeader_Date_Time_Window_Test(sh, labels, flagLabel) {
+const COLOR_WHITE = '#FFFFFF';
+const COLOR_LIGHT_BLUE = '#DEEBF7';
+const COLOR_HEADER_GREY = '#F3F3F3';
+const BORDER_COLOR = '#999999';
+
+function ensureHeader_Date_Time_Window_(sh, labels, flagLabel) {
   const labelsWithNoLabel = INCLUDE_NO_LABEL ? ['No Label Added'].concat(labels) : labels.slice();
-  const commonEmailLabels = labelsWithNoLabel.filter(function (l) { return l === COMMON_EMAIL_PREFIX || (typeof l === 'string' && l.indexOf(COMMON_EMAIL_PREFIX + '/') === 0); });
-  const numCommonCols = commonEmailLabels.length * 2;
-  const commonStartCol = INCLUDE_NO_LABEL ? 5 : 3;
 
   const totalPairs = labelsWithNoLabel.length + 1;
   const totalCols = 2 + totalPairs * 2;
@@ -299,6 +281,8 @@ function ensureHeader_Date_Time_Window_Test(sh, labels, flagLabel) {
 
   if (sh.getMaxRows() < headerRow2) sh.insertRowsAfter(sh.getMaxRows(), headerRow2 - sh.getMaxRows());
   if (sh.getMaxColumns() < totalCols) sh.insertColumnsAfter(sh.getMaxColumns(), totalCols - sh.getMaxColumns());
+
+  sh.setFrozenRows(0);
 
   try {
     const rngAll = sh.getRange(headerRow0, 1, HEADER_ROWS, totalCols);
@@ -320,7 +304,6 @@ function ensureHeader_Date_Time_Window_Test(sh, labels, flagLabel) {
     row2[c - 1] = 'Count';
     row2[c] = 'Open';
   }
-
   const finalC = 3 + labelsWithNoLabel.length * 2;
   row2[finalC - 1] = 'Count';
   row2[finalC] = 'Open';
@@ -333,24 +316,35 @@ function ensureHeader_Date_Time_Window_Test(sh, labels, flagLabel) {
   sh.getRange(headerRow0, 1, HEADER_ROWS, 1).merge().setValue('Date').setHorizontalAlignment('center').setFontWeight('bold');
   sh.getRange(headerRow0, 2, HEADER_ROWS, 1).merge().setValue('Time window').setHorizontalAlignment('center').setFontWeight('bold');
 
-  if (numCommonCols > 0) {
-    const commonRng = sh.getRange(headerRow0, commonStartCol, 1, numCommonCols);
-    commonRng.merge();
-    commonRng.setValue('Common Emails').setHorizontalAlignment('center').setFontWeight('bold');
-  }
-
   for (let i = 0; i < labelsWithNoLabel.length; i++) {
     const startCol = 3 + i * 2;
-    const rng = sh.getRange(headerRow1, startCol, 2, 2);
+    const rng = sh.getRange(headerRow1, startCol, 1, 2);
     rng.merge();
     rng.setValue(labelsWithNoLabel[i]).setHorizontalAlignment('center').setFontWeight('bold');
   }
-
-  const rngf = sh.getRange(headerRow1, 3 + labelsWithNoLabel.length * 2, 2, 2);
+  const rngf = sh.getRange(headerRow1, 3 + labelsWithNoLabel.length * 2, 1, 2);
   rngf.merge();
   rngf.setValue(flagLabel).setHorizontalAlignment('center').setFontWeight('bold');
 
-  sh.getRange(headerRow0, 1, HEADER_ROWS, totalCols).setBackground(COLOR_HEADER_GREY).setBorder(true, true, true, true, true, true, BORDER_COLOR, SpreadsheetApp.BorderStyle.SOLID);
+  const headerRng = sh.getRange(headerRow0, 1, HEADER_ROWS, totalCols);
+  headerRng.setBackground(COLOR_HEADER_GREY);
+  var headerBgColors = [];
+  for (var hr = 0; hr < HEADER_ROWS; hr++) {
+    var headerRow = [];
+    for (var hc = 0; hc < totalCols; hc++) {
+      if (hc < 2) {
+        headerRow.push(COLOR_HEADER_GREY);
+      } else {
+        var blockIdx = Math.floor(hc / 2);
+        headerRow.push((blockIdx % 2 === 0) ? COLOR_WHITE : COLOR_LIGHT_BLUE);
+      }
+    }
+    headerBgColors.push(headerRow);
+  }
+  headerRng.setBackgrounds(headerBgColors);
+  var fullHeaderRng = sh.getRange(headerRow0, 1, HEADER_ROWS, totalCols);
+  fullHeaderRng.setBorder(true, true, true, true, true, true, BORDER_COLOR, SpreadsheetApp.BorderStyle.SOLID);
+  SpreadsheetApp.flush();
   sh.setFrozenRows(headerRow2);
   sh.setColumnWidth(1, 140);
   sh.setColumnWidth(2, 150);
@@ -362,7 +356,7 @@ function ensureHeader_Date_Time_Window_Test(sh, labels, flagLabel) {
   }
 }
 
-function getOrCreateRowByKey_Test(sh, key) {
+function getOrCreateRowByKey_(sh, key) {
   const firstDataRow = START_ROW_OFFSET + 1 + HEADER_ROWS;
   const lastRow = sh.getLastRow();
   if (lastRow < firstDataRow) return firstDataRow;
@@ -392,12 +386,7 @@ function writeRowToSheet_(sh, rowIndex, row, totalCols) {
   sh.getRange(rowIndex, 1, 1, totalCols).setValues([row]);
 }
 
-const COLOR_WHITE = '#FFFFFF';
-const COLOR_LIGHT_BLUE = '#DEEBF7';
-const COLOR_HEADER_GREY = '#F3F3F3';
-const BORDER_COLOR = '#D9D9D9';
-
-function applyFormattingAfterWrite_Test(sh, totalCols) {
+function applyFormattingAfterWrite_(sh, totalCols) {
   const firstDataRow = START_ROW_OFFSET + 1 + HEADER_ROWS;
   const lastRow = sh.getLastRow();
   const numRows = Math.max(1, lastRow - firstDataRow + 1);
@@ -414,14 +403,29 @@ function applyFormattingAfterWrite_Test(sh, totalCols) {
 
 function applyAlternatingColorsAndBorders_(sh, firstDataRow, numDataRows, totalCols) {
   if (numDataRows < 1) return;
-  const rng = sh.getRange(firstDataRow, 1, numDataRows, totalCols);
-  const bgColors = [];
-  for (let r = 0; r < numDataRows; r++) {
-    const rowColor = (r % 2 === 0) ? COLOR_WHITE : COLOR_LIGHT_BLUE;
-    bgColors.push(new Array(totalCols).fill(rowColor));
+  var bgColors = [];
+  for (var r = 0; r < numDataRows; r++) {
+    var row = [];
+    for (var c = 0; c < totalCols; c++) {
+      var blockIdx = Math.floor(c / 2);
+      row.push((blockIdx % 2 === 0) ? COLOR_WHITE : COLOR_LIGHT_BLUE);
+    }
+    bgColors.push(row);
   }
+  var rng = sh.getRange(firstDataRow, 1, numDataRows, totalCols);
   rng.setBackgrounds(bgColors);
   rng.setBorder(true, true, true, true, true, true, BORDER_COLOR, SpreadsheetApp.BorderStyle.SOLID);
+  SpreadsheetApp.flush();
+}
+
+function applyTableBorders_(sh, totalCols) {
+  var headerRow0 = START_ROW_OFFSET + 1;
+  var lastRow = sh.getLastRow();
+  var firstDataRow = START_ROW_OFFSET + 1 + HEADER_ROWS;
+  if (lastRow < firstDataRow) return;
+  var numRows = lastRow - headerRow0 + 1;
+  var fullRng = sh.getRange(headerRow0, 1, numRows, totalCols);
+  fullRng.setBorder(true, true, true, true, true, true, BORDER_COLOR, SpreadsheetApp.BorderStyle.SOLID);
 }
 
 function trimToMaxDataRows_(sh) {
@@ -445,32 +449,25 @@ function applyRowVisibility_(sh) {
   sh.hideRows(firstDataRow, toHide);
 }
 
-/***** MAIN REPORT FUNCTION (TEST) *****/
-function dailyLabelReport_Test() {
+/***** MAIN REPORT FUNCTION *****/
+function dailyLabelReport() {
   const tz = Session.getScriptTimeZone();
   const props = PropertiesService.getScriptProperties();
   const now = new Date();
   const nowMs = now.getTime();
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sh = getOrCreateSheet_(ss, SHEET_NAME_TEST);
-  const startMs = getStartMsFromLastSheetRow_(sh, props, now, PROP_LAST_END_TEST);
+  const sh = getOrCreateSheet_(ss, SHEET_NAME);
+  const startMs = getStartMsFromLastSheetRow_(sh, props, now, PROP_LAST_END);
 
   const dateStrings = getSearchDateStrings_(tz, startMs, nowMs);
   const maxLabelMsgTs = getMaxLabelMessageTimestamp_(LABELS, dateStrings.startDateStr, dateStrings.endDatePlusOneStr, startMs, nowMs);
   const endMs = getEndMs_(maxLabelMsgTs, nowMs);
   const display = getDisplayDateAndTimeWindow_(now, startMs, endMs, tz);
 
-  if (DRY_RUN_MODE) {
-    Logger.log('[DRY RUN] dailyLabelReport_Test would write to sheet "' + SHEET_NAME_TEST + '"');
-    Logger.log('[DRY RUN] Window: ' + display.dateTxt + ' ' + display.timeWindowTxt);
-    Logger.log('[DRY RUN] Skipping sheet write and property save.');
-    return;
-  }
+  ensureHeader_Date_Time_Window_(sh, LABELS, FLAG_LABEL);
 
-  ensureHeader_Date_Time_Window_Test(sh, LABELS, FLAG_LABEL);
-
-  const rowIndex = getOrCreateRowByKey_Test(sh, display.windowKey);
+  const rowIndex = getOrCreateRowByKey_(sh, display.windowKey);
 
   const startSec = Math.floor(startMs / 1000);
   const endSec = Math.floor(endMs / 1000);
@@ -488,22 +485,48 @@ function dailyLabelReport_Test() {
 
   const built = buildReportRow_(display.dateTxt, display.timeWindowTxt, outputPairs);
   writeRowToSheet_(sh, rowIndex, built.row, built.totalCols);
-  applyFormattingAfterWrite_Test(sh, built.totalCols);
+  applyFormattingAfterWrite_(sh, built.totalCols);
   trimToMaxDataRows_(sh);
   applyRowVisibility_(sh);
+  applyTableBorders_(sh, built.totalCols);
 
-  props.setProperty(PROP_LAST_END_TEST, String(endMs));
+  SpreadsheetApp.flush();
+  props.setProperty(PROP_LAST_END, String(endMs));
+
+  const created = sendLabeledEmailsToAppForLabel(
+    'Quotation Automation/Create Quotation',
+    startMs,
+    endMs,
+    dateStrings.startDateStr,
+    dateStrings.endDatePlusOneStr
+  );
+  return created;
 }
 
 /***** BUTTON FUNCTIONS *****/
 function runReportNow() {
-  runReportNow_Test();
+  SpreadsheetApp.getActive().toast('Running Gmail report…');
+  let created;
+  try {
+    created = dailyLabelReport();
+  } catch (e) {
+    showReportCompleteAlert('Error: ' + (e.message || String(e)), true);
+    throw e;
+  }
+  const msg = typeof created === 'number' ? 'Created ' + created + ' quotation(s) in the app.' : 'Report complete.';
+  showReportCompleteAlert(msg, false);
+  SpreadsheetApp.getActive().toast(msg, 'Report complete', 8);
 }
 
-function runReportNow_Test() {
-  SpreadsheetApp.getActive().toast('Running Gmail report (TEST)…');
-  dailyLabelReport_Test();
-  SpreadsheetApp.getActive().toast(DRY_RUN_MODE ? 'Dry run complete (no changes)' : 'Report complete ✅');
+function showReportCompleteAlert(message, isError) {
+  try {
+    const ui = SpreadsheetApp.getUi();
+    if (ui) {
+      ui.alert(isError ? 'Report Error' : 'Report complete', message, ui.ButtonSet.OK);
+    }
+  } catch (e) {
+    // getUi() may be unavailable when run from script editor; toast still shows
+  }
 }
 
 /***** ENQUIRY FOLLOW-UP HELPERS *****/
@@ -527,7 +550,7 @@ function threadHasQuotationLabel_(thread) {
   return thread.getLabels().some(function (l) { return l.getName() === QUOTATION_LABEL; });
 }
 
-function removeFlagIfPresent_Test(thread, flagLabelObj) {
+function removeFlagIfPresent_(thread, flagLabelObj) {
   if (thread.getLabels().some(function (l) { return l.getName() === FLAG_LABEL; })) {
     thread.removeLabel(flagLabelObj);
   }
@@ -536,27 +559,22 @@ function removeFlagIfPresent_Test(thread, flagLabelObj) {
 function processEnquiryThread_(thread, flagLabelObj, myAddresses, nowMs, overdueMs) {
   const lastInboundMs = getLastInboundMessageTime_(thread, myAddresses);
   if (!lastInboundMs) {
-    removeFlagIfPresent_Test(thread, flagLabelObj);
+    removeFlagIfPresent_(thread, flagLabelObj);
     return;
   }
   if (threadHasQuotationLabel_(thread)) {
-    removeFlagIfPresent_Test(thread, flagLabelObj);
+    removeFlagIfPresent_(thread, flagLabelObj);
     return;
   }
   if ((nowMs - lastInboundMs) >= overdueMs) {
     thread.addLabel(flagLabelObj);
   } else {
-    removeFlagIfPresent_Test(thread, flagLabelObj);
+    removeFlagIfPresent_(thread, flagLabelObj);
   }
 }
 
-/***** ENQUIRY FOLLOW-UP CHECKER (TEST) *****/
-function checkEnquiryFollowUps_Test() {
-  if (DRY_RUN_MODE) {
-    Logger.log('[DRY RUN] checkEnquiryFollowUps_Test would add/remove flag labels. Skipping.');
-    return;
-  }
-
+/***** ENQUIRY FOLLOW-UP CHECKER *****/
+function checkEnquiryFollowUps() {
   const flagLabelObj = GmailApp.getUserLabelByName(FLAG_LABEL) || GmailApp.createLabel(FLAG_LABEL);
   const myAddresses = getMyEmailAddresses_();
   const nowMs = Date.now();
