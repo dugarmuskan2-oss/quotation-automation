@@ -4024,7 +4024,8 @@
                         const t = new Date(q.quotationDate).getTime();
                         if (!isNaN(t)) return t;
                     }
-                    return q.updatedAt ? new Date(q.updatedAt).getTime() : (q.createdAt ? new Date(q.createdAt).getTime() : 0);
+                    // No quotation date: use created at
+                    return q.createdAt ? new Date(q.createdAt).getTime() : 0;
                 };
                 return parseDate(b) - parseDate(a);
             });
