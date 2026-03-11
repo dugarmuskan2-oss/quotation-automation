@@ -518,6 +518,90 @@ function runReportNow() {
   SpreadsheetApp.getActive().toast(msg, 'Report complete', 8);
 }
 
+/**
+ * Create quotations from emails labeled "Quotation Automation/Create Quotation"
+ * that arrived after the last report run. Use when new emails are tagged after
+ * the report was generated.
+ * Window: from last report end (PROP_LAST_END) to now.
+ */
+function createQuotationsFromLatest() {
+  const tz = Session.getScriptTimeZone();
+  const props = PropertiesService.getScriptProperties();
+  const now = new Date();
+  const nowMs = now.getTime();
+  const startMs = getStartMsFromProps_(props, now, PROP_LAST_END);
+  const endMs = nowMs;
+  const dateStrings = getSearchDateStrings_(tz, startMs, endMs);
+
+  const created = sendLabeledEmailsToAppForLabel(
+    'Quotation Automation/Create Quotation',
+    startMs,
+    endMs,
+    dateStrings.startDateStr,
+    dateStrings.endDatePlusOneStr
+  );
+  return created;
+}
+
+/**
+ * Button handler for "Create Quotations". Use when emails arrive after the
+ * report was generated. Processes labeled emails from last report end to now.
+ */
+function runCreateQuotationsNow() {
+  SpreadsheetApp.getActive().toast('Creating quotations from latest labeled emails…');
+  let created;
+  try {
+    created = createQuotationsFromLatest();
+  } catch (e) {
+    showReportCompleteAlert('Error: ' + (e.message || String(e)), true);
+    throw e;
+  }
+  const msg = typeof created === 'number' ? 'Created ' + created + ' quotation(s).' : 'No new emails to process.';
+  SpreadsheetApp.getActive().toast(msg, 'Create Quotations', 8);
+  try {
+    const ui = SpreadsheetApp.getUi();
+    if (ui) ui.alert('Create Quotations', msg, ui.ButtonSet.OK);
+  } catch (e) {}
+}
+
+const CREATE_QUOT_BTN_COL = 3;
+const CREATE_QUOT_BTN_ROW = 1;
+const CREATE_QUOT_BTN_COLS = 2;
+const CREATE_QUOT_BTN_ROWS = 3;
+const BUTTON_BG_COLOR = '#4285F4';
+
+/**
+ * Add custom menu and Create Quotations button (next to Run Report) on spreadsheet open.
+ */
+function onOpen() {
+  const ui = SpreadsheetApp.getUi();
+  ui.createMenu('Gmail Report')
+    .addItem('Run Report', 'runReportNow')
+    .addItem('Create Quotations', 'runCreateQuotationsNow')
+    .addToUi();
+  ensureCreateQuotationsButton_();
+}
+
+/**
+ * Add a "Create Quotations" button next to Run Report (C1:D3). Same style as Run Report.
+ * To make it clickable: Insert > Drawing, draw a rectangle, place over C1:D3,
+ * right-click the drawing > Assign script > runCreateQuotationsNow.
+ * Or use the Gmail Report menu > Create Quotations.
+ */
+function ensureCreateQuotationsButton_() {
+  try {
+    const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+    if (!sh) return;
+    const rng = sh.getRange(CREATE_QUOT_BTN_ROW, CREATE_QUOT_BTN_COL, CREATE_QUOT_BTN_ROW + CREATE_QUOT_BTN_ROWS - 1, CREATE_QUOT_BTN_COL + CREATE_QUOT_BTN_COLS - 1);
+    rng.merge().setValue('Create Quotations')
+      .setBackground(BUTTON_BG_COLOR)
+      .setFontColor('#FFFFFF')
+      .setFontWeight('bold')
+      .setHorizontalAlignment('center')
+      .setVerticalAlignment('middle');
+  } catch (e) {}
+}
+
 function showReportCompleteAlert(message, isError) {
   try {
     const ui = SpreadsheetApp.getUi();

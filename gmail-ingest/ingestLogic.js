@@ -4,7 +4,7 @@
  */
 
 const { buildTableHTMLFromLineItems, buildHeaderHTMLFromQuotation } = require('./htmlBuilder');
-const { getAllPdfAttachments, getAllExcelAttachments, getAllWordAttachments } = require('./attachmentUtils');
+const { getAllPdfAttachments, getAllExcelAttachments, getAllWordAttachments, getAllImageAttachments } = require('./attachmentUtils');
 
 /**
  * Default Gmail inbox URL template. Use 0 for first account.
@@ -118,6 +118,16 @@ async function processOneEmail(ctx, email) {
     const allAttachments = email.attachments || [];
     if (allAttachments.length > 0) {
         console.log('Gmail ingest: email ' + emailId + ' has ' + allAttachments.length + ' attachment(s): ' + allAttachments.map(a => a.name || 'unnamed').join(', '));
+        // #region agent log
+        const imageAtts = allAttachments.filter(a => {
+            const ct = (a.contentType || '').toLowerCase();
+            const n = (a.name || '').toLowerCase();
+            return ct.includes('image/') || ['.png', '.jpg', '.jpeg', '.gif', '.webp'].some(e => n.endsWith(e));
+        });
+        try {
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '7c69cb' }, body: JSON.stringify({ sessionId: '7c69cb', location: 'ingestLogic.js:processOneEmail', message: 'Attachment audit', data: { emailId, totalAttachments: allAttachments.length, attachmentTypes: allAttachments.map(a => ({ name: a.name, contentType: a.contentType })), imageAttachmentCount: imageAtts.length, hasBodyHtml: !!(email.bodyHtml && email.bodyHtml.trim()) }, hypothesisId: 'H2', timestamp: Date.now() }) }).catch(() => {});
+        } catch (_) {}
+        // #endregion
     }
     if (ctx.extractTextFromAttachment) {
         const excelAttachments = getAllExcelAttachments(allAttachments);
@@ -151,16 +161,34 @@ async function processOneEmail(ctx, email) {
         body = (body ? body + '\n\n' : '') + extractedTextParts.join('\n\n');
     }
 
-    if (!body.trim() && enquiryFileIds.length === 0) {
-        return { success: false, error: 'Email has no body and no supported attachment (PDF, Excel, Word)', emailId };
+    let enquiryImageDataUrl = null;
+    const imageAttachments = getAllImageAttachments(allAttachments);
+    if (imageAttachments.length > 0) {
+        const first = imageAttachments[0];
+        const mime = (first.contentType || 'image/png').split(';')[0].trim();
+        enquiryImageDataUrl = 'data:' + mime + ';base64,' + first.buffer.toString('base64');
+        if (!body.trim()) {
+            body = '(Enquiry is in the attached image. Please extract all relevant details from the image.)';
+        }
+        console.log('Gmail ingest: using first of ' + imageAttachments.length + ' image(s) for email ' + emailId);
+    }
+
+    if (!body.trim() && enquiryFileIds.length === 0 && !enquiryImageDataUrl) {
+        return { success: false, error: 'Email has no body and no supported attachment (PDF, Excel, Word, Image)', emailId };
     }
 
     let aiResult;
+    // #region agent log
+    try {
+        fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '7c69cb' }, body: JSON.stringify({ sessionId: '7c69cb', location: 'ingestLogic.js:processOneEmail', message: 'Before generateQuotationData', data: { emailId, hasEnquiryImageDataUrl: !!enquiryImageDataUrl, enquiryFileIdsCount: enquiryFileIds.length }, hypothesisId: 'H3', timestamp: Date.now() }) }).catch(() => {});
+    } catch (_) {}
+    // #endregion
     try {
         aiResult = await ctx.generateQuotationData({
             emailContent: body,
             instructions,
-            enquiryFileIds: enquiryFileIds.length > 0 ? enquiryFileIds : undefined
+            enquiryFileIds: enquiryFileIds.length > 0 ? enquiryFileIds : undefined,
+            enquiryImageDataUrl: enquiryImageDataUrl || undefined
         });
     } catch (err) {
         const message = err && (err.message || err.error || String(err));

@@ -102,11 +102,13 @@ function buildEmailPayload(message) {
     var excelExts = ['.xlsx', '.xlsm', '.xlsb', '.xls', '.xlx', '.xlw', '.ods', '.fods', '.csv', '.dif', '.sylk', '.slk', '.prn', '.xml'];
     var isExcel = ct.indexOf('spreadsheet') !== -1 || ct.indexOf('ms-excel') !== -1 || ct.indexOf('opendocument.spreadsheet') !== -1 || excelExts.some(function(e) { return nameLow.endsWith(e); });
     var isWord = ct.indexOf('msword') !== -1 || ct.indexOf('wordprocessingml') !== -1 || ct.indexOf('rtf') !== -1 || nameLow.endsWith('.docx') || nameLow.endsWith('.doc') || nameLow.endsWith('.rtf');
-    if (!isPdf && !isExcel && !isWord) {
+    var isImage = ct.indexOf('image/') === 0 || ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'].some(function(e) { return nameLow.endsWith(e); });
+    if (!isPdf && !isExcel && !isWord && !isImage) {
       Logger.log('Skipping attachment (unsupported type): ' + attName + ' (contentType: ' + ct + ')');
       continue;
     }
-    Logger.log('Including attachment: ' + attName + ' (' + (bytes.length / 1024).toFixed(1) + ' KB, ' + (isPdf ? 'PDF' : isExcel ? 'Excel' : 'Word') + ')');
+    var typeLabel = isPdf ? 'PDF' : isExcel ? 'Excel' : isWord ? 'Word' : isImage ? 'Image' : 'Unknown';
+    Logger.log('Including attachment: ' + attName + ' (' + (bytes.length / 1024).toFixed(1) + ' KB, ' + typeLabel + ')');
     attachments.push({
       name: attName,
       contentType: att.getContentType(),
