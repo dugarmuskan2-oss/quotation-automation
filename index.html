@@ -2736,6 +2736,9 @@
             const unitRate = parseFloat(row.querySelector('[data-field="unitRate"]')?.value || 0) || 0;
             const marginValue = row.querySelector('[data-field="marginPercent"]')?.value || '';
             const marginPercent = marginValue === '' ? 0 : (parseFloat(marginValue) || 0);
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/94f43956-7071-4935-87a6-da4459027d68',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:recalculateRow',message:'inputs parsed (before rounding)',data:{fieldChanged:changedField.getAttribute('data-field'),quantityRaw:row.querySelector('[data-field="quantity"]')?.value,unitRateRaw:row.querySelector('[data-field="unitRate"]')?.value,quantity,unitRate,marginValue,marginPercent},timestamp:Date.now(),hypothesisId:'D1'})}).catch(()=>{});
+            // #endregion
             
             // Check if finalRate was edited directly
             const finalRateInput = row.querySelector('[data-field="finalRate"]');
@@ -2777,6 +2780,9 @@
             if (lineTotalInput) {
                 lineTotalInput.value = String(roundAmountToWhole(lineTotal));
             }
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/94f43956-7071-4935-87a6-da4459027d68',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:recalculateRow',message:'computed values (after current rounding rules)',data:{finalRate,lineTotal,displayLineTotal:lineTotalInput?lineTotalInput.value:null,computedFinalRateFromFormula:unitRate*(1+marginPercent/100)},timestamp:Date.now(),hypothesisId:'D2'})}).catch(()=>{});
+            // #endregion
             
             // Recalculate all subtotals and grand total
             recalculateAllTotals();
@@ -5556,6 +5562,18 @@ value="0"
                 quotation.contactDetails = quotation.mobileNumber || quotation.phoneNumber || '';
                 const termsEl = folderContent.querySelector('.terms-box textarea');
                 if (termsEl) quotation.termsText = termsEl.value || '';
+
+                // #region agent log
+                (function() {
+                    const headThs = Array.from(folderContent.querySelectorAll('table thead th'));
+                    const headLabels = headThs.map(th => {
+                        const input = th.querySelector('input');
+                        if (input) return (input.value || '').trim();
+                        return (th.textContent || '').replace(/\s+/g, ' ').trim();
+                    });
+                    fetch('http://127.0.0.1:7242/ingest/94f43956-7071-4935-87a6-da4459027d68',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:downloadQuotationPdf',message:'current table header labels in DOM',data:{quotationId,headLabels,count:headLabels.length},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+                })();
+                // #endregion
             }
 
             const { jsPDF } = window.jspdf || {};
@@ -5691,6 +5709,9 @@ value="0"
             const rows = parseQuotationTableForPdf(quotation.tableHTML);
             const colWidths = [35, 225, 70, 95, 110];
             const colLabels = ['S. NO', 'ITEMS AND DESCRIPTION', 'QTY (Mtrs)', 'Rate per Mtr (Rs.)', 'AMOUNT (Rs.)'];
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/94f43956-7071-4935-87a6-da4459027d68',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:downloadQuotationPdf',message:'PDF uses hardcoded colLabels',data:{quotationId,colLabels},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+            // #endregion
             const colX = [
                 margin,
                 margin + colWidths[0],
