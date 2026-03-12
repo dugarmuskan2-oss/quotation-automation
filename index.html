@@ -5397,6 +5397,23 @@ value="0"
             }, 0);
         }
 
+        function getPdfColLabelsFromTable(tableEl) {
+            if (!tableEl) return ['S. NO', 'ITEMS AND DESCRIPTION', 'QTY (Mtrs)', 'Rate per Mtr (Rs.)', 'AMOUNT (Rs.)'];
+            const ths = Array.from(tableEl.querySelectorAll('thead th'));
+            const labels = ths.map(function(th) {
+                const input = th.querySelector('input');
+                return (input ? (input.value || input.getAttribute('value') || '').trim() : (th.textContent || '').replace(/\s+/g, ' ').trim());
+            });
+            const def = ['S. NO', 'ITEMS AND DESCRIPTION', 'QTY (Mtrs)', 'Rate per Mtr (Rs.)', 'AMOUNT (Rs.)'];
+            if (labels.length >= 8) {
+                return [labels[1], labels[2], labels[3], labels[6], labels[7]].map(function(l, i) { return l || def[i]; });
+            }
+            if (labels.length >= 5) {
+                return labels.slice(0, 5).map(function(l, i) { return l || def[i]; });
+            }
+            return def;
+        }
+
         function parseQuotationTableForPdf(tableHTML) {
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = tableHTML || '';
@@ -5520,6 +5537,7 @@ value="0"
             }
             // Sync all manual edits from the folder DOM so the PDF reflects current content
             const folderContent = document.getElementById('folder-content-' + quotationId);
+            let tableForPdfHeaders = null;
             if (folderContent) {
                 recalculateApprovalQuotationTotals(quotationId, false);
                 // Sync input/textarea values to value attributes so outerHTML serialization includes them (fixes blank rows in PDF)
@@ -5538,6 +5556,7 @@ value="0"
                 const tableElement = folderContent.querySelector('table');
                 if (tableElement) {
                     quotation.tableHTML = tableElement.outerHTML;
+                    tableForPdfHeaders = tableElement;
                 }
                 const grandTotalEl = folderContent.querySelector('.grand-total span');
                 if (grandTotalEl) {
@@ -5562,18 +5581,6 @@ value="0"
                 quotation.contactDetails = quotation.mobileNumber || quotation.phoneNumber || '';
                 const termsEl = folderContent.querySelector('.terms-box textarea');
                 if (termsEl) quotation.termsText = termsEl.value || '';
-
-                // #region agent log
-                (function() {
-                    const headThs = Array.from(folderContent.querySelectorAll('table thead th'));
-                    const headLabels = headThs.map(th => {
-                        const input = th.querySelector('input');
-                        if (input) return (input.value || '').trim();
-                        return (th.textContent || '').replace(/\s+/g, ' ').trim();
-                    });
-                    fetch('http://127.0.0.1:7242/ingest/94f43956-7071-4935-87a6-da4459027d68',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:downloadQuotationPdf',message:'current table header labels in DOM',data:{quotationId,headLabels,count:headLabels.length},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
-                })();
-                // #endregion
             }
 
             const { jsPDF } = window.jspdf || {};
@@ -5708,10 +5715,13 @@ value="0"
 
             const rows = parseQuotationTableForPdf(quotation.tableHTML);
             const colWidths = [35, 225, 70, 95, 110];
-            const colLabels = ['S. NO', 'ITEMS AND DESCRIPTION', 'QTY (Mtrs)', 'Rate per Mtr (Rs.)', 'AMOUNT (Rs.)'];
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/94f43956-7071-4935-87a6-da4459027d68',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:downloadQuotationPdf',message:'PDF uses hardcoded colLabels',data:{quotationId,colLabels},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
-            // #endregion
+            let tableEl = tableForPdfHeaders;
+            if (!tableEl && quotation.tableHTML) {
+                const div = document.createElement('div');
+                div.innerHTML = quotation.tableHTML;
+                tableEl = div.querySelector('table');
+            }
+            const colLabels = getPdfColLabelsFromTable(tableEl);
             const colX = [
                 margin,
                 margin + colWidths[0],
