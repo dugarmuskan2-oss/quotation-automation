@@ -5407,21 +5407,31 @@ value="0"
                 const input = th.querySelector('input');
                 return (input ? (input.value || input.getAttribute('value') || '').trim() : (th.textContent || '').replace(/\s+/g, ' ').trim());
             });
-            var picked;
-            if (labels.length >= 8) {
-                if (!labels[0] || labels[0].length < 2) {
-                    picked = [labels[1], labels[2], labels[3], labels[6], labels[7]];
-                } else {
-                    picked = [labels[0], labels[1], labels[2], labels[5], labels[6]];
+            // Exclude columns that must NOT appear in PDF: BASE RATE, MARGIN %, ACTIONS
+            const excludePattern = /^(BASE\s*RATE|MARGIN\s*%?|ACTIONS)$/i;
+            const candidates = [];
+            ths.forEach(function(th, idx) {
+                const label = labels[idx];
+                if (!label || excludePattern.test(label)) return;
+                if (th.classList && (th.classList.contains('col-base-rate') || th.classList.contains('col-margin'))) return;
+                candidates.push({ index: idx, label: label });
+            });
+            // Map to our 5 PDF columns by semantic match (order: S.NO, ITEMS, QTY, RATE, AMOUNT)
+            const pick = (pattern) => {
+                const m = candidates.find(c => pattern.test(c.label));
+                if (m) {
+                    const i = candidates.indexOf(m);
+                    candidates.splice(i, 1);
+                    return m.label;
                 }
-            } else if (labels.length >= 7) {
-                picked = [labels[0], labels[1], labels[2], labels[5], labels[6]];
-            } else if (labels.length >= 5) {
-                picked = labels.slice(0, 5);
-            } else {
-                return def;
-            }
-            return picked.map(function(l, i) { return (l && l.length > 0) ? l : def[i]; });
+                return null;
+            };
+            const sno = pick(/S\.?\s*NO/i) || def[0];
+            const items = pick(/ITEMS.*DESCRIPTION|DESCRIPTION.*ITEMS/i) || def[1];
+            const qty = pick(/QTY/i) || def[2];
+            const rate = pick(/RATE\s*PER\s*(MTR|MTRS|METER|KG|UNIT|\w+)/i) || def[3];
+            const amount = pick(/AMOUNT/i) || def[4];
+            return [sno, items, qty, rate, amount];
         }
 
         function parseQuotationTableForPdf(tableHTML) {
