@@ -3566,10 +3566,15 @@
             // Add to approved quotations array (not saved yet - needs approval)
             const quotationWithStatus = {
                 ...quotationData,
-                saved: false  // Not approved yet - will show full content with Approve button
+                saved: false,  // Not approved yet - will show full content with Approve button
+                hasUnsavedEdits: false
             };
             approvedQuotations.push(quotationWithStatus);
             return quotationWithStatus;
+        }
+
+        function canDownloadQuotation(quotation) {
+            return !(quotation && quotation.hasUnsavedEdits === true);
         }
 
         function persistAndRefreshApprovals() {
@@ -4889,6 +4894,7 @@
                 quotation.saved = false;
                 updateApprovalBadge(quotationId, quotation);
             }
+            quotation.hasUnsavedEdits = true;
             quotation.updatedAt = new Date().toISOString();
             
             // Save to backend (debounced)
@@ -5262,6 +5268,7 @@
             if ((headerValues.termsText || '').toString().trim()) quotation.termsText = headerValues.termsText;
             quotation.updatedAt = new Date().toISOString();
             quotation.saved = false;  // Save = persist changes only; Approve = mark as approved
+            quotation.hasUnsavedEdits = false;
             if (typeof window._cancelApprovalAutosave === 'function') {
                 window._cancelApprovalAutosave(quotationId);
             }
@@ -5383,6 +5390,7 @@
             
             // Mark quotation as saved (now it's approved)
             quotation.saved = true;
+            quotation.hasUnsavedEdits = false;
             if (typeof window._cancelApprovalAutosave === 'function') {
                 window._cancelApprovalAutosave(quotationId);
             }
@@ -5558,6 +5566,10 @@
             const quotation = approvedQuotations.find(q => idsMatch(q.id, quotationId));
             if (!quotation) {
                 alert('Quotation not found');
+                return;
+            }
+            if (!canDownloadQuotation(quotation)) {
+                alert('Please save changes to Download');
                 return;
             }
             // Sync all manual edits from the folder DOM so the PDF reflects current content
