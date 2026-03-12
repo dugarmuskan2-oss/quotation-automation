@@ -48,6 +48,8 @@ function formatItemDescriptionByPipeType(item) {
     const pipeType = (item.identifiedPipeType || '').toLowerCase();
     const normalized = normalizeFractionText(raw.replace(/["]/g, '').trim());
     const numberToken = '\\d+(?:\\.\\d+)?|\\d+-\\d+\\/\\d+|\\d+\\/\\d+';
+    const nxhMatch = normalized.match(new RegExp(`^(${numberToken})\\s*[xX]\\s*(h|hv|hvy|heavy|hevy)$`, 'i'));
+    const nxmMatch = normalized.match(new RegExp(`^(${numberToken})\\s*[xX]\\s*(m|med|medium)$`, 'i'));
     const xMatch = normalized.match(new RegExp(`(${numberToken})\\s*[xX]\\s*([A-Za-z0-9.\\/-]+)`));
     const hMatch = normalized.match(new RegExp(`^(${numberToken})\\s*(h|hv|hvy|heavy|hevy)$`, 'i'));
     const mMatch = normalized.match(new RegExp(`^(${numberToken})\\s*(m|med|medium)$`, 'i'));
@@ -60,7 +62,17 @@ function formatItemDescriptionByPipeType(item) {
     let isMedium = false;
     let isSch = false;
 
-    if (xMatch) {
+    if (nxhMatch) {
+        first = nxhMatch[1];
+        secondDisplay = nxhMatch[2];
+        secondClean = nxhMatch[2].toLowerCase();
+        isHeavy = true;
+    } else if (nxmMatch) {
+        first = nxmMatch[1];
+        secondDisplay = nxmMatch[2];
+        secondClean = nxmMatch[2].toLowerCase();
+        isMedium = true;
+    } else if (xMatch) {
         first = xMatch[1];
         secondDisplay = normalizeFractionText((xMatch[2] || '').trim());
         secondClean = secondDisplay.toLowerCase().replace(/[^a-z0-9]/g, '');
