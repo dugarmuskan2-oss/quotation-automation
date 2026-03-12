@@ -5398,20 +5398,30 @@ value="0"
         }
 
         function getPdfColLabelsFromTable(tableEl) {
-            if (!tableEl) return ['S. NO', 'ITEMS AND DESCRIPTION', 'QTY (Mtrs)', 'Rate per Mtr (Rs.)', 'AMOUNT (Rs.)'];
-            const ths = Array.from(tableEl.querySelectorAll('thead th'));
+            const def = ['S. NO', 'ITEMS AND DESCRIPTION', 'QTY (Mtrs)', 'Rate per Mtr (Rs.)', 'AMOUNT (Rs.)'];
+            if (!tableEl) return def;
+            const headerRow = tableEl.querySelector('thead tr');
+            if (!headerRow) return def;
+            const ths = Array.from(headerRow.querySelectorAll('th'));
             const labels = ths.map(function(th) {
                 const input = th.querySelector('input');
                 return (input ? (input.value || input.getAttribute('value') || '').trim() : (th.textContent || '').replace(/\s+/g, ' ').trim());
             });
-            const def = ['S. NO', 'ITEMS AND DESCRIPTION', 'QTY (Mtrs)', 'Rate per Mtr (Rs.)', 'AMOUNT (Rs.)'];
+            var picked;
             if (labels.length >= 8) {
-                return [labels[1], labels[2], labels[3], labels[6], labels[7]].map(function(l, i) { return l || def[i]; });
+                if (!labels[0] || labels[0].length < 2) {
+                    picked = [labels[1], labels[2], labels[3], labels[6], labels[7]];
+                } else {
+                    picked = [labels[0], labels[1], labels[2], labels[5], labels[6]];
+                }
+            } else if (labels.length >= 7) {
+                picked = [labels[0], labels[1], labels[2], labels[5], labels[6]];
+            } else if (labels.length >= 5) {
+                picked = labels.slice(0, 5);
+            } else {
+                return def;
             }
-            if (labels.length >= 5) {
-                return labels.slice(0, 5).map(function(l, i) { return l || def[i]; });
-            }
-            return def;
+            return picked.map(function(l, i) { return (l && l.length > 0) ? l : def[i]; });
         }
 
         function parseQuotationTableForPdf(tableHTML) {
@@ -5553,7 +5563,7 @@ value="0"
                         input.textContent = input.value;
                     }
                 });
-                const tableElement = folderContent.querySelector('table');
+                const tableElement = folderContent.querySelector('.approval-quotation table') || folderContent.querySelector('table');
                 if (tableElement) {
                     quotation.tableHTML = tableElement.outerHTML;
                     tableForPdfHeaders = tableElement;
