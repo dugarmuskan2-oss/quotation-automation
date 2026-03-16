@@ -1111,6 +1111,9 @@ app.get('/api/quotations', async (req, res) => {
             return bTime - aTime;
         });
         quotations = quotations.slice(0, 350);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',location:'server.js:api/quotations',message:'quotations response count',data:{itemsBeforeSlice:quotations.length,sliceLimit:350,sentCount:quotations.length},hypothesisId:'A',timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         res.json({ quotations });
     } catch (error) {
         console.error('Error loading quotations:', error);

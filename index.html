@@ -1049,6 +1049,9 @@
                     throw new Error((result.error || 'Failed to load quotations') + detailMsg);
                 }
                 const quotations = Array.isArray(result.quotations) ? result.quotations : [];
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',location:'index.html:loadQuotationsFromBackend',message:'quotations received and assigned',data:{receivedCount:quotations.length,assignedCount:quotations.length},hypothesisId:'B',timestamp:Date.now()})}).catch(()=>{});
+                // #endregion
                 if (quotations.length > 0) {
                     approvedQuotations = quotations;
                     displayAllApprovedQuotations();
@@ -4018,6 +4021,9 @@
             // Build HTML for all approved quotations (by quotation date, newest first)
             attachApprovalSearchListener();
             const filteredQuotations = getFilteredApprovedQuotations(approvalSearchQuery);
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',location:'index.html:displayAllApprovedQuotations',message:'display counts',data:{approvedQuotationsLength:approvedQuotations.length,filteredCount:filteredQuotations.length},hypothesisId:'C',timestamp:Date.now()})}).catch(()=>{});
+            // #endregion
             const sortedByQuotationDate = filteredQuotations.slice().sort(function (a, b) {
                 const parseDate = function(q) {
                     if (q.quotationDate) {
