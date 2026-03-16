@@ -3330,10 +3330,11 @@
             }
             var middleCells = '<td>Freight</td><td></td><td class="col-base-rate"></td><td class="col-margin"></td><td></td>';
             var amountCell = '<td>₹<input type="number" class="editable-field freight-amount-input" data-field="lineTotal" data-row-type="freight" value="0" min="0" step="1" style="width: 100px;"></td>';
+            // Return only <td> cells; caller is responsible for creating the <tr>
             if (opt.isApproval) {
-                return '<tr class="freight-row" id="' + rowId + '" data-row-type="freight">' + leadingCells + middleCells + amountCell + deleteBtn + '</tr>';
+                return leadingCells + middleCells + amountCell + deleteBtn;
             }
-            return '<tr class="freight-row" id="' + rowId + '" data-row-type="freight">' + leadingCells + middleCells + amountCell + '</tr>';
+            return leadingCells + middleCells + amountCell;
         }
 
         function attachFreightRowAmountListener(row, recalcFn) {
