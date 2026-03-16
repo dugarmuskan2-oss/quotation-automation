@@ -5908,13 +5908,35 @@
             if (folderContent) {
                 let freightTotal = 0;
                 const freightInputs = folderContent.querySelectorAll('.freight-row [data-field="lineTotal"]');
+                const freightValues = [];
                 freightInputs.forEach(function(input) {
-                    const raw = (input.value || input.getAttribute('value') || '').toString().replace(/,/g, '');
-                    const n = parseFloat(raw);
+                    const rawAttr = (input.getAttribute('value') || '').toString();
+                    const rawVal = (input.value || '').toString();
+                    const cleaned = rawVal || rawAttr;
+                    const numeric = cleaned.replace(/,/g, '');
+                    const n = parseFloat(numeric);
+                    freightValues.push({ rawVal, rawAttr, numeric, n: isNaN(n) ? null : n });
                     if (!isNaN(n) && isFinite(n)) {
                         freightTotal += n;
                     }
                 });
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{
+                    method:'POST',
+                    headers:{
+                        'Content-Type':'application/json',
+                        'X-Debug-Session-Id':'2223e4'
+                    },
+                    body:JSON.stringify({
+                        sessionId:'2223e4',
+                        location:'index.html:downloadQuotationPdf:freight',
+                        message:'Freight values before PDF',
+                        data:{quotationId:quotationId,freightValues:freightValues,freightTotal:freightTotal},
+                        hypothesisId:'H-freight-total',
+                        timestamp:Date.now()
+                    })
+                }).catch(function(){});
+                // #endregion
                 if (freightTotal > 0) {
                     rows = rows.filter(function(r) { return r.type !== 'freight'; });
                     rows.push({
