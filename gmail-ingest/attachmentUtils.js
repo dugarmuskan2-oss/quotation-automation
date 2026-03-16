@@ -31,6 +31,44 @@ const EXCEL_EXTENSIONS = new Set([
 ]);
 const WORD_EXTENSIONS = new Set(['.docx', '.doc', '.rtf']);
 
+const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']);
+
+/**
+ * Check if an attachment is an image (for enquiry extraction).
+ */
+function isImageAttachment(att) {
+    if (!att) return false;
+    const name = (att.name || '').trim().toLowerCase();
+    const contentType = (att.contentType || '').toLowerCase();
+    const ext = name.includes('.') ? name.slice(name.lastIndexOf('.')) : '';
+    return contentType.indexOf('image/') === 0 || IMAGE_EXTENSIONS.has(ext);
+}
+
+/**
+ * Get all image attachments for enquiry extraction.
+ * @param {Array<{ name?: string, contentType?: string, base64?: string }>} attachments
+ * @returns {Array<{ name: string, contentType: string, buffer: Buffer }>}
+ */
+function getAllImageAttachments(attachments) {
+    const result = [];
+    if (!attachments || !Array.isArray(attachments)) return result;
+    for (const att of attachments) {
+        if (!att.base64) continue;
+        if (!isImageAttachment(att)) continue;
+        try {
+            const buffer = decodeBase64Attachment(att.base64);
+            result.push({
+                name: att.name || 'enquiry.png',
+                contentType: att.contentType || 'image/png',
+                buffer
+            });
+        } catch (e) {
+            continue;
+        }
+    }
+    return result;
+}
+
 /**
  * Check if an attachment looks like a PDF by name or contentType.
  * @param {{ name?: string, contentType?: string }} att
@@ -179,9 +217,11 @@ module.exports = {
     isPdfAttachment,
     isExcelAttachment,
     isWordAttachment,
+    isImageAttachment,
     getFirstPdfAttachment,
     getAllPdfAttachments,
     getAllExcelAttachments,
     getAllWordAttachments,
+    getAllImageAttachments,
     getFirstAttachment
 };

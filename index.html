@@ -868,6 +868,11 @@
                 </tbody>
             </table>
             
+            <!-- Add Freight button (hidden initially) -->
+            <div class="add-freight-area" id="creationAddFreightArea" style="display: none; margin-top: 10px; text-align: right;">
+                <button type="button" onclick="addFreightRowCreation()" title="Add freight charge" style="background: #FF9800; color: white; border: none; padding: 8px 16px; cursor: pointer; border-radius: 4px; font-size: 14px;">Add Freight</button>
+            </div>
+            
             <!-- Grand Total (hidden initially) -->
             <div class="grand-total" id="creationGrandTotal" style="display: none;">
                 <span>Total: ₹<span id="grandTotal">0.00</span></span>
@@ -1943,6 +1948,9 @@
             return `
                 ${headerClone ? headerClone.outerHTML : ''}
                 ${tableClone ? tableClone.outerHTML : ''}
+                <div class="add-freight-area add-freight-area-creation-folder" style="margin-top: 10px; text-align: right;">
+                    <button type="button" onclick="addFreightRowCreationFolder('${entryId}')" title="Add freight charge" style="background: #FF9800; color: white; border: none; padding: 8px 16px; cursor: pointer; border-radius: 4px; font-size: 14px;">Add Freight</button>
+                </div>
                 <div class="grand-total">
                     <span>Total: ₹${grandTotalText}</span>
                 </div>
@@ -2003,7 +2011,11 @@
             if (!content) {
                 return;
             }
-            content.innerHTML = buildCreationFolderContentFromDisplay(entryId);
+            var folderHtml = buildCreationFolderContentFromDisplay(entryId);
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',location:'index.html:finalizeCreationFolderEntry',message:'Creation folder content built',data:{entryId:entryId,hasAddFreight:folderHtml.indexOf('Add Freight')!==-1},hypothesisId:'H4',timestamp:Date.now()})}).catch(function(){});
+            // #endregion
+            content.innerHTML = folderHtml;
             const loading = document.getElementById(`creation-loading-${entryId}`);
             if (loading) {
                 loading.remove();
@@ -2405,6 +2417,8 @@
             const pipeType = (item.identifiedPipeType || '').toLowerCase();
             const normalized = normalizeFractionText(raw.replace(/["]/g, '').trim());
             const numberToken = '\\d+(?:\\.\\d+)?|\\d+-\\d+\\/\\d+|\\d+\\/\\d+';
+            const nxhMatch = normalized.match(new RegExp(`^(${numberToken})\\s*[xX]\\s*(h|hv|hvy|heavy|hevy)$`, 'i'));
+            const nxmMatch = normalized.match(new RegExp(`^(${numberToken})\\s*[xX]\\s*(m|med|medium)$`, 'i'));
             const xMatch = normalized.match(new RegExp(`(${numberToken})\\s*[xX]\\s*([A-Za-z0-9\\.\\/-]+)`));
             const hMatch = normalized.match(new RegExp(`^(${numberToken})\\s*(h|hv|hvy|heavy|hevy)$`, 'i'));
             const mMatch = normalized.match(new RegExp(`^(${numberToken})\\s*(m|med|medium)$`, 'i'));
@@ -2415,7 +2429,17 @@
             let isHeavy = false;
             let isMedium = false;
             let isSch = false;
-            if (xMatch) {
+            if (nxhMatch) {
+                first = nxhMatch[1];
+                secondDisplay = nxhMatch[2];
+                secondClean = nxhMatch[2].toLowerCase();
+                isHeavy = true;
+            } else if (nxmMatch) {
+                first = nxmMatch[1];
+                secondDisplay = nxmMatch[2];
+                secondClean = nxmMatch[2].toLowerCase();
+                isMedium = true;
+            } else if (xMatch) {
                 first = xMatch[1];
                 secondDisplay = normalizeFractionText((xMatch[2] || '').trim());
                 secondClean = secondDisplay.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -2560,9 +2584,9 @@
                                    data-field="finalRate"
                                    data-pipe-type="${pipeType}"
                                    data-row-id="${rowId}"
-                                   value="${Math.round(parseFloat(item.finalRate || 0))}" 
+                                   value="${parseFloat(item.finalRate || 0) || 0}" 
                                    min="0" 
-                                   step="1" style="width: 100px;"></td>
+                                   step="0.01" style="width: 100px;"></td>
                         <td>₹<input type="number" 
                                    class="editable-field line-total-input" 
                                    data-field="lineTotal"
@@ -2599,8 +2623,16 @@
             // Step 9: Show the quotation content (header, table, totals, approve button, terms)
             // When hasCreationFolder: finalizeCreationFolderEntry consumes the quote number (single source).
             // When no folder: we must consume here.
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',location:'index.html:showCreationQuotationContent',message:'showCreationQuotationContent called',data:{hasCreationFolder:hasCreationFolder},hypothesisId:'H1',timestamp:Date.now()})}).catch(function(){});
+            // #endregion
             document.getElementById('creationQuotationHeader').style.display = 'block';
             document.getElementById('quotationTable').style.display = 'table';
+            var addFreightArea = document.getElementById('creationAddFreightArea');
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',location:'index.html:addFreightArea',message:'Creation Add Freight area',data:{found:!!addFreightArea,displayBefore:addFreightArea?addFreightArea.style.display:null},hypothesisId:'H2',timestamp:Date.now()})}).catch(function(){});
+            // #endregion
+            if (addFreightArea) addFreightArea.style.display = 'block';
             document.getElementById('creationGrandTotal').style.display = 'block';
             document.getElementById('creationApproveBtn').style.display = 'block';
             document.getElementById('termsDivider').style.display = 'block';
@@ -2746,7 +2778,7 @@
             if (fieldChanged === 'lineTotal' && lineTotalInput && lineTotalInput.dataset.manual === 'true') {
                 const manualLineTotal = parseFloat(lineTotalInput.value || 0) || 0;
                 if (quantity > 0) {
-                    finalRate = Math.round(manualLineTotal / quantity);
+                    finalRate = manualLineTotal / quantity;
                     if (finalRateInput) {
                         finalRateInput.value = String(finalRate);
                     }
@@ -2755,25 +2787,24 @@
                 }
                 lineTotalInput.dataset.manual = '';
             } else if (fieldChanged === 'finalRate') {
-                // User edited finalRate directly - use that value (rounded to whole)
-                finalRate = Math.round(parseFloat(changedField.value || 0) || 0);
+                // User edited finalRate directly - use that value (keep decimals)
+                finalRate = parseFloat(changedField.value || 0) || 0;
             } else {
-                // Calculate final rate from unitRate and margin, rounded to whole
-                finalRate = Math.round(unitRate * (1 + marginPercent / 100));
-                // Update the finalRate input if it exists
+                // Calculate final rate from unitRate and margin (keep decimals)
+                finalRate = unitRate * (1 + marginPercent / 100);
                 if (finalRateInput) {
                     finalRateInput.value = String(finalRate);
                 }
             }
             
-            // Calculate line total: quantity × final rate
+            // Calculate line total: quantity × final rate (use decimal finalRate for accuracy)
             let lineTotal = quantity * finalRate;
             if (fieldChanged === 'lineTotal' && lineTotalInput) {
                 const manualLineTotal = parseFloat(lineTotalInput.value || 0) || 0;
                 lineTotal = quantity > 0 ? (quantity * finalRate) : manualLineTotal;
             }
             
-            // Update the line total display (no decimals)
+            // Update the line total display (whole numbers only)
             if (lineTotalInput) {
                 lineTotalInput.value = String(roundAmountToWhole(lineTotal));
             }
@@ -2801,7 +2832,7 @@
             if (!tableBody) {
                 return;
             }
-            const itemRows = tableBody.querySelectorAll('.item-row');
+            const itemRows = tableBody.querySelectorAll('.item-row, .freight-row');
             
             let grandTotal = 0;
             
@@ -2914,7 +2945,7 @@
                 <td><input type="number" class="editable-field" data-field="quantity" data-pipe-type="${resolvedPipeType}" value="0" min="0" step="1"></td>
                 <td class="col-base-rate">₹<input type="number" class="editable-field" data-field="unitRate" data-pipe-type="${resolvedPipeType}" value="0" min="0" step="0.01" style="width: 80px;"></td>
                 <td class="col-margin"><input type="number" class="editable-field" data-field="marginPercent" data-pipe-type="${resolvedPipeType}" value="" min="0" step="0.01" style="width: 60px;"></td>
-                <td>₹<input type="number" class="editable-field rate-per-mtr" data-field="finalRate" data-pipe-type="${resolvedPipeType}" value="0" min="0" step="1" style="width: 100px;"></td>
+                <td>₹<input type="number" class="editable-field rate-per-mtr" data-field="finalRate" data-pipe-type="${resolvedPipeType}" value="0" min="0" step="0.01" style="width: 100px;"></td>
                 <td>₹<input type="number" class="editable-field line-total-input" data-field="lineTotal" value="0" min="0" step="1" style="width: 100px;"></td>
             `;
             if (insertAfterRow && insertAfterRow.parentNode === tableBody) {
@@ -3001,7 +3032,7 @@
             if (fieldChanged === 'lineTotal' && lineTotalInput && lineTotalInput.dataset.manual === 'true') {
                 const manualLineTotal = parseFloat(lineTotalInput.value || 0) || 0;
                 if (quantity > 0) {
-                    finalRate = Math.round(manualLineTotal / quantity);
+                    finalRate = manualLineTotal / quantity;
                     if (finalRateInput) {
                         finalRateInput.value = String(finalRate);
                     }
@@ -3010,9 +3041,9 @@
                 }
                 lineTotalInput.dataset.manual = '';
             } else if (fieldChanged === 'finalRate') {
-                finalRate = Math.round(parseFloat(changedField.value || 0) || 0);
+                finalRate = parseFloat(changedField.value || 0) || 0;
             } else {
-                finalRate = Math.round(unitRate * (1 + marginPercent / 100));
+                finalRate = unitRate * (1 + marginPercent / 100);
                 if (finalRateInput) {
                     finalRateInput.value = String(finalRate);
                 }
@@ -3038,7 +3069,7 @@
             if (!tableBody) {
                 return;
             }
-            const itemRows = tableBody.querySelectorAll('.item-row');
+            const itemRows = tableBody.querySelectorAll('.item-row, .freight-row');
             let grandTotal = 0;
             itemRows.forEach(function(row) {
                 const lineTotalInput = row.querySelector('[data-field="lineTotal"]');
@@ -3071,7 +3102,7 @@
             } else if (typeof rowIdOrEvent === 'string') {
                 row = document.getElementById(rowIdOrEvent);
             }
-            if (!row || (!row.classList.contains('item-row') && !row.classList.contains('pipe-type-header'))) {
+            if (!row || (!row.classList.contains('item-row') && !row.classList.contains('pipe-type-header') && !row.classList.contains('freight-row'))) {
                 return;
             }
             const tableBody = row.closest('tbody');
@@ -3251,7 +3282,7 @@
                            data-row-id="${rowId}"
                            value="0" 
                            min="0" 
-                           step="1" style="width: 100px;"></td>
+                           step="0.01" style="width: 100px;"></td>
                 <td>₹<input type="number" 
                            class="editable-field line-total-input" 
                            data-field="lineTotal"
@@ -3271,6 +3302,97 @@
                 attachRowEventListeners(row);
                 recalculateAllTotals();
             }
+        }
+
+        /*
+            ============================================
+            ADD FREIGHT ROW FUNCTIONS
+            ============================================
+            Add a freight charge row with editable amount, included in grand total.
+        */
+        function buildFreightRowHtml(options) {
+            var opt = options || {};
+            var hasButtonColumn = opt.hasButtonColumn !== false;
+            var quotationId = opt.quotationId || '';
+            var entryId = opt.entryId || '';
+            var rowId = opt.rowId || 'freight-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+            var deleteBtn = '';
+            if (opt.isApproval && quotationId) {
+                deleteBtn = '<td><button class="delete-row-btn" onclick="deleteApprovalRow(\'' + quotationId + '\', \'' + rowId + '\')" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button></td>';
+            } else if (hasButtonColumn) {
+                deleteBtn = '<td style="text-align: center; vertical-align: middle; padding: 5px;"><button onclick="deleteRow(event)" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button></td>';
+            }
+            var leadingCells = '';
+            if (hasButtonColumn && !opt.isApproval) {
+                leadingCells = deleteBtn + '<td class="row-number">-</td>';
+            } else if (opt.isApproval) {
+                leadingCells = '<td class="row-number">-</td>';
+            }
+            var middleCells = '<td>Freight</td><td></td><td class="col-base-rate"></td><td class="col-margin"></td><td></td>';
+            var amountCell = '<td>₹<input type="number" class="editable-field freight-amount-input" data-field="lineTotal" data-row-type="freight" value="0" min="0" step="1" style="width: 100px;"></td>';
+            if (opt.isApproval) {
+                return '<tr class="freight-row" id="' + rowId + '" data-row-type="freight">' + leadingCells + middleCells + amountCell + deleteBtn + '</tr>';
+            }
+            return '<tr class="freight-row" id="' + rowId + '" data-row-type="freight">' + leadingCells + middleCells + amountCell + '</tr>';
+        }
+
+        function attachFreightRowAmountListener(row, recalcFn) {
+            if (!row || !recalcFn) return;
+            var input = row.querySelector('[data-field="lineTotal"].freight-amount-input');
+            if (!input) return;
+            input.addEventListener('input', recalcFn);
+            input.addEventListener('change', recalcFn);
+            input.addEventListener('blur', recalcFn);
+        }
+
+        function addFreightRowCreation() {
+            var tableBody = document.getElementById('quotationTableBody');
+            if (!tableBody) return;
+            var rowId = 'freight-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+            var row = document.createElement('tr');
+            row.className = 'freight-row';
+            row.id = rowId;
+            row.setAttribute('data-row-type', 'freight');
+            row.innerHTML = buildFreightRowHtml({ hasButtonColumn: true, rowId: rowId });
+            tableBody.appendChild(row);
+            attachFreightRowAmountListener(row, recalculateAllTotals);
+            recalculateAllTotals();
+        }
+
+        function addFreightRowCreationFolder(entryId) {
+            var folderContent = document.getElementById('folder-content-' + entryId);
+            if (!folderContent) return;
+            var table = folderContent.querySelector('table');
+            var tableBody = table ? table.querySelector('tbody') : null;
+            if (!tableBody) return;
+            var rowId = 'freight-' + entryId + '-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+            var row = document.createElement('tr');
+            row.className = 'freight-row';
+            row.id = rowId;
+            row.setAttribute('data-row-type', 'freight');
+            row.innerHTML = buildFreightRowHtml({ hasButtonColumn: true, entryId: entryId, rowId: rowId });
+            tableBody.appendChild(row);
+            attachFreightRowAmountListener(row, function() { recalculateAllTotalsInContainer(folderContent); });
+            recalculateAllTotalsInContainer(folderContent);
+        }
+
+        function addFreightRowApproval(quotationId) {
+            var folder = document.getElementById('folder-' + quotationId);
+            if (!folder) return;
+            var folderContent = folder.querySelector('.quotation-folder-content');
+            if (!folderContent) return;
+            var table = folderContent.querySelector('table');
+            var tbody = table ? table.querySelector('tbody') : null;
+            if (!tbody) return;
+            var rowId = 'freight-approval-' + quotationId + '-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+            var row = document.createElement('tr');
+            row.className = 'freight-row';
+            row.id = rowId;
+            row.setAttribute('data-row-type', 'freight');
+            row.innerHTML = buildFreightRowHtml({ isApproval: true, quotationId: quotationId, rowId: rowId });
+            tbody.appendChild(row);
+            attachFreightRowAmountListener(row, function() { recalculateApprovalQuotationTotals(quotationId, false); });
+            recalculateApprovalQuotationTotals(quotationId, false);
         }
 
         function setLogoSource() {
@@ -3555,10 +3677,15 @@
             // Add to approved quotations array (not saved yet - needs approval)
             const quotationWithStatus = {
                 ...quotationData,
-                saved: false  // Not approved yet - will show full content with Approve button
+                saved: false,  // Not approved yet - will show full content with Approve button
+                hasUnsavedEdits: false
             };
             approvedQuotations.push(quotationWithStatus);
             return quotationWithStatus;
+        }
+
+        function canDownloadQuotation(quotation) {
+            return !(quotation && quotation.hasUnsavedEdits === true);
         }
 
         function persistAndRefreshApprovals() {
@@ -4272,14 +4399,14 @@
                         // Make rate-per-mtr editable if it's a span
                         const ratePerMtrSpan = row.querySelector('.rate-per-mtr');
                         if (ratePerMtrSpan && ratePerMtrSpan.tagName === 'SPAN') {
-                            const currentValue = String(Math.round(parseFloat(ratePerMtrSpan.textContent.replace('₹', '').replace(/,/g, '')) || 0));
+                            const currentValue = String(parseFloat(ratePerMtrSpan.textContent.replace('₹', '').replace(/,/g, '')) || 0);
                             const input = document.createElement('input');
                             input.type = 'number';
                             input.className = 'editable-field rate-per-mtr';
                             input.setAttribute('data-field', 'finalRate');
                             input.value = currentValue;
                             input.min = '0';
-                            input.step = '1';
+                            input.step = '0.01';
                             input.style.width = '100px';
                             ratePerMtrSpan.parentNode.replaceChild(input, ratePerMtrSpan);
                         }
@@ -4349,17 +4476,20 @@
                         });
                     });
                     
-                    // Add Add Row button if it doesn't exist
+                    // Add Add Freight button if it doesn't exist
                     const existingAddBtn = folderContent.querySelector('.add-row-btn-approval');
+                    // #region agent log
+                    fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',location:'index.html:attachApprovalAddFreight',message:'Approval Add Freight check',data:{quotationId:quotationId,itemRowsLength:itemRows.length,existingAddBtn:!!existingAddBtn,willCreate:!existingAddBtn&&itemRows.length>0},hypothesisId:'H3',timestamp:Date.now()})}).catch(function(){});
+                    // #endregion
                     if (!existingAddBtn && itemRows.length > 0) {
                         const addRowDiv = document.createElement('div');
                         addRowDiv.style.cssText = 'margin-top: 10px; text-align: right;';
                         addRowDiv.className = 'add-row-btn-approval';
                         const addBtn = document.createElement('button');
-                        addBtn.textContent = '➕ Add Row';
-                        addBtn.style.cssText = 'background: #4CAF50; color: white; border: none; padding: 8px 16px; cursor: pointer; border-radius: 4px; font-size: 14px;';
+                        addBtn.textContent = 'Add Freight';
+                        addBtn.style.cssText = 'background: #FF9800; color: white; border: none; padding: 8px 16px; cursor: pointer; border-radius: 4px; font-size: 14px;';
                         addBtn.onclick = function() {
-                            addApprovalRow(quotationId);
+                            addFreightRowApproval(quotationId);
                         };
                         addRowDiv.appendChild(addBtn);
                         // Insert before grand total
@@ -4504,7 +4634,7 @@
             if (!folder) return;
             
             const row = document.getElementById(rowId);
-            if (!row || (!row.classList.contains('item-row') && !row.classList.contains('pipe-type-header'))) {
+            if (!row || (!row.classList.contains('item-row') && !row.classList.contains('pipe-type-header') && !row.classList.contains('freight-row'))) {
                 return;
             }
             if (!folder.contains(row)) {
@@ -4656,14 +4786,14 @@
                            data-row-id="${rowId}"
                            value="0" 
                            min="0" 
-                           step="1" style="width: 100px;"></td>
+                           step="0.01" style="width: 100px;"></td>
                 <td>₹<input type="number" 
                            class="editable-field line-total-input" 
                            data-field="lineTotal"
                            data-row-id="${rowId}"
-value="0"
-                            min="0" 
-                            step="1" style="width: 100px;"></td>
+                           value="0"
+                           min="0" 
+                           step="1" style="width: 100px;"></td>
                 <td>
                     <button class="delete-row-btn" onclick="deleteApprovalRow('${quotationId}', '${rowId}')" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
                 </td>
@@ -4878,6 +5008,7 @@ value="0"
                 quotation.saved = false;
                 updateApprovalBadge(quotationId, quotation);
             }
+            quotation.hasUnsavedEdits = true;
             quotation.updatedAt = new Date().toISOString();
             
             // Save to backend (debounced)
@@ -4907,8 +5038,9 @@ value="0"
                 return;
             }
             
-            // Find all item rows in this quotation
+            // Find all item rows and freight rows in this quotation
             const itemRows = folderContent.querySelectorAll('.item-row');
+            const freightRows = folderContent.querySelectorAll('.freight-row');
             let grandTotal = 0;
             
             itemRows.forEach(function(row) {
@@ -4924,21 +5056,21 @@ value="0"
                 const calculatedOk = calculatedFromFormula === calculatedFromFormula && (unitRate > 0 || marginPercent !== 0);
 
                 if (finalRateInput && finalRateInput.tagName === 'INPUT' && finalRateInput.dataset.manual === 'true') {
-                    // User edited finalRate directly - use that value (rounded to whole)
-                    const manualVal = Math.round(parseFloat(finalRateInput.value || 0) || 0);
+                    // User edited finalRate directly - use that value (keep decimals)
+                    const manualVal = parseFloat(finalRateInput.value || 0) || 0;
                     // If user cleared the field and we can calculate from base rate + margin, switch back to calculated
                     if (manualVal === 0 && calculatedOk) {
                         finalRateInput.dataset.manual = '';
-                        finalRate = Math.round(calculatedFromFormula);
+                        finalRate = calculatedFromFormula;
                         finalRateInput.value = String(finalRate);
                     } else {
                         finalRate = manualVal;
                     }
                 } else {
-                    // Calculate final rate from unitRate and margin, rounded to whole
-                    finalRate = calculatedOk ? Math.round(calculatedFromFormula) : 0;
+                    // Calculate final rate from unitRate and margin (keep decimals)
+                    finalRate = calculatedOk ? calculatedFromFormula : 0;
                     if (finalRate !== finalRate) finalRate = 0;
-                    const currentVal = finalRateInput ? Math.round(parseFloat(finalRateInput.value || 0) || 0) : 0;
+                    const currentVal = finalRateInput ? (parseFloat(finalRateInput.value || 0) || 0) : 0;
                     // Don't overwrite with 0 when the row already has a non-zero rate (e.g. from AI or previous manual)
                     if (finalRate === 0 && currentVal > 0) {
                         finalRate = currentVal;
@@ -4947,14 +5079,14 @@ value="0"
                     }
                 }
                 
-                // Calculate line total
+                // Calculate line total (use decimal finalRate; display as whole number)
                 const lineTotalInput = row.querySelector('[data-field="lineTotal"]');
                 let lineTotal = quantity * finalRate;
                 if (lineTotal !== lineTotal) lineTotal = 0;
                 if (lineTotalInput && lineTotalInput.tagName === 'INPUT' && lineTotalInput.dataset.manual === 'true') {
                     const manualLineTotal = parseFloat(lineTotalInput.value || 0) || 0;
                     if (quantity > 0) {
-                        finalRate = Math.round(manualLineTotal / quantity);
+                        finalRate = manualLineTotal / quantity;
                         if (finalRate !== finalRate) finalRate = 0;
                         if (finalRateInput) {
                             finalRateInput.value = String(finalRate);
@@ -4973,7 +5105,7 @@ value="0"
                     if (ratePerMtrElement.tagName === 'INPUT') {
                         // Already an input, value is already set
                     } else {
-                        ratePerMtrElement.textContent = formatIndianNumber(finalRate, true);
+                        ratePerMtrElement.textContent = formatIndianNumber(finalRate, false);
                     }
                 }
                 
@@ -4987,6 +5119,15 @@ value="0"
                 }
                 
                 grandTotal += lineTotal;
+            });
+            
+            freightRows.forEach(function(row) {
+                const lineTotalInput = row.querySelector('[data-field="lineTotal"]');
+                let lineTotal = 0;
+                if (lineTotalInput && lineTotalInput.tagName === 'INPUT') {
+                    lineTotal = parseFloat(lineTotalInput.value || 0) || 0;
+                }
+                grandTotal += roundAmountToWhole(lineTotal);
             });
             
             const grandTotalElement = folderContent.querySelector('.grand-total span');
@@ -5023,6 +5164,8 @@ value="0"
             // Hide quotation content
             document.getElementById('creationQuotationHeader').style.display = 'none';
             document.getElementById('quotationTable').style.display = 'none';
+            var addFreightArea = document.getElementById('creationAddFreightArea');
+            if (addFreightArea) addFreightArea.style.display = 'none';
             document.getElementById('creationGrandTotal').style.display = 'none';
             document.getElementById('creationApproveBtn').style.display = 'none';
             document.getElementById('termsDivider').style.display = 'none';
@@ -5251,6 +5394,7 @@ value="0"
             if ((headerValues.termsText || '').toString().trim()) quotation.termsText = headerValues.termsText;
             quotation.updatedAt = new Date().toISOString();
             quotation.saved = false;  // Save = persist changes only; Approve = mark as approved
+            quotation.hasUnsavedEdits = false;
             if (typeof window._cancelApprovalAutosave === 'function') {
                 window._cancelApprovalAutosave(quotationId);
             }
@@ -5372,6 +5516,7 @@ value="0"
             
             // Mark quotation as saved (now it's approved)
             quotation.saved = true;
+            quotation.hasUnsavedEdits = false;
             if (typeof window._cancelApprovalAutosave === 'function') {
                 window._cancelApprovalAutosave(quotationId);
             }
@@ -5389,6 +5534,43 @@ value="0"
                 }
                 alert('Quotation saved as file: ' + filename);
             }, 0);
+        }
+
+        function getPdfColLabelsFromTable(tableEl) {
+            const def = ['S. NO', 'ITEMS AND DESCRIPTION', 'QTY (Mtrs)', 'Rate per Mtr (Rs.)', 'AMOUNT (Rs.)'];
+            if (!tableEl) return def;
+            const headerRow = tableEl.querySelector('thead tr');
+            if (!headerRow) return def;
+            const ths = Array.from(headerRow.querySelectorAll('th'));
+            const labels = ths.map(function(th) {
+                const input = th.querySelector('input');
+                return (input ? (input.value || input.getAttribute('value') || '').trim() : (th.textContent || '').replace(/\s+/g, ' ').trim());
+            });
+            // Exclude columns that must NOT appear in PDF: BASE RATE, MARGIN %, ACTIONS
+            const excludePattern = /^(BASE\s*RATE|MARGIN\s*%?|ACTIONS)$/i;
+            const candidates = [];
+            ths.forEach(function(th, idx) {
+                const label = labels[idx];
+                if (!label || excludePattern.test(label)) return;
+                if (th.classList && (th.classList.contains('col-base-rate') || th.classList.contains('col-margin'))) return;
+                candidates.push({ index: idx, label: label });
+            });
+            // Map to our 5 PDF columns by semantic match (order: S.NO, ITEMS, QTY, RATE, AMOUNT)
+            const pick = (pattern) => {
+                const m = candidates.find(c => pattern.test(c.label));
+                if (m) {
+                    const i = candidates.indexOf(m);
+                    candidates.splice(i, 1);
+                    return m.label;
+                }
+                return null;
+            };
+            const sno = pick(/S\.?\s*NO/i) || def[0];
+            const items = pick(/ITEMS.*DESCRIPTION|DESCRIPTION.*ITEMS/i) || def[1];
+            const qty = pick(/QTY/i) || def[2];
+            const rate = pick(/RATE\s*PER\s*(MTR|MTRS|METER|KG|UNIT|\w+)/i) || def[3];
+            const amount = pick(/AMOUNT/i) || def[4];
+            return [sno, items, qty, rate, amount];
         }
 
         function parseQuotationTableForPdf(tableHTML) {
@@ -5539,8 +5721,13 @@ value="0"
                 alert('Quotation not found');
                 return;
             }
+            if (!canDownloadQuotation(quotation)) {
+                alert('Please save changes to Download');
+                return;
+            }
             // Sync all manual edits from the folder DOM so the PDF reflects current content
             const folderContent = document.getElementById('folder-content-' + quotationId);
+            let tableForPdfHeaders = null;
             if (folderContent) {
                 recalculateApprovalQuotationTotals(quotationId, false);
                 // Sync input/textarea values to value attributes so outerHTML serialization includes them (fixes blank rows in PDF)
@@ -5556,9 +5743,10 @@ value="0"
                         input.textContent = input.value;
                     }
                 });
-                const tableElement = folderContent.querySelector('table');
+                const tableElement = folderContent.querySelector('.approval-quotation table') || folderContent.querySelector('table');
                 if (tableElement) {
                     quotation.tableHTML = tableElement.outerHTML;
+                    tableForPdfHeaders = tableElement;
                 }
                 const grandTotalEl = folderContent.querySelector('.grand-total span');
                 if (grandTotalEl) {
@@ -5717,7 +5905,13 @@ value="0"
 
             const rows = parseQuotationTableForPdf(quotation.tableHTML);
             const colWidths = [35, 225, 70, 95, 110];
-            const colLabels = ['S. NO', 'ITEMS AND DESCRIPTION', 'QTY (Mtrs)', 'Rate per Mtr (Rs.)', 'AMOUNT (Rs.)'];
+            let tableEl = tableForPdfHeaders;
+            if (!tableEl && quotation.tableHTML) {
+                const div = document.createElement('div');
+                div.innerHTML = quotation.tableHTML;
+                tableEl = div.querySelector('table');
+            }
+            const colLabels = getPdfColLabelsFromTable(tableEl);
             const colX = [
                 margin,
                 margin + colWidths[0],
