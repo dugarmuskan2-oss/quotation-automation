@@ -703,6 +703,55 @@
             padding-bottom: 10px;
             border-bottom: 2px solid var(--brand-color);
         }
+
+        /* Left tab icon bar for switching between main tools */
+        .main-tools-bar {
+            position: fixed;
+            top: 50%;
+            left: 10px;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 1000;
+        }
+
+        .main-tools-button {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            background: #ffffff;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+            transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+        }
+
+        .main-tools-button span {
+            pointer-events: none;
+        }
+
+        .main-tools-button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+            background-color: #f5f5f5;
+        }
+
+        .main-tools-button.main-tools-button--active {
+            background-color: var(--brand-color);
+            color: #ffffff;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+        }
+
+        /* Ensure main containers have a bit of left padding so they don't sit under the buttons */
+        #quotationApp,
+        #weightCalculatorApp {
+            padding-left: 70px;
+        }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -714,7 +763,29 @@
         ============================================
     -->
     
-    <div class="container">
+    <!-- Floating main tool selector -->
+    <div class="main-tools-bar">
+        <button
+            type="button"
+            class="main-tools-button main-tools-button--active"
+            id="mainToolQuotationButton"
+            onclick="switchToQuotationTab()"
+            title="Quotation Generator"
+        >
+            <span>📋</span>
+        </button>
+        <button
+            type="button"
+            class="main-tools-button"
+            id="mainToolWeightButton"
+            onclick="switchToWeightTab()"
+            title="Weight Calculator"
+        >
+            <span>⚖️</span>
+        </button>
+    </div>
+
+    <div class="container" id="quotationApp">
         <!-- Main title -->
         <h1>📋 Quotation Generator</h1>
         
@@ -935,6 +1006,139 @@
             <div id="aiChatLog" style="border:1px solid #ddd; border-radius:4px; padding:10px; min-height:80px; background:#fafafa; margin-bottom:10px;"></div>
             <textarea id="aiChatInput" placeholder="Type your question about the AI output..." style="width:100%; min-height:60px; padding:10px; border:1px solid #ddd; border-radius:4px;"></textarea>
             <button type="button" class="upload-btn" onclick="sendAiMessage()" style="margin-top:10px; width:100%;">💬 Ask AI</button>
+        </div>
+    </div>
+
+    <!-- Weight Calculator main container (hidden by default, toggled via left icons) -->
+    <div class="container" id="weightCalculatorApp" style="display: none;">
+        <h1>⚖️ Pipe Weight Calculator</h1>
+
+        <div class="info-message">
+            Use this tool to calculate total pipe weight from an existing quotation, manual entry, or an uploaded file.
+        </div>
+
+        <!-- Pipe weight reference upload -->
+        <div class="input-section">
+            <h2>Pipe Weight Reference (Kg per Meter)</h2>
+            <p style="margin-bottom: 10px;">
+                Upload a simple CSV file with two columns: <strong>Size</strong> and <strong>KgPerMeter</strong>.
+                Example row: <code>2&quot; NB, 5.43</code>
+            </p>
+            <input type="file" id="pipeWeightFile" accept=".csv" />
+            <button
+                type="button"
+                class="upload-btn"
+                style="margin-top: 10px;"
+                onclick="window.pipeWeightCalculator && window.pipeWeightCalculator.loadPipeWeightFile()"
+            >
+                📤 Upload Pipe Weight Table
+            </button>
+            <p id="pipeWeightStatus" style="margin-top: 8px; font-size: 12px; color: #666;"></p>
+        </div>
+
+        <!-- Input mode selection -->
+        <div class="input-section">
+            <h2>Choose Input Method</h2>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px;">
+                <!-- Option 1: Existing quotation number -->
+                <div style="border: 1px solid #ddd; border-radius: 6px; padding: 12px; background-color: #fafafa;">
+                    <h3 style="margin-bottom: 8px;">1. From Quotation Number</h3>
+                    <p style="font-size: 13px; color: #555; margin-bottom: 8px;">
+                        Use pipe sizes already identified by the quotation generator.
+                    </p>
+                    <label for="weightFromQuoteNumber">Quotation Number:</label>
+                    <input
+                        type="text"
+                        id="weightFromQuoteNumber"
+                        placeholder="Enter quotation number (e.g., DSC/24-25/001)"
+                        style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"
+                    />
+                    <button
+                        type="button"
+                        class="generate-btn"
+                        style="margin-top: 10px;"
+                        onclick="window.pipeWeightCalculator && window.pipeWeightCalculator.calculateFromQuotationNumber()"
+                    >
+                        🔍 Load From Quotation
+                    </button>
+                    <p id="weightFromQuoteStatus" style="margin-top: 6px; font-size: 12px; color: #666;"></p>
+                </div>
+
+                <!-- Option 2: Manual entry -->
+                <div style="border: 1px solid #ddd; border-radius: 6px; padding: 12px; background-color: #fafafa;">
+                    <h3 style="margin-bottom: 8px;">2. Manually Type Pipes</h3>
+                    <p style="font-size: 13px; color: #555; margin-bottom: 8px;">
+                        Quickly type pipe descriptions, kg/meter and quantity in meters.
+                    </p>
+                    <button
+                        type="button"
+                        class="upload-btn"
+                        onclick="window.pipeWeightCalculator && window.pipeWeightCalculator.addManualRow()"
+                    >
+                        ➕ Add Pipe Row
+                    </button>
+                </div>
+
+                <!-- Option 3: Upload file (AI-assisted) -->
+                <div style="border: 1px solid #ddd; border-radius: 6px; padding: 12px; background-color: #fafafa;">
+                    <h3 style="margin-bottom: 8px;">3. Upload File</h3>
+                    <p style="font-size: 13px; color: #555; margin-bottom: 8px;">
+                        Upload a document or email text. The app will use the same AI engine to identify pipe sizes.
+                    </p>
+                    <label for="weightFromFileUpload" style="margin-top: 8px; display: block;">Upload File:</label>
+                    <input
+                        type="file"
+                        id="weightFromFileUpload"
+                        accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.png,.jpg,.jpeg,.gif,.webp"
+                        style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"
+                    />
+                    <button
+                        type="button"
+                        class="generate-btn"
+                        style="margin-top: 10px;"
+                        onclick="window.pipeWeightCalculator && window.pipeWeightCalculator.calculateFromUploadedFile()"
+                    >
+                        🤖 Extract Pipes with AI
+                    </button>
+                    <p id="weightFromFileStatus" style="margin-top: 6px; font-size: 12px; color: #666;"></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results table -->
+        <div class="input-section">
+            <h2>Calculated Pipe Weights</h2>
+            <p style="font-size: 13px; color: #555; margin-bottom: 8px;">
+                The table below is populated from whichever input method you choose.
+            </p>
+
+            <table id="pipeWeightTable" style="margin-top: 10px;">
+                <thead>
+                    <tr>
+                        <th>Items and Description</th>
+                        <th>Kg / Meter</th>
+                        <th>Qty (Meters)</th>
+                        <th>Total Weight (Kg)</th>
+                    </tr>
+                </thead>
+                <tbody id="pipeWeightTableBody">
+                    <!-- Rows will be added via JavaScript -->
+                </tbody>
+            </table>
+
+            <div class="grand-total" style="margin-top: 12px;">
+                <span>Total Weight: <span id="pipeWeightGrandTotal">0.00</span> Kg</span>
+            </div>
+
+            <button
+                type="button"
+                class="approve-btn"
+                style="margin-top: 16px;"
+                onclick="window.pipeWeightCalculator && window.pipeWeightCalculator.recalculateFromTable()"
+            >
+                ♻️ Recalculate Total Weight
+            </button>
         </div>
     </div>
     
@@ -6197,6 +6401,7 @@
         // Check current rate files status
         checkCurrentFiles();
     </script>
+    <script src="weight-calculator.js"></script>
 </body>
 </html>
 
