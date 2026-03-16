@@ -2011,7 +2011,11 @@
             if (!content) {
                 return;
             }
-            content.innerHTML = buildCreationFolderContentFromDisplay(entryId);
+            var folderHtml = buildCreationFolderContentFromDisplay(entryId);
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',location:'index.html:finalizeCreationFolderEntry',message:'Creation folder content built',data:{entryId:entryId,hasAddFreight:folderHtml.indexOf('Add Freight')!==-1},hypothesisId:'H4',timestamp:Date.now()})}).catch(function(){});
+            // #endregion
+            content.innerHTML = folderHtml;
             const loading = document.getElementById(`creation-loading-${entryId}`);
             if (loading) {
                 loading.remove();
@@ -2619,9 +2623,15 @@
             // Step 9: Show the quotation content (header, table, totals, approve button, terms)
             // When hasCreationFolder: finalizeCreationFolderEntry consumes the quote number (single source).
             // When no folder: we must consume here.
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',location:'index.html:showCreationQuotationContent',message:'showCreationQuotationContent called',data:{hasCreationFolder:hasCreationFolder},hypothesisId:'H1',timestamp:Date.now()})}).catch(function(){});
+            // #endregion
             document.getElementById('creationQuotationHeader').style.display = 'block';
             document.getElementById('quotationTable').style.display = 'table';
             var addFreightArea = document.getElementById('creationAddFreightArea');
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',location:'index.html:addFreightArea',message:'Creation Add Freight area',data:{found:!!addFreightArea,displayBefore:addFreightArea?addFreightArea.style.display:null},hypothesisId:'H2',timestamp:Date.now()})}).catch(function(){});
+            // #endregion
             if (addFreightArea) addFreightArea.style.display = 'block';
             document.getElementById('creationGrandTotal').style.display = 'block';
             document.getElementById('creationApproveBtn').style.display = 'block';
@@ -4468,6 +4478,9 @@
                     
                     // Add Add Freight button if it doesn't exist
                     const existingAddBtn = folderContent.querySelector('.add-row-btn-approval');
+                    // #region agent log
+                    fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',location:'index.html:attachApprovalAddFreight',message:'Approval Add Freight check',data:{quotationId:quotationId,itemRowsLength:itemRows.length,existingAddBtn:!!existingAddBtn,willCreate:!existingAddBtn&&itemRows.length>0},hypothesisId:'H3',timestamp:Date.now()})}).catch(function(){});
+                    // #endregion
                     if (!existingAddBtn && itemRows.length > 0) {
                         const addRowDiv = document.createElement('div');
                         addRowDiv.style.cssText = 'margin-top: 10px; text-align: right;';
