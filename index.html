@@ -5556,7 +5556,8 @@
             }
             const allInputs = folderContent.querySelectorAll('input, textarea');
             allInputs.forEach(function(input) {
-                if (input.type === 'number') {
+                const inFreightRow = input.closest('.freight-row');
+                if (input.type === 'number' && !inFreightRow) {
                     const normalizedValue = normalizeNumberValue(input.value);
                     input.value = normalizedValue;
                     input.setAttribute('value', normalizedValue);
@@ -5651,8 +5652,9 @@
                 // Ensure all input values are current before capturing
                 const allInputs = folderContent.querySelectorAll('input, textarea');
                 allInputs.forEach(function(input) {
+                    const inFreightRow = input.closest('.freight-row');
                     // For number inputs, normalize the value to fix precision issues
-                    if (input.type === 'number') {
+                    if (input.type === 'number' && !inFreightRow) {
                         const normalizedValue = normalizeNumberValue(input.value);
                         input.value = normalizedValue;
                         input.setAttribute('value', normalizedValue);
