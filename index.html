@@ -5249,6 +5249,22 @@
             let grandTotal = 0;
             
             itemRows.forEach(function(row) {
+                // Safety: if any freight rows are ever marked as item-rows, do NOT recompute them
+                const isFreightRow = row.classList.contains('freight-row') ||
+                    row.getAttribute('data-row-type') === 'freight';
+                if (isFreightRow) {
+                    const lineTotalInputFreight = row.querySelector('[data-field="lineTotal"]');
+                    let freightLineTotal = 0;
+                    if (lineTotalInputFreight && lineTotalInputFreight.tagName === 'INPUT') {
+                        freightLineTotal = parseFloat(lineTotalInputFreight.value || 0) || 0;
+                    } else {
+                        const span = row.querySelector('.line-total');
+                        const text = span ? span.textContent.replace('₹', '').replace(/,/g, '') : '0';
+                        freightLineTotal = parseFloat(text) || 0;
+                    }
+                    grandTotal += roundAmountToWhole(freightLineTotal);
+                    return; // Skip qty/rate-based logic for freight
+                }
                 const quantity = parseFloat(row.querySelector('[data-field="quantity"]')?.value || 0) || 0;
                 const unitRate = parseFloat(row.querySelector('[data-field="unitRate"]')?.value || 0) || 0;
                 const marginValue = row.querySelector('[data-field="marginPercent"]')?.value || '';
