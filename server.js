@@ -1085,12 +1085,16 @@ app.get('/api/next-quote-number', async (req, res) => {
     }
 });
 
+// Max quotations returned by GET /api/quotations (client can pass ?limit= up to this cap)
+const QUOTATIONS_LIST_LIMIT = 350;
+
 // Get all quotations from DynamoDB
 app.get('/api/quotations', async (req, res) => {
     try {
         if (!ddbDocClient || !ddbTableName) {
             return res.status(500).json({ error: 'DynamoDB not configured. Set DYNAMODB_TABLE in environment variables.' });
         }
+        const requestedLimit = Math.min(QUOTATIONS_LIST_LIMIT, Math.max(1, parseInt(req.query.limit, 10) || QUOTATIONS_LIST_LIMIT));
         const { ScanCommand } = require('@aws-sdk/lib-dynamodb');
         let items = [];
         let lastKey = null;
@@ -1110,10 +1114,11 @@ app.get('/api/quotations', async (req, res) => {
             const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
             return bTime - aTime;
         });
-        quotations = quotations.slice(0, 350);
+        quotations = quotations.slice(0, requestedLimit);
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',location:'server.js:api/quotations',message:'quotations response count',data:{itemsBeforeSlice:quotations.length,sliceLimit:350,sentCount:quotations.length},hypothesisId:'A',timestamp:Date.now()})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',location:'server.js:api/quotations',message:'quotations response count',data:{itemsBeforeSlice:quotations.length,sliceLimit:requestedLimit,sentCount:quotations.length},hypothesisId:'A',timestamp:Date.now()})}).catch(()=>{});
         // #endregion
+        console.log('[api/quotations] returning', quotations.length, 'quotations (limit=', requestedLimit, ')');
         res.json({ quotations });
     } catch (error) {
         console.error('Error loading quotations:', error);
