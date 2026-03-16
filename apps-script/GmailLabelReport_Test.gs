@@ -20,7 +20,7 @@ const FLAG_LABEL = 'Enquiry - Needs Reply';
 const ENQUIRY_LABEL = 'Enquiry';
 const QUOTATION_LABEL = 'Quotation';
 const OVERDUE_DAYS = 2;
-const DRY_RUN_MODE = true;
+const DRY_RUN_MODE = false;
 
 const COMMON_EMAIL_PREFIX = 'Common Email';
 
