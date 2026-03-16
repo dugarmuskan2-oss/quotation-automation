@@ -943,6 +943,11 @@
             <div class="add-freight-area" id="creationAddFreightArea" style="display: none; margin-top: 10px; text-align: right;">
                 <button type="button" onclick="addFreightRowCreation()" title="Add freight charge" style="background: #FF9800; color: white; border: none; padding: 8px 16px; cursor: pointer; border-radius: 4px; font-size: 14px;">Add Freight</button>
             </div>
+
+            <!-- Freight summary (shown when freight > 0) -->
+            <div class="freight-summary" id="creationFreightSummary" style="display: none; margin-top: 6px; font-weight: bold; font-size: 14px;">
+                Freight: ₹<span id="creationFreightAmount">0</span>
+            </div>
             
             <!-- Grand Total (hidden initially) -->
             <div class="grand-total" id="creationGrandTotal" style="display: none;">
@@ -3039,6 +3044,7 @@
             const itemRows = tableBody.querySelectorAll('.item-row, .freight-row');
             
             let grandTotal = 0;
+            let freightTotal = 0;
             
             // Calculate grand total from all rows
             itemRows.forEach(function(row) {
@@ -3052,9 +3058,25 @@
                     const lineTotalText = lineTotalSpan ? lineTotalSpan.textContent.replace('₹', '').replace(/,/g, '') : '0';
                     lineTotal = parseFloat(lineTotalText) || 0;
                 }
-                grandTotal += roundAmountToWhole(lineTotal);
+                lineTotal = roundAmountToWhole(lineTotal);
+                grandTotal += lineTotal;
+                if (row.classList.contains('freight-row') || row.getAttribute('data-row-type') === 'freight') {
+                    freightTotal += lineTotal;
+                }
             });
+            // Update main grand total
             document.getElementById('grandTotal').textContent = formatIndianNumber(roundAmountToWhole(grandTotal), true);
+            // Update Creation freight summary
+            const freightSummary = document.getElementById('creationFreightSummary');
+            const freightAmountSpan = document.getElementById('creationFreightAmount');
+            if (freightSummary && freightAmountSpan) {
+                if (freightTotal > 0) {
+                    freightAmountSpan.textContent = formatIndianNumber(roundAmountToWhole(freightTotal), true);
+                    freightSummary.style.display = 'block';
+                } else {
+                    freightSummary.style.display = 'none';
+                }
+            }
         }
         
         /*
@@ -3275,6 +3297,7 @@
             }
             const itemRows = tableBody.querySelectorAll('.item-row, .freight-row');
             let grandTotal = 0;
+            let freightTotal = 0;
             itemRows.forEach(function(row) {
                 const lineTotalInput = row.querySelector('[data-field="lineTotal"]');
                 let lineTotal = 0;
@@ -3285,11 +3308,25 @@
                     const lineTotalText = lineTotalSpan ? lineTotalSpan.textContent.replace('₹', '').replace(/,/g, '') : '0';
                     lineTotal = parseFloat(lineTotalText) || 0;
                 }
-                grandTotal += roundAmountToWhole(lineTotal);
+                lineTotal = roundAmountToWhole(lineTotal);
+                grandTotal += lineTotal;
+                if (row.classList.contains('freight-row') || row.getAttribute('data-row-type') === 'freight') {
+                    freightTotal += lineTotal;
+                }
             });
             const totalEl = container.querySelector('.grand-total span');
             if (totalEl) {
                 totalEl.textContent = `Total: ₹${formatIndianNumber(roundAmountToWhole(grandTotal), true)}`;
+            }
+            const freightSummary = container.querySelector('.freight-summary');
+            const freightAmountSpan = container.querySelector('.freight-summary-amount');
+            if (freightSummary && freightAmountSpan) {
+                if (freightTotal > 0) {
+                    freightAmountSpan.textContent = formatIndianNumber(roundAmountToWhole(freightTotal), true);
+                    freightSummary.style.display = 'block';
+                } else {
+                    freightSummary.style.display = 'none';
+                }
             }
         }
         
@@ -4239,6 +4276,9 @@
                     <div class="approval-quotation">
                         ${quotation.headerHTML || ''}
                         ${quotation.tableHTML}
+                        <div class="freight-summary" style="display:none; margin-top: 6px; font-weight: bold; font-size: 14px;">
+                            Freight: ₹<span class="freight-summary-amount">0</span>
+                        </div>
                         <div class="grand-total">
                             <span>Total: ₹${quotation.grandTotal}</span>
                         </div>
