@@ -1049,9 +1049,6 @@
                     throw new Error((result.error || 'Failed to load quotations') + detailMsg);
                 }
                 const quotations = Array.isArray(result.quotations) ? result.quotations : [];
-                // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',location:'index.html:loadQuotationsFromBackend',message:'quotations received and assigned',data:{receivedCount:quotations.length,assignedCount:quotations.length},hypothesisId:'B',timestamp:Date.now()})}).catch(()=>{});
-                // #endregion
                 if (quotations.length > 0) {
                     approvedQuotations = quotations;
                     displayAllApprovedQuotations();
@@ -4021,9 +4018,6 @@
             // Build HTML for all approved quotations (by quotation date, newest first)
             attachApprovalSearchListener();
             const filteredQuotations = getFilteredApprovedQuotations(approvalSearchQuery);
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',location:'index.html:displayAllApprovedQuotations',message:'display counts',data:{approvedQuotationsLength:approvedQuotations.length,filteredCount:filteredQuotations.length},hypothesisId:'C',timestamp:Date.now()})}).catch(()=>{});
-            // #endregion
             const sortedByQuotationDate = filteredQuotations.slice().sort(function (a, b) {
                 const parseDate = function(q) {
                     if (q.quotationDate) {
@@ -5410,6 +5404,30 @@ value="0"
                     }
                     return;
                 }
+                if (row.classList.contains('freight-row')) {
+                    const getValueFreight = (selector) => {
+                        const el = row.querySelector(selector);
+                        if (!el) return '';
+                        if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+                            return el.value || el.getAttribute('value') || '';
+                        }
+                        return el.textContent || '';
+                    };
+                    let amountFreight = getValueFreight('[data-field="lineTotal"]').trim();
+                    if (!amountFreight) {
+                        const lineTotalSpan = row.querySelector('.line-total');
+                        amountFreight = lineTotalSpan ? lineTotalSpan.textContent.trim() : '';
+                    }
+                    rows.push({
+                        type: 'freight',
+                        sno: '',
+                        desc: 'Freight',
+                        qty: '',
+                        rate: '',
+                        amount: amountFreight
+                    });
+                    return;
+                }
                 if (!row.classList.contains('item-row')) {
                     return;
                 }
@@ -5439,6 +5457,9 @@ value="0"
                     amount
                 });
             });
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',location:'index.html:parseQuotationTableForPdf',message:'Parsed table for PDF',data:{totalRows:rows.length,pipeRows:rows.filter(r=>r.type==='pipe').length,itemRows:rows.filter(r=>r.type==='item').length,freightRows:rows.filter(r=>r.type==='freight').length},hypothesisId:'H6',timestamp:Date.now()})}).catch(function(){}); 
+            // #endregion
             return rows;
         }
 
@@ -5750,10 +5771,13 @@ value="0"
                 }
                 doc.setFont('helvetica', 'normal');
                 doc.setFontSize(9);
-                doc.text(row.sno || '', colX[0] + 6, cursorY + 12);
+                const snoText = row.type === 'freight' ? '' : (row.sno || '');
+                const qtyText = row.type === 'freight' ? '' : formatNumber(row.qty, false);
+                const rateText = row.type === 'freight' ? '' : formatNumber(Math.round(parseFloat(row.rate) || 0), false);
+                doc.text(snoText, colX[0] + 6, cursorY + 12);
                 doc.text(descLines, colX[1] + 6, cursorY + 12);
-                doc.text(formatNumber(row.qty, false), colX[2] + colWidths[2] - 6, cursorY + 12, { align: 'right' });
-                doc.text(formatNumber(Math.round(parseFloat(row.rate) || 0), false), colX[3] + colWidths[3] - 6, cursorY + 12, { align: 'right' });
+                doc.text(qtyText, colX[2] + colWidths[2] - 6, cursorY + 12, { align: 'right' });
+                doc.text(rateText, colX[3] + colWidths[3] - 6, cursorY + 12, { align: 'right' });
                 doc.text(formatNumber(roundAmountToWhole(row.amount), false), colX[4] + colWidths[4] - 6, cursorY + 12, { align: 'right' });
                 doc.setDrawColor(230);
                 doc.setLineWidth(0.5);
