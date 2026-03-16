@@ -1110,7 +1110,7 @@ app.get('/api/quotations', async (req, res) => {
             const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
             return bTime - aTime;
         });
-        quotations = quotations.slice(0, 40);
+        quotations = quotations.slice(0, 350);
         res.json({ quotations });
     } catch (error) {
         console.error('Error loading quotations:', error);
