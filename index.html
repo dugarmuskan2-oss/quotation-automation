@@ -5588,18 +5588,17 @@
                     return;
                 }
                 if (row.classList.contains('freight-row')) {
-                    const getValueFreight = (selector) => {
-                        const el = row.querySelector(selector);
-                        if (!el) return '';
-                        if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-                            return el.value || el.getAttribute('value') || '';
-                        }
-                        return el.textContent || '';
-                    };
-                    let amountFreight = getValueFreight('[data-field="lineTotal"]').trim();
+                    // Prefer the numeric input value, but fall back to visible cell text
+                    let amountFreight = '';
+                    const input = row.querySelector('[data-field="lineTotal"]');
+                    if (input) {
+                        amountFreight = (input.value || input.getAttribute('value') || '').trim();
+                    }
                     if (!amountFreight) {
-                        const lineTotalSpan = row.querySelector('.line-total');
-                        amountFreight = lineTotalSpan ? lineTotalSpan.textContent.trim() : '';
+                        const amountCell = input ? input.closest('td') : row.querySelector('td:last-child');
+                        if (amountCell) {
+                            amountFreight = (amountCell.textContent || '').replace(/[^\d.]/g, '').trim();
+                        }
                     }
                     rows.push({
                         type: 'freight',
