@@ -5903,7 +5903,30 @@
             const blockHeight = Math.max(billToLines.length, shipToLines.length, 1) * 7 + 6;
             cursorY += blockHeight;
 
-            const rows = parseQuotationTableForPdf(quotation.tableHTML);
+            let rows = parseQuotationTableForPdf(quotation.tableHTML);
+            // Ensure freight in PDF matches current Approval UI, even if tableHTML is stale
+            if (folderContent) {
+                let freightTotal = 0;
+                const freightInputs = folderContent.querySelectorAll('.freight-row [data-field="lineTotal"]');
+                freightInputs.forEach(function(input) {
+                    const raw = (input.value || input.getAttribute('value') || '').toString().replace(/,/g, '');
+                    const n = parseFloat(raw);
+                    if (!isNaN(n) && isFinite(n)) {
+                        freightTotal += n;
+                    }
+                });
+                if (freightTotal > 0) {
+                    rows = rows.filter(function(r) { return r.type !== 'freight'; });
+                    rows.push({
+                        type: 'freight',
+                        sno: '',
+                        desc: 'Freight',
+                        qty: '',
+                        rate: '',
+                        amount: roundAmountToWhole(freightTotal)
+                    });
+                }
+            }
             const colWidths = [35, 225, 70, 95, 110];
             let tableEl = tableForPdfHeaders;
             if (!tableEl && quotation.tableHTML) {
