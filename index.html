@@ -5968,11 +5968,14 @@
                 const snoText = row.type === 'freight' ? '' : (row.sno || '');
                 const qtyText = row.type === 'freight' ? '' : formatNumber(row.qty, false);
                 const rateText = row.type === 'freight' ? '' : formatNumber(Math.round(parseFloat(row.rate) || 0), false);
+                const amountText = row.type === 'freight'
+                    ? String(row.amount || '').replace(/^₹\s*/, '')
+                    : formatNumber(roundAmountToWhole(row.amount), false);
                 doc.text(snoText, colX[0] + 6, cursorY + 12);
                 doc.text(descLines, colX[1] + 6, cursorY + 12);
                 doc.text(qtyText, colX[2] + colWidths[2] - 6, cursorY + 12, { align: 'right' });
                 doc.text(rateText, colX[3] + colWidths[3] - 6, cursorY + 12, { align: 'right' });
-                doc.text(formatNumber(roundAmountToWhole(row.amount), false), colX[4] + colWidths[4] - 6, cursorY + 12, { align: 'right' });
+                doc.text(amountText, colX[4] + colWidths[4] - 6, cursorY + 12, { align: 'right' });
                 doc.setDrawColor(230);
                 doc.setLineWidth(0.5);
                 doc.rect(margin, cursorY, contentWidth, rowHeight);
