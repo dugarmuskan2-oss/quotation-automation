@@ -3567,6 +3567,7 @@
                 deleteBtn = '<td style="text-align:center; vertical-align:middle; padding:5px;">' +
                     '<div style="display:flex; gap:6px; justify-content:center; align-items:center;">' +
                         '<button type="button" onclick="applyFreightForApproval(\'' + quotationId + '\', \'' + rowId + '\')" title="Distribute freight into margins" style="background:#FF9800; color:white; border:none; padding:4px 8px; cursor:pointer; border-radius:3px; font-size:12px;">FOR</button>' +
+                        '<button type="button" onclick="undoFreightForApproval(\'' + quotationId + '\', \'' + rowId + '\')" title="Undo Freight FOR" style="background:#607D8B; color:white; border:none; padding:4px 8px; cursor:pointer; border-radius:3px; font-size:12px;">UNDO</button>' +
                         '<button class="delete-row-btn" onclick="deleteApprovalRow(\'' + quotationId + '\', \'' + rowId + '\')" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>' +
                     '</div>' +
                 '</td>';
@@ -3688,6 +3689,16 @@
                     return;
                 }
 
+                // Snapshot for undo (store exact values so totals can be restored)
+                const undoSnapshot = buildFreightForUndoSnapshot({
+                    quotationId,
+                    folderContent,
+                    freightRowId,
+                    freightAmount,
+                    itemRowBases: bases.rows
+                });
+                storeFreightForUndoSnapshot(quotationId, undoSnapshot);
+
                 const deltaMargin = computeDeltaMarginPercent(freightAmount, bases.baseSum);
                 applyDeltaMarginToRows(bases.rows, deltaMargin);
 
@@ -3716,6 +3727,112 @@
                 console.error('applyFreightForApproval error:', e);
                 alert('Failed to apply Freight FOR. Check console for details.');
             }
+        }
+
+        function undoFreightForApproval(quotationId, freightRowId) {
+            try {
+                const snapshot = getFreightForUndoSnapshot(quotationId);
+                if (!snapshot) {
+                    alert('Nothing to undo.');
+                    return;
+                }
+                const folderContent = document.getElementById('folder-content-' + quotationId);
+                if (!folderContent) return;
+
+                // Restore freight amount
+                const freightRow = freightRowId ? document.getElementById(freightRowId) : null;
+                const freightInput = (freightRow && folderContent.contains(freightRow))
+                    ? freightRow.querySelector('.freight-amount-input[data-field="lineTotal"]')
+                    : folderContent.querySelector('.freight-row .freight-amount-input[data-field="lineTotal"]');
+                if (freightInput) {
+                    freightInput.value = String(snapshot.freightAmount || 0);
+                    freightInput.setAttribute('value', freightInput.value);
+                }
+
+                // Restore per-row values
+                (snapshot.rows || []).forEach(function(r) {
+                    const row = r.rowId ? document.getElementById(r.rowId) : null;
+                    if (!row || !folderContent.contains(row)) return;
+                    const marginInput = row.querySelector('[data-field="marginPercent"]');
+                    if (marginInput && typeof r.marginValue === 'string') {
+                        marginInput.value = r.marginValue;
+                        marginInput.setAttribute('value', marginInput.value);
+                    }
+                    const finalRateInput = row.querySelector('[data-field="finalRate"]');
+                    if (finalRateInput && finalRateInput.dataset) {
+                        finalRateInput.dataset.manual = r.finalRateManual || '';
+                    }
+                    const lineTotalInput = row.querySelector('[data-field="lineTotal"]');
+                    if (lineTotalInput) {
+                        if (typeof r.lineTotalValue === 'string') {
+                            lineTotalInput.value = r.lineTotalValue;
+                            lineTotalInput.setAttribute('value', lineTotalInput.value);
+                        }
+                        if (lineTotalInput.dataset) {
+                            lineTotalInput.dataset.manual = r.lineTotalManual || '';
+                        }
+                    }
+                });
+
+                recalculateApprovalQuotationTotals(quotationId, false);
+                clearFreightForUndoSnapshot(quotationId);
+                if (typeof updateQuotationFromApprovalSection === 'function') {
+                    updateQuotationFromApprovalSection(quotationId, null);
+                }
+            } catch (e) {
+                console.error('undoFreightForApproval error:', e);
+                alert('Failed to undo. Check console for details.');
+            }
+        }
+
+        function buildFreightForUndoSnapshot(args) {
+            const quotationId = args.quotationId;
+            const freightAmount = args.freightAmount;
+            const itemRowBases = args.itemRowBases || [];
+            const rows = [];
+            itemRowBases.forEach(function(rb) {
+                const row = rb && rb.row;
+                if (!row) return;
+                if (!row.id) {
+                    row.id = `approval-row-${quotationId}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+                }
+                const marginInput = row.querySelector('[data-field="marginPercent"]');
+                const finalRateInput = row.querySelector('[data-field="finalRate"]');
+                const lineTotalInput = row.querySelector('[data-field="lineTotal"]');
+                rows.push({
+                    rowId: row.id,
+                    marginValue: marginInput ? String(marginInput.value || '') : '',
+                    finalRateManual: finalRateInput && finalRateInput.dataset ? (finalRateInput.dataset.manual || '') : '',
+                    lineTotalValue: lineTotalInput ? String(lineTotalInput.value || '') : '',
+                    lineTotalManual: lineTotalInput && lineTotalInput.dataset ? (lineTotalInput.dataset.manual || '') : ''
+                });
+            });
+            return {
+                quotationId: quotationId,
+                freightAmount: freightAmount,
+                rows: rows,
+                createdAt: Date.now()
+            };
+        }
+
+        function getFreightForUndoStore() {
+            if (!window.__freightForUndo) window.__freightForUndo = {};
+            return window.__freightForUndo;
+        }
+
+        function storeFreightForUndoSnapshot(quotationId, snapshot) {
+            const store = getFreightForUndoStore();
+            store[String(quotationId)] = snapshot;
+        }
+
+        function getFreightForUndoSnapshot(quotationId) {
+            const store = getFreightForUndoStore();
+            return store[String(quotationId)] || null;
+        }
+
+        function clearFreightForUndoSnapshot(quotationId) {
+            const store = getFreightForUndoStore();
+            delete store[String(quotationId)];
         }
 
         function getNumberFromInput(inputEl) {
