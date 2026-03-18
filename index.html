@@ -1169,30 +1169,7 @@
             Functions are reusable blocks of code that do specific tasks
         */
 
-        // #region agent log
-        window.addEventListener('error', function(e) {
-            try {
-                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{
-                    method:'POST',
-                    headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},
-                    body:JSON.stringify({
-                        sessionId:'2223e4',
-                        runId:'approval-expand',
-                        hypothesisId:'H_err',
-                        location:'index.html:window.onerror',
-                        message:'Window error',
-                        data:{
-                            message:String(e && e.message || ''),
-                            filename:String(e && e.filename || ''),
-                            lineno:e && e.lineno,
-                            colno:e && e.colno
-                        },
-                        timestamp:Date.now()
-                    })
-                }).catch(function(){});
-            } catch (_) {}
-        });
-        // #endregion
+        
         
         /*
             ============================================
@@ -3647,6 +3624,10 @@
         }
 
         function addFreightRowApproval(quotationId) {
+            // #region agent log
+            const __t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',runId:'add-freight',hypothesisId:'H_addFreight',location:'index.html:addFreightRowApproval:enter',message:'Add Freight (Approval) start',data:{quotationId:quotationId},timestamp:Date.now()})}).catch(function(){});
+            // #endregion
             var folder = document.getElementById('folder-' + quotationId);
             if (!folder) return;
             var folderContent = folder.querySelector('.quotation-folder-content');
@@ -3663,6 +3644,10 @@
             tbody.appendChild(row);
             attachFreightRowAmountListener(row, function() { recalculateApprovalQuotationTotals(quotationId, false); });
             recalculateApprovalQuotationTotals(quotationId, false);
+            // #region agent log
+            const __t1 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',runId:'add-freight',hypothesisId:'H_addFreight',location:'index.html:addFreightRowApproval:exit',message:'Add Freight (Approval) end',data:{quotationId:quotationId,elapsedMs:Math.round((__t1-__t0)*10)/10,tbodyChildCount:tbody.children.length},timestamp:Date.now()})}).catch(function(){});
+            // #endregion
         }
 
         function setLogoSource() {
@@ -4166,9 +4151,6 @@
                 const gmailLinkUrl = quotation.emailLink || (quotation.gmailMessageId ? 'https://mail.google.com/mail/u/0/#inbox/' + quotation.gmailMessageId : '');
                 const gmailLinkHTML = gmailLinkUrl ? `<a href="${escapeHtml(gmailLinkUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation();" class="gmail-link" style="margin-left:8px;font-size:12px;">View in Gmail</a>` : '';
 
-                // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',runId:'approval-expand',hypothesisId:'H_build',location:'index.html:buildAllApprovedQuotationsHTMLForList',message:'Build folder HTML',data:{id:quotation.id,hasHeader:!!quotation.headerHTML,hasTable:!!quotation.tableHTML,tableLen:(quotation.tableHTML||'').length,grandTotal:quotation.grandTotal},timestamp:Date.now()})}).catch(function(){});
-                // #endregion
                 allQuotationsHTML += `
                     <div class="quotation-folder" id="folder-${quotation.id}">
                         <div class="quotation-folder-header" onclick="toggleQuotationFolder(${quotation.id})">
@@ -4302,9 +4284,6 @@
         function buildApprovalSplitLayout({ quotation, termsText, approveButtonHTML, saveButtonHTML, downloadButtonHTML }) {
             const sidePanelHTML = buildApprovalSidePanelHTML(quotation);
 
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',runId:'approval-expand',hypothesisId:'H_layout',location:'index.html:buildApprovalSplitLayout',message:'Build approval split layout',data:{id:quotation && quotation.id,hasTable:!!(quotation && quotation.tableHTML),tableLen:(quotation && quotation.tableHTML ? quotation.tableHTML.length : 0)},timestamp:Date.now()})}).catch(function(){});
-            // #endregion
             return `
                 <div class="approval-layout">
                     <div class="approval-quotation">
@@ -4757,9 +4736,6 @@
                     
                     // Add Add Freight button if it doesn't exist
                     const existingAddBtn = folderContent.querySelector('.add-row-btn-approval');
-                    // #region agent log
-                    fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',location:'index.html:attachApprovalAddFreight',message:'Approval Add Freight check',data:{quotationId:quotationId,itemRowsLength:itemRows.length,existingAddBtn:!!existingAddBtn,willCreate:!existingAddBtn&&itemRows.length>0},hypothesisId:'H3',timestamp:Date.now()})}).catch(function(){});
-                    // #endregion
                     if (!existingAddBtn && itemRows.length > 0) {
                         const addRowDiv = document.createElement('div');
                         addRowDiv.style.cssText = 'margin-top: 10px; text-align: right;';
@@ -5312,6 +5288,9 @@
                 shouldSave = false;
             }
             
+            // #region agent log
+            const __rt0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+            // #endregion
             const folderContent = document.getElementById('folder-content-' + quotationId);
             if (!folderContent) {
                 return;
@@ -5440,6 +5419,10 @@
                     saveToLocalStorage();
                 }
             }
+            // #region agent log
+            const __rt1 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',runId:'add-freight',hypothesisId:'H_recalc',location:'index.html:recalculateApprovalQuotationTotals:exit',message:'Recalc Approval totals done',data:{quotationId:quotationId,elapsedMs:Math.round((__rt1-__rt0)*10)/10,itemRows:itemRows?itemRows.length:null,freightRows:freightRows?freightRows.length:null,grandTotal:grandTotal},timestamp:Date.now()})}).catch(function(){});
+            // #endregion
         }
         
         /*
@@ -5916,9 +5899,6 @@
                     amount
                 });
             });
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',location:'index.html:parseQuotationTableForPdf',message:'Parsed table for PDF',data:{totalRows:rows.length,pipeRows:rows.filter(r=>r.type==='pipe').length,itemRows:rows.filter(r=>r.type==='item').length,freightRows:rows.filter(r=>r.type==='freight').length},hypothesisId:'H6',timestamp:Date.now()})}).catch(function(){}); 
-            // #endregion
             return rows;
         }
 
@@ -6199,23 +6179,6 @@
                     }
                 });
                 freightTotalForPdf = roundAmountToWhole(freightTotal);
-                // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{
-                    method:'POST',
-                    headers:{
-                        'Content-Type':'application/json',
-                        'X-Debug-Session-Id':'2223e4'
-                    },
-                    body:JSON.stringify({
-                        sessionId:'2223e4',
-                        location:'index.html:downloadQuotationPdf:freight',
-                        message:'Freight values before PDF',
-                        data:{quotationId:quotationId,freightValues:freightValues,freightTotal:freightTotal},
-                        hypothesisId:'H-freight-total',
-                        timestamp:Date.now()
-                    })
-                }).catch(function(){});
-                // #endregion
             }
             const colWidths = [35, 225, 70, 95, 110];
             let tableEl = tableForPdfHeaders;
@@ -6364,9 +6327,6 @@
                 return;
             }
 
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',runId:'approval-expand',hypothesisId:'H_toggle',location:'index.html:toggleQuotationFolder',message:'Toggle approval folder',data:{quotationId:quotationId,wasOpen:folderContent.classList.contains('show'),contentChildCount:folderContent.children.length,contentTextLen:(folderContent.textContent||'').length},timestamp:Date.now()})}).catch(function(){});
-            // #endregion
             
             // Toggle the content visibility
             if (folderContent.classList.contains('show')) {
@@ -6379,12 +6339,6 @@
                 toggleIcon.classList.add('open');
             }
 
-            // #region agent log
-            try {
-                const container = document.getElementById('approvedQuotationsContainer');
-                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',runId:'approval-expand',hypothesisId:'H_contain',location:'index.html:toggleQuotationFolder:layout',message:'Approval container layout after toggle',data:{quotationId:quotationId,containerClientH:container?container.clientHeight:null,containerScrollH:container?container.scrollHeight:null,contentClientH:folderContent.clientHeight,contentScrollH:folderContent.scrollHeight,containerContain:container?getComputedStyle(container).contain:null,containerOverflowY:container?getComputedStyle(container).overflowY:null},timestamp:Date.now()})}).catch(function(){});
-            } catch (_) {}
-            // #endregion
         }
 
         // Ensure logo loads correctly on localhost
