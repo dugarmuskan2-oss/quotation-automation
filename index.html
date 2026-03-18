@@ -355,8 +355,11 @@
             }
         }
         
+        /* IMPORTANT: do NOT use layout containment here.
+           It prevents the container from expanding when a folder opens,
+           causing only a thin "slice" of expanded content to be visible. */
         #approvedQuotationsContainer {
-            contain: layout;
+            contain: none;
         }
 
         /* Folder-like styling for saved quotations */
@@ -6375,6 +6378,13 @@
                 folderContent.classList.add('show');
                 toggleIcon.classList.add('open');
             }
+
+            // #region agent log
+            try {
+                const container = document.getElementById('approvedQuotationsContainer');
+                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',runId:'approval-expand',hypothesisId:'H_contain',location:'index.html:toggleQuotationFolder:layout',message:'Approval container layout after toggle',data:{quotationId:quotationId,containerClientH:container?container.clientHeight:null,containerScrollH:container?container.scrollHeight:null,contentClientH:folderContent.clientHeight,contentScrollH:folderContent.scrollHeight,containerContain:container?getComputedStyle(container).contain:null,containerOverflowY:container?getComputedStyle(container).overflowY:null},timestamp:Date.now()})}).catch(function(){});
+            } catch (_) {}
+            // #endregion
         }
 
         // Ensure logo loads correctly on localhost
