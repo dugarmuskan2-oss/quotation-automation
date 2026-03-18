@@ -3564,7 +3564,12 @@
             var rowId = opt.rowId || 'freight-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
             var deleteBtn = '';
             if (opt.isApproval && quotationId) {
-                deleteBtn = '<td><button class="delete-row-btn" onclick="deleteApprovalRow(\'' + quotationId + '\', \'' + rowId + '\')" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button></td>';
+                deleteBtn = '<td style="text-align:center; vertical-align:middle; padding:5px;">' +
+                    '<div style="display:flex; gap:6px; justify-content:center; align-items:center;">' +
+                        '<button type="button" onclick="applyFreightForApproval(\'' + quotationId + '\', \'' + rowId + '\')" title="Distribute freight into margins" style="background:#FF9800; color:white; border:none; padding:4px 8px; cursor:pointer; border-radius:3px; font-size:12px;">FOR</button>' +
+                        '<button class="delete-row-btn" onclick="deleteApprovalRow(\'' + quotationId + '\', \'' + rowId + '\')" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>' +
+                    '</div>' +
+                '</td>';
             } else if (hasButtonColumn) {
                 deleteBtn = '<td style="text-align: center; vertical-align: middle; padding: 5px;"><button onclick="deleteRow(event)" title="Delete row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button></td>';
             }
@@ -3648,6 +3653,132 @@
             const __t1 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
             fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',runId:'add-freight',hypothesisId:'H_addFreight',location:'index.html:addFreightRowApproval:exit',message:'Add Freight (Approval) end',data:{quotationId:quotationId,elapsedMs:Math.round((__t1-__t0)*10)/10,tbodyChildCount:tbody.children.length},timestamp:Date.now()})}).catch(function(){});
             // #endregion
+        }
+
+        /*
+            ============================================
+            APPLY FREIGHT "FOR" (APPROVAL)
+            ============================================
+            Distribute Freight into Margin % across all item rows so the grand total stays the same.
+        */
+        function applyFreightForApproval(quotationId, freightRowId) {
+            try {
+                const folderContent = document.getElementById('folder-content-' + quotationId);
+                if (!folderContent) return;
+
+                // Start from up-to-date totals
+                recalculateApprovalQuotationTotals(quotationId, false);
+                const originalGrandTotal = getApprovalGrandTotalNumber(folderContent);
+
+                const freightRow = freightRowId ? document.getElementById(freightRowId) : null;
+                const freightInput = (freightRow && folderContent.contains(freightRow))
+                    ? freightRow.querySelector('.freight-amount-input[data-field="lineTotal"]')
+                    : folderContent.querySelector('.freight-row .freight-amount-input[data-field="lineTotal"]');
+
+                const freightAmount = roundAmountToWhole(getNumberFromInput(freightInput));
+                if (!freightAmount || freightAmount <= 0) {
+                    alert('Freight is 0. Nothing to distribute.');
+                    return;
+                }
+
+                const itemRows = Array.from(folderContent.querySelectorAll('tbody tr.item-row'));
+                const bases = collectFreightDistributionBases(itemRows);
+                if (bases.baseSum <= 0) {
+                    alert('Cannot distribute freight: Base total is 0 (missing Qty/Base Rate).');
+                    return;
+                }
+
+                const deltaMargin = computeDeltaMarginPercent(freightAmount, bases.baseSum);
+                applyDeltaMarginToRows(bases.rows, deltaMargin);
+
+                // Zero out freight
+                if (freightInput) {
+                    freightInput.value = '0';
+                    freightInput.setAttribute('value', '0');
+                }
+
+                // Recalc after margin changes
+                recalculateApprovalQuotationTotals(quotationId, false);
+                const afterGrandTotal = getApprovalGrandTotalNumber(folderContent);
+
+                // Fix rounding drift so grand total stays exactly the same
+                const diff = roundAmountToWhole(originalGrandTotal - afterGrandTotal);
+                if (diff !== 0) {
+                    applyRoundingFixToOneRow(bases.rows, diff);
+                    recalculateApprovalQuotationTotals(quotationId, false);
+                }
+
+                // Mark as edited (so Save is enabled / autosave sees changes)
+                if (typeof updateQuotationFromApprovalSection === 'function') {
+                    updateQuotationFromApprovalSection(quotationId, null);
+                }
+            } catch (e) {
+                console.error('applyFreightForApproval error:', e);
+                alert('Failed to apply Freight FOR. Check console for details.');
+            }
+        }
+
+        function getNumberFromInput(inputEl) {
+            if (!inputEl) return 0;
+            const raw = (inputEl.value || inputEl.getAttribute('value') || '').toString().replace(/,/g, '').trim();
+            const n = parseFloat(raw);
+            return (n !== n || !isFinite(n)) ? 0 : n;
+        }
+
+        function getApprovalGrandTotalNumber(folderContent) {
+            const gt = folderContent ? folderContent.querySelector('.grand-total span') : null;
+            const txt = gt ? (gt.textContent || '') : '';
+            const cleaned = txt.replace(/Total:\s*₹/i, '').replace(/Total:\s*Rs\.?/i, '').replace(/,/g, '').trim();
+            const n = parseFloat(cleaned);
+            return (n !== n || !isFinite(n)) ? 0 : n;
+        }
+
+        function collectFreightDistributionBases(itemRows) {
+            const rows = [];
+            let baseSum = 0;
+            itemRows.forEach(function(row) {
+                if (row.classList.contains('freight-row') || row.getAttribute('data-row-type') === 'freight') return;
+                const qty = getNumberFromInput(row.querySelector('[data-field="quantity"]'));
+                const unitRate = getNumberFromInput(row.querySelector('[data-field="unitRate"]'));
+                const base = qty * unitRate;
+                rows.push({ row: row, base: base > 0 ? base : 0 });
+                if (base > 0) baseSum += base;
+            });
+            return { rows: rows, baseSum: baseSum };
+        }
+
+        function computeDeltaMarginPercent(freightAmount, baseSum) {
+            return (baseSum > 0) ? (100 * (freightAmount / baseSum)) : 0;
+        }
+
+        function applyDeltaMarginToRows(rowBases, deltaMargin) {
+            rowBases.forEach(function(rb) {
+                const row = rb.row;
+                const marginInput = row.querySelector('[data-field="marginPercent"]');
+                if (!marginInput) return;
+                const current = getNumberFromInput(marginInput);
+                const next = current + deltaMargin;
+                marginInput.value = (Math.round(next * 100) / 100).toFixed(2);
+                marginInput.setAttribute('value', marginInput.value);
+                const finalRateInput = row.querySelector('[data-field="finalRate"]');
+                if (finalRateInput && finalRateInput.dataset) finalRateInput.dataset.manual = '';
+                const lineTotalInput = row.querySelector('[data-field="lineTotal"]');
+                if (lineTotalInput && lineTotalInput.dataset) lineTotalInput.dataset.manual = '';
+            });
+        }
+
+        function applyRoundingFixToOneRow(rowBases, diff) {
+            const eligible = rowBases.filter(function(rb) { return rb && rb.row && rb.row.querySelector('[data-field="lineTotal"]'); });
+            if (!eligible.length) return;
+            eligible.sort(function(a, b) { return (b.base || 0) - (a.base || 0); });
+            const targetRow = eligible[0].row;
+            const lineTotalInput = targetRow.querySelector('[data-field="lineTotal"]');
+            if (!lineTotalInput) return;
+            const current = roundAmountToWhole(getNumberFromInput(lineTotalInput));
+            const next = current + diff;
+            lineTotalInput.value = String(next);
+            lineTotalInput.setAttribute('value', lineTotalInput.value);
+            if (lineTotalInput.dataset) lineTotalInput.dataset.manual = 'true';
         }
 
         function setLogoSource() {
