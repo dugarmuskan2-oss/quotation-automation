@@ -1165,6 +1165,31 @@
             Variables store data (like numbers, text, etc.)
             Functions are reusable blocks of code that do specific tasks
         */
+
+        // #region agent log
+        window.addEventListener('error', function(e) {
+            try {
+                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{
+                    method:'POST',
+                    headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},
+                    body:JSON.stringify({
+                        sessionId:'2223e4',
+                        runId:'approval-expand',
+                        hypothesisId:'H_err',
+                        location:'index.html:window.onerror',
+                        message:'Window error',
+                        data:{
+                            message:String(e && e.message || ''),
+                            filename:String(e && e.filename || ''),
+                            lineno:e && e.lineno,
+                            colno:e && e.colno
+                        },
+                        timestamp:Date.now()
+                    })
+                }).catch(function(){});
+            } catch (_) {}
+        });
+        // #endregion
         
         /*
             ============================================
@@ -4138,6 +4163,9 @@
                 const gmailLinkUrl = quotation.emailLink || (quotation.gmailMessageId ? 'https://mail.google.com/mail/u/0/#inbox/' + quotation.gmailMessageId : '');
                 const gmailLinkHTML = gmailLinkUrl ? `<a href="${escapeHtml(gmailLinkUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation();" class="gmail-link" style="margin-left:8px;font-size:12px;">View in Gmail</a>` : '';
 
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',runId:'approval-expand',hypothesisId:'H_build',location:'index.html:buildAllApprovedQuotationsHTMLForList',message:'Build folder HTML',data:{id:quotation.id,hasHeader:!!quotation.headerHTML,hasTable:!!quotation.tableHTML,tableLen:(quotation.tableHTML||'').length,grandTotal:quotation.grandTotal},timestamp:Date.now()})}).catch(function(){});
+                // #endregion
                 allQuotationsHTML += `
                     <div class="quotation-folder" id="folder-${quotation.id}">
                         <div class="quotation-folder-header" onclick="toggleQuotationFolder(${quotation.id})">
@@ -4271,6 +4299,9 @@
         function buildApprovalSplitLayout({ quotation, termsText, approveButtonHTML, saveButtonHTML, downloadButtonHTML }) {
             const sidePanelHTML = buildApprovalSidePanelHTML(quotation);
 
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',runId:'approval-expand',hypothesisId:'H_layout',location:'index.html:buildApprovalSplitLayout',message:'Build approval split layout',data:{id:quotation && quotation.id,hasTable:!!(quotation && quotation.tableHTML),tableLen:(quotation && quotation.tableHTML ? quotation.tableHTML.length : 0)},timestamp:Date.now()})}).catch(function(){});
+            // #endregion
             return `
                 <div class="approval-layout">
                     <div class="approval-quotation">
@@ -6329,6 +6360,10 @@
             if (!folderContent || !toggleIcon) {
                 return;
             }
+
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',runId:'approval-expand',hypothesisId:'H_toggle',location:'index.html:toggleQuotationFolder',message:'Toggle approval folder',data:{quotationId:quotationId,wasOpen:folderContent.classList.contains('show'),contentChildCount:folderContent.children.length,contentTextLen:(folderContent.textContent||'').length},timestamp:Date.now()})}).catch(function(){});
+            // #endregion
             
             // Toggle the content visibility
             if (folderContent.classList.contains('show')) {
