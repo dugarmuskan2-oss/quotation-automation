@@ -4764,6 +4764,19 @@
                 container.addEventListener('change', autosaveHandler);
                 container.addEventListener('focusout', autosaveHandler);
             }
+            if (!container.dataset.approvalFreightRecalcBound) {
+                container.dataset.approvalFreightRecalcBound = 'true';
+                container.addEventListener('input', function(e) {
+                    var input = e.target;
+                    if (input.tagName !== 'INPUT' || !input.getAttribute('data-field') || input.getAttribute('data-field') !== 'lineTotal') return;
+                    var row = input.closest('tr');
+                    if (!row || !row.classList.contains('freight-row')) return;
+                    var folder = input.closest('.quotation-folder');
+                    if (!folder || !folder.id) return;
+                    var quotationId = folder.id.replace('folder-', '');
+                    recalculateApprovalQuotationTotals(quotationId, false);
+                });
+            }
             
             // Find all quotation folders in Approval section
             const quotationFolders = document.querySelectorAll('#approvedQuotationsContainer .quotation-folder');
@@ -5727,18 +5740,33 @@
                 grandTotal += lineTotal;
             });
             
+            let freightTotalForDisplay = 0;
             freightRows.forEach(function(row) {
                 const lineTotalInput = row.querySelector('[data-field="lineTotal"]');
                 let lineTotal = 0;
                 if (lineTotalInput && lineTotalInput.tagName === 'INPUT') {
                     lineTotal = parseFloat(lineTotalInput.value || 0) || 0;
                 }
-                grandTotal += roundAmountToWhole(lineTotal);
+                const rounded = roundAmountToWhole(lineTotal);
+                grandTotal += rounded;
+                freightTotalForDisplay += rounded;
             });
             
             const grandTotalElement = folderContent.querySelector('.grand-total span');
             if (grandTotalElement) {
                 grandTotalElement.textContent = `Total: ₹${formatIndianNumber(roundAmountToWhole(grandTotal), true)}`;
+            }
+            const quotation = approvedQuotations.find(function(q) { return idsMatch(q.id, quotationId); });
+            const hideFreightInSummary = quotation && quotation.freightDistributedIntoMargin;
+            const freightSummary = folderContent.querySelector('.freight-summary');
+            const freightSummaryAmount = folderContent.querySelector('.freight-summary-amount');
+            if (freightSummary && freightSummaryAmount) {
+                if (freightTotalForDisplay > 0 && !hideFreightInSummary) {
+                    freightSummaryAmount.textContent = formatIndianNumber(freightTotalForDisplay, true);
+                    freightSummary.style.display = '';
+                } else {
+                    freightSummary.style.display = 'none';
+                }
             }
             
             const quotationIndex = approvedQuotations.findIndex(function(q) {
