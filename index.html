@@ -4873,8 +4873,8 @@
                         actions.appendChild(deleteHeaderBtn);
                     });
                     
-                    // Process each item row (all tbody rows that aren't pipe-type-header)
-                    const itemRows = table.querySelectorAll('tbody tr:not(.pipe-type-header)');
+                    // Process each item row (all tbody rows that aren't pipe-type-header and aren't freight)
+                    const itemRows = table.querySelectorAll('tbody tr:not(.pipe-type-header):not(.freight-row)');
                     itemRows.forEach(function(row, index) {
                         if (!row.classList.contains('item-row')) row.classList.add('item-row');
                         if (!row.id) {
@@ -4980,6 +4980,49 @@
                                 setTimeout(function() { recalculateApprovalQuotationTotals(qid, false); }, 0);
                             });
                         });
+                    });
+                    
+                    // Ensure every freight row has FOR, UNDO, and delete in its actions cell (fixes saved tableHTML with old markup)
+                    const freightRows = table.querySelectorAll('tbody tr.freight-row');
+                    freightRows.forEach(function(freightRow) {
+                        const rowId = freightRow.id || freightRow.getAttribute('data-row-id') || ('freight-' + quotationId + '-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9));
+                        if (!freightRow.id) freightRow.id = rowId;
+                        var actionsCell = freightRow.querySelector('td:last-child');
+                        if (!actionsCell) {
+                            actionsCell = document.createElement('td');
+                            actionsCell.style.cssText = 'text-align:center; vertical-align:middle; padding:5px;';
+                            freightRow.appendChild(actionsCell);
+                        }
+                        var hasFor = actionsCell.querySelector('button[onclick*="applyFreightForApproval"]');
+                        var hasUndo = actionsCell.querySelector('button[onclick*="undoFreightForApproval"]');
+                        if (hasFor && hasUndo && actionsCell.querySelector('.delete-row-btn')) return;
+                        actionsCell.innerHTML = '';
+                        actionsCell.style.cssText = 'text-align:center; vertical-align:middle; padding:5px;';
+                        var div = document.createElement('div');
+                        div.style.cssText = 'display:flex; gap:6px; justify-content:center; align-items:center;';
+                        var forBtn = document.createElement('button');
+                        forBtn.type = 'button';
+                        forBtn.textContent = 'FOR';
+                        forBtn.title = 'Distribute freight into margins';
+                        forBtn.style.cssText = 'background:#FF9800; color:white; border:none; padding:4px 8px; cursor:pointer; border-radius:3px; font-size:12px;';
+                        forBtn.onclick = function() { applyFreightForApproval(quotationId, rowId); };
+                        var undoBtn = document.createElement('button');
+                        undoBtn.type = 'button';
+                        undoBtn.textContent = 'UNDO';
+                        undoBtn.title = 'Undo Freight FOR';
+                        undoBtn.style.cssText = 'background:#607D8B; color:white; border:none; padding:4px 8px; cursor:pointer; border-radius:3px; font-size:12px;';
+                        undoBtn.onclick = function() { undoFreightForApproval(quotationId, rowId); };
+                        var delBtn = document.createElement('button');
+                        delBtn.type = 'button';
+                        delBtn.className = 'delete-row-btn';
+                        delBtn.textContent = '\uD83D\uDDD1\uFE0F';
+                        delBtn.title = 'Delete row';
+                        delBtn.style.cssText = 'background:#f44336; color:white; border:none; padding:4px 8px; cursor:pointer; border-radius:3px; font-size:12px;';
+                        delBtn.onclick = function() { deleteApprovalRow(quotationId, rowId); };
+                        div.appendChild(forBtn);
+                        div.appendChild(undoBtn);
+                        div.appendChild(delBtn);
+                        actionsCell.appendChild(div);
                     });
                     
                     // Add Add Freight button if it doesn't exist
