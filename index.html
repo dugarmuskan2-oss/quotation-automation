@@ -361,6 +361,11 @@
         #approvedQuotationsContainer {
             contain: none;
         }
+        /* Freight row when FOR applied: lighter to indicate it is not shown in PDF */
+        .freight-row.freight-distributed {
+            opacity: 0.55;
+            background-color: rgba(0, 0, 0, 0.04);
+        }
 
         /* Folder-like styling for saved quotations */
         .quotation-folder {
@@ -3040,7 +3045,10 @@
                 1. Finds all item rows
                 2. Calculates and updates grand total
             */
-            
+            // #region agent log
+            var _t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',hypothesisId:'H_recalc',location:'index.html:recalculateAllTotals:entry',message:'Recalc All Totals entry',data:{},timestamp:Date.now()})}).catch(function(){});
+            // #endregion
             // Get all item rows in Creation table
             const tableBody = document.getElementById('quotationTableBody');
             if (!tableBody) {
@@ -3082,6 +3090,10 @@
                     freightSummary.style.display = 'none';
                 }
             }
+            // #region agent log
+            var _t1 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',hypothesisId:'H_recalc',location:'index.html:recalculateAllTotals:exit',message:'Recalc All Totals exit',data:{elapsedMs:Math.round((_t1-_t0)*100)/100,rowCount:itemRows.length},timestamp:Date.now()})}).catch(function(){});
+            // #endregion
         }
         
         /*
@@ -3293,6 +3305,10 @@
         }
 
         function recalculateAllTotalsInContainer(container) {
+            // #region agent log
+            var _c0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',hypothesisId:'H_recalc',location:'index.html:recalculateAllTotalsInContainer:entry',message:'Recalc InContainer entry',data:{},timestamp:Date.now()})}).catch(function(){});
+            // #endregion
             if (!container) {
                 return;
             }
@@ -3333,6 +3349,10 @@
                     freightSummary.style.display = 'none';
                 }
             }
+            // #region agent log
+            var _c1 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',hypothesisId:'H_recalc',location:'index.html:recalculateAllTotalsInContainer:exit',message:'Recalc InContainer exit',data:{elapsedMs:Math.round((_c1-_c0)*100)/100,rowCount:itemRows.length},timestamp:Date.now()})}).catch(function(){});
+            // #endregion
         }
         
         /*
@@ -3708,6 +3728,14 @@
                     freightInput.setAttribute('value', '0');
                 }
 
+                // Mark freight row as distributed (lighter = not shown in PDF)
+                const freightRowEl = freightRow || folderContent.querySelector('.freight-row');
+                if (freightRowEl) freightRowEl.classList.add('freight-distributed');
+
+                // Persist flag so PDF and re-renders skip freight line
+                const qIndex = approvedQuotations.findIndex(function(q) { return idsMatch(q.id, quotationId); });
+                if (qIndex !== -1) approvedQuotations[qIndex].freightDistributedIntoMargin = true;
+
                 // Recalc after margin changes
                 recalculateApprovalQuotationTotals(quotationId, false);
                 const afterGrandTotal = getApprovalGrandTotalNumber(folderContent);
@@ -3776,6 +3804,13 @@
 
                 recalculateApprovalQuotationTotals(quotationId, false);
                 clearFreightForUndoSnapshot(quotationId);
+
+                // Remove distributed state so freight shows in PDF again
+                const allFreightRows = folderContent.querySelectorAll('.freight-row');
+                allFreightRows.forEach(function(r) { r.classList.remove('freight-distributed'); });
+                const qIndex = approvedQuotations.findIndex(function(q) { return idsMatch(q.id, quotationId); });
+                if (qIndex !== -1) approvedQuotations[qIndex].freightDistributedIntoMargin = false;
+
                 if (typeof updateQuotationFromApprovalSection === 'function') {
                     updateQuotationFromApprovalSection(quotationId, null);
                 }
@@ -5023,6 +5058,11 @@
                         div.appendChild(undoBtn);
                         div.appendChild(delBtn);
                         actionsCell.appendChild(div);
+                        // Restore lighter style when FOR was applied (so PDF skips freight)
+                        const quotation = approvedQuotations.find(function(q) { return idsMatch(q.id, quotationId); });
+                        if (quotation && quotation.freightDistributedIntoMargin) {
+                            freightRow.classList.add('freight-distributed');
+                        }
                     });
                     
                     // Add Add Freight button if it doesn't exist
@@ -5581,6 +5621,7 @@
             
             // #region agent log
             const __rt0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',hypothesisId:'H_recalc',location:'index.html:recalculateApprovalQuotationTotals:entry',message:'Recalc Approval entry',data:{quotationId:quotationId},timestamp:Date.now()})}).catch(function(){});
             // #endregion
             const folderContent = document.getElementById('folder-content-' + quotationId);
             if (!folderContent) {
@@ -6550,8 +6591,8 @@
                 cursorY += rowHeight;
             });
 
-            // Draw Freight line separately below the table, above Total
-            if (freightTotalForPdf > 0) {
+            // Draw Freight line only when FOR has not been applied (when applied, freight is in rates and not shown in PDF)
+            if (freightTotalForPdf > 0 && !quotation.freightDistributedIntoMargin) {
                 const rowHeight = 18;
                 ensureSpace(rowHeight + 4);
                 doc.setFont('helvetica', 'bold');
