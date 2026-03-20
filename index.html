@@ -5702,20 +5702,25 @@
                 const lineTotalInput = row.querySelector('[data-field="lineTotal"]');
                 let lineTotal = quantity * finalRate;
                 if (lineTotal !== lineTotal) lineTotal = 0;
-                if (lineTotalInput && lineTotalInput.tagName === 'INPUT' && lineTotalInput.dataset.manual === 'true') {
+                if (lineTotalInput && lineTotalInput.tagName === 'INPUT') {
                     const manualLineTotal = parseFloat(lineTotalInput.value || 0) || 0;
-                    if (quantity > 0) {
-                        finalRate = manualLineTotal / quantity;
-                        if (finalRate !== finalRate) finalRate = 0;
-                        if (finalRateInput) {
-                            finalRateInput.value = String(finalRate);
+                    const hasManualFlag = lineTotalInput.dataset.manual === 'true';
+                    if (hasManualFlag || (quantity === 0 && manualLineTotal !== 0)) {
+                        if (quantity > 0) {
+                            finalRate = manualLineTotal / quantity;
+                            if (finalRate !== finalRate) finalRate = 0;
+                            if (finalRateInput) {
+                                finalRateInput.value = String(finalRate);
+                            }
+                            lineTotal = quantity * finalRate;
+                            if (hasManualFlag) lineTotalInput.dataset.manual = '';
+                        } else {
+                            lineTotal = manualLineTotal;
+                            if (hasManualFlag) { /* keep manual when qty is 0 so next recalc does not overwrite with 0 */ }
+                            else lineTotalInput.dataset.manual = 'true'; // preserve non-zero amount when qty is 0
                         }
-                        lineTotal = quantity * finalRate;
-                    } else {
-                        lineTotal = manualLineTotal;
+                        if (lineTotal !== lineTotal) lineTotal = 0;
                     }
-                    if (lineTotal !== lineTotal) lineTotal = 0;
-                    lineTotalInput.dataset.manual = '';
                 }
                 lineTotal = roundAmountToWhole(lineTotal);
                 
