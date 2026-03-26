@@ -4076,6 +4076,19 @@
             // #endregion agent log
         }
 
+        function attachConfigToggleDebugListener() {
+            const button = document.querySelector('.config-toggle-btn');
+            if (!button || button.dataset.debugToggleBound === 'true') {
+                return;
+            }
+            button.addEventListener('click', function() {
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H_show_1/H_show_4',location:'index.html:attachConfigToggleDebugListener',message:'Config toggle button clicked',data:{buttonText:button.textContent},timestamp:Date.now()})}).catch(()=>{});
+                // #endregion agent log
+            });
+            button.dataset.debugToggleBound = 'true';
+        }
+
         function normalizeTermsText(text) {
             if (!text) {
                 return text;
@@ -6912,6 +6925,10 @@
         
         // This code runs when the page finishes loading
         console.log("Quotation Generator loaded successfully!");
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H_show_4',location:'index.html:init',message:'Frontend initialized',data:{hasConfigButton:!!document.querySelector('.config-toggle-btn'),hasConfigContent:!!document.getElementById('configContent')},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion agent log
+        attachConfigToggleDebugListener();
         
         // Load saved quotations from backend
         initQuotations();
