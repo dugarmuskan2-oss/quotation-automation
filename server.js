@@ -1509,7 +1509,7 @@ Extract all pipe information from the enquiry (including all attached enquiry PD
         // Calculate final rates and line totals if not provided
         quotationData.lineItems = quotationData.lineItems.map(item => {
             const unitRate = parseFloat(item.unitRate) || 0;
-            const kgPerMeterRaw = parseFloat(String(item.kgPerMeter || '').replace(/,/g, '').trim());
+            const kgPerMeterRaw = parseFlexibleNumber(item.kgPerMeter);
             const kgPerMeter = Number.isFinite(kgPerMeterRaw) ? kgPerMeterRaw : null;
             const marginPercentRaw = parseFloat(item.marginPercent);
             const marginPercent = Number.isFinite(marginPercentRaw) ? marginPercentRaw : 0;
@@ -1519,6 +1519,7 @@ Extract all pipe information from the enquiry (including all attached enquiry PD
             const lineTotal = quantity * finalRate;
 
             return {
+                lineItemId: item.lineItemId || createLineItemId(),
                 originalDescription: item.originalDescription || '',
                 identifiedPipeType: item.identifiedPipeType || '',
                 quantity: quantity.toString(),
@@ -1881,7 +1882,7 @@ Extract all pipe information from the enquiry, match with rates from the uploade
         // Calculate final rates and line totals if not provided
         quotationData.lineItems = quotationData.lineItems.map(item => {
             const unitRate = parseFloat(item.unitRate) || 0;
-            const kgPerMeterRaw = parseFloat(String(item.kgPerMeter || '').replace(/,/g, '').trim());
+            const kgPerMeterRaw = parseFlexibleNumber(item.kgPerMeter);
             const kgPerMeter = Number.isFinite(kgPerMeterRaw) ? kgPerMeterRaw : null;
             const marginPercentRaw = parseFloat(item.marginPercent);
             const marginPercent = Number.isFinite(marginPercentRaw) ? marginPercentRaw : 0;
@@ -1891,6 +1892,7 @@ Extract all pipe information from the enquiry, match with rates from the uploade
             const lineTotal = quantity * finalRate;
             
             return {
+                lineItemId: item.lineItemId || createLineItemId(),
                 originalDescription: item.originalDescription || '',
                 identifiedPipeType: item.identifiedPipeType || '',
                 quantity: quantity.toString(),
@@ -2035,6 +2037,45 @@ async function getDefaultTermsContent() {
     const p = path.join(baseDir, 'default-terms.txt');
     return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
 }
+
+function createLineItemId(prefix = 'line-item') {
+    return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function parseFlexibleNumber(value) {
+    if (value == null) {
+        return null;
+    }
+    let normalized = String(value).trim();
+    if (!normalized) {
+        return null;
+    }
+    normalized = normalized.replace(/[^\d,.\-+]/g, '');
+    if (!normalized) {
+        return null;
+    }
+
+    const hasComma = normalized.includes(',');
+    const hasDot = normalized.includes('.');
+
+    if (hasComma && hasDot) {
+        if (normalized.lastIndexOf(',') > normalized.lastIndexOf('.')) {
+            normalized = normalized.replace(/\./g, '').replace(',', '.');
+        } else {
+            normalized = normalized.replace(/,/g, '');
+        }
+    } else if (hasComma) {
+        if (/^[+-]?\d{1,3}(,\d{3})+$/.test(normalized)) {
+            normalized = normalized.replace(/,/g, '');
+        } else {
+            normalized = normalized.replace(',', '.');
+        }
+    }
+
+    const parsed = parseFloat(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
 function generateQuotationData(opts) {
     return new Promise((resolve, reject) => {
         const res = {

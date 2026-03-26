@@ -1581,8 +1581,6 @@
         async function saveInstructions() {
             const instructionsText = document.getElementById('instructionsText').value.trim();
             const statusEl = document.getElementById('instructionsStatus');
-            const configContent = document.getElementById('configContent');
-            const configButton = document.querySelector('.config-toggle-btn');
             
             if (!instructionsText) {
                 statusEl.textContent = 'Please enter instructions first';
@@ -1606,9 +1604,6 @@
                 const result = await safeJsonParse(response);
                 
                 if (response.ok) {
-                    // #region agent log
-                    fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H1/H4',location:'index.html:saveInstructions',message:'Instructions saved successfully',data:{configDisplay:configContent?configContent.style.display:null,buttonText:configButton?configButton.textContent:null,textLength:instructionsText.length},timestamp:Date.now()})}).catch(()=>{});
-                    // #endregion agent log
                     statusEl.textContent = '✓ Instructions saved (shared with all devices)';
                     statusEl.style.color = '#4CAF50';
                 } else {
@@ -1668,8 +1663,6 @@
             const statusEl = document.getElementById('defaultTermsStatus');
             if (!textarea || !statusEl) return;
             const value = textarea.value;
-            const configContent = document.getElementById('configContent');
-            const configButton = document.querySelector('.config-toggle-btn');
             try {
                 statusEl.textContent = 'Saving...';
                 statusEl.style.color = '#666';
@@ -1680,9 +1673,6 @@
                 });
                 const result = await safeJsonParse(response);
                 if (response.ok) {
-                    // #region agent log
-                    fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H1/H4',location:'index.html:saveDefaultTerms',message:'Default terms saved successfully',data:{configDisplay:configContent?configContent.style.display:null,buttonText:configButton?configButton.textContent:null,textLength:value.length},timestamp:Date.now()})}).catch(()=>{});
-                    // #endregion agent log
                     defaultTermsText = value;
                     statusEl.textContent = '✓ Default terms saved (shared with all devices)';
                     statusEl.style.color = '#4CAF50';
@@ -2484,6 +2474,19 @@
                 : [];
         }
 
+        function createLineItemId(prefix = 'line-item') {
+            return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+        }
+
+        function ensureLineItemIds(lineItems) {
+            return cloneLineItems(lineItems).map(function(item) {
+                return {
+                    ...item,
+                    lineItemId: item && item.lineItemId ? item.lineItemId : createLineItemId()
+                };
+            });
+        }
+
         function normalizeLineItemText(text) {
             return String(text || '').trim().toLowerCase().replace(/\s+/g, ' ');
         }
@@ -2499,27 +2502,57 @@
             return el.textContent || '';
         }
 
-        function resolveKgPerMeterFromSource(desc, sourceLineItems, itemIndex) {
-            const sourceItems = Array.isArray(sourceLineItems) ? sourceLineItems : [];
+        function findSourceLineItemForRow(row, sourceLineItems, itemIndex) {
+            const sourceItems = ensureLineItemIds(sourceLineItems);
+            const rowLineItemId = row ? (row.getAttribute('data-line-item-id') || '').trim() : '';
+            if (rowLineItemId) {
+                const idMatch = sourceItems.find(function(item) {
+                    return item.lineItemId === rowLineItemId;
+                });
+                if (idMatch) {
+                    return idMatch;
+                }
+            }
+            const desc = getFieldValueFromTableRow(row, '[data-field="originalDescription"]').trim();
             const normalizedDesc = normalizeLineItemText(desc);
             const indexedItem = sourceItems[itemIndex];
             if (indexedItem && normalizeLineItemText(indexedItem.originalDescription || indexedItem.description) === normalizedDesc) {
-                return indexedItem.kgPerMeter || '';
+                return indexedItem;
             }
-            const descMatch = sourceItems.find(function(item) {
+            const descMatches = sourceItems.filter(function(item) {
                 return normalizeLineItemText(item.originalDescription || item.description) === normalizedDesc;
             });
-            if (descMatch) {
-                return descMatch.kgPerMeter || '';
+            if (descMatches.length === 1) {
+                return descMatches[0];
             }
-            return indexedItem ? (indexedItem.kgPerMeter || '') : '';
+            return indexedItem || null;
+        }
+
+        function ensureLineItemIdsInTable(tableElement, sourceLineItems) {
+            if (!tableElement) {
+                return;
+            }
+            let itemIndex = 0;
+            tableElement.querySelectorAll('tbody tr').forEach(function(row) {
+                if (!row.classList.contains('item-row')) {
+                    return;
+                }
+                const sourceItem = findSourceLineItemForRow(row, sourceLineItems, itemIndex);
+                const lineItemId = (row.getAttribute('data-line-item-id') || '').trim()
+                    || (sourceItem && sourceItem.lineItemId)
+                    || createLineItemId();
+                row.setAttribute('data-line-item-id', lineItemId);
+                itemIndex += 1;
+            });
         }
 
         function extractStructuredLineItemsFromTable(tableClone, sourceLineItems) {
-            const sourceItems = Array.isArray(sourceLineItems) ? sourceLineItems : [];
+            const sourceItems = ensureLineItemIds(sourceLineItems);
             if (!tableClone) {
                 return cloneLineItems(sourceItems);
             }
+
+            ensureLineItemIdsInTable(tableClone, sourceItems);
 
             const lineItems = [];
             let currentPipeType = '';
@@ -2545,13 +2578,18 @@
                     lineTotal = lineTotalSpan ? String(lineTotalSpan.textContent || '').replace('₹', '').trim() : '';
                 }
 
-                const sourceItem = sourceItems[itemIndex] || {};
+                const sourceItem = findSourceLineItemForRow(row, sourceItems, itemIndex) || {};
+                const lineItemId = (row.getAttribute('data-line-item-id') || '').trim()
+                    || sourceItem.lineItemId
+                    || createLineItemId();
+                row.setAttribute('data-line-item-id', lineItemId);
                 lineItems.push({
+                    lineItemId: lineItemId,
                     originalDescription: desc,
                     identifiedPipeType: currentPipeType || sourceItem.identifiedPipeType || '',
                     quantity: quantity,
                     unitRate: unitRate,
-                    kgPerMeter: resolveKgPerMeterFromSource(desc, sourceItems, itemIndex),
+                    kgPerMeter: sourceItem.kgPerMeter || '',
                     marginPercent: marginPercent,
                     finalRate: finalRate,
                     lineTotal: lineTotal
@@ -2562,13 +2600,31 @@
             return lineItems.length ? lineItems : cloneLineItems(sourceItems);
         }
 
+        function syncQuotationLineItemsFromApprovalContent(quotation, folderContent) {
+            if (!quotation || !folderContent) {
+                return;
+            }
+            const quotationTable = folderContent.querySelector('.approval-quotation table') || folderContent.querySelector('table');
+            if (!quotationTable) {
+                return;
+            }
+            ensureLineItemIdsInTable(quotationTable, quotation.lineItems);
+            const tableClone = cloneQuotationTableWithValues(quotationTable);
+            quotation.lineItems = extractStructuredLineItemsFromTable(tableClone, quotation.lineItems);
+        }
+
         function renderQuotation(quotationData, creationFolderId) {
-            const clonedLineItems = cloneLineItems(quotationData && quotationData.lineItems);
+            const preparedLineItems = ensureLineItemIds(quotationData && quotationData.lineItems);
+            const preparedQuotationData = {
+                ...quotationData,
+                lineItems: preparedLineItems
+            };
+            const clonedLineItems = cloneLineItems(preparedLineItems);
             currentCreationLineItems = clonedLineItems;
             if (creationFolderId && creationFolderState[creationFolderId]) {
                 creationFolderState[creationFolderId].lineItems = clonedLineItems;
             }
-            displayQuotation(quotationData, !!creationFolderId);
+            displayQuotation(preparedQuotationData, !!creationFolderId);
         }
 
         async function generateQuotation() {
@@ -2846,8 +2902,10 @@
                     
                     // Generate unique row ID
                     const rowId = `row-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                    const lineItemId = item.lineItemId || createLineItemId();
                     row.id = rowId;
                     row.setAttribute('data-pipe-type', pipeType);
+                    row.setAttribute('data-line-item-id', lineItemId);
                     
                     // Create editable inputs for all fields (no pipe type column)
                     row.innerHTML = `
@@ -3259,6 +3317,7 @@
             const row = document.createElement('tr');
             row.className = 'item-row';
             row.setAttribute('data-pipe-type', resolvedPipeType);
+            row.setAttribute('data-line-item-id', createLineItemId());
             const rowNumber = tableBody.querySelectorAll('.item-row').length + 1;
             row.innerHTML = `
                 <td style="text-align: center; vertical-align: middle; padding: 5px;">
@@ -3568,6 +3627,7 @@
             const rowId = `row-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             row.id = rowId;
             row.setAttribute('data-pipe-type', resolvedPipeType);
+            row.setAttribute('data-line-item-id', createLineItemId());
             
             const rowNumber = tableBodyToUse.querySelectorAll('.item-row').length + 1;
             
@@ -4033,11 +4093,11 @@
         }
 
         function toggleConfigSection() {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'pre-fix',hypothesisId:'H1',location:'index.html:toggleConfigSection:entry',message:'toggleConfigSection called',data:{hasContent:!!document.getElementById('configContent'),hasButton:!!document.querySelector('.config-toggle-btn'),contentDisplay:document.getElementById('configContent')?.style?.display,buttonText:document.querySelector('.config-toggle-btn')?.textContent},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion
             const content = document.getElementById('configContent');
             const button = document.querySelector('.config-toggle-btn');
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H2/H3',location:'index.html:toggleConfigSection',message:'toggleConfigSection entered',data:{hasContent:!!content,hasButton:!!button,displayBefore:content?content.style.display:null,buttonTextBefore:button?button.textContent:null},timestamp:Date.now()})}).catch(()=>{});
-            // #endregion agent log
             if (!content || !button) {
                 return;
             }
@@ -4045,10 +4105,28 @@
             const isHidden = content.style.display === 'none' || content.style.display === '';
             content.style.display = isHidden ? 'block' : 'none';
             button.textContent = isHidden ? 'Hide' : 'Show';
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H2/H3',location:'index.html:toggleConfigSection',message:'toggleConfigSection updated state',data:{isHidden:isHidden,displayAfter:content.style.display,buttonTextAfter:button.textContent},timestamp:Date.now()})}).catch(()=>{});
-            // #endregion agent log
         }
+
+        // #region agent log
+        (function attachDebugGlobalHandlers(){
+            if (window.__agentDebugHandlersBound) return;
+            window.__agentDebugHandlersBound = true;
+
+            window.addEventListener('error', function(e){
+                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'pre-fix',hypothesisId:'H2',location:'index.html:window.error',message:'window error',data:{message:String(e.message||''),filename:String(e.filename||''),lineno:e.lineno,colno:e.colno},timestamp:Date.now()})}).catch(()=>{});
+            });
+
+            window.addEventListener('unhandledrejection', function(e){
+                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'pre-fix',hypothesisId:'H2',location:'index.html:window.unhandledrejection',message:'unhandled rejection',data:{reason:String(e.reason&&e.reason.message?e.reason.message:e.reason)},timestamp:Date.now()})}).catch(()=>{});
+            });
+
+            document.addEventListener('click', function(e){
+                const btn = e.target && e.target.closest ? e.target.closest('.config-toggle-btn') : null;
+                if (!btn) return;
+                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'pre-fix',hypothesisId:'H3',location:'index.html:document.click',message:'config toggle button click observed',data:{disabled:!!btn.disabled,text:String(btn.textContent||''),configDisplay:document.getElementById('configContent')?.style?.display},timestamp:Date.now()})}).catch(()=>{});
+            }, true);
+        })();
+        // #endregion
 
         function normalizeTermsText(text) {
             if (!text) {
@@ -4869,6 +4947,9 @@
                 // Get quotation ID from folder ID (format: folder-1234567890)
                 const folderId = folder.id;
                 const quotationId = folderId.replace('folder-', '');
+                const quotation = approvedQuotations.find(function(q) {
+                    return idsMatch(q.id, quotationId);
+                });
                 
                 const folderContent = folder.querySelector('.quotation-folder-content');
                 if (!folderContent) return;
@@ -5006,6 +5087,7 @@
                     });
                     
                     // Process each item row (all tbody rows that aren't pipe-type-header and aren't freight)
+                    ensureLineItemIdsInTable(table, quotation && quotation.lineItems);
                     const itemRows = table.querySelectorAll('tbody tr:not(.pipe-type-header):not(.freight-row)');
                     itemRows.forEach(function(row, index) {
                         if (!row.classList.contains('item-row')) row.classList.add('item-row');
@@ -5419,6 +5501,7 @@
             const rowId = `approval-row-${quotationId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             row.id = rowId;
             row.setAttribute('data-pipe-type', resolvedPipeType);
+            row.setAttribute('data-line-item-id', createLineItemId());
             
             const rowNumber = existingRows.length + 1;
             
@@ -5626,6 +5709,8 @@
                     input.textContent = input.value;
                 }
             });
+
+            syncQuotationLineItemsFromApprovalContent(quotation, folderContent);
             
             // Now clone the folder content with updated values
             const updatedContent = folderContent.cloneNode(true);
@@ -6020,32 +6105,10 @@
                 Returns: Array of line item objects
             */
             
-            // Create a temporary DOM element to parse HTML
             const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = tableHTML;
-            
-            const lineItems = [];
-            const rows = tempDiv.querySelectorAll('.item-row');
-            
-            rows.forEach(function(row) {
-                const size = row.querySelector('[data-field="originalDescription"]')?.value || '';
-                const quantity = row.querySelector('[data-field="quantity"]')?.value || '';
-                const unitRate = row.querySelector('[data-field="unitRate"]')?.value || '';
-                const marginPercent = row.querySelector('[data-field="marginPercent"]')?.value || '';
-                const finalRate = row.querySelector('[data-field="finalRate"]')?.value || '';
-                const lineTotal = row.querySelector('.line-total')?.textContent.replace('₹', '').trim() || '';
-                
-                lineItems.push({
-                    size: size,
-                    quantity: quantity,
-                    unitRate: unitRate,
-                    marginPercent: marginPercent,
-                    finalRate: finalRate,
-                    lineTotal: lineTotal
-                });
-            });
-            
-            return lineItems;
+            tempDiv.innerHTML = tableHTML || '';
+            const table = tempDiv.querySelector('table');
+            return extractStructuredLineItemsFromTable(table, []);
         }
         
         /*
@@ -6084,6 +6147,7 @@
                 }
             });
             recalculateApprovalQuotationTotals(quotation.id, false);
+            syncQuotationLineItemsFromApprovalContent(quotation, folderContent);
             const updatedContent = folderContent.cloneNode(true);
             const headerElement = updatedContent.querySelector('.quotation-header');
             if (headerElement) {
@@ -6184,6 +6248,7 @@
                 
                 // Recalculate totals to ensure grand total is current
                 recalculateApprovalQuotationTotals(quotationId, false);
+                syncQuotationLineItemsFromApprovalContent(quotation, folderContent);
                 
                 // Clone the folder content with updated values
                 const updatedContent = folderContent.cloneNode(true);
@@ -6874,9 +6939,6 @@
         
         // This code runs when the page finishes loading
         console.log("Quotation Generator loaded successfully!");
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H2',location:'index.html:init',message:'Frontend initialized',data:{hasConfigButton:!!document.querySelector('.config-toggle-btn'),hasConfigContent:!!document.getElementById('configContent')},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion agent log
         
         // Load saved quotations from backend
         initQuotations();

@@ -19,6 +19,10 @@ function escapeHtmlForTable(str) {
         .replace(/"/g, '&quot;');
 }
 
+function createLineItemId(prefix = 'line-item') {
+    return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 /**
  * Compute grand total from line items (quantity * finalRate per row).
  * @param {Array<{ quantity?: string|number, finalRate?: string|number }>} lineItems
@@ -58,8 +62,9 @@ function buildItemRowHTML(item, rowIndex, lineTotal, pipeType) {
     const finalRateStr = escapeHtmlForTable(String(Math.round(parseFloat(item.finalRate) || 0)));
     const amountStr = String(Math.round(Number(lineTotal)));
     const dataPipeType = pipeType != null ? ' data-pipe-type="' + escapeHtmlForTable(pipeType) + '"' : '';
+    const lineItemIdAttr = ' data-line-item-id="' + escapeHtmlForTable(item.lineItemId || createLineItemId()) + '"';
     return (
-        '<tr class="item-row"' + dataPipeType + '>' +
+        '<tr class="item-row"' + dataPipeType + lineItemIdAttr + '>' +
         '<td></td>' +
         '<td><input type="text" class="editable-field" data-field="originalDescription" value="' + desc + '" placeholder="Enter description" style="width:100%;border:none;background:transparent;"></td>' +
         '<td><span data-field="quantity">' + quantityStr + '</span></td>' +
