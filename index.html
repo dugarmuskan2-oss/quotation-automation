@@ -4659,6 +4659,9 @@
             totalHeight += 10; // small buffer for container padding
             container.style.maxHeight = `${Math.ceil(totalHeight)}px`;
             container.style.overflowY = 'auto';
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',runId:'approval-thin',hypothesisId:'H_scrollLimit',location:'index.html:updateApprovalContainerScrollLimit',message:'Approval scroll limit applied',data:{folderCount:folders.length,visibleCount:visibleCount,totalHeight:totalHeight,maxHeight:container.style.maxHeight,containerClientHeight:container.clientHeight,containerScrollHeight:container.scrollHeight,firstFolderH:folders[0]?folders[0].getBoundingClientRect().height:null},timestamp:Date.now()})}).catch(function(){});
+            // #endregion
         }
 
         function attachApprovalListeners() {
@@ -6703,6 +6706,13 @@
                 folderContent.classList.add('show');
                 toggleIcon.classList.add('open');
             }
+
+            // #region agent log
+            try {
+                const container = document.getElementById('approvedQuotationsContainer');
+                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',runId:'approval-thin',hypothesisId:'H_toggle',location:'index.html:toggleQuotationFolder',message:'Toggled folder',data:{quotationId:quotationId,isOpen:folderContent.classList.contains('show'),containerMaxHeight:container?container.style.maxHeight:null,containerClientHeight:container?container.clientHeight:null,containerScrollHeight:container?container.scrollHeight:null,folderContentClientHeight:folderContent.clientHeight,folderContentScrollHeight:folderContent.scrollHeight},timestamp:Date.now()})}).catch(function(){});
+            } catch (e) {}
+            // #endregion
 
         }
 
