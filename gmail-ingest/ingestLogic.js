@@ -118,16 +118,6 @@ async function processOneEmail(ctx, email) {
     const allAttachments = email.attachments || [];
     if (allAttachments.length > 0) {
         console.log('Gmail ingest: email ' + emailId + ' has ' + allAttachments.length + ' attachment(s): ' + allAttachments.map(a => a.name || 'unnamed').join(', '));
-        // #region agent log
-        const imageAtts = allAttachments.filter(a => {
-            const ct = (a.contentType || '').toLowerCase();
-            const n = (a.name || '').toLowerCase();
-            return ct.includes('image/') || ['.png', '.jpg', '.jpeg', '.gif', '.webp'].some(e => n.endsWith(e));
-        });
-        try {
-            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '7c69cb' }, body: JSON.stringify({ sessionId: '7c69cb', location: 'ingestLogic.js:processOneEmail', message: 'Attachment audit', data: { emailId, totalAttachments: allAttachments.length, attachmentTypes: allAttachments.map(a => ({ name: a.name, contentType: a.contentType })), imageAttachmentCount: imageAtts.length, hasBodyHtml: !!(email.bodyHtml && email.bodyHtml.trim()) }, hypothesisId: 'H2', timestamp: Date.now() }) }).catch(() => {});
-        } catch (_) {}
-        // #endregion
     }
     if (ctx.extractTextFromAttachment) {
         const excelAttachments = getAllExcelAttachments(allAttachments);
@@ -178,11 +168,6 @@ async function processOneEmail(ctx, email) {
     }
 
     let aiResult;
-    // #region agent log
-    try {
-        fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '7c69cb' }, body: JSON.stringify({ sessionId: '7c69cb', location: 'ingestLogic.js:processOneEmail', message: 'Before generateQuotationData', data: { emailId, hasEnquiryImageDataUrl: !!enquiryImageDataUrl, enquiryFileIdsCount: enquiryFileIds.length }, hypothesisId: 'H3', timestamp: Date.now() }) }).catch(() => {});
-    } catch (_) {}
-    // #endregion
     try {
         aiResult = await ctx.generateQuotationData({
             emailContent: body,

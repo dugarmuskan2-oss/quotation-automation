@@ -1581,6 +1581,8 @@
         async function saveInstructions() {
             const instructionsText = document.getElementById('instructionsText').value.trim();
             const statusEl = document.getElementById('instructionsStatus');
+            const configContent = document.getElementById('configContent');
+            const configButton = document.querySelector('.config-toggle-btn');
             
             if (!instructionsText) {
                 statusEl.textContent = 'Please enter instructions first';
@@ -1604,6 +1606,9 @@
                 const result = await safeJsonParse(response);
                 
                 if (response.ok) {
+                    // #region agent log
+                    fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H1/H4',location:'index.html:saveInstructions',message:'Instructions saved successfully',data:{configDisplay:configContent?configContent.style.display:null,buttonText:configButton?configButton.textContent:null,textLength:instructionsText.length},timestamp:Date.now()})}).catch(()=>{});
+                    // #endregion agent log
                     statusEl.textContent = '✓ Instructions saved (shared with all devices)';
                     statusEl.style.color = '#4CAF50';
                 } else {
@@ -1663,6 +1668,8 @@
             const statusEl = document.getElementById('defaultTermsStatus');
             if (!textarea || !statusEl) return;
             const value = textarea.value;
+            const configContent = document.getElementById('configContent');
+            const configButton = document.querySelector('.config-toggle-btn');
             try {
                 statusEl.textContent = 'Saving...';
                 statusEl.style.color = '#666';
@@ -1673,6 +1680,9 @@
                 });
                 const result = await safeJsonParse(response);
                 if (response.ok) {
+                    // #region agent log
+                    fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H1/H4',location:'index.html:saveDefaultTerms',message:'Default terms saved successfully',data:{configDisplay:configContent?configContent.style.display:null,buttonText:configButton?configButton.textContent:null,textLength:value.length},timestamp:Date.now()})}).catch(()=>{});
+                    // #endregion agent log
                     defaultTermsText = value;
                     statusEl.textContent = '✓ Default terms saved (shared with all devices)';
                     statusEl.style.color = '#4CAF50';
@@ -2233,9 +2243,6 @@
                 return;
             }
             var folderHtml = buildCreationFolderContentFromDisplay(entryId);
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',location:'index.html:finalizeCreationFolderEntry',message:'Creation folder content built',data:{entryId:entryId,hasAddFreight:folderHtml.indexOf('Add Freight')!==-1},hypothesisId:'H4',timestamp:Date.now()})}).catch(function(){});
-            // #endregion
             content.innerHTML = folderHtml;
             const loading = document.getElementById(`creation-loading-${entryId}`);
             if (loading) {
@@ -2561,9 +2568,6 @@
             if (creationFolderId && creationFolderState[creationFolderId]) {
                 creationFolderState[creationFolderId].lineItems = clonedLineItems;
             }
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H3',location:'index.html:renderQuotation',message:'Rendered quotation with structured line items',data:{creationFolderId:creationFolderId||'',lineItemCount:clonedLineItems.length,kgPerMeterCount:clonedLineItems.filter(item=>String(item.kgPerMeter||'').trim()!=='').length,sample:clonedLineItems.slice(0,3).map(item=>({desc:item.originalDescription||'',kgPerMeter:item.kgPerMeter||''}))},timestamp:Date.now()})}).catch(()=>{});
-            // #endregion agent log
             displayQuotation(quotationData, !!creationFolderId);
         }
 
@@ -2936,15 +2940,9 @@
             // Step 9: Show the quotation content (header, table, totals, approve button, terms)
             // When hasCreationFolder: finalizeCreationFolderEntry consumes the quote number (single source).
             // When no folder: we must consume here.
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',location:'index.html:showCreationQuotationContent',message:'showCreationQuotationContent called',data:{hasCreationFolder:hasCreationFolder},hypothesisId:'H1',timestamp:Date.now()})}).catch(function(){});
-            // #endregion
             document.getElementById('creationQuotationHeader').style.display = 'block';
             document.getElementById('quotationTable').style.display = 'table';
             var addFreightArea = document.getElementById('creationAddFreightArea');
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',location:'index.html:addFreightArea',message:'Creation Add Freight area',data:{found:!!addFreightArea,displayBefore:addFreightArea?addFreightArea.style.display:null},hypothesisId:'H2',timestamp:Date.now()})}).catch(function(){});
-            // #endregion
             if (addFreightArea) addFreightArea.style.display = 'block';
             document.getElementById('creationGrandTotal').style.display = 'block';
             document.getElementById('creationApproveBtn').style.display = 'block';
@@ -3139,10 +3137,6 @@
                 1. Finds all item rows
                 2. Calculates and updates grand total
             */
-            // #region agent log
-            var _t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',hypothesisId:'H_recalc',location:'index.html:recalculateAllTotals:entry',message:'Recalc All Totals entry',data:{},timestamp:Date.now()})}).catch(function(){});
-            // #endregion
             // Get all item rows in Creation table
             const tableBody = document.getElementById('quotationTableBody');
             if (!tableBody) {
@@ -3184,10 +3178,6 @@
                     freightSummary.style.display = 'none';
                 }
             }
-            // #region agent log
-            var _t1 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',hypothesisId:'H_recalc',location:'index.html:recalculateAllTotals:exit',message:'Recalc All Totals exit',data:{elapsedMs:Math.round((_t1-_t0)*100)/100,rowCount:itemRows.length},timestamp:Date.now()})}).catch(function(){});
-            // #endregion
         }
         
         /*
@@ -3399,10 +3389,6 @@
         }
 
         function recalculateAllTotalsInContainer(container) {
-            // #region agent log
-            var _c0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',hypothesisId:'H_recalc',location:'index.html:recalculateAllTotalsInContainer:entry',message:'Recalc InContainer entry',data:{},timestamp:Date.now()})}).catch(function(){});
-            // #endregion
             if (!container) {
                 return;
             }
@@ -3443,10 +3429,6 @@
                     freightSummary.style.display = 'none';
                 }
             }
-            // #region agent log
-            var _c1 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',hypothesisId:'H_recalc',location:'index.html:recalculateAllTotalsInContainer:exit',message:'Recalc InContainer exit',data:{elapsedMs:Math.round((_c1-_c0)*100)/100,rowCount:itemRows.length},timestamp:Date.now()})}).catch(function(){});
-            // #endregion
         }
         
         /*
@@ -3744,10 +3726,6 @@
         }
 
         function addFreightRowApproval(quotationId) {
-            // #region agent log
-            const __t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',runId:'add-freight',hypothesisId:'H_addFreight',location:'index.html:addFreightRowApproval:enter',message:'Add Freight (Approval) start',data:{quotationId:quotationId},timestamp:Date.now()})}).catch(function(){});
-            // #endregion
             var folder = document.getElementById('folder-' + quotationId);
             if (!folder) return;
             var folderContent = folder.querySelector('.quotation-folder-content');
@@ -3764,10 +3742,6 @@
             tbody.appendChild(row);
             attachFreightRowAmountListener(row, function() { recalculateApprovalQuotationTotals(quotationId, false); });
             recalculateApprovalQuotationTotals(quotationId, false);
-            // #region agent log
-            const __t1 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',runId:'add-freight',hypothesisId:'H_addFreight',location:'index.html:addFreightRowApproval:exit',message:'Add Freight (Approval) end',data:{quotationId:quotationId,elapsedMs:Math.round((__t1-__t0)*10)/10,tbodyChildCount:tbody.children.length},timestamp:Date.now()})}).catch(function(){});
-            // #endregion
         }
 
         /*
@@ -4062,7 +4036,7 @@
             const content = document.getElementById('configContent');
             const button = document.querySelector('.config-toggle-btn');
             // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H_show_1/H_show_2/H_show_3',location:'index.html:toggleConfigSection',message:'toggleConfigSection entered',data:{hasContent:!!content,hasButton:!!button,displayBefore:content?content.style.display:null,buttonTextBefore:button?button.textContent:null},timestamp:Date.now()})}).catch(()=>{});
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H2/H3',location:'index.html:toggleConfigSection',message:'toggleConfigSection entered',data:{hasContent:!!content,hasButton:!!button,displayBefore:content?content.style.display:null,buttonTextBefore:button?button.textContent:null},timestamp:Date.now()})}).catch(()=>{});
             // #endregion agent log
             if (!content || !button) {
                 return;
@@ -4072,21 +4046,8 @@
             content.style.display = isHidden ? 'block' : 'none';
             button.textContent = isHidden ? 'Hide' : 'Show';
             // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H_show_1/H_show_2/H_show_3',location:'index.html:toggleConfigSection',message:'toggleConfigSection updated state',data:{isHidden:isHidden,displayAfter:content.style.display,buttonTextAfter:button.textContent},timestamp:Date.now()})}).catch(()=>{});
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H2/H3',location:'index.html:toggleConfigSection',message:'toggleConfigSection updated state',data:{isHidden:isHidden,displayAfter:content.style.display,buttonTextAfter:button.textContent},timestamp:Date.now()})}).catch(()=>{});
             // #endregion agent log
-        }
-
-        function attachConfigToggleDebugListener() {
-            const button = document.querySelector('.config-toggle-btn');
-            if (!button || button.dataset.debugToggleBound === 'true') {
-                return;
-            }
-            button.addEventListener('click', function() {
-                // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H_show_1/H_show_4',location:'index.html:attachConfigToggleDebugListener',message:'Config toggle button clicked',data:{buttonText:button.textContent},timestamp:Date.now()})}).catch(()=>{});
-                // #endregion agent log
-            });
-            button.dataset.debugToggleBound = 'true';
         }
 
         function normalizeTermsText(text) {
@@ -4302,10 +4263,6 @@
             } = quotationHeaderValues;
 
             const structuredLineItems = extractStructuredLineItemsFromTable(tableClone, sourceLineItems);
-
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H3/H4',location:'index.html:buildQuotationData',message:'Built quotation data for approval/save',data:{sourceLineItemCount:Array.isArray(sourceLineItems)?sourceLineItems.length:0,structuredLineItemCount:structuredLineItems.length,kgPerMeterCount:structuredLineItems.filter(item=>String(item.kgPerMeter||'').trim()!=='').length,sample:structuredLineItems.slice(0,3).map(item=>({desc:item.originalDescription||'',kgPerMeter:item.kgPerMeter||''}))},timestamp:Date.now()})}).catch(()=>{});
-            // #endregion agent log
 
             // Create quotation object to store
             const quotationData = {
@@ -5759,10 +5716,6 @@
                 shouldSave = false;
             }
             
-            // #region agent log
-            const __rt0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',hypothesisId:'H_recalc',location:'index.html:recalculateApprovalQuotationTotals:entry',message:'Recalc Approval entry',data:{quotationId:quotationId},timestamp:Date.now()})}).catch(function(){});
-            // #endregion
             const folderContent = document.getElementById('folder-content-' + quotationId);
             if (!folderContent) {
                 return;
@@ -5911,10 +5864,6 @@
                     saveToLocalStorage();
                 }
             }
-            // #region agent log
-            const __rt1 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',runId:'add-freight',hypothesisId:'H_recalc',location:'index.html:recalculateApprovalQuotationTotals:exit',message:'Recalc Approval totals done',data:{quotationId:quotationId,elapsedMs:Math.round((__rt1-__rt0)*10)/10,itemRows:itemRows?itemRows.length:null,freightRows:freightRows?freightRows.length:null,grandTotal:grandTotal},timestamp:Date.now()})}).catch(function(){});
-            // #endregion
         }
         
         /*
@@ -6926,9 +6875,8 @@
         // This code runs when the page finishes loading
         console.log("Quotation Generator loaded successfully!");
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H_show_4',location:'index.html:init',message:'Frontend initialized',data:{hasConfigButton:!!document.querySelector('.config-toggle-btn'),hasConfigContent:!!document.getElementById('configContent')},timestamp:Date.now()})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H2',location:'index.html:init',message:'Frontend initialized',data:{hasConfigButton:!!document.querySelector('.config-toggle-btn'),hasConfigContent:!!document.getElementById('configContent')},timestamp:Date.now()})}).catch(()=>{});
         // #endregion agent log
-        attachConfigToggleDebugListener();
         
         // Load saved quotations from backend
         initQuotations();
