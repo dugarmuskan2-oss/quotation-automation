@@ -1266,6 +1266,10 @@
 
         async function loadQuotationsFromBackend() {
             try {
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H1/H2/H3',location:'index.html:loadQuotationsFromBackend',message:'Starting loadQuotationsFromBackend',data:{apiBaseUrl:typeof API_BASE_URL==='string'?API_BASE_URL:null,existingApprovedQuotationsLen:Array.isArray(approvedQuotations)?approvedQuotations.length:null,windowApprovedQuotationsType:typeof window.approvedQuotations,windowApprovedQuotationsLen:Array.isArray(window.approvedQuotations)?window.approvedQuotations.length:null},timestamp:Date.now()})}).catch(()=>{});
+                // #endregion agent log
+
                 const response = await fetch(`${API_BASE_URL}/quotations?limit=350`);
                 const result = await safeJsonParse(response);
                 if (!response.ok) {
@@ -1275,18 +1279,29 @@
                 const quotations = Array.isArray(result.quotations) ? result.quotations : [];
                 if (quotations.length > 0) {
                     approvedQuotations = quotations;
+
+                    // #region agent log
+                    fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H1/H2',location:'index.html:loadQuotationsFromBackend',message:'Loaded quotations from backend (local approvedQuotations updated)',data:{responseOk:response.ok,status:response.status,quotationsLen:quotations.length,localApprovedQuotationsLen:Array.isArray(approvedQuotations)?approvedQuotations.length:null,windowApprovedQuotationsType:typeof window.approvedQuotations,windowApprovedQuotationsLen:Array.isArray(window.approvedQuotations)?window.approvedQuotations.length:null},timestamp:Date.now()})}).catch(()=>{});
+                    // #endregion agent log
+
                     displayAllApprovedQuotations();
                     return true;
                 }
                 return false;
             } catch (error) {
                 console.error('Error loading quotations from backend:', error);
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H2',location:'index.html:loadQuotationsFromBackend',message:'Failed loading quotations from backend',data:{errorMessage:(error&&error.message)||String(error),apiBaseUrl:typeof API_BASE_URL==='string'?API_BASE_URL:null},timestamp:Date.now()})}).catch(()=>{});
+                // #endregion agent log
                 return false;
             }
         }
 
         async function initQuotations() {
-            await loadQuotationsFromBackend();
+            const ok = await loadQuotationsFromBackend();
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H1/H2/H3',location:'index.html:initQuotations',message:'initQuotations finished',data:{loadOk:!!ok,localApprovedQuotationsLen:Array.isArray(approvedQuotations)?approvedQuotations.length:null,windowApprovedQuotationsType:typeof window.approvedQuotations,windowApprovedQuotationsLen:Array.isArray(window.approvedQuotations)?window.approvedQuotations.length:null},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion agent log
         }
 
         /*
