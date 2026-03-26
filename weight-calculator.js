@@ -39,6 +39,16 @@
         return value.toFixed(2);
     }
 
+    function resolveKgPerMeter(item, sizeKey) {
+        const directKgPerMeter = parseNumber(
+            item && (item.kgPerMeter || item.kg_per_meter || item.kgPerMtr || item.kg_per_mtr)
+        );
+        if (Number.isFinite(directKgPerMeter)) {
+            return directKgPerMeter;
+        }
+        return pipeWeightMap[sizeKey];
+    }
+
     /**
      * CSV parser for the simple "size,kgPerMeter" table.
      */
@@ -208,10 +218,6 @@
 
         const quoteNumber = String(input.value || '').trim();
 
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H1/H2/H3',location:'weight-calculator.js:calculateFromQuotationNumber',message:'Entered calculateFromQuotationNumber',data:{quoteNumber,hasWindowApprovedQuotations:Array.isArray(window.approvedQuotations),windowApprovedQuotationsLen:Array.isArray(window.approvedQuotations)?window.approvedQuotations.length:null,windowApprovedQuotationsType:typeof window.approvedQuotations},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion agent log
-
         if (!quoteNumber) {
             if (statusEl) {
                 statusEl.textContent = 'Please enter a quotation number.';
@@ -221,9 +227,6 @@
         }
 
         if (!Array.isArray(window.approvedQuotations) || window.approvedQuotations.length === 0) {
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H1/H2/H3',location:'weight-calculator.js:calculateFromQuotationNumber',message:'Blocked: window.approvedQuotations missing/empty',data:{hasWindowApprovedQuotations:Array.isArray(window.approvedQuotations),windowApprovedQuotationsLen:Array.isArray(window.approvedQuotations)?window.approvedQuotations.length:null,windowApprovedQuotationsType:typeof window.approvedQuotations},timestamp:Date.now()})}).catch(()=>{});
-            // #endregion agent log
             if (statusEl) {
                 statusEl.textContent = 'No approved quotations are loaded yet. Open the Approval tab once to load them.';
                 statusEl.style.color = '#c62828';
@@ -238,9 +241,6 @@
         });
 
         if (!match) {
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H4',location:'weight-calculator.js:calculateFromQuotationNumber',message:'Quotation not found in window.approvedQuotations',data:{quoteNumber,windowApprovedQuotationsLen:window.approvedQuotations.length,sampleQuoteNumbers:window.approvedQuotations.slice(0,5).map(q=>String((q&&((q.quoteNumber)||((q.header||{}).quoteNumber)))||'')).filter(Boolean)},timestamp:Date.now()})}).catch(()=>{});
-            // #endregion agent log
             if (statusEl) {
                 statusEl.textContent = 'Quotation not found in the loaded approvals.';
                 statusEl.style.color = '#c62828';
@@ -278,7 +278,7 @@
         lineItems.forEach(item => {
             const desc = item.originalDescription || item.description || '';
             const sizeKey = normalizeSizeKey(desc);
-            const kgPerMeter = pipeWeightMap[sizeKey];
+            const kgPerMeter = resolveKgPerMeter(item, sizeKey);
             const qtyMeters = parseNumber(item.quantity || item.qty || item.meters);
             addPipeRowToTable(desc, kgPerMeter, qtyMeters);
         });
@@ -356,7 +356,7 @@
             lineItems.forEach(item => {
                 const desc = item.originalDescription || item.description || '';
                 const sizeKey = normalizeSizeKey(desc);
-                const kgPerMeter = pipeWeightMap[sizeKey];
+                const kgPerMeter = resolveKgPerMeter(item, sizeKey);
                 const qtyMeters = parseNumber(item.quantity || item.qty || item.meters);
                 addPipeRowToTable(desc, kgPerMeter, qtyMeters);
             });

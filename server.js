@@ -1412,7 +1412,7 @@ async function handleGenerateQuotation({ emailContent, fileContent, instructions
             }
         }
 
-        const promptText = `Please analyze the following enquiry and extract quotation information. Use the PDF rate files provided (${uploadedFileIds.length} file(s)) to match base rates. Read the PDF files directly to find the correct rates. Return the data in this exact JSON format:
+        const promptText = `Please analyze the following enquiry and extract quotation information. Use the PDF rate files provided (${uploadedFileIds.length} file(s)) to match base rates. Read the PDF files directly to find the correct rates. If the PDF rate files include a KG/meter (or kg per meter / weight per meter) value for an item, extract it into "kgPerMeter". Return the data in this exact JSON format:
 
 {
   "customerName": "",
@@ -1427,6 +1427,7 @@ async function handleGenerateQuotation({ emailContent, fileContent, instructions
       "identifiedPipeType": "",
       "quantity": "",
       "unitRate": "",
+      "kgPerMeter": "",
       "marginPercent": "",
       "finalRate": "",
       "lineTotal": ""
@@ -1434,7 +1435,7 @@ async function handleGenerateQuotation({ emailContent, fileContent, instructions
   ]
 }
 
-Extract all pipe information from the enquiry (including all attached enquiry PDFs if any). Read every enquiry document and combine relevant data. Match with rates from the uploaded PDF rate files, calculate final rates with margins, and return the complete JSON.`;
+Extract all pipe information from the enquiry (including all attached enquiry PDFs if any). Read every enquiry document and combine relevant data. Match with rates from the uploaded PDF rate files, calculate final rates with margins, and return the complete JSON. When KG/meter is not available for a matched item, return an empty string for "kgPerMeter".`;
 
         const userContentParts = [
             {
@@ -1508,6 +1509,8 @@ Extract all pipe information from the enquiry (including all attached enquiry PD
         // Calculate final rates and line totals if not provided
         quotationData.lineItems = quotationData.lineItems.map(item => {
             const unitRate = parseFloat(item.unitRate) || 0;
+            const kgPerMeterRaw = parseFloat(String(item.kgPerMeter || '').replace(/,/g, '').trim());
+            const kgPerMeter = Number.isFinite(kgPerMeterRaw) ? kgPerMeterRaw : null;
             const marginPercentRaw = parseFloat(item.marginPercent);
             const marginPercent = Number.isFinite(marginPercentRaw) ? marginPercentRaw : 0;
             const quantity = parseFloat(item.quantity) || 0;
@@ -1520,6 +1523,7 @@ Extract all pipe information from the enquiry (including all attached enquiry PD
                 identifiedPipeType: item.identifiedPipeType || '',
                 quantity: quantity.toString(),
                 unitRate: unitRate.toFixed(2),
+                kgPerMeter: kgPerMeter == null ? '' : kgPerMeter.toFixed(2),
                 marginPercent: marginPercent.toString(),
                 finalRate: String(finalRate),
                 lineTotal: lineTotal.toFixed(2)
@@ -1747,7 +1751,7 @@ app.post('/api/generate-quotation', async (req, res) => {
         }
         
         // Prepare input for Responses API with file references
-        const promptText = `Please analyze the following enquiry and extract quotation information. Use the PDF rate files provided (${uploadedFileIds.length} file(s)) to match base rates. Read the PDF files directly to find the correct rates. Return the data in this exact JSON format:
+        const promptText = `Please analyze the following enquiry and extract quotation information. Use the PDF rate files provided (${uploadedFileIds.length} file(s)) to match base rates. Read the PDF files directly to find the correct rates. If the PDF rate files include a KG/meter (or kg per meter / weight per meter) value for an item, extract it into "kgPerMeter". Return the data in this exact JSON format:
 
 {
   "customerName": "",
@@ -1762,6 +1766,7 @@ app.post('/api/generate-quotation', async (req, res) => {
       "identifiedPipeType": "",
       "quantity": "",
       "unitRate": "",
+      "kgPerMeter": "",
       "marginPercent": "",
       "finalRate": "",
       "lineTotal": ""
@@ -1772,7 +1777,7 @@ app.post('/api/generate-quotation', async (req, res) => {
 === ENQUIRY CONTENT ===
 ${enquiryText}
 
-Extract all pipe information from the enquiry, match with rates from the uploaded PDF rate files, calculate final rates with margins, and return the complete JSON.`;
+Extract all pipe information from the enquiry, match with rates from the uploaded PDF rate files, calculate final rates with margins, and return the complete JSON. When KG/meter is not available for a matched item, return an empty string for "kgPerMeter".`;
 
         const input = [
             {
@@ -1876,6 +1881,8 @@ Extract all pipe information from the enquiry, match with rates from the uploade
         // Calculate final rates and line totals if not provided
         quotationData.lineItems = quotationData.lineItems.map(item => {
             const unitRate = parseFloat(item.unitRate) || 0;
+            const kgPerMeterRaw = parseFloat(String(item.kgPerMeter || '').replace(/,/g, '').trim());
+            const kgPerMeter = Number.isFinite(kgPerMeterRaw) ? kgPerMeterRaw : null;
             const marginPercentRaw = parseFloat(item.marginPercent);
             const marginPercent = Number.isFinite(marginPercentRaw) ? marginPercentRaw : 0;
             const quantity = parseFloat(item.quantity) || 0;
@@ -1888,6 +1895,7 @@ Extract all pipe information from the enquiry, match with rates from the uploade
                 identifiedPipeType: item.identifiedPipeType || '',
                 quantity: quantity.toString(),
                 unitRate: unitRate.toFixed(2),
+                kgPerMeter: kgPerMeter == null ? '' : kgPerMeter.toFixed(2),
                 marginPercent: marginPercent.toString(),
                 finalRate: String(finalRate),
                 lineTotal: lineTotal.toFixed(2)

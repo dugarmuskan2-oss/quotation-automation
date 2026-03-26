@@ -1266,10 +1266,6 @@
 
         async function loadQuotationsFromBackend() {
             try {
-                // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H1/H2/H3',location:'index.html:loadQuotationsFromBackend',message:'Starting loadQuotationsFromBackend',data:{apiBaseUrl:typeof API_BASE_URL==='string'?API_BASE_URL:null,existingApprovedQuotationsLen:Array.isArray(approvedQuotations)?approvedQuotations.length:null,windowApprovedQuotationsType:typeof window.approvedQuotations,windowApprovedQuotationsLen:Array.isArray(window.approvedQuotations)?window.approvedQuotations.length:null},timestamp:Date.now()})}).catch(()=>{});
-                // #endregion agent log
-
                 const response = await fetch(`${API_BASE_URL}/quotations?limit=350`);
                 const result = await safeJsonParse(response);
                 if (!response.ok) {
@@ -1281,28 +1277,18 @@
                     approvedQuotations = quotations;
                     syncApprovedQuotationsGlobal();
 
-                    // #region agent log
-                    fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H1/H2',location:'index.html:loadQuotationsFromBackend',message:'Loaded quotations from backend (local approvedQuotations updated)',data:{responseOk:response.ok,status:response.status,quotationsLen:quotations.length,localApprovedQuotationsLen:Array.isArray(approvedQuotations)?approvedQuotations.length:null,windowApprovedQuotationsType:typeof window.approvedQuotations,windowApprovedQuotationsLen:Array.isArray(window.approvedQuotations)?window.approvedQuotations.length:null},timestamp:Date.now()})}).catch(()=>{});
-                    // #endregion agent log
-
                     displayAllApprovedQuotations();
                     return true;
                 }
                 return false;
             } catch (error) {
                 console.error('Error loading quotations from backend:', error);
-                // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H2',location:'index.html:loadQuotationsFromBackend',message:'Failed loading quotations from backend',data:{errorMessage:(error&&error.message)||String(error),apiBaseUrl:typeof API_BASE_URL==='string'?API_BASE_URL:null},timestamp:Date.now()})}).catch(()=>{});
-                // #endregion agent log
                 return false;
             }
         }
 
         async function initQuotations() {
-            const ok = await loadQuotationsFromBackend();
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H1/H2/H3',location:'index.html:initQuotations',message:'initQuotations finished',data:{loadOk:!!ok,localApprovedQuotationsLen:Array.isArray(approvedQuotations)?approvedQuotations.length:null,windowApprovedQuotationsType:typeof window.approvedQuotations,windowApprovedQuotationsLen:Array.isArray(window.approvedQuotations)?window.approvedQuotations.length:null},timestamp:Date.now()})}).catch(()=>{});
-            // #endregion agent log
+            await loadQuotationsFromBackend();
         }
 
         /*
@@ -2485,7 +2471,96 @@
             return await extractQuotationWithAI(emailContent, fileContent);
         }
 
+        function cloneLineItems(lineItems) {
+            return Array.isArray(lineItems)
+                ? lineItems.map(function(item) { return { ...item }; })
+                : [];
+        }
+
+        function normalizeLineItemText(text) {
+            return String(text || '').trim().toLowerCase().replace(/\s+/g, ' ');
+        }
+
+        function getFieldValueFromTableRow(row, selector) {
+            const el = row ? row.querySelector(selector) : null;
+            if (!el) {
+                return '';
+            }
+            if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+                return el.value || el.getAttribute('value') || '';
+            }
+            return el.textContent || '';
+        }
+
+        function resolveKgPerMeterFromSource(desc, sourceLineItems, itemIndex) {
+            const sourceItems = Array.isArray(sourceLineItems) ? sourceLineItems : [];
+            const normalizedDesc = normalizeLineItemText(desc);
+            const indexedItem = sourceItems[itemIndex];
+            if (indexedItem && normalizeLineItemText(indexedItem.originalDescription || indexedItem.description) === normalizedDesc) {
+                return indexedItem.kgPerMeter || '';
+            }
+            const descMatch = sourceItems.find(function(item) {
+                return normalizeLineItemText(item.originalDescription || item.description) === normalizedDesc;
+            });
+            if (descMatch) {
+                return descMatch.kgPerMeter || '';
+            }
+            return indexedItem ? (indexedItem.kgPerMeter || '') : '';
+        }
+
+        function extractStructuredLineItemsFromTable(tableClone, sourceLineItems) {
+            const sourceItems = Array.isArray(sourceLineItems) ? sourceLineItems : [];
+            if (!tableClone) {
+                return cloneLineItems(sourceItems);
+            }
+
+            const lineItems = [];
+            let currentPipeType = '';
+            let itemIndex = 0;
+
+            tableClone.querySelectorAll('tbody tr').forEach(function(row) {
+                if (row.classList.contains('pipe-type-header')) {
+                    currentPipeType = getFieldValueFromTableRow(row, '[data-field="pipeTypeHeader"]').trim() || currentPipeType;
+                    return;
+                }
+                if (!row.classList.contains('item-row')) {
+                    return;
+                }
+
+                const desc = getFieldValueFromTableRow(row, '[data-field="originalDescription"]').trim();
+                const quantity = getFieldValueFromTableRow(row, '[data-field="quantity"]').trim();
+                const unitRate = getFieldValueFromTableRow(row, '[data-field="unitRate"]').trim();
+                const marginPercent = getFieldValueFromTableRow(row, '[data-field="marginPercent"]').trim();
+                const finalRate = getFieldValueFromTableRow(row, '[data-field="finalRate"]').trim();
+                let lineTotal = getFieldValueFromTableRow(row, '[data-field="lineTotal"]').trim();
+                if (!lineTotal) {
+                    const lineTotalSpan = row.querySelector('.line-total');
+                    lineTotal = lineTotalSpan ? String(lineTotalSpan.textContent || '').replace('₹', '').trim() : '';
+                }
+
+                const sourceItem = sourceItems[itemIndex] || {};
+                lineItems.push({
+                    originalDescription: desc,
+                    identifiedPipeType: currentPipeType || sourceItem.identifiedPipeType || '',
+                    quantity: quantity,
+                    unitRate: unitRate,
+                    kgPerMeter: resolveKgPerMeterFromSource(desc, sourceItems, itemIndex),
+                    marginPercent: marginPercent,
+                    finalRate: finalRate,
+                    lineTotal: lineTotal
+                });
+                itemIndex += 1;
+            });
+
+            return lineItems.length ? lineItems : cloneLineItems(sourceItems);
+        }
+
         function renderQuotation(quotationData, creationFolderId) {
+            const clonedLineItems = cloneLineItems(quotationData && quotationData.lineItems);
+            currentCreationLineItems = clonedLineItems;
+            if (creationFolderId && creationFolderState[creationFolderId]) {
+                creationFolderState[creationFolderId].lineItems = clonedLineItems;
+            }
             displayQuotation(quotationData, !!creationFolderId);
         }
 
@@ -4187,7 +4262,7 @@
             return headerClone;
         }
 
-        function buildQuotationData(quotationHeaderValues, tableClone, headerClone) {
+        function buildQuotationData(quotationHeaderValues, tableClone, headerClone, sourceLineItems) {
             const {
                 quotationDate,
                 customerName,
@@ -4214,6 +4289,7 @@
                 grandTotal: grandTotal,
                 tableHTML: tableClone.outerHTML,
                 headerHTML: headerClone.outerHTML, // Store full header HTML with current values
+                lineItems: extractStructuredLineItemsFromTable(tableClone, sourceLineItems),
                 termsText: termsText,
                 shipTo: shipTo,
                 preparedBy: preparedBy,
@@ -4287,7 +4363,7 @@
             const quotationHeader = document.getElementById('creationQuotationHeader');
             const headerClone = cloneQuotationHeaderWithValues(quotationHeader);
             
-            const quotationData = buildQuotationData(quotationHeaderValues, tableClone, headerClone);
+            const quotationData = buildQuotationData(quotationHeaderValues, tableClone, headerClone, currentCreationLineItems);
             quotationData.emailContent = document.getElementById('emailContent')?.value || lastEmailContent || '';
             quotationData.emailContentHtml = lastEmailHtmlContent || '';
             quotationData.fileContent = lastFileContent || '';
@@ -4381,7 +4457,7 @@
                 }
             }
             quotationHeaderValues.quoteNumber = quoteNumber;
-            const quotationData = buildQuotationData(quotationHeaderValues, tableClone, headerClone);
+            const quotationData = buildQuotationData(quotationHeaderValues, tableClone, headerClone, folderState.lineItems);
             quotationData.emailContent = folderState.emailContent || '';
             quotationData.emailContentHtml = folderState.emailContentHtml || '';
             quotationData.fileContent = folderState.fileContent || '';
@@ -4682,9 +4758,6 @@
             totalHeight += 10; // small buffer for container padding
             container.style.maxHeight = `${Math.ceil(totalHeight)}px`;
             container.style.overflowY = 'auto';
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'post-fix',hypothesisId:'H5',location:'index.html:updateApprovalContainerScrollLimit',message:'Approval scroll limit applied',data:{folderCount:folders.length,visibleCount:visibleCount,totalHeight:totalHeight,maxHeight:container.style.maxHeight,containerClientHeight:container.clientHeight,containerScrollHeight:container.scrollHeight,hasExpandedFolder:hasExpandedFolder,firstFolderH:folders[0]?folders[0].getBoundingClientRect().height:null},timestamp:Date.now()})}).catch(function(){});
-            // #endregion
         }
 
         function attachApprovalListeners() {
@@ -5839,6 +5912,7 @@
             document.getElementById('creationApproveBtn').style.display = 'none';
             document.getElementById('termsDivider').style.display = 'none';
             document.getElementById('termsBox').style.display = 'none';
+            currentCreationLineItems = [];
             
             // Show "no quotation" message
             const noCreationMsg = document.getElementById('noCreationQuotation');
@@ -6729,14 +6803,10 @@
                 folderContent.classList.add('show');
                 toggleIcon.classList.add('open');
             }
-
-            // #region agent log
-            try {
-                const container = document.getElementById('approvedQuotationsContainer');
+            const container = document.getElementById('approvedQuotationsContainer');
+            if (container) {
                 updateApprovalContainerScrollLimit(container);
-                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'post-fix',hypothesisId:'H5',location:'index.html:toggleQuotationFolder',message:'Toggled folder',data:{quotationId:quotationId,isOpen:folderContent.classList.contains('show'),containerMaxHeight:container?container.style.maxHeight:null,containerClientHeight:container?container.clientHeight:null,containerScrollHeight:container?container.scrollHeight:null,folderContentClientHeight:folderContent.clientHeight,folderContentScrollHeight:folderContent.scrollHeight},timestamp:Date.now()})}).catch(function(){});
-            } catch (e) {}
-            // #endregion
+            }
 
         }
 
@@ -6807,6 +6877,7 @@
             window.approvedQuotations = approvedQuotations;
         }
         syncApprovedQuotationsGlobal();
+        let currentCreationLineItems = [];
         let lastEmailContent = '';
         let lastFileContent = '';
         let lastEmailHtmlContent = '';
