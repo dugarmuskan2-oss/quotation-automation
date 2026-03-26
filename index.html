@@ -4061,6 +4061,9 @@
         function toggleConfigSection() {
             const content = document.getElementById('configContent');
             const button = document.querySelector('.config-toggle-btn');
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H_show_1/H_show_2/H_show_3',location:'index.html:toggleConfigSection',message:'toggleConfigSection entered',data:{hasContent:!!content,hasButton:!!button,displayBefore:content?content.style.display:null,buttonTextBefore:button?button.textContent:null},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion agent log
             if (!content || !button) {
                 return;
             }
@@ -4068,6 +4071,9 @@
             const isHidden = content.style.display === 'none' || content.style.display === '';
             content.style.display = isHidden ? 'block' : 'none';
             button.textContent = isHidden ? 'Hide' : 'Show';
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H_show_1/H_show_2/H_show_3',location:'index.html:toggleConfigSection',message:'toggleConfigSection updated state',data:{isHidden:isHidden,displayAfter:content.style.display,buttonTextAfter:button.textContent},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion agent log
         }
 
         function normalizeTermsText(text) {
