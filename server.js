@@ -1530,6 +1530,10 @@ Extract all pipe information from the enquiry (including all attached enquiry PD
             };
         });
 
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H1/H2',location:'server.js:handleGenerateQuotation:normalized',message:'Normalized quotation line items',data:{route:'generate-quotation',lineItemCount:Array.isArray(quotationData.lineItems)?quotationData.lineItems.length:0,kgPerMeterCount:Array.isArray(quotationData.lineItems)?quotationData.lineItems.filter(item=>String(item.kgPerMeter||'').trim()!=='').length:0,sample:Array.isArray(quotationData.lineItems)?quotationData.lineItems.slice(0,3).map(item=>({desc:item.originalDescription||'',kgPerMeter:item.kgPerMeter||'',unitRate:item.unitRate||''})):[]},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion agent log
+
         // Set quotation date if not provided
         if (!quotationData.quotationDate) {
             const today = new Date();
@@ -1901,6 +1905,10 @@ Extract all pipe information from the enquiry, match with rates from the uploade
                 lineTotal: lineTotal.toFixed(2)
             };
         });
+
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H1/H2',location:'server.js:generate-quotation-file:normalized',message:'Normalized quotation line items',data:{route:'generate-quotation-file',lineItemCount:Array.isArray(quotationData.lineItems)?quotationData.lineItems.length:0,kgPerMeterCount:Array.isArray(quotationData.lineItems)?quotationData.lineItems.filter(item=>String(item.kgPerMeter||'').trim()!=='').length:0,sample:Array.isArray(quotationData.lineItems)?quotationData.lineItems.slice(0,3).map(item=>({desc:item.originalDescription||'',kgPerMeter:item.kgPerMeter||'',unitRate:item.unitRate||''})):[]},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion agent log
         
         // Set quotation date if not provided
         if (!quotationData.quotationDate) {

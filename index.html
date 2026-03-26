@@ -2561,6 +2561,9 @@
             if (creationFolderId && creationFolderState[creationFolderId]) {
                 creationFolderState[creationFolderId].lineItems = clonedLineItems;
             }
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H3',location:'index.html:renderQuotation',message:'Rendered quotation with structured line items',data:{creationFolderId:creationFolderId||'',lineItemCount:clonedLineItems.length,kgPerMeterCount:clonedLineItems.filter(item=>String(item.kgPerMeter||'').trim()!=='').length,sample:clonedLineItems.slice(0,3).map(item=>({desc:item.originalDescription||'',kgPerMeter:item.kgPerMeter||''}))},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion agent log
             displayQuotation(quotationData, !!creationFolderId);
         }
 
@@ -4279,6 +4282,12 @@
                 termsText
             } = quotationHeaderValues;
 
+            const structuredLineItems = extractStructuredLineItemsFromTable(tableClone, sourceLineItems);
+
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H3/H4',location:'index.html:buildQuotationData',message:'Built quotation data for approval/save',data:{sourceLineItemCount:Array.isArray(sourceLineItems)?sourceLineItems.length:0,structuredLineItemCount:structuredLineItems.length,kgPerMeterCount:structuredLineItems.filter(item=>String(item.kgPerMeter||'').trim()!=='').length,sample:structuredLineItems.slice(0,3).map(item=>({desc:item.originalDescription||'',kgPerMeter:item.kgPerMeter||''}))},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion agent log
+
             // Create quotation object to store
             const quotationData = {
                 id: Date.now(), // Unique ID based on timestamp
@@ -4289,7 +4298,7 @@
                 grandTotal: grandTotal,
                 tableHTML: tableClone.outerHTML,
                 headerHTML: headerClone.outerHTML, // Store full header HTML with current values
-                lineItems: extractStructuredLineItemsFromTable(tableClone, sourceLineItems),
+                lineItems: structuredLineItems,
                 termsText: termsText,
                 shipTo: shipTo,
                 preparedBy: preparedBy,

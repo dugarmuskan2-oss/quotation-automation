@@ -251,6 +251,10 @@
         // Prefer AI lineItems if present; otherwise try to parse table HTML.
         let lineItems = Array.isArray(match.lineItems) ? match.lineItems : null;
 
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H4/H5',location:'weight-calculator.js:calculateFromQuotationNumber',message:'Matched quotation for weight calculation',data:{quoteNumber,hasMatch:!!match,lineItemsPresent:Array.isArray(match.lineItems),lineItemCount:Array.isArray(match.lineItems)?match.lineItems.length:0,kgPerMeterCount:Array.isArray(match.lineItems)?match.lineItems.filter(item=>String(item.kgPerMeter||'').trim()!=='').length:0,sample:Array.isArray(match.lineItems)?match.lineItems.slice(0,3).map(item=>({desc:item.originalDescription||item.description||'',kgPerMeter:item.kgPerMeter||''})):[]},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion agent log
+
         if (!lineItems && typeof window.parseQuotationTableForPdf === 'function' && match.tableHTML) {
             try {
                 const rows = window.parseQuotationTableForPdf(match.tableHTML);
@@ -260,6 +264,9 @@
                         originalDescription: r.desc || '',
                         quantity: r.qty || ''
                     }));
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H5',location:'weight-calculator.js:calculateFromQuotationNumber',message:'Fell back to parsing tableHTML for line items',data:{quoteNumber,parsedLineItemCount:Array.isArray(lineItems)?lineItems.length:0,sample:Array.isArray(lineItems)?lineItems.slice(0,3).map(item=>({desc:item.originalDescription||'',kgPerMeter:item.kgPerMeter||''})):[]},timestamp:Date.now()})}).catch(()=>{});
+                // #endregion agent log
             } catch (e) {
                 console.warn('Failed to parse quotation table for weight calculation:', e);
             }
