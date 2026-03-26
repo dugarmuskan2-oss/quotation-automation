@@ -4093,9 +4093,6 @@
         }
 
         function toggleConfigSection() {
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'pre-fix',hypothesisId:'H1',location:'index.html:toggleConfigSection:entry',message:'toggleConfigSection called',data:{hasContent:!!document.getElementById('configContent'),hasButton:!!document.querySelector('.config-toggle-btn'),contentDisplay:document.getElementById('configContent')?.style?.display,buttonText:document.querySelector('.config-toggle-btn')?.textContent},timestamp:Date.now()})}).catch(()=>{});
-            // #endregion
             const content = document.getElementById('configContent');
             const button = document.querySelector('.config-toggle-btn');
             if (!content || !button) {
@@ -4106,27 +4103,6 @@
             content.style.display = isHidden ? 'block' : 'none';
             button.textContent = isHidden ? 'Hide' : 'Show';
         }
-
-        // #region agent log
-        (function attachDebugGlobalHandlers(){
-            if (window.__agentDebugHandlersBound) return;
-            window.__agentDebugHandlersBound = true;
-
-            window.addEventListener('error', function(e){
-                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'pre-fix',hypothesisId:'H2',location:'index.html:window.error',message:'window error',data:{message:String(e.message||''),filename:String(e.filename||''),lineno:e.lineno,colno:e.colno},timestamp:Date.now()})}).catch(()=>{});
-            });
-
-            window.addEventListener('unhandledrejection', function(e){
-                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'pre-fix',hypothesisId:'H2',location:'index.html:window.unhandledrejection',message:'unhandled rejection',data:{reason:String(e.reason&&e.reason.message?e.reason.message:e.reason)},timestamp:Date.now()})}).catch(()=>{});
-            });
-
-            document.addEventListener('click', function(e){
-                const btn = e.target && e.target.closest ? e.target.closest('.config-toggle-btn') : null;
-                if (!btn) return;
-                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'pre-fix',hypothesisId:'H3',location:'index.html:document.click',message:'config toggle button click observed',data:{disabled:!!btn.disabled,text:String(btn.textContent||''),configDisplay:document.getElementById('configContent')?.style?.display},timestamp:Date.now()})}).catch(()=>{});
-            }, true);
-        })();
-        // #endregion
 
         function normalizeTermsText(text) {
             if (!text) {
@@ -4591,7 +4567,7 @@
 
                 allQuotationsHTML += `
                     <div class="quotation-folder" id="folder-${quotation.id}">
-                        <div class="quotation-folder-header" onclick="toggleQuotationFolder(${quotation.id})">
+                        <div class="quotation-folder-header" onclick="toggleQuotationFolder(${JSON.stringify(quotation.id)})">
                             <span>
                                 <span class="folder-icon">📁</span>
                                 ${folderName}
