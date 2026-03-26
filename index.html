@@ -1279,6 +1279,7 @@
                 const quotations = Array.isArray(result.quotations) ? result.quotations : [];
                 if (quotations.length > 0) {
                     approvedQuotations = quotations;
+                    syncApprovedQuotationsGlobal();
 
                     // #region agent log
                     fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H1/H2',location:'index.html:loadQuotationsFromBackend',message:'Loaded quotations from backend (local approvedQuotations updated)',data:{responseOk:response.ok,status:response.status,quotationsLen:quotations.length,localApprovedQuotationsLen:Array.isArray(approvedQuotations)?approvedQuotations.length:null,windowApprovedQuotationsType:typeof window.approvedQuotations,windowApprovedQuotationsLen:Array.isArray(window.approvedQuotations)?window.approvedQuotations.length:null},timestamp:Date.now()})}).catch(()=>{});
@@ -4660,7 +4661,14 @@
 
         function updateApprovalContainerScrollLimit(container) {
             const folders = Array.from(container.querySelectorAll('.quotation-folder'));
-            if (folders.length <= 10) {
+            const hasExpandedFolder = folders.some(function(folder) {
+                const content = folder.querySelector('.quotation-folder-content');
+                return !!(content && content.classList.contains('show'));
+            });
+
+            // If any folder is expanded, never clamp the container height.
+            // This prevents "thin slice" clipping of expanded quotation content.
+            if (folders.length <= 10 || hasExpandedFolder) {
                 container.style.maxHeight = '';
                 container.style.overflowY = '';
                 return;
@@ -4675,7 +4683,7 @@
             container.style.maxHeight = `${Math.ceil(totalHeight)}px`;
             container.style.overflowY = 'auto';
             // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',runId:'approval-thin',hypothesisId:'H_scrollLimit',location:'index.html:updateApprovalContainerScrollLimit',message:'Approval scroll limit applied',data:{folderCount:folders.length,visibleCount:visibleCount,totalHeight:totalHeight,maxHeight:container.style.maxHeight,containerClientHeight:container.clientHeight,containerScrollHeight:container.scrollHeight,firstFolderH:folders[0]?folders[0].getBoundingClientRect().height:null},timestamp:Date.now()})}).catch(function(){});
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'post-fix',hypothesisId:'H5',location:'index.html:updateApprovalContainerScrollLimit',message:'Approval scroll limit applied',data:{folderCount:folders.length,visibleCount:visibleCount,totalHeight:totalHeight,maxHeight:container.style.maxHeight,containerClientHeight:container.clientHeight,containerScrollHeight:container.scrollHeight,hasExpandedFolder:hasExpandedFolder,firstFolderH:folders[0]?folders[0].getBoundingClientRect().height:null},timestamp:Date.now()})}).catch(function(){});
             // #endregion
         }
 
@@ -6725,7 +6733,8 @@
             // #region agent log
             try {
                 const container = document.getElementById('approvedQuotationsContainer');
-                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2223e4'},body:JSON.stringify({sessionId:'2223e4',runId:'approval-thin',hypothesisId:'H_toggle',location:'index.html:toggleQuotationFolder',message:'Toggled folder',data:{quotationId:quotationId,isOpen:folderContent.classList.contains('show'),containerMaxHeight:container?container.style.maxHeight:null,containerClientHeight:container?container.clientHeight:null,containerScrollHeight:container?container.scrollHeight:null,folderContentClientHeight:folderContent.clientHeight,folderContentScrollHeight:folderContent.scrollHeight},timestamp:Date.now()})}).catch(function(){});
+                updateApprovalContainerScrollLimit(container);
+                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'post-fix',hypothesisId:'H5',location:'index.html:toggleQuotationFolder',message:'Toggled folder',data:{quotationId:quotationId,isOpen:folderContent.classList.contains('show'),containerMaxHeight:container?container.style.maxHeight:null,containerClientHeight:container?container.clientHeight:null,containerScrollHeight:container?container.scrollHeight:null,folderContentClientHeight:folderContent.clientHeight,folderContentScrollHeight:folderContent.scrollHeight},timestamp:Date.now()})}).catch(function(){});
             } catch (e) {}
             // #endregion
 
@@ -6794,6 +6803,10 @@
         
         // Array to store all approved quotations
         let approvedQuotations = [];
+        function syncApprovedQuotationsGlobal() {
+            window.approvedQuotations = approvedQuotations;
+        }
+        syncApprovedQuotationsGlobal();
         let lastEmailContent = '';
         let lastFileContent = '';
         let lastEmailHtmlContent = '';
