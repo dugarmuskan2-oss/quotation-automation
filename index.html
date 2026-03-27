@@ -1035,25 +1035,6 @@
             Use this tool to calculate total pipe weight from an existing quotation or from AI-extracted pipe sizes and kg/meter values.
         </div>
 
-        <!-- Pipe weight reference upload -->
-        <div class="input-section">
-            <h2>Pipe Weight Reference (Kg per Meter)</h2>
-            <p style="margin-bottom: 10px;">
-                Upload a simple CSV file with two columns: <strong>Size</strong> and <strong>KgPerMeter</strong>.
-                Example row: <code>2&quot; NB, 5.43</code>
-            </p>
-            <input type="file" id="pipeWeightFile" accept=".csv" />
-            <button
-                type="button"
-                class="upload-btn"
-                style="margin-top: 10px;"
-                onclick="window.pipeWeightCalculator && window.pipeWeightCalculator.loadPipeWeightFile()"
-            >
-                📤 Upload Pipe Weight Table
-            </button>
-            <p id="pipeWeightStatus" style="margin-top: 8px; font-size: 12px; color: #666;"></p>
-        </div>
-
         <!-- Input mode selection -->
         <div class="input-section">
             <h2>Choose Input Method</h2>
