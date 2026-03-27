@@ -1974,6 +1974,93 @@ app.post('/api/generate-quotation-file', upload.single('enquiryFile'), async (re
     await handleGenerateQuotation({ emailContent, fileContent, instructions, enquiryFileId, enquiryImageDataUrl }, res);
 });
 
+function buildWeightExtractionInstructions(instructions) {
+    const baseInstructions = String(instructions || '').trim();
+    const weightExtractionScope = [
+        'For this request, focus only on extracting pipe line items for the weight calculator.',
+        'Identify the pipe description/size, quantity if present, and the corresponding kgPerMeter.',
+        'Ignore customer details, quotation headers, pricing, margins, taxes, totals, and non-pipe items.',
+        'If kgPerMeter is not available, return it as an empty string.'
+    ].join(' ');
+    return [baseInstructions, weightExtractionScope].filter(Boolean).join('\n\n');
+}
+
+function simplifyWeightExtractionLineItems(lineItems) {
+    return (Array.isArray(lineItems) ? lineItems : [])
+        .map(item => {
+            const quantityValue = parseFlexibleNumber(item.quantity);
+            const kgPerMeterValue = parseFlexibleNumber(item.kgPerMeter);
+            return {
+                lineItemId: item.lineItemId || createLineItemId(),
+                originalDescription: item.originalDescription || item.description || '',
+                identifiedPipeType: item.identifiedPipeType || '',
+                quantity: Number.isFinite(quantityValue) && quantityValue > 0 ? quantityValue.toString() : '',
+                kgPerMeter: Number.isFinite(kgPerMeterValue) ? kgPerMeterValue.toFixed(2) : ''
+            };
+        })
+        .filter(item => item.originalDescription || item.identifiedPipeType);
+}
+
+app.post('/api/extract-pipe-weights', upload.single('sourceFile'), async (req, res) => {
+    const contentText = req.body?.contentText || '';
+    const instructions = req.body?.instructions || '';
+    let fileContent = '';
+    let enquiryFileId = null;
+    let enquiryImageDataUrl = null;
+
+    try {
+        if (req.file && isWordEnquiryFile(req.file.originalname)) {
+            fileContent = await extractTextFromWordFile(req.file);
+            if (!fileContent.trim() && !contentText.trim()) {
+                return res.status(400).json({ error: 'Could not extract text from Word document or document is empty.' });
+            }
+        } else if (req.file && isExcelEnquiryFile(req.file.originalname)) {
+            fileContent = extractTextFromExcelFile(req.file);
+            if (!fileContent.trim() && !contentText.trim()) {
+                return res.status(400).json({ error: 'Could not extract text from Excel file or file is empty.' });
+            }
+        } else if (req.file && isImageEnquiryFile(req.file.originalname)) {
+            enquiryImageDataUrl = getImageDataUrl(req.file);
+            if (!enquiryImageDataUrl && !contentText.trim()) {
+                return res.status(400).json({ error: 'Could not read image file.' });
+            }
+        } else if (req.file) {
+            enquiryFileId = await uploadEnquiryFileToOpenAI(req.file);
+        }
+    } catch (error) {
+        console.error('Failed to process weight extraction file:', error);
+        return res.status(500).json({ error: 'Failed to process uploaded file', details: error.message });
+    }
+
+    try {
+        const quotationData = await generateQuotationData({
+            emailContent: contentText,
+            fileContent,
+            instructions: buildWeightExtractionInstructions(instructions),
+            enquiryFileId,
+            enquiryImageDataUrl
+        });
+
+        return res.json({
+            lineItems: simplifyWeightExtractionLineItems(quotationData.lineItems),
+            _ai: quotationData._ai || null
+        });
+    } catch (error) {
+        console.error('Error extracting pipe weights:', error);
+        const errorMessage = error && typeof error === 'object' && error.error
+            ? error.error
+            : (error.message || 'Failed to extract pipe weights');
+        const errorDetails = error && typeof error === 'object' && error.details
+            ? error.details
+            : '';
+        const statusCode = /No content provided|No instructions provided/i.test(errorMessage) ? 400 : 500;
+        return res.status(statusCode).json({
+            error: errorMessage,
+            details: errorDetails
+        });
+    }
+});
+
 // Chat with AI about the last response
 app.post('/api/ai-chat', async (req, res) => {
     try {

@@ -1032,7 +1032,7 @@
         <h1>⚖️ Pipe Weight Calculator</h1>
 
         <div class="info-message">
-            Use this tool to calculate total pipe weight from an existing quotation, manual entry, or an uploaded file.
+            Use this tool to calculate total pipe weight from an existing quotation or from AI-extracted pipe sizes and kg/meter values.
         </div>
 
         <!-- Pipe weight reference upload -->
@@ -1058,7 +1058,7 @@
         <div class="input-section">
             <h2>Choose Input Method</h2>
 
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px;">
                 <!-- Option 1: Existing quotation number -->
                 <div style="border: 1px solid #ddd; border-radius: 6px; padding: 12px; background-color: #fafafa;">
                     <h3 style="margin-bottom: 8px;">1. From Quotation Number</h3>
@@ -1083,31 +1083,22 @@
                     <p id="weightFromQuoteStatus" style="margin-top: 6px; font-size: 12px; color: #666;"></p>
                 </div>
 
-                <!-- Option 2: Manual entry -->
+                <!-- Option 2: AI extraction from pasted content and/or uploaded file -->
                 <div style="border: 1px solid #ddd; border-radius: 6px; padding: 12px; background-color: #fafafa;">
-                    <h3 style="margin-bottom: 8px;">2. Manually Type Pipes</h3>
+                    <h3 style="margin-bottom: 8px;">2. Extract Pipe Sizes and Kg/Meter</h3>
                     <p style="font-size: 13px; color: #555; margin-bottom: 8px;">
-                        Quickly type pipe descriptions, kg/meter and quantity in meters.
+                        Paste any enquiry, BOQ, spec, or email content below, upload a file, or do both. The AI will extract pipe rows and fill kg/meter when available.
                     </p>
-                    <button
-                        type="button"
-                        class="upload-btn"
-                        onclick="window.pipeWeightCalculator && window.pipeWeightCalculator.addManualRow()"
-                    >
-                        ➕ Add Pipe Row
-                    </button>
-                </div>
-
-                <!-- Option 3: Upload file (AI-assisted) -->
-                <div style="border: 1px solid #ddd; border-radius: 6px; padding: 12px; background-color: #fafafa;">
-                    <h3 style="margin-bottom: 8px;">3. Upload File</h3>
-                    <p style="font-size: 13px; color: #555; margin-bottom: 8px;">
-                        Upload a document or email text. The app will use the same AI engine to identify pipe sizes.
-                    </p>
-                    <label for="weightFromFileUpload" style="margin-top: 8px; display: block;">Upload File:</label>
+                    <label for="weightExtractionText" style="display: block;">Paste Content:</label>
+                    <textarea
+                        id="weightExtractionText"
+                        placeholder="Paste any content here..."
+                        style="width: 100%; min-height: 110px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;"
+                    ></textarea>
+                    <label for="weightExtractionFile" style="margin-top: 8px; display: block;">Upload File:</label>
                     <input
                         type="file"
-                        id="weightFromFileUpload"
+                        id="weightExtractionFile"
                         accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.png,.jpg,.jpeg,.gif,.webp"
                         style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"
                     />
@@ -1115,11 +1106,19 @@
                         type="button"
                         class="generate-btn"
                         style="margin-top: 10px;"
-                        onclick="window.pipeWeightCalculator && window.pipeWeightCalculator.calculateFromUploadedFile()"
+                        onclick="window.pipeWeightCalculator && window.pipeWeightCalculator.calculateFromAiInput()"
                     >
-                        🤖 Extract Pipes with AI
+                        🤖 Extract Pipe Sizes and Kg/Meter
                     </button>
-                    <p id="weightFromFileStatus" style="margin-top: 6px; font-size: 12px; color: #666;"></p>
+                    <button
+                        type="button"
+                        class="upload-btn"
+                        style="margin-top: 10px;"
+                        onclick="window.pipeWeightCalculator && window.pipeWeightCalculator.addManualRow()"
+                    >
+                        ➕ Add Blank Row
+                    </button>
+                    <p id="weightExtractionStatus" style="margin-top: 6px; font-size: 12px; color: #666;"></p>
                 </div>
             </div>
         </div>
@@ -1949,6 +1948,42 @@
             } catch (error) {
                 console.error('Error calling AI API:', error);
                 showAiError(error.message);
+                throw error;
+            }
+        }
+
+        async function extractPipeWeightsWithAI(contentText, file) {
+            const instructions = document.getElementById('instructionsText')?.value || '';
+
+            if (!instructions || instructions.trim() === '') {
+                throw new Error('No instructions provided. Please enter and save instructions first.');
+            }
+
+            const formData = new FormData();
+            if (contentText) {
+                formData.append('contentText', contentText);
+            }
+            formData.append('instructions', instructions);
+            if (file) {
+                formData.append('sourceFile', file);
+            }
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/extract-pipe-weights`, {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await safeJsonParse(response);
+
+                if (!response.ok) {
+                    const errorMessage = result.error || 'Failed to extract pipe weights';
+                    const errorDetails = result.details ? ` | Details: ${result.details}` : '';
+                    throw new Error(`${errorMessage}${errorDetails}`);
+                }
+
+                return result;
+            } catch (error) {
+                console.error('Error calling pipe weight extraction API:', error);
                 throw error;
             }
         }

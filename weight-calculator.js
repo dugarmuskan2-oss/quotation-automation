@@ -169,6 +169,20 @@
         tbody.appendChild(row);
     }
 
+    function populatePipeWeightTable(lineItems) {
+        clearPipeWeightTable();
+
+        (Array.isArray(lineItems) ? lineItems : []).forEach(item => {
+            const desc = item.originalDescription || item.description || '';
+            const sizeKey = normalizeSizeKey(desc);
+            const kgPerMeter = resolveKgPerMeter(item, sizeKey);
+            const qtyMeters = parseNumber(item.quantity || item.qty || item.meters);
+            addPipeRowToTable(desc, kgPerMeter, qtyMeters);
+        });
+
+        recalculateFromTable();
+    }
+
     /**
      * Recalculate totals based on the current table content.
      */
@@ -273,17 +287,7 @@
             return;
         }
 
-        clearPipeWeightTable();
-
-        lineItems.forEach(item => {
-            const desc = item.originalDescription || item.description || '';
-            const sizeKey = normalizeSizeKey(desc);
-            const kgPerMeter = resolveKgPerMeter(item, sizeKey);
-            const qtyMeters = parseNumber(item.quantity || item.qty || item.meters);
-            addPipeRowToTable(desc, kgPerMeter, qtyMeters);
-        });
-
-        recalculateFromTable();
+        populatePipeWeightTable(lineItems);
 
         if (statusEl) {
             statusEl.textContent = 'Loaded line items from quotation. You can adjust kg/m and quantities if required.';
@@ -299,32 +303,33 @@
     }
 
     /**
-     * Option 3: upload file and use the same AI backend to extract pipe sizes.
-     * This sends content to the existing /generate-quotation endpoint and then
-     * reuses the lineItems exactly like option 1.
+     * Option 2: AI-assisted extraction from pasted content and/or an uploaded file.
      */
-    async function calculateFromUploadedFile() {
-        const fileInput = $('weightFromFileUpload');
-        const statusEl = $('weightFromFileStatus');
+    async function calculateFromAiInput() {
+        const contentInput = $('weightExtractionText');
+        const fileInput = $('weightExtractionFile');
+        const statusEl = $('weightExtractionStatus');
         if (statusEl) {
             statusEl.textContent = '';
             statusEl.style.color = '#666';
         }
 
-        if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+        const contentText = String(contentInput && contentInput.value || '').trim();
+        const file = fileInput && fileInput.files && fileInput.files.length > 0
+            ? fileInput.files[0]
+            : null;
+
+        if (!contentText && !file) {
             if (statusEl) {
-                statusEl.textContent = 'Please choose a file first.';
+                statusEl.textContent = 'Please paste content or choose a file first.';
                 statusEl.style.color = '#c62828';
             }
             return;
         }
 
-        const file = fileInput.files[0];
-
-        if (typeof window.readUploadedFileContent !== 'function' ||
-            typeof window.fetchQuotationData !== 'function') {
+        if (typeof window.extractPipeWeightsWithAI !== 'function') {
             if (statusEl) {
-                statusEl.textContent = 'AI quotation extraction is not available in this build.';
+                statusEl.textContent = 'AI pipe weight extraction is not available in this build.';
                 statusEl.style.color = '#c62828';
             }
             return;
@@ -332,45 +337,33 @@
 
         try {
             if (statusEl) {
-                statusEl.textContent = 'Reading file and calling AI...';
+                statusEl.textContent = 'Calling AI to extract pipe sizes and kg/meter...';
                 statusEl.style.color = '#666';
             }
 
-            const fileContent = await window.readUploadedFileContent(file);
-            const quotationData = await window.fetchQuotationData('', fileContent, file);
-
-            const lineItems = Array.isArray(quotationData && quotationData.lineItems)
-                ? quotationData.lineItems
+            const extractionData = await window.extractPipeWeightsWithAI(contentText, file);
+            const lineItems = Array.isArray(extractionData && extractionData.lineItems)
+                ? extractionData.lineItems
                 : [];
 
             if (!lineItems.length) {
                 if (statusEl) {
-                    statusEl.textContent = 'AI did not return any line items for this file.';
+                    statusEl.textContent = 'AI did not return any pipe rows for this input.';
                     statusEl.style.color = '#c62828';
                 }
                 return;
             }
 
-            clearPipeWeightTable();
-
-            lineItems.forEach(item => {
-                const desc = item.originalDescription || item.description || '';
-                const sizeKey = normalizeSizeKey(desc);
-                const kgPerMeter = resolveKgPerMeter(item, sizeKey);
-                const qtyMeters = parseNumber(item.quantity || item.qty || item.meters);
-                addPipeRowToTable(desc, kgPerMeter, qtyMeters);
-            });
-
-            recalculateFromTable();
+            populatePipeWeightTable(lineItems);
 
             if (statusEl) {
-                statusEl.textContent = 'AI line items loaded. Please verify kg/m values and quantities.';
+                statusEl.textContent = 'AI pipe rows loaded. Please verify kg/m values and quantities.';
                 statusEl.style.color = '#2e7d32';
             }
         } catch (error) {
             console.error('Weight calculator: AI extraction failed', error);
             if (statusEl) {
-                statusEl.textContent = 'Failed to extract pipes from file: ' + (error.message || 'Unknown error');
+                statusEl.textContent = 'Failed to extract pipe sizes and kg/meter: ' + (error.message || 'Unknown error');
                 statusEl.style.color = '#c62828';
             }
         }
@@ -439,7 +432,8 @@
             loadPipeWeightFile,
             calculateFromQuotationNumber,
             addManualRow,
-            calculateFromUploadedFile,
+            calculateFromAiInput,
+            calculateFromUploadedFile: calculateFromAiInput,
             recalculateFromTable
         };
     }
