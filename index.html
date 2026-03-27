@@ -4850,6 +4850,15 @@
             */
             
             const container = getApprovedQuotationsContainer();
+            const previousScrollTop = container ? container.scrollTop : 0;
+            const expandedFolderIds = container
+                ? Array.from(container.querySelectorAll('.quotation-folder-content.show'))
+                    .map(function(contentEl) {
+                        const id = (contentEl.id || '').replace('folder-content-', '');
+                        return id;
+                    })
+                    .filter(Boolean)
+                : [];
             
             // If no quotations, show message
             if (approvedQuotations.length === 0) {
@@ -4878,6 +4887,21 @@
             
             // Update the container
             renderApprovedQuotationsHTML(container, allQuotationsHTML);
+            // Restore expanded folders and scroll position after re-render so "Load more"
+            // feels stable instead of collapsing/jumping the list.
+            expandedFolderIds.forEach(function(folderId) {
+                const contentEl = document.getElementById('folder-content-' + folderId);
+                const iconEl = document.querySelector('#folder-' + folderId + ' .folder-toggle-icon');
+                if (contentEl) {
+                    contentEl.classList.add('show');
+                }
+                if (iconEl) {
+                    iconEl.classList.add('open');
+                }
+            });
+            if (container) {
+                container.scrollTop = previousScrollTop;
+            }
             
             // Attach event listeners to all editable fields in Approval section
             attachApprovalListeners();
