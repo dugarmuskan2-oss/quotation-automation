@@ -455,6 +455,92 @@
         reader.readAsText(file);
     }
 
+    function printWeightTable() {
+        const tbody = $('pipeWeightTableBody');
+        const totalEl = $('pipeWeightGrandTotal');
+        if (!tbody) return;
+
+        const rows = Array.from(tbody.querySelectorAll('tr')).map(row => {
+            const inputs = row.querySelectorAll('input');
+            const desc = inputs[0] ? (inputs[0].value || '').trim() : '';
+            const kgPerMeter = inputs[1] ? (inputs[1].value || '').trim() : '';
+            const qtyMeters = inputs[2] ? (inputs[2].value || '').trim() : '';
+            const totalKg = row.querySelector('.pipe-row-total')
+                ? (row.querySelector('.pipe-row-total').textContent || '').trim()
+                : '';
+            return { desc, kgPerMeter, qtyMeters, totalKg };
+        }).filter(r => r.desc || r.kgPerMeter || r.qtyMeters || r.totalKg);
+
+        if (!rows.length) {
+            return;
+        }
+
+        const tableRowsHtml = rows.map(r => `
+            <tr>
+                <td>${escapeHtml(r.desc)}</td>
+                <td>${escapeHtml(r.kgPerMeter)}</td>
+                <td>${escapeHtml(r.qtyMeters)}</td>
+                <td>${escapeHtml(r.totalKg)}</td>
+            </tr>
+        `).join('');
+
+        const printWindow = window.open('', '_blank', 'noopener,noreferrer');
+        if (!printWindow) {
+            return;
+        }
+
+        const grandTotal = totalEl ? (totalEl.textContent || '0.00') : '0.00';
+        const html = `
+            <!doctype html>
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <title>Pipe Weight Calculation</title>
+                <style>
+                    body { font-family: Arial, sans-serif; padding: 20px; color: #222; }
+                    h1 { margin: 0 0 6px; font-size: 22px; }
+                    .meta { margin-bottom: 14px; color: #555; font-size: 13px; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+                    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                    th { background: #f5f5f5; }
+                    .total { margin-top: 14px; font-size: 18px; font-weight: bold; }
+                </style>
+            </head>
+            <body>
+                <h1>Pipe Weight Calculation</h1>
+                <div class="meta">Generated on ${new Date().toLocaleString()}</div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Items and Description</th>
+                            <th>Kg / Meter</th>
+                            <th>Qty (Meters)</th>
+                            <th>Total Weight (Kg)</th>
+                        </tr>
+                    </thead>
+                    <tbody>${tableRowsHtml}</tbody>
+                </table>
+                <div class="total">Total Weight: ${escapeHtml(grandTotal)} Kg</div>
+            </body>
+            </html>
+        `;
+
+        printWindow.document.open();
+        printWindow.document.write(html);
+        printWindow.document.close();
+        printWindow.focus();
+        printWindow.print();
+    }
+
+    function escapeHtml(value) {
+        return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
     /**
      * Initialisation: expose a small, well-defined surface on window.
      */
@@ -470,7 +556,8 @@
             addManualRow,
             calculateFromAiInput,
             calculateFromUploadedFile: calculateFromAiInput,
-            recalculateFromTable
+            recalculateFromTable,
+            printWeightTable
         };
     }
 
