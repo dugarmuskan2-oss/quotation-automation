@@ -1110,14 +1110,6 @@
                     >
                         🤖 Extract Pipe Sizes and Kg/Meter
                     </button>
-                    <button
-                        type="button"
-                        class="upload-btn"
-                        style="margin-top: 10px;"
-                        onclick="window.pipeWeightCalculator && window.pipeWeightCalculator.addManualRow()"
-                    >
-                        ➕ Add Blank Row
-                    </button>
                     <p id="weightExtractionStatus" style="margin-top: 6px; font-size: 12px; color: #666;"></p>
                 </div>
             </div>
@@ -1133,6 +1125,7 @@
             <table id="pipeWeightTable" style="margin-top: 10px;">
                 <thead>
                     <tr>
+                        <th style="width: 72px;">ACTIONS</th>
                         <th>Items and Description</th>
                         <th>Kg / Meter</th>
                         <th>Qty (Meters)</th>

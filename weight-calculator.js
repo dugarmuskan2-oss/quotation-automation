@@ -122,12 +122,13 @@
         }
     }
 
-    function addPipeRowToTable(description, kgPerMeter, qtyMeters) {
+    function addPipeRowToTable(description, kgPerMeter, qtyMeters, insertAfterRow) {
         const tbody = $('pipeWeightTableBody');
         if (!tbody) return;
 
         const row = document.createElement('tr');
 
+        const actionCell = document.createElement('td');
         const descCell = document.createElement('td');
         const kgCell = document.createElement('td');
         const qtyCell = document.createElement('td');
@@ -156,17 +157,52 @@
         totalSpan.textContent = '0.00';
         totalSpan.className = 'pipe-row-total';
 
+        const actionWrap = document.createElement('div');
+        actionWrap.style.display = 'flex';
+        actionWrap.style.flexDirection = 'column';
+        actionWrap.style.alignItems = 'center';
+        actionWrap.style.gap = '6px';
+        actionWrap.style.justifyContent = 'center';
+
+        const addBtn = document.createElement('button');
+        addBtn.type = 'button';
+        addBtn.title = 'Add row';
+        addBtn.textContent = '➕';
+        addBtn.style.cssText = 'background:#4CAF50;color:#fff;border:none;padding:4px 8px;cursor:pointer;border-radius:3px;font-size:14px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;';
+        addBtn.addEventListener('click', function () {
+            addPipeRowToTable('', NaN, NaN, row);
+            recalculateFromTable();
+        });
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.type = 'button';
+        deleteBtn.title = 'Delete row';
+        deleteBtn.textContent = '➖';
+        deleteBtn.style.cssText = 'background:#f44336;color:#fff;border:none;padding:4px 8px;cursor:pointer;border-radius:3px;font-size:14px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;';
+        deleteBtn.addEventListener('click', function () {
+            row.remove();
+            recalculateFromTable();
+        });
+
+        actionWrap.appendChild(addBtn);
+        actionWrap.appendChild(deleteBtn);
+        actionCell.appendChild(actionWrap);
         descCell.appendChild(descInput);
         kgCell.appendChild(kgInput);
         qtyCell.appendChild(qtyInput);
         totalCell.appendChild(totalSpan);
 
+        row.appendChild(actionCell);
         row.appendChild(descCell);
         row.appendChild(kgCell);
         row.appendChild(qtyCell);
         row.appendChild(totalCell);
 
-        tbody.appendChild(row);
+        if (insertAfterRow && insertAfterRow.parentNode === tbody) {
+            tbody.insertBefore(row, insertAfterRow.nextElementSibling);
+        } else {
+            tbody.appendChild(row);
+        }
     }
 
     function populatePipeWeightTable(lineItems) {
