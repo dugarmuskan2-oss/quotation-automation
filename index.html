@@ -2938,6 +2938,7 @@
                             <div style="display: flex; gap: 6px;">
                                 <button onclick="addRow('${pipeType}', null, event)" title="Add item row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">➕</button>
                                 <button onclick="addRow('__NEW_HEADER__', '${headerRow.id}', event)" title="Add pipe type" style="background: #2196F3; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">H+</button>
+                                <button onclick="addRow('__NEW_MAIN_HEADER__', '${headerRow.id}', event)" title="Add main heading row" style="background: #673AB7; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">M+</button>
                                 <button onclick="deleteRow(event)" title="Delete pipe type" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
                             </div>
                         </div>
@@ -3354,6 +3355,7 @@
                             <div style="display: flex; gap: 6px;">
                                 <button type="button" data-creation-entry-id="${entryId}" data-creation-action="add-row" data-creation-pipe-type="Default" title="Add item row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">➕</button>
                                 <button type="button" data-creation-entry-id="${entryId}" data-creation-action="add-header" title="Add pipe type" style="background: #2196F3; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">H+</button>
+                                <button type="button" data-creation-entry-id="${entryId}" data-creation-action="add-main-header" title="Add main heading row" style="background: #673AB7; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">M+</button>
                                 <button type="button" data-creation-entry-id="${entryId}" data-creation-action="delete-row" title="Delete pipe type" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
                             </div>
                         </div>
@@ -3362,6 +3364,34 @@
                 tableBody.appendChild(headerRow);
                 attachCreationFolderCalculationListeners(entryId);
                 recalculateAllTotalsInContainer(folderContent);
+                return;
+            }
+
+            if (pipeType === '__NEW_MAIN_HEADER__') {
+                const rowId = `creation-main-header-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                const mainHeaderRow = document.createElement('tr');
+                mainHeaderRow.className = 'main-column-header-row';
+                mainHeaderRow.id = rowId;
+                mainHeaderRow.innerHTML = `
+                    <td style="text-align: center; vertical-align: middle; padding: 5px;">
+                        <button type="button" data-creation-entry-id="${entryId}" data-creation-action="delete-row" title="Delete heading row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
+                    </td>
+                    <td><input type="text" class="editable-field" value="S. NO" style="width: 100%; border: none; background: transparent; font-weight: bold;"></td>
+                    <td><input type="text" class="editable-field" value="ITEMS AND DESCRIPTION" style="width: 100%; border: none; background: transparent; font-weight: bold;"></td>
+                    <td><input type="text" class="editable-field" value="QTY (Mtrs)" style="width: 100%; border: none; background: transparent; font-weight: bold;"></td>
+                    <td class="col-base-rate"><input type="text" class="editable-field" value="BASE RATE" style="width: 100%; border: none; background: transparent; font-weight: bold;"></td>
+                    <td class="col-margin"><input type="text" class="editable-field" value="MARGIN %" style="width: 100%; border: none; background: transparent; font-weight: bold;"></td>
+                    <td><input type="text" class="editable-field" value="Rate per Mtr" style="width: 100%; border: none; background: transparent; font-weight: bold;"></td>
+                    <td><input type="text" class="editable-field" value="AMOUNT" style="width: 100%; border: none; background: transparent; font-weight: bold;"></td>
+                `;
+                if (insertAfterRow && insertAfterRow.parentNode === tableBody) {
+                    tableBody.insertBefore(mainHeaderRow, insertAfterRow.nextElementSibling);
+                } else {
+                    tableBody.appendChild(mainHeaderRow);
+                }
+                attachCreationFolderCalculationListeners(entryId);
+                recalculateAllTotalsInContainer(folderContent);
+                updateRowNumbers(tableBody);
                 return;
             }
 
@@ -3430,6 +3460,9 @@
                 if (onclick.indexOf('__NEW_HEADER__') !== -1) {
                     btn.setAttribute('data-creation-entry-id', entryId);
                     btn.setAttribute('data-creation-action', 'add-header');
+                } else if (onclick.indexOf('__NEW_MAIN_HEADER__') !== -1) {
+                    btn.setAttribute('data-creation-entry-id', entryId);
+                    btn.setAttribute('data-creation-action', 'add-main-header');
                 } else if (onclick.indexOf('addRow') !== -1) {
                     const tr = btn.closest('tr');
                     const pipeType = (tr && tr.getAttribute('data-pipe-type')) || (tr && tr.querySelector('input[data-field="pipeTypeHeader"]') && tr.querySelector('input[data-field="pipeTypeHeader"]').value) || 'Default';
@@ -3451,6 +3484,8 @@
                     addCreationFolderRow(eid, btn.getAttribute('data-creation-pipe-type') || 'Default', btn.closest('tr'));
                 } else if (action === 'add-header') {
                     addCreationFolderRow(eid, '__NEW_HEADER__', null);
+                } else if (action === 'add-main-header') {
+                    addCreationFolderRow(eid, '__NEW_MAIN_HEADER__', btn.closest('tr'));
                 } else if (action === 'delete-row') {
                     deleteCreationFolderRow(eid, ev);
                 }
@@ -3630,6 +3665,7 @@
                             <div style="display: flex; gap: 6px;">
                                 <button onclick="addRow('Default', null, event)" title="Add item row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">➕</button>
                                 <button onclick="addRow('__NEW_HEADER__', '${headerRow.id}', event)" title="Add pipe type" style="background: #2196F3; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">H+</button>
+                                <button onclick="addRow('__NEW_MAIN_HEADER__', '${headerRow.id}', event)" title="Add main heading row" style="background: #673AB7; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">M+</button>
                                 <button onclick="deleteRow(event)" title="Delete pipe type" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
                             </div>
                         </div>
@@ -3641,6 +3677,41 @@
                     if (entryId) attachCreationFolderCalculationListeners(entryId);
                     recalculateAllTotalsInContainer(container);
                 }
+                return;
+            }
+
+            if (pipeType === '__NEW_MAIN_HEADER__') {
+                const mainHeaderRow = document.createElement('tr');
+                mainHeaderRow.className = 'main-column-header-row';
+                mainHeaderRow.id = `main-header-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                mainHeaderRow.innerHTML = `
+                    <td style="text-align: center; vertical-align: middle; padding: 5px;">
+                        <button onclick="deleteRow(event)" title="Delete heading row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
+                    </td>
+                    <td><input type="text" class="editable-field" value="S. NO" style="width: 100%; border: none; background: transparent; font-weight: bold;"></td>
+                    <td><input type="text" class="editable-field" value="ITEMS AND DESCRIPTION" style="width: 100%; border: none; background: transparent; font-weight: bold;"></td>
+                    <td><input type="text" class="editable-field" value="QTY (Mtrs)" style="width: 100%; border: none; background: transparent; font-weight: bold;"></td>
+                    <td class="col-base-rate"><input type="text" class="editable-field" value="BASE RATE" style="width: 100%; border: none; background: transparent; font-weight: bold;"></td>
+                    <td class="col-margin"><input type="text" class="editable-field" value="MARGIN %" style="width: 100%; border: none; background: transparent; font-weight: bold;"></td>
+                    <td><input type="text" class="editable-field" value="Rate per Mtr" style="width: 100%; border: none; background: transparent; font-weight: bold;"></td>
+                    <td><input type="text" class="editable-field" value="AMOUNT" style="width: 100%; border: none; background: transparent; font-weight: bold;"></td>
+                `;
+                if (insertAfterId) {
+                    const insertAfterRow = tableBodyToUse.querySelector('#' + insertAfterId);
+                    if (insertAfterRow && insertAfterRow.parentNode === tableBodyToUse) {
+                        tableBodyToUse.insertBefore(mainHeaderRow, insertAfterRow.nextElementSibling);
+                    } else {
+                        tableBodyToUse.appendChild(mainHeaderRow);
+                    }
+                } else {
+                    tableBodyToUse.appendChild(mainHeaderRow);
+                }
+                if (container) {
+                    const entryId = container.id && container.id.startsWith('folder-content-') ? container.id.replace('folder-content-', '') : '';
+                    if (entryId) attachCreationFolderCalculationListeners(entryId);
+                    recalculateAllTotalsInContainer(container);
+                }
+                updateRowNumbers(tableBodyToUse);
                 return;
             }
             
@@ -3666,6 +3737,7 @@
                                 <div style="display: flex; gap: 6px;">
                                     <button onclick="addRow('${pipeType}', null, event)" title="Add item row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">➕</button>
                                     <button onclick="addRow('__NEW_HEADER__', '${headerRow.id}', event)" title="Add pipe type" style="background: #2196F3; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">H+</button>
+                                    <button onclick="addRow('__NEW_MAIN_HEADER__', '${headerRow.id}', event)" title="Add main heading row" style="background: #673AB7; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">M+</button>
                                     <button onclick="deleteRow(event)" title="Delete pipe type" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
                                 </div>
                             </div>
@@ -5551,12 +5623,44 @@
                             <div style="display: flex; gap: 6px;">
                                 <button onclick="addApprovalRow('${quotationId}', 'Default', '${newHeaderRow.id}')" title="Add item row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">➕</button>
                                 <button onclick="addApprovalRow('${quotationId}', '__NEW_HEADER__', '${newHeaderRow.id}')" title="Add pipe type" style="background: #2196F3; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">H+</button>
+                                <button onclick="addApprovalRow('${quotationId}', '__NEW_MAIN_HEADER__', '${newHeaderRow.id}')" title="Add main heading row" style="background: #673AB7; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">M+</button>
                                 <button onclick="deleteApprovalRow('${quotationId}', '${newHeaderRow.id}')" title="Delete pipe type" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
                             </div>
                         </div>
                     </td>
                 `;
                 tbody.appendChild(newHeaderRow);
+                attachApprovalSectionListeners();
+                return;
+            }
+
+            if (pipeType === '__NEW_MAIN_HEADER__') {
+                const rowId = `approval-main-header-${quotationId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                const mainHeaderRow = document.createElement('tr');
+                mainHeaderRow.className = 'main-column-header-row';
+                mainHeaderRow.id = rowId;
+                mainHeaderRow.innerHTML = `
+                    <td><input type="text" class="editable-field" value="S. NO" style="width: 100%; border: none; background: transparent; font-weight: bold;"></td>
+                    <td><input type="text" class="editable-field" value="ITEMS AND DESCRIPTION" style="width: 100%; border: none; background: transparent; font-weight: bold;"></td>
+                    <td><input type="text" class="editable-field" value="QTY (Mtrs)" style="width: 100%; border: none; background: transparent; font-weight: bold;"></td>
+                    <td class="col-base-rate"><input type="text" class="editable-field" value="BASE RATE" style="width: 100%; border: none; background: transparent; font-weight: bold;"></td>
+                    <td class="col-margin"><input type="text" class="editable-field" value="MARGIN %" style="width: 100%; border: none; background: transparent; font-weight: bold;"></td>
+                    <td><input type="text" class="editable-field" value="Rate per Mtr" style="width: 100%; border: none; background: transparent; font-weight: bold;"></td>
+                    <td><input type="text" class="editable-field" value="AMOUNT" style="width: 100%; border: none; background: transparent; font-weight: bold;"></td>
+                    <td>
+                        <button class="delete-row-btn" onclick="deleteApprovalRow('${quotationId}', '${rowId}')" title="Delete heading row" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
+                    </td>
+                `;
+                if (insertAfterId) {
+                    const insertAfterRow = folderContent.querySelector('#' + insertAfterId);
+                    if (insertAfterRow && insertAfterRow.parentNode === tbody) {
+                        tbody.insertBefore(mainHeaderRow, insertAfterRow.nextElementSibling);
+                    } else {
+                        tbody.appendChild(mainHeaderRow);
+                    }
+                } else {
+                    tbody.appendChild(mainHeaderRow);
+                }
                 attachApprovalSectionListeners();
                 return;
             }
