@@ -1086,7 +1086,7 @@ app.get('/api/next-quote-number', async (req, res) => {
 });
 
 // Max quotations returned by GET /api/quotations (client can pass ?limit= up to this cap)
-const QUOTATIONS_LIST_LIMIT = 350;
+const QUOTATIONS_LIST_LIMIT = 600;
 
 // Get all quotations from DynamoDB
 app.get('/api/quotations', async (req, res) => {
@@ -1098,6 +1098,7 @@ app.get('/api/quotations', async (req, res) => {
             QUOTATIONS_LIST_LIMIT,
             Math.max(1, parseInt(req.query.limit, 10) || QUOTATIONS_LIST_LIMIT)
         );
+        const requestedOffset = Math.max(0, parseInt(req.query.offset, 10) || 0);
         const { ScanCommand } = require('@aws-sdk/lib-dynamodb');
         let items = [];
         let lastKey = null;
@@ -1117,8 +1118,16 @@ app.get('/api/quotations', async (req, res) => {
             const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
             return bTime - aTime;
         });
-        quotations = quotations.slice(0, requestedLimit);
-        res.json({ quotations });
+        const total = quotations.length;
+        const pagedQuotations = quotations.slice(requestedOffset, requestedOffset + requestedLimit);
+        const hasMore = (requestedOffset + pagedQuotations.length) < total;
+        res.json({
+            quotations: pagedQuotations,
+            hasMore,
+            total,
+            limit: requestedLimit,
+            offset: requestedOffset
+        });
     } catch (error) {
         console.error('Error loading quotations:', error);
         res.status(500).json({ error: 'Failed to load quotations', details: error.message });

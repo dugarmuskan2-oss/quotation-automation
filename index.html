@@ -1006,6 +1006,11 @@
                     No quotations approved yet. Create and approve a quotation to see it here.
                 </p>
             </div>
+            <div style="margin-top: 10px; text-align: center;">
+                <button id="loadMoreApprovedBtn" class="upload-btn" type="button" onclick="loadMoreApprovedQuotations()" style="display: none; width: auto; min-width: 160px;">
+                    Load more
+                </button>
+            </div>
         </div>
 
         <!-- AI Response Section -->
@@ -1248,6 +1253,10 @@
         }
 
         const backendSaveTimers = new Map();
+        const APPROVED_QUOTATIONS_PAGE_SIZE = 40;
+        let approvedQuotationsOffset = 0;
+        let approvedQuotationsHasMore = false;
+        let approvedQuotationsLoading = false;
 
         function scheduleQuotationBackendSave(quotation, delay = 1000) {
             if (!quotation || !quotation.id) {
@@ -1264,31 +1273,61 @@
             backendSaveTimers.set(quotation.id, timeoutId);
         }
 
-        async function loadQuotationsFromBackend() {
+        function updateLoadMoreApprovedButton() {
+            const loadMoreBtn = document.getElementById('loadMoreApprovedBtn');
+            if (!loadMoreBtn) {
+                return;
+            }
+            loadMoreBtn.style.display = approvedQuotationsHasMore ? 'inline-block' : 'none';
+            loadMoreBtn.disabled = approvedQuotationsLoading;
+            loadMoreBtn.textContent = approvedQuotationsLoading ? 'Loading...' : 'Load more';
+        }
+
+        async function loadQuotationsFromBackend(append = false) {
+            if (approvedQuotationsLoading) {
+                return false;
+            }
+            approvedQuotationsLoading = true;
+            updateLoadMoreApprovedButton();
             try {
-                const response = await fetch(`${API_BASE_URL}/quotations?limit=350`);
+                const offset = append ? approvedQuotationsOffset : 0;
+                const response = await fetch(`${API_BASE_URL}/quotations?limit=${APPROVED_QUOTATIONS_PAGE_SIZE}&offset=${offset}`);
                 const result = await safeJsonParse(response);
                 if (!response.ok) {
                     const detailMsg = result.details ? ': ' + result.details : '';
                     throw new Error((result.error || 'Failed to load quotations') + detailMsg);
                 }
                 const quotations = Array.isArray(result.quotations) ? result.quotations : [];
-                if (quotations.length > 0) {
+                if (append) {
+                    approvedQuotations = approvedQuotations.concat(quotations);
+                } else {
                     approvedQuotations = quotations;
-                    syncApprovedQuotationsGlobal();
-
-                    displayAllApprovedQuotations();
-                    return true;
                 }
-                return false;
+                approvedQuotationsOffset = approvedQuotations.length;
+                approvedQuotationsHasMore = !!result.hasMore;
+                syncApprovedQuotationsGlobal();
+                displayAllApprovedQuotations();
+                return quotations.length > 0;
             } catch (error) {
                 console.error('Error loading quotations from backend:', error);
                 return false;
+            } finally {
+                approvedQuotationsLoading = false;
+                updateLoadMoreApprovedButton();
             }
         }
 
         async function initQuotations() {
-            await loadQuotationsFromBackend();
+            approvedQuotationsOffset = 0;
+            approvedQuotationsHasMore = false;
+            await loadQuotationsFromBackend(false);
+        }
+
+        async function loadMoreApprovedQuotations() {
+            if (!approvedQuotationsHasMore || approvedQuotationsLoading) {
+                return;
+            }
+            await loadQuotationsFromBackend(true);
         }
 
         /*
