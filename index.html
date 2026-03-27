@@ -4869,27 +4869,12 @@
             fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'pre-fix-thin-slice',hypothesisId:'A',location:'index.html:updateApprovalContainerScrollLimit:entry',message:'container sizing input',data:{folderCount:folders.length,hasExpandedFolder:hasExpandedFolder,currentMaxHeight:container.style.maxHeight||'',currentOverflowY:container.style.overflowY||''},timestamp:Date.now()})}).catch(()=>{});
             // #endregion
 
-            // If any folder is expanded, never clamp the container height.
-            // This prevents "thin slice" clipping of expanded quotation content.
-            if (folders.length <= 10 || hasExpandedFolder) {
-                container.style.maxHeight = '';
-                container.style.overflowY = '';
-                // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'pre-fix-thin-slice',hypothesisId:'A',location:'index.html:updateApprovalContainerScrollLimit:unclamped',message:'container unclamped',data:{folderCount:folders.length,hasExpandedFolder:hasExpandedFolder,finalMaxHeight:container.style.maxHeight||'',finalOverflowY:container.style.overflowY||''},timestamp:Date.now()})}).catch(()=>{});
-                // #endregion
-                return;
-            }
-
-            let totalHeight = 0;
-            const visibleCount = Math.min(10, folders.length);
-            for (let i = 0; i < visibleCount; i += 1) {
-                totalHeight += folders[i].getBoundingClientRect().height;
-            }
-            totalHeight += 10; // small buffer for container padding
-            container.style.maxHeight = `${Math.ceil(totalHeight)}px`;
-            container.style.overflowY = 'auto';
+            // Permanent fix: never clamp approval container height.
+            // Clamping can get stuck after dynamic re-renders and produce a thin slice.
+            container.style.maxHeight = '';
+            container.style.overflowY = '';
             // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'pre-fix-thin-slice',hypothesisId:'B',location:'index.html:updateApprovalContainerScrollLimit:clamped',message:'container clamped',data:{folderCount:folders.length,visibleCount:visibleCount,totalHeight:Math.ceil(totalHeight),finalMaxHeight:container.style.maxHeight||'',finalOverflowY:container.style.overflowY||''},timestamp:Date.now()})}).catch(()=>{});
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'post-fix-thin-slice',hypothesisId:'D',location:'index.html:updateApprovalContainerScrollLimit:always-unclamped',message:'container forced unclamped',data:{folderCount:folders.length,hasExpandedFolder:hasExpandedFolder,finalMaxHeight:container.style.maxHeight||'',finalOverflowY:container.style.overflowY||''},timestamp:Date.now()})}).catch(()=>{});
             // #endregion
         }
 
