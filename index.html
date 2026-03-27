@@ -4865,12 +4865,18 @@
                 const content = folder.querySelector('.quotation-folder-content');
                 return !!(content && content.classList.contains('show'));
             });
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'pre-fix-thin-slice',hypothesisId:'A',location:'index.html:updateApprovalContainerScrollLimit:entry',message:'container sizing input',data:{folderCount:folders.length,hasExpandedFolder:hasExpandedFolder,currentMaxHeight:container.style.maxHeight||'',currentOverflowY:container.style.overflowY||''},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion
 
             // If any folder is expanded, never clamp the container height.
             // This prevents "thin slice" clipping of expanded quotation content.
             if (folders.length <= 10 || hasExpandedFolder) {
                 container.style.maxHeight = '';
                 container.style.overflowY = '';
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'pre-fix-thin-slice',hypothesisId:'A',location:'index.html:updateApprovalContainerScrollLimit:unclamped',message:'container unclamped',data:{folderCount:folders.length,hasExpandedFolder:hasExpandedFolder,finalMaxHeight:container.style.maxHeight||'',finalOverflowY:container.style.overflowY||''},timestamp:Date.now()})}).catch(()=>{});
+                // #endregion
                 return;
             }
 
@@ -4882,6 +4888,9 @@
             totalHeight += 10; // small buffer for container padding
             container.style.maxHeight = `${Math.ceil(totalHeight)}px`;
             container.style.overflowY = 'auto';
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'pre-fix-thin-slice',hypothesisId:'B',location:'index.html:updateApprovalContainerScrollLimit:clamped',message:'container clamped',data:{folderCount:folders.length,visibleCount:visibleCount,totalHeight:Math.ceil(totalHeight),finalMaxHeight:container.style.maxHeight||'',finalOverflowY:container.style.overflowY||''},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion
         }
 
         function attachApprovalListeners() {
@@ -4905,6 +4914,9 @@
                     })
                     .filter(Boolean)
                 : [];
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'pre-fix-thin-slice',hypothesisId:'C',location:'index.html:displayAllApprovedQuotations:entry',message:'display start',data:{approvedCount:approvedQuotations.length,searchQuery:String(approvalSearchQuery||''),previousScrollTop:previousScrollTop,expandedCount:expandedFolderIds.length},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion
             
             // If no quotations, show message
             if (approvedQuotations.length === 0) {
@@ -4956,6 +4968,9 @@
             if (container) {
                 container.scrollTop = previousScrollTop;
             }
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'pre-fix-thin-slice',hypothesisId:'C',location:'index.html:displayAllApprovedQuotations:post-render',message:'display post render',data:{renderedCount:sortedByQuotationDate.length,containerMaxHeight:(container&&container.style?container.style.maxHeight:'')||'',containerOverflowY:(container&&container.style?container.style.overflowY:'')||'',restoredScrollTop:container?container.scrollTop:0},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion
             
             // Attach event listeners to all editable fields in Approval section
             attachApprovalListeners();
