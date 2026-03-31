@@ -366,7 +366,7 @@
             opacity: 0.55;
             background-color: rgba(0, 0, 0, 0.04);
         }
-
+        
         /* Folder-like styling for saved quotations */
         .quotation-folder {
             background-color: #f5f5f5;
@@ -632,9 +632,26 @@
             font-size: 14px;
         }
 
-        /* Main column header row (M+) — inherits pipe-type-header look */
+        /* Main column header row (M+) — paired column label row */
+        .main-column-header-row {
+            background-color: var(--brand-color);
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
         .main-column-header-row td {
             padding: 8px 10px;
+            background-color: var(--brand-color);
+        }
+
+        .main-column-header-row input {
+            width: 100%;
+            border: none;
+            background: transparent;
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
         }
 
         .main-column-header-row .drag-handle {
@@ -663,7 +680,7 @@
         .row-drag-over-bottom {
             box-shadow: 0 3px 0 0 var(--brand-color) inset;
         }
-
+        
         /* Subtotal row styling */
         .subtotal-row {
             background-color: #e8f5e9;
@@ -1688,10 +1705,10 @@
                         statusEl.style.color = '#4CAF50';
                     }
                 } else {
-                    const statusEl = document.getElementById('instructionsStatus');
-                    if (statusEl) {
+                        const statusEl = document.getElementById('instructionsStatus');
+                        if (statusEl) {
                         statusEl.textContent = 'No instructions found on server';
-                        statusEl.style.color = '#999';
+                            statusEl.style.color = '#999';
                     }
                 }
             } catch (error) {
@@ -1832,7 +1849,7 @@
                             <span>📄 ${filename}</span>
                             <div style="display:flex; gap:8px; align-items:center;">
                                 <a href="${viewUrl}" target="_blank" rel="noopener noreferrer" style="background-color: #1a73e8; color: white; border: none; padding: 5px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; text-decoration: none;">View</a>
-                                <button onclick="deleteRateFile('${filename}')" style="background-color: #f44336; color: white; border: none; padding: 5px 15px; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
+                            <button onclick="deleteRateFile('${filename}')" style="background-color: #f44336; color: white; border: none; padding: 5px 15px; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
                             </div>
                         </div>
                     `;
@@ -2752,7 +2769,7 @@
                 
                 // Step 5: Call AI API to extract data
                 const quotationData = await fetchQuotationData(emailContent, fileContent, file);
-
+                
                 // Step 6: Display the quotation
                 renderQuotation(quotationData, creationFolderId);
                 if (creationFolderId) {
@@ -2793,17 +2810,17 @@
             if (phoneEl) phoneEl.value = data.phoneNumber || data['Phone Number'] || '';
             if (mobileEl) mobileEl.value = data.mobileNumber || data['Mobile Number'] || '';
         }
-
+            
         function getQuotationTableBody() {
             // Step 2: Get the table body element (where rows will be added)
             return document.getElementById('quotationTableBody');
         }
-
+            
         function clearQuotationTableBody(tableBody) {
             // Step 3: Clear any existing rows
             tableBody.innerHTML = "";
         }
-
+            
         function groupLineItemsByPipeType(lineItems) {
             // Step 4: Group line items by pipe type
             const groupedItems = {};
@@ -2816,26 +2833,26 @@
             });
             return groupedItems;
         }
-
+            
         function initializeGrandTotal() {
             // Step 5: Calculate grand total
             return 0;
         }
-
-        // Helper: get standardized header label based on pipe type
-        function getPipeHeaderLabel(pipeType) {
-            const value = (pipeType || '').toLowerCase();
-            if (value.includes('seamless')) {
-                return 'CS Seamless Pipe as per ASTM 106 Gr. B';
+            
+            // Helper: get standardized header label based on pipe type
+            function getPipeHeaderLabel(pipeType) {
+                const value = (pipeType || '').toLowerCase();
+                if (value.includes('seamless')) {
+                    return 'CS Seamless Pipe as per ASTM 106 Gr. B';
+                }
+                if (value.includes('gi') || value.includes('galvanized')) {
+                    return 'MS GI Pipe as per IS 1239/ 3589';
+                }
+                if (value.includes('erw')) {
+                    return 'MS ERW Pipe as per IS 1239/ 3589';
+                }
+                return pipeType || '';
             }
-            if (value.includes('gi') || value.includes('galvanized')) {
-                return 'MS GI Pipe as per IS 1239/ 3589';
-            }
-            if (value.includes('erw')) {
-                return 'MS ERW Pipe as per IS 1239/ 3589';
-            }
-            return pipeType || '';
-        }
 
         function normalizeFractionText(text) {
             if (!text) {
@@ -3066,7 +3083,7 @@
                     attachRowEventListeners(row);
                 });
             });
-
+            
             return grandTotal;
         }
 
@@ -3081,8 +3098,8 @@
             if (noCreationMsg) {
                 noCreationMsg.style.display = 'none';
             }
-        }
-
+            }
+            
         function showCreationQuotationContent(hasCreationFolder) {
             // Step 9: Show the quotation content (header, table, totals, approve button, terms)
             // When hasCreationFolder: finalizeCreationFolderEntry consumes the quote number (single source).
@@ -3115,14 +3132,14 @@
             // Step 10: Add event listeners to all editable fields for real-time calculation
             attachCalculationListeners();
         }
-
+            
         function scrollToQuotationSection() {
             // Step 11: Scroll to the quotation so user can see it
             document.getElementById('quotationSection').scrollIntoView({ 
                 behavior: 'smooth' 
             });
         }
-
+        
         function displayQuotation(data, hasCreationFolder) {
             /*
                 Parameter:
@@ -3302,7 +3319,7 @@
                 if (lineTotalInput && lineTotalInput.tagName === 'INPUT') {
                     lineTotal = parseFloat(lineTotalInput.value || 0) || 0;
                 } else {
-                    const lineTotalSpan = row.querySelector('.line-total');
+                const lineTotalSpan = row.querySelector('.line-total');
                     const lineTotalText = lineTotalSpan ? lineTotalSpan.textContent.replace('₹', '').replace(/,/g, '') : '0';
                     lineTotal = parseFloat(lineTotalText) || 0;
                 }
@@ -3400,34 +3417,16 @@
             }
 
             if (pipeType === '__NEW_MAIN_HEADER__') {
-                const rowId = `creation-main-header-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                const mainHeaderRow = document.createElement('tr');
-                mainHeaderRow.className = 'pipe-type-header main-column-header-row';
-                mainHeaderRow.id = rowId;
-                mainHeaderRow.innerHTML = `
-                    <td style="text-align: center; vertical-align: middle; padding: 6px 4px; width: 50px;">
-                        <span class="drag-handle" title="Drag to reorder">⠿</span>
-                        <div style="display: flex; gap: 3px; justify-content: center; margin-top: 4px; flex-wrap: wrap;">
-                            <button type="button" data-creation-entry-id="${entryId}" data-creation-action="add-row" data-creation-pipe-type="Default" title="Add item row" style="background: #4CAF50; color: white; border: none; padding: 2px 5px; cursor: pointer; border-radius: 3px; font-size: 11px;">➕</button>
-                            <button type="button" data-creation-entry-id="${entryId}" data-creation-action="add-header" title="Add pipe type" style="background: #2196F3; color: white; border: none; padding: 2px 5px; cursor: pointer; border-radius: 3px; font-size: 11px;">H+</button>
-                            <button type="button" data-creation-entry-id="${entryId}" data-creation-action="add-main-header" title="Add main heading row" style="background: #673AB7; color: white; border: none; padding: 2px 5px; cursor: pointer; border-radius: 3px; font-size: 11px;">M+</button>
-                            <button type="button" data-creation-entry-id="${entryId}" data-creation-action="delete-row" title="Delete heading row" style="background: #f44336; color: white; border: none; padding: 2px 5px; cursor: pointer; border-radius: 3px; font-size: 11px;">🗑️</button>
-                        </div>
-                    </td>
-                    <td><input type="text" class="editable-field" value="S. NO" style="width: 100%; border: none; background: transparent; color: white; font-weight: bold;"></td>
-                    <td><input type="text" class="editable-field" value="ITEMS AND DESCRIPTION" style="width: 100%; border: none; background: transparent; color: white; font-weight: bold;"></td>
-                    <td><input type="text" class="editable-field" value="QTY (Mtrs)" style="width: 100%; border: none; background: transparent; color: white; font-weight: bold;"></td>
-                    <td class="col-base-rate"><input type="text" class="editable-field" value="BASE RATE" style="width: 100%; border: none; background: transparent; color: white; font-weight: bold;"></td>
-                    <td class="col-margin"><input type="text" class="editable-field" value="MARGIN %" style="width: 100%; border: none; background: transparent; color: white; font-weight: bold;"></td>
-                    <td><input type="text" class="editable-field" value="Rate per Mtr" style="width: 100%; border: none; background: transparent; color: white; font-weight: bold;"></td>
-                    <td><input type="text" class="editable-field" value="AMOUNT" style="width: 100%; border: none; background: transparent; color: white; font-weight: bold;"></td>
-                `;
-                if (insertAfterRow && insertAfterRow.parentNode === tableBody) {
-                    tableBody.insertBefore(mainHeaderRow, insertAfterRow.nextElementSibling);
-                } else {
-                    tableBody.appendChild(mainHeaderRow);
-                }
-                setupRowDrag(mainHeaderRow);
+                const existingHeaderCell3 = tableBody.querySelector('.pipe-type-header td[colspan]');
+                const colspan3 = existingHeaderCell3 ? existingHeaderCell3.getAttribute('colspan') : '8';
+                const { pipeHeaderId: cPipeHeaderId, colHeaderId: cColHeaderId } = generateMPlusIds('cf-main-header');
+                const cfColRow = createMPlusColumnLabelRow(cPipeHeaderId, cColHeaderId);
+                const cfPipeRow = createMPlusPipeHeaderRow(cPipeHeaderId, cColHeaderId, colspan3, buildMPlusButtonsHtmlForCreationFolder(entryId, cPipeHeaderId));
+                const cfAnchorRow = insertAfterRow && insertAfterRow.parentNode === tableBody ? insertAfterRow : null;
+                insertMPlusRowPair(tableBody, cfColRow, cfPipeRow, cfAnchorRow);
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',location:'index.html:M+_folder',message:'M+ rows created (folder)',data:{pipeId:cPipeHeaderId,colId:cColHeaderId},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
+                // #endregion
                 attachCreationFolderCalculationListeners(entryId);
                 recalculateAllTotalsInContainer(folderContent);
                 updateRowNumbers(tableBody);
@@ -3478,11 +3477,18 @@
             if (!tableBody) return;
             if (!confirm('Are you sure you want to delete this row?')) return;
             if (row.classList.contains('pipe-type-header') && !row.classList.contains('main-column-header-row')) {
+                // Cascade-delete all item rows that follow until next pipe-type-header
                 let nextRow = row.nextElementSibling;
                 while (nextRow && !nextRow.classList.contains('pipe-type-header')) {
                     const toRemove = nextRow;
                     nextRow = nextRow.nextElementSibling;
                     toRemove.remove();
+                }
+                // Also delete the paired column-label row sitting above this header
+                const pairedColId = row.getAttribute('data-paired-column-header');
+                if (pairedColId) {
+                    const pairedColRow = tableBody.querySelector('#' + pairedColId);
+                    if (pairedColRow) pairedColRow.remove();
                 }
             }
             row.remove();
@@ -3638,14 +3644,21 @@
             }
             const tableBody = row.closest('tbody');
             const container = tableBody ? tableBody.closest('.quotation-folder-content') : null;
-
+            
             if (confirm('Are you sure you want to delete this row?')) {
                 if (row.classList.contains('pipe-type-header') && !row.classList.contains('main-column-header-row')) {
+                    // Cascade-delete all item rows that follow until next pipe-type-header
                     let nextRow = row.nextElementSibling;
                     while (nextRow && !nextRow.classList.contains('pipe-type-header')) {
                         const rowToRemove = nextRow;
                         nextRow = nextRow.nextElementSibling;
                         rowToRemove.remove();
+                    }
+                    // Also delete the paired column-label row sitting above this header
+                    const pairedColId = row.getAttribute('data-paired-column-header');
+                    if (pairedColId) {
+                        const pairedColRow = document.getElementById(pairedColId);
+                        if (pairedColRow) pairedColRow.remove();
                     }
                 }
                 row.remove();
@@ -3654,7 +3667,7 @@
                     recalculateAllTotalsInContainer(container);
                 } else {
                     updateRowNumbers(tableBody || undefined);
-                    recalculateAllTotals();
+                recalculateAllTotals();
                 }
             }
         }
@@ -3687,24 +3700,36 @@
             ============================================
         */
         var _draggedRow = null;
+        var _draggedPair = null;
 
-        function setupRowDrag(row) {
-            row.setAttribute('draggable', 'true');
-            row.addEventListener('dragstart', function(e) {
-                _draggedRow = row;
-                e.dataTransfer.effectAllowed = 'move';
-                e.dataTransfer.setData('text/plain', row.id || '');
-                setTimeout(function() { row.classList.add('row-dragging'); }, 0);
-            });
-            row.addEventListener('dragend', function() {
-                row.classList.remove('row-dragging');
-                document.querySelectorAll('.row-drag-over-top, .row-drag-over-bottom').forEach(function(r) {
-                    r.classList.remove('row-drag-over-top', 'row-drag-over-bottom');
+        function setupRowDrag(pipeHeaderRow, colHeaderRow) {
+            var rows = [pipeHeaderRow];
+            if (colHeaderRow) rows.push(colHeaderRow);
+
+            rows.forEach(function(row) {
+                row.setAttribute('draggable', 'true');
+                row.addEventListener('dragstart', function(e) {
+                    _draggedRow = pipeHeaderRow;
+                    _draggedPair = colHeaderRow || null;
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', pipeHeaderRow.id || '');
+                    setTimeout(function() {
+                        pipeHeaderRow.classList.add('row-dragging');
+                        if (colHeaderRow) colHeaderRow.classList.add('row-dragging');
+                    }, 0);
                 });
-                _draggedRow = null;
+                row.addEventListener('dragend', function() {
+                    pipeHeaderRow.classList.remove('row-dragging');
+                    if (colHeaderRow) colHeaderRow.classList.remove('row-dragging');
+                    document.querySelectorAll('.row-drag-over-top, .row-drag-over-bottom').forEach(function(r) {
+                        r.classList.remove('row-drag-over-top', 'row-drag-over-bottom');
+                    });
+                    _draggedRow = null;
+                    _draggedPair = null;
+                });
             });
 
-            var tbody = row.closest('tbody');
+            var tbody = pipeHeaderRow.closest('tbody');
             if (tbody && !tbody._rowDragSetup) {
                 tbody._rowDragSetup = true;
                 tbody.addEventListener('dragover', function(e) {
@@ -3715,7 +3740,15 @@
                         r.classList.remove('row-drag-over-top', 'row-drag-over-bottom');
                     });
                     var target = e.target.closest('tr');
-                    if (target && target !== _draggedRow && target.parentNode === tbody) {
+                    if (!target || target.parentNode !== tbody) {
+                        // Hovering over empty space below all rows — highlight last row bottom
+                        var lastRow = tbody.lastElementChild;
+                        if (lastRow && lastRow !== _draggedRow && lastRow !== _draggedPair) {
+                            lastRow.classList.add('row-drag-over-bottom');
+                        }
+                        return;
+                    }
+                    if (target !== _draggedRow && target !== _draggedPair) {
                         var rect = target.getBoundingClientRect();
                         var mid = rect.top + rect.height / 2;
                         if (e.clientY < mid) {
@@ -3725,20 +3758,35 @@
                         }
                     }
                 });
-                tbody.addEventListener('drop', function(e) {
+                        tbody.addEventListener('drop', function(e) {
                     if (!_draggedRow) return;
                     e.preventDefault();
                     document.querySelectorAll('.row-drag-over-top, .row-drag-over-bottom').forEach(function(r) {
                         r.classList.remove('row-drag-over-top', 'row-drag-over-bottom');
                     });
+                    // #region agent log
+                    fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',location:'index.html:drop_handler',message:'drop fired',data:{draggedId:_draggedRow&&_draggedRow.id,pairedId:_draggedPair&&_draggedPair.id,targetTag:e.target&&e.target.tagName,clientY:e.clientY},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
+                    // #endregion
                     var target = e.target.closest('tr');
-                    if (target && target !== _draggedRow && target.parentNode === tbody) {
+                    if (!target || target.parentNode !== tbody) {
+                        // Drop after last row — append both to end
+                        tbody.appendChild(_draggedRow);
+                        if (_draggedPair) tbody.appendChild(_draggedPair);
+                        updateRowNumbers(tbody);
+                        return;
+                    }
+                    if (target !== _draggedRow && target !== _draggedPair && target.parentNode === tbody) {
                         var rect = target.getBoundingClientRect();
-                        var mid = rect.top + target.getBoundingClientRect().height / 2;
+                        var mid = rect.top + rect.height / 2;
                         if (e.clientY < mid) {
+                            // Insert before target: [pipeHeader, colHeader, target, ...]
                             tbody.insertBefore(_draggedRow, target);
+                            if (_draggedPair) tbody.insertBefore(_draggedPair, target);
                         } else {
-                            tbody.insertBefore(_draggedRow, target.nextElementSibling);
+                            // Insert after target: [..., target, pipeHeader, colHeader, ...]
+                            var nextSib = target.nextElementSibling;
+                            tbody.insertBefore(_draggedRow, nextSib);
+                            if (_draggedPair) tbody.insertBefore(_draggedPair, _draggedRow.nextElementSibling);
                         }
                         updateRowNumbers(tbody);
                     }
@@ -3751,6 +3799,85 @@
                     }
                 });
             }
+        }
+
+        /*
+            ============================================
+            M+ ROW PAIR HELPERS
+            Shared by creation (main table + folder) and approval contexts.
+            ============================================
+        */
+
+        function generateMPlusIds(prefix) {
+            var ts = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+            return { pipeHeaderId: prefix + '-pipe-' + ts, colHeaderId: prefix + '-col-' + ts };
+        }
+
+        function createMPlusColumnLabelRow(pipeHeaderId, colHeaderId, dragAtEnd) {
+            var row = document.createElement('tr');
+            row.className = 'main-column-header-row';
+            row.id = colHeaderId;
+            row.setAttribute('data-parent-header', pipeHeaderId);
+            var dragCell = '<td style="text-align:center;vertical-align:middle;width:50px"><span class="drag-handle" title="Drag section to reorder">\u2807</span></td>';
+            var labelCells =
+                '<td><input type="text" class="editable-field" value="S. NO"></td>' +
+                '<td><input type="text" class="editable-field" value="ITEMS AND DESCRIPTION"></td>' +
+                '<td><input type="text" class="editable-field" value="QTY (Mtrs)"></td>' +
+                '<td class="col-base-rate"><input type="text" class="editable-field" value="BASE RATE"></td>' +
+                '<td class="col-margin"><input type="text" class="editable-field" value="MARGIN %"></td>' +
+                '<td><input type="text" class="editable-field" value="Rate per Mtr"></td>' +
+                '<td><input type="text" class="editable-field" value="AMOUNT"></td>';
+            row.innerHTML = dragAtEnd ? (labelCells + dragCell) : (dragCell + labelCells);
+            return row;
+        }
+
+        function createMPlusPipeHeaderRow(pipeHeaderId, colHeaderId, colspan, actionsHtml) {
+            var row = document.createElement('tr');
+            row.className = 'pipe-type-header';
+            row.id = pipeHeaderId;
+            row.setAttribute('data-pipe-type', 'Custom');
+            row.setAttribute('data-paired-column-header', colHeaderId);
+            row.innerHTML = '<td colspan="' + colspan + '">' +
+                '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">' +
+                '<input type="text" class="editable-field" data-field="pipeTypeHeader" value="Custom Section" style="flex:1;border:none;background:transparent;color:white;font-weight:bold;font-size:14px">' +
+                '<div class="pipe-header-actions" style="display:flex;gap:4px">' + actionsHtml + '</div>' +
+                '</div></td>';
+            return row;
+        }
+
+        function insertMPlusRowPair(tableBody, colHeaderRow, pipeHeaderRow, anchorRow) {
+            if (anchorRow && anchorRow.parentNode === tableBody) {
+                tableBody.insertBefore(colHeaderRow, anchorRow.nextElementSibling);
+                tableBody.insertBefore(pipeHeaderRow, colHeaderRow.nextElementSibling);
+            } else {
+                tableBody.appendChild(colHeaderRow);
+                tableBody.appendChild(pipeHeaderRow);
+            }
+            setupRowDrag(colHeaderRow, pipeHeaderRow);
+        }
+
+        function buildMPlusButtonsHtmlForMainTable(pipeHeaderId) {
+            var s = 'background:%c;color:white;border:none;padding:2px 6px;cursor:pointer;border-radius:3px;font-size:11px';
+            return '<button onclick="addRow(\'Custom\',null,event)" title="Add item row" style="' + s.replace('%c','#4CAF50') + '">➕</button>' +
+                '<button onclick="addRow(\'__NEW_HEADER__\',\'' + pipeHeaderId + '\',event)" title="Add pipe type" style="' + s.replace('%c','#2196F3') + '">H+</button>' +
+                '<button onclick="addRow(\'__NEW_MAIN_HEADER__\',\'' + pipeHeaderId + '\',event)" title="Add main heading row" style="' + s.replace('%c','#673AB7') + '">M+</button>' +
+                '<button onclick="deleteRow(event)" title="Delete section" style="' + s.replace('%c','#f44336') + '">🗑️</button>';
+        }
+
+        function buildMPlusButtonsHtmlForCreationFolder(entryId, pipeHeaderId) {
+            var s = 'background:%c;color:white;border:none;padding:2px 6px;cursor:pointer;border-radius:3px;font-size:11px';
+            return '<button type="button" data-creation-entry-id="' + entryId + '" data-creation-action="add-row" data-creation-pipe-type="Custom" title="Add item row" style="' + s.replace('%c','#4CAF50') + '">➕</button>' +
+                '<button type="button" data-creation-entry-id="' + entryId + '" data-creation-action="add-header" title="Add pipe type" style="' + s.replace('%c','#2196F3') + '">H+</button>' +
+                '<button type="button" data-creation-entry-id="' + entryId + '" data-creation-action="add-main-header" title="Add main heading row" style="' + s.replace('%c','#673AB7') + '">M+</button>' +
+                '<button type="button" data-creation-entry-id="' + entryId + '" data-creation-action="delete-row" title="Delete section" style="' + s.replace('%c','#f44336') + '">🗑️</button>';
+        }
+
+        function buildMPlusButtonsHtmlForApproval(quotationId, pipeHeaderId) {
+            var s = 'background:%c;color:white;border:none;padding:2px 6px;cursor:pointer;border-radius:3px;font-size:11px';
+            return '<button onclick="addApprovalRow(\'' + quotationId + '\',\'Custom\',\'' + pipeHeaderId + '\')" title="Add item row" style="' + s.replace('%c','#4CAF50') + '">➕</button>' +
+                '<button onclick="addApprovalRow(\'' + quotationId + '\',\'__NEW_HEADER__\',\'' + pipeHeaderId + '\')" title="Add pipe type" style="' + s.replace('%c','#2196F3') + '">H+</button>' +
+                '<button onclick="addApprovalRow(\'' + quotationId + '\',\'__NEW_MAIN_HEADER__\',\'' + pipeHeaderId + '\')" title="Add main heading row" style="' + s.replace('%c','#673AB7') + '">M+</button>' +
+                '<button onclick="deleteApprovalRow(\'' + quotationId + '\',\'' + pipeHeaderId + '\')" title="Delete section" style="' + s.replace('%c','#f44336') + '">🗑️</button>';
         }
 
         function addRow(pipeType, insertAfterId, ev) {
@@ -3792,39 +3919,16 @@
             }
 
             if (pipeType === '__NEW_MAIN_HEADER__') {
-                const rowId = `main-header-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                const mainHeaderRow = document.createElement('tr');
-                mainHeaderRow.className = 'pipe-type-header main-column-header-row';
-                mainHeaderRow.id = rowId;
-                mainHeaderRow.innerHTML = `
-                    <td style="text-align: center; vertical-align: middle; padding: 6px 4px; width: 50px;">
-                        <span class="drag-handle" title="Drag to reorder">⠿</span>
-                        <div style="display: flex; gap: 3px; justify-content: center; margin-top: 4px; flex-wrap: wrap;">
-                            <button onclick="addRow('Default', null, event)" title="Add item row" style="background: #4CAF50; color: white; border: none; padding: 2px 5px; cursor: pointer; border-radius: 3px; font-size: 11px;">➕</button>
-                            <button onclick="addRow('__NEW_HEADER__', '${rowId}', event)" title="Add pipe type" style="background: #2196F3; color: white; border: none; padding: 2px 5px; cursor: pointer; border-radius: 3px; font-size: 11px;">H+</button>
-                            <button onclick="addRow('__NEW_MAIN_HEADER__', '${rowId}', event)" title="Add main heading row" style="background: #673AB7; color: white; border: none; padding: 2px 5px; cursor: pointer; border-radius: 3px; font-size: 11px;">M+</button>
-                            <button onclick="deleteRow(event)" title="Delete heading row" style="background: #f44336; color: white; border: none; padding: 2px 5px; cursor: pointer; border-radius: 3px; font-size: 11px;">🗑️</button>
-                        </div>
-                    </td>
-                    <td><input type="text" class="editable-field" value="S. NO" style="width: 100%; border: none; background: transparent; color: white; font-weight: bold;"></td>
-                    <td><input type="text" class="editable-field" value="ITEMS AND DESCRIPTION" style="width: 100%; border: none; background: transparent; color: white; font-weight: bold;"></td>
-                    <td><input type="text" class="editable-field" value="QTY (Mtrs)" style="width: 100%; border: none; background: transparent; color: white; font-weight: bold;"></td>
-                    <td class="col-base-rate"><input type="text" class="editable-field" value="BASE RATE" style="width: 100%; border: none; background: transparent; color: white; font-weight: bold;"></td>
-                    <td class="col-margin"><input type="text" class="editable-field" value="MARGIN %" style="width: 100%; border: none; background: transparent; color: white; font-weight: bold;"></td>
-                    <td><input type="text" class="editable-field" value="Rate per Mtr" style="width: 100%; border: none; background: transparent; color: white; font-weight: bold;"></td>
-                    <td><input type="text" class="editable-field" value="AMOUNT" style="width: 100%; border: none; background: transparent; color: white; font-weight: bold;"></td>
-                `;
-                if (insertAfterId) {
-                    const insertAfterRow = tableBodyToUse.querySelector('#' + insertAfterId);
-                    if (insertAfterRow && insertAfterRow.parentNode === tableBodyToUse) {
-                        tableBodyToUse.insertBefore(mainHeaderRow, insertAfterRow.nextElementSibling);
-                    } else {
-                        tableBodyToUse.appendChild(mainHeaderRow);
-                    }
-                } else {
-                    tableBodyToUse.appendChild(mainHeaderRow);
-                }
-                setupRowDrag(mainHeaderRow);
+                const existingHeaderCell2 = tableBodyToUse.querySelector('.pipe-type-header td[colspan]');
+                const colspan2 = existingHeaderCell2 ? existingHeaderCell2.getAttribute('colspan') : '8';
+                const { pipeHeaderId, colHeaderId } = generateMPlusIds('main-header');
+                const mColHeaderRow = createMPlusColumnLabelRow(pipeHeaderId, colHeaderId);
+                const mPipHeaderRow = createMPlusPipeHeaderRow(pipeHeaderId, colHeaderId, colspan2, buildMPlusButtonsHtmlForMainTable(pipeHeaderId));
+                const anchorRow = insertAfterId ? tableBodyToUse.querySelector('#' + insertAfterId) : null;
+                insertMPlusRowPair(tableBodyToUse, mColHeaderRow, mPipHeaderRow, anchorRow);
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',location:'index.html:M+_main',message:'M+ rows created (main table)',data:{pipeId:pipeHeaderId,colId:colHeaderId},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
+                // #endregion
                 if (container) {
                     const entryId = container.id && container.id.startsWith('folder-content-') ? container.id.replace('folder-content-', '') : '';
                     if (entryId) attachCreationFolderCalculationListeners(entryId);
@@ -3948,8 +4052,8 @@
                 recalculateAllTotalsInContainer(container);
                 updateRowNumbers(tableBodyToUse);
             } else {
-                attachRowEventListeners(row);
-                recalculateAllTotals();
+            attachRowEventListeners(row);
+            recalculateAllTotals();
             }
         }
 
@@ -4431,7 +4535,7 @@
             if (document.getElementById('termsText') && termsText !== termsTextRaw) {
                 document.getElementById('termsText').value = termsText;
             }
-
+            
             return {
                 quotationDate,
                 customerName,
@@ -4452,7 +4556,7 @@
         function cloneQuotationTableWithValues(quotationTable) {
             // Clone the table first
             const tableClone = quotationTable.cloneNode(true);
-
+            
             // Update all cloned table input values to match current values from original
             const originalTableInputs = quotationTable.querySelectorAll('input, textarea');
             originalTableInputs.forEach((originalInput) => {
@@ -4499,10 +4603,10 @@
                     }
                 }
             });
-
+            
             return tableClone;
         }
-
+            
         function cloneQuotationHeaderWithValues(quotationHeader) {
             // Clone the header first
             const headerClone = quotationHeader.cloneNode(true);
@@ -4564,7 +4668,7 @@
             } = quotationHeaderValues;
 
             const structuredLineItems = extractStructuredLineItemsFromTable(tableClone, sourceLineItems);
-
+            
             // Create quotation object to store
             const quotationData = {
                 id: Date.now(), // Unique ID based on timestamp
@@ -4614,7 +4718,7 @@
             // Display all approved quotations
             displayAllApprovedQuotations();
         }
-
+            
         function scrollToApprovalSection() {
             // Scroll to Approval section
             document.getElementById('approvalSection').scrollIntoView({ 
@@ -4764,21 +4868,21 @@
         }
 
         function renderNoApprovedQuotationsMessage(container) {
-            container.innerHTML = `
-                <p id="noApprovedQuotations" style="text-align: center; color: #999; padding: 20px;">
-                    No quotations approved yet. Create and approve a quotation to see it here.
-                </p>
-            `;
-        }
-
+                container.innerHTML = `
+                    <p id="noApprovedQuotations" style="text-align: center; color: #999; padding: 20px;">
+                        No quotations approved yet. Create and approve a quotation to see it here.
+                    </p>
+                `;
+            }
+            
         function hideNoApprovedQuotationsMessage() {
             // Hide the "no quotations" message
             const noQuotationsMsg = document.getElementById('noApprovedQuotations');
             if (noQuotationsMsg) {
                 noQuotationsMsg.style.display = 'none';
             }
-        }
-
+            }
+            
         function buildAllApprovedQuotationsHTMLForList(quotationsList) {
             // Build HTML for all approved quotations
             let allQuotationsHTML = '';
@@ -4958,25 +5062,25 @@
             return `
                 <div class="approval-layout">
                     <div class="approval-quotation">
-                        ${quotation.headerHTML || ''}
-                        ${quotation.tableHTML}
+                            ${quotation.headerHTML || ''}
+                            ${quotation.tableHTML}
                         <div class="freight-summary" style="display:none; margin-top: 6px; font-weight: bold; font-size: 14px;">
                             Freight: ₹<span class="freight-summary-amount">0</span>
                         </div>
-                        <div class="grand-total">
-                            <span>Total: ₹${quotation.grandTotal}</span>
-                        </div>
+                            <div class="grand-total">
+                                <span>Total: ₹${quotation.grandTotal}</span>
+                            </div>
                         ${buildEditableTermsBoxHtml(termsText)}
                         <div style="margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
-                            ${approveButtonHTML}
+                                ${approveButtonHTML}
                             ${saveButtonHTML || ''}
-                            ${downloadButtonHTML}
+                                ${downloadButtonHTML}
+                            </div>
                         </div>
-                    </div>
                     <div class="approval-resize-handle" aria-label="Resize panels" style="height: 100%; background: #c7c7c7; align-self: stretch; min-height: 200px;"></div>
                     ${sidePanelHTML}
-                </div>
-            `;
+                    </div>
+                `;
         }
 
         function buildApprovalSidePanelHTML(quotation) {
@@ -5217,23 +5321,31 @@
                         const hasActionsHeader = headerRow.querySelector('th:last-child')?.textContent.includes('ACTIONS');
                         if (hasActionsHeader && firstHeaderCell && !firstHeaderCell.textContent.trim() && !firstHeaderCell.querySelector('input')) {
                             firstHeaderCell.remove();
-                            const bodyRows = table.querySelectorAll('tbody tr');
-                            bodyRows.forEach(function(row) {
-                                if (row.classList.contains('pipe-type-header')) {
-                                    const headerCell = row.querySelector('td[colspan]');
-                                    if (headerCell) {
-                                        const currentColspan = parseInt(headerCell.getAttribute('colspan') || '0', 10);
-                                        if (currentColspan > 1) {
-                                            headerCell.setAttribute('colspan', String(currentColspan - 1));
-                                        }
-                                    }
-                                } else {
-                                    const firstCell = row.querySelector('td:first-child');
-                                    if (firstCell) {
-                                        firstCell.remove();
+                        const bodyRows = table.querySelectorAll('tbody tr');
+                        bodyRows.forEach(function(row) {
+                            if (row.classList.contains('pipe-type-header')) {
+                                const headerCell = row.querySelector('td[colspan]');
+                                if (headerCell) {
+                                    const currentColspan = parseInt(headerCell.getAttribute('colspan') || '0', 10);
+                                    if (currentColspan > 1) {
+                                        headerCell.setAttribute('colspan', String(currentColspan - 1));
                                     }
                                 }
-                            });
+                            } else if (row.classList.contains('main-column-header-row')) {
+                                // Move the drag-handle cell from first position to last (ACTIONS column)
+                                const dragCell = row.querySelector('td:first-child');
+                                if (dragCell) {
+                                    dragCell.remove();
+                                    dragCell.style.cssText = 'text-align:center;vertical-align:middle;width:50px';
+                                    row.appendChild(dragCell);
+                                }
+                            } else {
+                                const firstCell = row.querySelector('td:first-child');
+                                if (firstCell) {
+                                    firstCell.remove();
+                                }
+                            }
+                        });
                         }
                     }
                     
@@ -5318,6 +5430,14 @@
                         addHeaderBtn.onclick = function() {
                             addApprovalRow(quotationId, '__NEW_HEADER__', headerRow.id);
                         };
+                        const addMainHeaderBtn = document.createElement('button');
+                        addMainHeaderBtn.type = 'button';
+                        addMainHeaderBtn.textContent = 'M+';
+                        addMainHeaderBtn.title = 'Add main heading row';
+                        addMainHeaderBtn.style.cssText = 'background: #673AB7; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;';
+                        addMainHeaderBtn.onclick = function() {
+                            addApprovalRow(quotationId, '__NEW_MAIN_HEADER__', headerRow.id);
+                        };
                         const deleteHeaderBtn = document.createElement('button');
                         deleteHeaderBtn.type = 'button';
                         deleteHeaderBtn.textContent = '🗑️';
@@ -5328,12 +5448,22 @@
                         };
                         actions.appendChild(addItemBtn);
                         actions.appendChild(addHeaderBtn);
+                        actions.appendChild(addMainHeaderBtn);
                         actions.appendChild(deleteHeaderBtn);
                     });
                     
-                    // Process each item row (all tbody rows that aren't pipe-type-header and aren't freight)
+                    // Set up drag for M+ row pairs loaded from tableHTML
+                    table.querySelectorAll('.pipe-type-header[data-paired-column-header]').forEach(function(pipeRow) {
+                        var colHeaderId = pipeRow.getAttribute('data-paired-column-header');
+                        var colRow = colHeaderId ? (document.getElementById(colHeaderId) || table.querySelector('[data-parent-header="' + pipeRow.id + '"]')) : null;
+                        if (colRow && colRow.closest('tbody') === pipeRow.closest('tbody')) {
+                            setupRowDrag(colRow, pipeRow);
+                        }
+                    });
+
+                    // Process each item row (all tbody rows that aren't pipe-type-header, freight, or main-column-header-row)
                     ensureLineItemIdsInTable(table, quotation && quotation.lineItems);
-                    const itemRows = table.querySelectorAll('tbody tr:not(.pipe-type-header):not(.freight-row)');
+                    const itemRows = table.querySelectorAll('tbody tr:not(.pipe-type-header):not(.freight-row):not(.main-column-header-row)');
                     itemRows.forEach(function(row, index) {
                         if (!row.classList.contains('item-row')) row.classList.add('item-row');
                         if (!row.id) {
@@ -5653,11 +5783,18 @@
             
             if (confirm('Are you sure you want to delete this row?')) {
                 if (row.classList.contains('pipe-type-header')) {
+                    // Cascade-delete all item rows that follow until next pipe-type-header
                     let nextRow = row.nextElementSibling;
                     while (nextRow && !nextRow.classList.contains('pipe-type-header')) {
                         const rowToRemove = nextRow;
                         nextRow = nextRow.nextElementSibling;
                         rowToRemove.remove();
+                    }
+                    // Also delete the paired column-label row sitting above this header
+                    const pairedColId = row.getAttribute('data-paired-column-header');
+                    if (pairedColId) {
+                        const pairedColRow = document.getElementById(pairedColId);
+                        if (pairedColRow) pairedColRow.remove();
                     }
                 }
                 row.remove();
@@ -5722,6 +5859,7 @@
                             <div style="display: flex; gap: 6px;">
                                 <button onclick="addApprovalRow('${quotationId}', 'Default', '${newHeaderRow.id}')" title="Add item row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">➕</button>
                                 <button onclick="addApprovalRow('${quotationId}', '__NEW_HEADER__', '${newHeaderRow.id}')" title="Add pipe type" style="background: #2196F3; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">H+</button>
+                                <button onclick="addApprovalRow('${quotationId}', '__NEW_MAIN_HEADER__', '${newHeaderRow.id}')" title="Add main heading row" style="background: #673AB7; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">M+</button>
                                 <button onclick="deleteApprovalRow('${quotationId}', '${newHeaderRow.id}')" title="Delete pipe type" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
                             </div>
                         </div>
@@ -5732,6 +5870,24 @@
                 return;
             }
 
+            if (pipeType === '__NEW_MAIN_HEADER__') {
+                const existingHeaderCell2 = table.querySelector('.pipe-type-header td[colspan]');
+                const headerRow2 = table.querySelector('thead tr');
+                const colspan2 = existingHeaderCell2
+                    ? existingHeaderCell2.getAttribute('colspan')
+                    : (headerRow2 ? headerRow2.children.length : 8);
+                const { pipeHeaderId: aprvPipeHeaderId, colHeaderId: aprvColHeaderId } = generateMPlusIds('approval-m-' + quotationId);
+                const aprvColRow = createMPlusColumnLabelRow(aprvPipeHeaderId, aprvColHeaderId, true);
+                const aprvPipeRow = createMPlusPipeHeaderRow(aprvPipeHeaderId, aprvColHeaderId, colspan2, buildMPlusButtonsHtmlForApproval(quotationId, aprvPipeHeaderId));
+                const anchorRow = insertAfterId ? tbody.querySelector('#' + insertAfterId) : null;
+                insertMPlusRowPair(tbody, aprvColRow, aprvPipeRow, anchorRow);
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',location:'index.html:M+_approval',message:'M+ rows created (approval) - dragAtEnd=true',data:{pipeId:aprvPipeHeaderId,colId:aprvColHeaderId,quotationId:quotationId,firstCellHtml:aprvColRow.querySelector('td')?.innerHTML?.substring(0,60)},timestamp:Date.now(),hypothesisId:'COL'})}).catch(()=>{});
+                // #endregion
+                attachApprovalSectionListeners();
+                return;
+            }
+            
             // Get the last pipe type or use default
             const existingRows = folder.querySelectorAll('.item-row');
             let resolvedPipeType = pipeType || 'Default';
@@ -5823,7 +5979,7 @@
                     }
                     rowToInsertAfter.insertAdjacentElement('afterend', row);
                 } else {
-                    tbody.appendChild(row);
+            tbody.appendChild(row);
                 }
             } else {
                 tbody.appendChild(row);
@@ -5858,7 +6014,7 @@
             });
             
             setTimeout(function() {
-                recalculateApprovalQuotationTotals(quotationId, false);
+            recalculateApprovalQuotationTotals(quotationId, false);
             }, 0);
             updateQuotationFromApprovalSection(quotationId, null);
         }
@@ -5973,44 +6129,44 @@
             }
             
             if (changedInput) {
-                // Update terms text if it's a terms field
-                if (changedInput.id === 'termsText' || changedInput.closest('.terms-box')) {
+            // Update terms text if it's a terms field
+            if (changedInput.id === 'termsText' || changedInput.closest('.terms-box')) {
                     const termsTextarea = updatedContent.querySelector('.terms-box textarea');
                     if (termsTextarea) {
                         quotation.termsText = termsTextarea.value || '';
                     } else {
-                        const termsElement = updatedContent.querySelector('.terms-box');
-                        if (termsElement) {
-                            quotation.termsText = termsElement.textContent || termsElement.innerText;
+                const termsElement = updatedContent.querySelector('.terms-box');
+                if (termsElement) {
+                    quotation.termsText = termsElement.textContent || termsElement.innerText;
                         }
-                    }
                 }
-                
-                // Update specific fields based on input
-                const inputId = changedInput.id;
-                
+            }
+            
+            // Update specific fields based on input
+            const inputId = changedInput.id;
+            
                 if (inputId === 'quotationDate') {
-                    quotation.quotationDate = changedInput.value;
-                } else if (inputId === 'preparedBy') {
-                    quotation.preparedBy = changedInput.value;
+                quotation.quotationDate = changedInput.value;
+            } else if (inputId === 'preparedBy') {
+                quotation.preparedBy = changedInput.value;
                 } else if (inputId === 'assignedTo') {
                     quotation.assignedTo = changedInput.value;
-                } else if (inputId === 'checkedBy') {
-                    quotation.checkedBy = changedInput.value;
+            } else if (inputId === 'checkedBy') {
+                quotation.checkedBy = changedInput.value;
                 } else if (inputId === 'quoteNumber') {
                     quotation.quoteNumber = changedInput.value;
-                } else if (inputId === 'kindAttn') {
-                    quotation.customerName = changedInput.value;
+            } else if (inputId === 'kindAttn') {
+                quotation.customerName = changedInput.value;
                 } else if (inputId === 'phoneNumber') {
                     quotation.phoneNumber = changedInput.value;
                     quotation.contactDetails = quotation.mobileNumber || quotation.phoneNumber || '';
-                } else if (inputId === 'mobileNumber') {
+            } else if (inputId === 'mobileNumber') {
                     quotation.mobileNumber = changedInput.value;
                     quotation.contactDetails = quotation.mobileNumber || quotation.phoneNumber || '';
-                } else if (inputId === 'billTo') {
-                    quotation.projectName = changedInput.value;
-                } else if (inputId === 'shipTo') {
-                    quotation.shipTo = changedInput.value;
+            } else if (inputId === 'billTo') {
+                quotation.projectName = changedInput.value;
+            } else if (inputId === 'shipTo') {
+                quotation.shipTo = changedInput.value;
                 }
                 if (inputId === 'billTo' || inputId === 'kindAttn' || inputId === 'quoteNumber') {
                     updateFolderHeaderDisplay(quotationId, quotation);
@@ -6092,7 +6248,7 @@
                         finalRateInput.dataset.manual = '';
                         finalRate = calculatedFromFormula;
                         finalRateInput.value = String(finalRate);
-                    } else {
+                } else {
                         finalRate = manualVal;
                     }
                 } else {
@@ -6119,7 +6275,7 @@
                         if (quantity > 0) {
                             finalRate = manualLineTotal / quantity;
                             if (finalRate !== finalRate) finalRate = 0;
-                            if (finalRateInput) {
+                    if (finalRateInput) {
                                 finalRateInput.value = String(finalRate);
                             }
                             lineTotal = quantity * finalRate;
@@ -6146,8 +6302,8 @@
                 if (lineTotalInput && lineTotalInput.tagName === 'INPUT') {
                     lineTotalInput.value = String(lineTotal);
                 } else {
-                    const lineTotalSpan = row.querySelector('.line-total');
-                    if (lineTotalSpan) {
+                const lineTotalSpan = row.querySelector('.line-total');
+                if (lineTotalSpan) {
                         lineTotalSpan.textContent = formatIndianNumber(lineTotal, true);
                     }
                 }
@@ -6437,7 +6593,7 @@
                 console.error('saveQuotationChanges async error:', e);
             });
         }
-
+        
         /*
             ============================================
             SAVE QUOTATION FUNCTION
@@ -6559,9 +6715,9 @@
             var q = approvedQuotations[quotationIndex];
             var filename = getFolderDisplayName(q);
             setTimeout(function() {
-                displayAllApprovedQuotations();
+            displayAllApprovedQuotations();
                 var folderElement = document.getElementById('folder-' + quotationId);
-                if (folderElement) {
+            if (folderElement) {
                     folderElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 }
                 alert('Quotation saved as file: ' + filename);
@@ -6616,6 +6772,32 @@
                     if (headerText) {
                         rows.push({ type: 'pipe', text: headerText });
                     }
+                    return;
+                }
+                if (row.classList.contains('main-column-header-row')) {
+                    const labelCells = [];
+                    row.querySelectorAll('td').forEach(cell => {
+                        if (cell.querySelector('.drag-handle')) return;
+                        const input = cell.querySelector('input, textarea');
+                        const text = input ? (input.value || input.getAttribute('value') || '') : cell.textContent.trim();
+                        labelCells.push(text);
+                    });
+                    // labelCells: [S.NO, ITEMS AND DESCRIPTION, QTY (Mtrs), BASE RATE, MARGIN %, Rate per Mtr, AMOUNT]
+                    // PDF 5 columns: S.NO(0), DESCRIPTION(1), QTY(2), RATE(5), AMOUNT(6)
+                    const colHeaderEntry = {
+                        type: 'column-header',
+                        cols: [
+                            labelCells[0] || 'S. NO',
+                            labelCells[1] || 'ITEMS AND DESCRIPTION',
+                            labelCells[2] || 'QTY (Mtrs)',
+                            labelCells[5] || 'Rate per Mtr',
+                            labelCells[6] || 'AMOUNT'
+                        ]
+                    };
+                    // #region agent log
+                    fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',location:'index.html:parseQuotationTableForPdf',message:'column-header row parsed for PDF',data:{labelCells,cols:colHeaderEntry.cols},timestamp:Date.now(),hypothesisId:'PDF'})}).catch(()=>{});
+                    // #endregion
+                    rows.push(colHeaderEntry);
                     return;
                 }
                 // Skip freight rows from the table – they will be rendered separately below the table in the PDF
@@ -6980,6 +7162,27 @@
                     doc.setFont('helvetica', 'bold');
                     doc.setFontSize(9);
                     doc.text(row.text, margin + 6, cursorY + 13);
+                    doc.setTextColor(0, 0, 0);
+                    cursorY += 22;
+                    return;
+                }
+                if (row.type === 'column-header') {
+                    ensureSpace(22);
+                    setBrandFill();
+                    doc.setTextColor(255, 255, 255);
+                    doc.rect(margin, cursorY, contentWidth, 20, 'F');
+                    doc.setFont('helvetica', 'bold');
+                    doc.setFontSize(7);
+                    (row.cols || []).forEach((label, idx) => {
+                        if (idx >= colX.length) return;
+                        const centerX = colX[idx] + colWidths[idx] / 2;
+                        doc.text(String(label), centerX, cursorY + 13, { align: 'center' });
+                    });
+                    doc.setDrawColor(255);
+                    doc.setLineWidth(0.5);
+                    colX.slice(1).forEach(x => {
+                        doc.line(x, cursorY, x, cursorY + 20);
+                    });
                     doc.setTextColor(0, 0, 0);
                     cursorY += 22;
                     return;
