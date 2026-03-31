@@ -3424,9 +3424,6 @@
                 const cfPipeRow = createMPlusPipeHeaderRow(cPipeHeaderId, cColHeaderId, colspan3, buildMPlusButtonsHtmlForCreationFolder(entryId, cPipeHeaderId));
                 const cfAnchorRow = insertAfterRow && insertAfterRow.parentNode === tableBody ? insertAfterRow : null;
                 insertMPlusRowPair(tableBody, cfColRow, cfPipeRow, cfAnchorRow);
-                // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',location:'index.html:M+_folder',message:'M+ rows created (folder)',data:{pipeId:cPipeHeaderId,colId:cColHeaderId},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
-                // #endregion
                 attachCreationFolderCalculationListeners(entryId);
                 recalculateAllTotalsInContainer(folderContent);
                 updateRowNumbers(tableBody);
@@ -3764,9 +3761,6 @@
                     document.querySelectorAll('.row-drag-over-top, .row-drag-over-bottom').forEach(function(r) {
                         r.classList.remove('row-drag-over-top', 'row-drag-over-bottom');
                     });
-                    // #region agent log
-                    fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',location:'index.html:drop_handler',message:'drop fired',data:{draggedId:_draggedRow&&_draggedRow.id,pairedId:_draggedPair&&_draggedPair.id,targetTag:e.target&&e.target.tagName,clientY:e.clientY},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
-                    // #endregion
                     var target = e.target.closest('tr');
                     if (!target || target.parentNode !== tbody) {
                         // Drop after last row — append both to end
@@ -3926,9 +3920,6 @@
                 const mPipHeaderRow = createMPlusPipeHeaderRow(pipeHeaderId, colHeaderId, colspan2, buildMPlusButtonsHtmlForMainTable(pipeHeaderId));
                 const anchorRow = insertAfterId ? tableBodyToUse.querySelector('#' + insertAfterId) : null;
                 insertMPlusRowPair(tableBodyToUse, mColHeaderRow, mPipHeaderRow, anchorRow);
-                // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',location:'index.html:M+_main',message:'M+ rows created (main table)',data:{pipeId:pipeHeaderId,colId:colHeaderId},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
-                // #endregion
                 if (container) {
                     const entryId = container.id && container.id.startsWith('folder-content-') ? container.id.replace('folder-content-', '') : '';
                     if (entryId) attachCreationFolderCalculationListeners(entryId);
@@ -5881,9 +5872,6 @@
                 const aprvPipeRow = createMPlusPipeHeaderRow(aprvPipeHeaderId, aprvColHeaderId, colspan2, buildMPlusButtonsHtmlForApproval(quotationId, aprvPipeHeaderId));
                 const anchorRow = insertAfterId ? tbody.querySelector('#' + insertAfterId) : null;
                 insertMPlusRowPair(tbody, aprvColRow, aprvPipeRow, anchorRow);
-                // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',location:'index.html:M+_approval',message:'M+ rows created (approval) - dragAtEnd=true',data:{pipeId:aprvPipeHeaderId,colId:aprvColHeaderId,quotationId:quotationId,firstCellHtml:aprvColRow.querySelector('td')?.innerHTML?.substring(0,60)},timestamp:Date.now(),hypothesisId:'COL'})}).catch(()=>{});
-                // #endregion
                 attachApprovalSectionListeners();
                 return;
             }
@@ -6794,9 +6782,6 @@
                             labelCells[6] || 'AMOUNT'
                         ]
                     };
-                    // #region agent log
-                    fetch('http://127.0.0.1:7242/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',location:'index.html:parseQuotationTableForPdf',message:'column-header row parsed for PDF',data:{labelCells,cols:colHeaderEntry.cols},timestamp:Date.now(),hypothesisId:'PDF'})}).catch(()=>{});
-                    // #endregion
                     rows.push(colHeaderEntry);
                     return;
                 }
