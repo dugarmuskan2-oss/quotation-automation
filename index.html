@@ -2968,6 +2968,25 @@
             return normalized;
         }
 
+        function createDefaultPipeHeaderRow() {
+            const id = `pipe-header-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            const row = document.createElement('tr');
+            row.className = 'pipe-type-header';
+            row.id = id;
+            row.setAttribute('data-pipe-type', 'Default');
+            row.innerHTML =
+                '<td colspan="9">' +
+                '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">' +
+                '<input type="text" class="editable-field" data-field="pipeTypeHeader" value="Enter Section Name" style="flex:1;border:none;background:transparent;font-weight:bold">' +
+                '<div style="display:flex;gap:6px">' +
+                '<button onclick="addRow(\'Default\',null,event)" title="Add item row" style="background:#4CAF50;color:white;border:none;padding:4px 8px;cursor:pointer;border-radius:3px;font-size:12px">➕</button>' +
+                '<button onclick="addRow(\'__NEW_HEADER__\',\'' + id + '\',event)" title="Add pipe type" style="background:#2196F3;color:white;border:none;padding:4px 8px;cursor:pointer;border-radius:3px;font-size:12px">H+</button>' +
+                '<button onclick="addRow(\'__NEW_MAIN_HEADER__\',\'' + id + '\',event)" title="Add main heading row" style="background:#673AB7;color:white;border:none;padding:4px 8px;cursor:pointer;border-radius:3px;font-size:12px">M+</button>' +
+                '<button onclick="deleteRow(event)" title="Delete pipe type" style="background:#f44336;color:white;border:none;padding:4px 8px;cursor:pointer;border-radius:3px;font-size:12px">🗑️</button>' +
+                '</div></div></td>';
+            return row;
+        }
+
         function appendGroupedItems(tableBody, groupedItems, grandTotal) {
             // Step 6: Loop through each pipe type group
             Object.keys(groupedItems).forEach(function(pipeType) {
@@ -3083,6 +3102,11 @@
                     attachRowEventListeners(row);
                 });
             });
+
+            // Always ensure at least one H+ row exists so the table is never completely empty
+            if (Object.keys(groupedItems).length === 0) {
+                tableBody.appendChild(createDefaultPipeHeaderRow());
+            }
             
             return grandTotal;
         }
@@ -5443,6 +5467,50 @@
                         actions.appendChild(deleteHeaderBtn);
                     });
                     
+                    // If the table has no pipe-type-header rows at all, add a default H+ row
+                    if (!table.querySelector('tbody .pipe-type-header')) {
+                        var defTbody = table.querySelector('tbody');
+                        if (defTbody) {
+                            var defRow = createDefaultPipeHeaderRow();
+                            // Match colspan to actual header column count
+                            var defHeaderRow = table.querySelector('thead tr');
+                            var defColspan = defHeaderRow ? defHeaderRow.children.length : 8;
+                            var defTd = defRow.querySelector('td[colspan]');
+                            if (defTd) defTd.setAttribute('colspan', String(defColspan));
+                            // Rebuild buttons to use addApprovalRow instead of addRow
+                            var defId = defRow.id;
+                            var defCell = defRow.querySelector('td');
+                            if (defCell) {
+                                var defActions = defCell.querySelector('.pipe-header-actions') || defCell.querySelector('div:last-child');
+                                if (defActions) {
+                                    defActions.innerHTML = '';
+                                    var s = 'background:%c;color:white;border:none;padding:4px 8px;cursor:pointer;border-radius:3px;font-size:12px';
+                                    var btnAdd = document.createElement('button');
+                                    btnAdd.type = 'button'; btnAdd.textContent = '➕'; btnAdd.title = 'Add item row';
+                                    btnAdd.style.cssText = s.replace('%c','#4CAF50');
+                                    btnAdd.onclick = function() { addApprovalRow(quotationId, 'Default', defId); };
+                                    var btnH = document.createElement('button');
+                                    btnH.type = 'button'; btnH.textContent = 'H+'; btnH.title = 'Add pipe type';
+                                    btnH.style.cssText = s.replace('%c','#2196F3');
+                                    btnH.onclick = function() { addApprovalRow(quotationId, '__NEW_HEADER__', defId); };
+                                    var btnM = document.createElement('button');
+                                    btnM.type = 'button'; btnM.textContent = 'M+'; btnM.title = 'Add main heading row';
+                                    btnM.style.cssText = s.replace('%c','#673AB7');
+                                    btnM.onclick = function() { addApprovalRow(quotationId, '__NEW_MAIN_HEADER__', defId); };
+                                    var btnDel = document.createElement('button');
+                                    btnDel.type = 'button'; btnDel.textContent = '🗑️'; btnDel.title = 'Delete pipe type';
+                                    btnDel.style.cssText = s.replace('%c','#f44336');
+                                    btnDel.onclick = function() { deleteApprovalRow(quotationId, defId); };
+                                    defActions.appendChild(btnAdd);
+                                    defActions.appendChild(btnH);
+                                    defActions.appendChild(btnM);
+                                    defActions.appendChild(btnDel);
+                                }
+                            }
+                            defTbody.insertBefore(defRow, defTbody.firstChild);
+                        }
+                    }
+
                     // Set up drag for M+ row pairs loaded from tableHTML
                     table.querySelectorAll('.pipe-type-header[data-paired-column-header]').forEach(function(pipeRow) {
                         var colHeaderId = pipeRow.getAttribute('data-paired-column-header');
