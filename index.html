@@ -2799,9 +2799,18 @@
             This function takes the quotation data and displays it on the page.
             Groups items by pipe type and makes all fields editable.
         */
+        function getTodayFormatted() {
+            const d = new Date();
+            const dd = String(d.getDate()).padStart(2, '0');
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const yy = String(d.getFullYear()).slice(-2);
+            return `${dd}.${mm}.${yy}`;
+        }
+
         function populateQuotationHeader(data) {
             // Step 1: Fill in the header information (make editable)
-            document.getElementById('quotationDate').value = data.quotationDate;
+            // Always use today's date — the AI date comes from the email, not the quotation creation date
+            document.getElementById('quotationDate').value = getTodayFormatted();
             document.getElementById('billTo').value = data.companyName || data.billTo || '';
             document.getElementById('shipTo').value = data.projectName || data.shipTo || '';
             document.getElementById('kindAttn').value = data.customerName || '';
