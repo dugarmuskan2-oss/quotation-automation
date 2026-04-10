@@ -491,14 +491,6 @@
             </tr>
         `).join('');
 
-        const printWindow = window.open('', '_blank', 'noopener,noreferrer');
-        // #region agent log
-        fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H1',location:'weight-calculator.js:printWeightTable:afterOpen',message:'window.open result',data:{printWindowIsNull:printWindow==null,typeofPrintWindow:typeof printWindow},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
-        if (!printWindow) {
-            return;
-        }
-
         const grandTotal = totalEl ? (totalEl.textContent || '0.00') : '0.00';
         const html = `
             <!doctype html>
@@ -535,19 +527,46 @@
             </html>
         `;
 
-        try {
-            printWindow.document.open();
-            printWindow.document.write(html);
-            printWindow.document.close();
-            printWindow.focus();
-            printWindow.print();
+        const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+        const blobUrl = URL.createObjectURL(blob);
+        const printWindowBlob = window.open(blobUrl, '_blank');
+        // #region agent log
+        fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'blob-defer',hypothesisId:'H6',location:'weight-calculator.js:printWeightTable:blobOpen',message:'blob window.open',data:{printWindowIsNull:printWindowBlob==null,htmlLen:html.length},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        if (!printWindowBlob) {
+            URL.revokeObjectURL(blobUrl);
+            return;
+        }
+
+        function printWhenLoaded() {
+            let bodyLen = -1;
+            let rs = '';
+            try {
+                rs = printWindowBlob.document.readyState || '';
+                if (printWindowBlob.document.body) {
+                    bodyLen = (printWindowBlob.document.body.innerHTML || '').length;
+                }
+            } catch (err) {
+                rs = 'error:' + String(err && err.message);
+            }
             // #region agent log
-            fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H4',location:'weight-calculator.js:printWeightTable:afterWrite',message:'write+print completed',data:{htmlLen:html.length},timestamp:Date.now()})}).catch(()=>{});
+            fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'blob-defer',hypothesisId:'H6',location:'weight-calculator.js:printWeightTable:beforePrint',message:'deferred print',data:{readyState:rs,bodyInnerHtmlLen:bodyLen},timestamp:Date.now()})}).catch(()=>{});
             // #endregion
-        } catch (e) {
-            // #region agent log
-            fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H4',location:'weight-calculator.js:printWeightTable:catch',message:'write/print threw',data:{err:String(e&&e.message)},timestamp:Date.now()})}).catch(()=>{});
-            // #endregion
+            printWindowBlob.focus();
+            printWindowBlob.print();
+            printWindowBlob.addEventListener(
+                'afterprint',
+                function revokeBlobUrl() {
+                    URL.revokeObjectURL(blobUrl);
+                },
+                { once: true }
+            );
+        }
+
+        if (printWindowBlob.document.readyState === 'complete') {
+            printWhenLoaded();
+        } else {
+            printWindowBlob.addEventListener('load', printWhenLoaded, { once: true });
         }
     }
 
