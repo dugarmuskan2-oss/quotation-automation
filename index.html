@@ -5242,16 +5242,41 @@
         // Renders the full content of a single approval folder on demand (lazy load).
         // Called when a folder is opened for the first time, or after a re-render that
         // resets folder content back to the lazy placeholder.
+        // If the quotation's heavy fields (tableHTML etc.) haven't been fetched yet,
+        // shows a loading spinner, fetches them, then renders.
         function renderApprovalFolderContent(quotationId, folderContentEl) {
             const quotation = approvedQuotations.find(function(q) { return idsMatch(q.id, quotationId); });
             if (!quotation || !folderContentEl) return;
             delete folderContentEl.dataset.lazyId;
-            const termsText = quotation.termsText || defaultTermsText || '';
-            const approveButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); saveQuotation(${JSON.stringify(quotation.id)})">✅ Approve</button>`;
-            const saveButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); saveQuotationChanges(${JSON.stringify(quotation.id)})">💾 Save</button>`;
-            const downloadButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); downloadQuotationPdf(${JSON.stringify(quotation.id)})">⬇️ Download PDF</button>`;
-            folderContentEl.innerHTML = buildApprovalSplitLayout({ quotation, termsText, approveButtonHTML, saveButtonHTML, downloadButtonHTML });
-            attachApprovalSectionListeners(folderContentEl);
+
+            function _doRender() {
+                const termsText = quotation.termsText || defaultTermsText || '';
+                const approveButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); saveQuotation(${JSON.stringify(quotation.id)})">✅ Approve</button>`;
+                const saveButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); saveQuotationChanges(${JSON.stringify(quotation.id)})">💾 Save</button>`;
+                const downloadButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); downloadQuotationPdf(${JSON.stringify(quotation.id)})">⬇️ Download PDF</button>`;
+                folderContentEl.innerHTML = buildApprovalSplitLayout({ quotation, termsText, approveButtonHTML, saveButtonHTML, downloadButtonHTML });
+                attachApprovalSectionListeners(folderContentEl);
+            }
+
+            // Heavy fields are stripped from the list response; fetch them on first open
+            if (!quotation.tableHTML) {
+                folderContentEl.innerHTML = '<div style="padding:20px;text-align:center;color:#666;">Loading quotation...</div>';
+                fetch(`${API_BASE_URL}/quotations/${encodeURIComponent(quotationId)}`)
+                    .then(function(r) { return r.json(); })
+                    .then(function(result) {
+                        if (result && result.quotation) {
+                            Object.assign(quotation, result.quotation);
+                        }
+                        _doRender();
+                    })
+                    .catch(function(err) {
+                        folderContentEl.innerHTML = '<div style="padding:20px;color:#c62828;">Failed to load quotation details. Please try again.</div>';
+                        console.error('Failed to fetch full quotation data:', err);
+                    });
+                return;
+            }
+
+            _doRender();
         }
 
         /*

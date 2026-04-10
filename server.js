@@ -1088,7 +1088,17 @@ app.get('/api/next-quote-number', async (req, res) => {
 // Max quotations returned by GET /api/quotations (client can pass ?limit= up to this cap)
 const QUOTATIONS_LIST_LIMIT = 600;
 
-// Get all quotations from DynamoDB
+// Fields that are large and only needed when a quotation folder is actually opened.
+// These are stripped from the list response and fetched on-demand via GET /api/quotations/:id.
+const QUOTATION_HEAVY_FIELDS = ['tableHTML', 'headerHTML', 'emailContent', 'emailContentHtml', 'fileContent'];
+
+function toQuotationSummary(q) {
+    const summary = { ...q };
+    QUOTATION_HEAVY_FIELDS.forEach(f => delete summary[f]);
+    return summary;
+}
+
+// Get all quotations from DynamoDB (summary fields only — heavy fields stripped for speed)
 app.get('/api/quotations', async (req, res) => {
     try {
         if (!ddbDocClient || !ddbTableName) {
@@ -1104,8 +1114,8 @@ app.get('/api/quotations', async (req, res) => {
         let lastKey = null;
         do {
             const scanParams = {
-                TableName: ddbTableName,
-                ConsistentRead: true
+                TableName: ddbTableName
+                // ConsistentRead omitted — eventually consistent reads are 2× faster and sufficient for a list view
             };
             if (lastKey) scanParams.ExclusiveStartKey = lastKey;
             const result = await ddbDocClient.send(new ScanCommand(scanParams));
@@ -1122,7 +1132,7 @@ app.get('/api/quotations', async (req, res) => {
         const pagedQuotations = quotations.slice(requestedOffset, requestedOffset + requestedLimit);
         const hasMore = (requestedOffset + pagedQuotations.length) < total;
         res.json({
-            quotations: pagedQuotations,
+            quotations: pagedQuotations.map(toQuotationSummary),
             hasMore,
             total,
             limit: requestedLimit,
@@ -1131,6 +1141,28 @@ app.get('/api/quotations', async (req, res) => {
     } catch (error) {
         console.error('Error loading quotations:', error);
         res.status(500).json({ error: 'Failed to load quotations', details: error.message });
+    }
+});
+
+// Get a single quotation by ID with full data (including heavy fields)
+app.get('/api/quotations/:id', async (req, res) => {
+    try {
+        if (!ddbDocClient || !ddbTableName) {
+            return res.status(500).json({ error: 'DynamoDB not configured.' });
+        }
+        const { GetCommand } = require('@aws-sdk/lib-dynamodb');
+        const result = await ddbDocClient.send(new GetCommand({
+            TableName: ddbTableName,
+            Key: { id: String(req.params.id) }
+        }));
+        if (!result.Item) {
+            return res.status(404).json({ error: 'Quotation not found' });
+        }
+        const quotation = result.Item.payload || result.Item.data || result.Item;
+        res.json({ quotation });
+    } catch (error) {
+        console.error('Error fetching quotation:', error);
+        res.status(500).json({ error: 'Failed to fetch quotation', details: error.message });
     }
 });
 
