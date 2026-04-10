@@ -2339,6 +2339,11 @@
             }
             var folderHtml = buildCreationFolderContentFromDisplay(entryId);
             content.innerHTML = folderHtml;
+            // #region agent log
+            const _domDateBefore = document.getElementById('quotationDate')?.value;
+            const _folderDateInput = content.querySelector('[data-field="quotationDate"]');
+            fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',location:'index.html:finalizeCreationFolder',message:'folder finalized',data:{domDateAtFinalize:_domDateBefore,folderInputDate:_folderDateInput?.value,todayFormatted:getTodayFormatted()},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
+            // #endregion
             const loading = document.getElementById(`creation-loading-${entryId}`);
             if (loading) {
                 loading.remove();
@@ -2804,13 +2809,20 @@
             const dd = String(d.getDate()).padStart(2, '0');
             const mm = String(d.getMonth() + 1).padStart(2, '0');
             const yy = String(d.getFullYear()).slice(-2);
+            // #region agent log
+            fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',location:'index.html:getTodayFormatted',message:'system clock reading',data:{dd,mm,yy,fullYear:d.getFullYear(),dateObj:d.toString(),isoString:d.toISOString(),localeDateString:d.toLocaleDateString()},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+            // #endregion
             return `${dd}.${mm}.${yy}`;
         }
 
         function populateQuotationHeader(data) {
             // Step 1: Fill in the header information (make editable)
             // Always use today's date — the AI date comes from the email, not the quotation creation date
-            document.getElementById('quotationDate').value = getTodayFormatted();
+            const todayDate = getTodayFormatted();
+            document.getElementById('quotationDate').value = todayDate;
+            // #region agent log
+            fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',location:'index.html:populateQuotationHeader',message:'date set in header',data:{todayDate,aiDate:data.quotationDate,domValAfterSet:document.getElementById('quotationDate')?.value},timestamp:Date.now(),hypothesisId:'H1_H3'})}).catch(()=>{});
+            // #endregion
             document.getElementById('billTo').value = data.companyName || data.billTo || '';
             document.getElementById('shipTo').value = data.projectName || data.shipTo || '';
             document.getElementById('kindAttn').value = data.customerName || '';
