@@ -2339,11 +2339,6 @@
             }
             var folderHtml = buildCreationFolderContentFromDisplay(entryId);
             content.innerHTML = folderHtml;
-            // #region agent log
-            const _domDateBefore = document.getElementById('quotationDate')?.value;
-            const _folderDateInput = content.querySelector('[data-field="quotationDate"]');
-            fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',location:'index.html:finalizeCreationFolder',message:'folder finalized',data:{domDateAtFinalize:_domDateBefore,folderInputDate:_folderDateInput?.value,todayFormatted:getTodayFormatted()},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
-            // #endregion
             const loading = document.getElementById(`creation-loading-${entryId}`);
             if (loading) {
                 loading.remove();
@@ -2809,9 +2804,6 @@
             const dd = String(d.getDate()).padStart(2, '0');
             const mm = String(d.getMonth() + 1).padStart(2, '0');
             const yy = String(d.getFullYear()).slice(-2);
-            // #region agent log
-            fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',location:'index.html:getTodayFormatted',message:'system clock reading',data:{dd,mm,yy,fullYear:d.getFullYear(),dateObj:d.toString(),isoString:d.toISOString(),localeDateString:d.toLocaleDateString()},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
-            // #endregion
             return `${dd}.${mm}.${yy}`;
         }
 
@@ -2820,9 +2812,6 @@
             // Always use today's date — the AI date comes from the email, not the quotation creation date
             const todayDate = getTodayFormatted();
             document.getElementById('quotationDate').value = todayDate;
-            // #region agent log
-            fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',location:'index.html:populateQuotationHeader',message:'date set in header',data:{todayDate,aiDate:data.quotationDate,domValAfterSet:document.getElementById('quotationDate')?.value},timestamp:Date.now(),hypothesisId:'H1_H3'})}).catch(()=>{});
-            // #endregion
             document.getElementById('billTo').value = data.companyName || data.billTo || '';
             document.getElementById('shipTo').value = data.projectName || data.shipTo || '';
             document.getElementById('kindAttn').value = data.customerName || '';
@@ -4964,15 +4953,7 @@
                             </span>
                             <span class="folder-toggle-icon">▶</span>
                         </div>
-                        <div class="quotation-folder-content" id="folder-content-${quotation.id}">
-                            ${buildApprovalSplitLayout({
-                                quotation,
-                                termsText,
-                                approveButtonHTML,
-                                saveButtonHTML,
-                                downloadButtonHTML
-                            })}
-                        </div>
+                        <div class="quotation-folder-content" id="folder-content-${quotation.id}" data-lazy-id="${quotation.id}"></div>
                     </div>
                 `;
             });
@@ -5239,6 +5220,10 @@
                 const contentEl = document.getElementById('folder-content-' + folderId);
                 const iconEl = document.querySelector('#folder-' + folderId + ' .folder-toggle-icon');
                 if (contentEl) {
+                    // Render content for folders that were open before the re-render
+                    if (contentEl.dataset.lazyId) {
+                        renderApprovalFolderContent(contentEl.dataset.lazyId, contentEl);
+                    }
                     contentEl.classList.add('show');
                 }
                 if (iconEl) {
@@ -5254,6 +5239,21 @@
             updateApprovalContainerScrollLimit(container);
         }
         
+        // Renders the full content of a single approval folder on demand (lazy load).
+        // Called when a folder is opened for the first time, or after a re-render that
+        // resets folder content back to the lazy placeholder.
+        function renderApprovalFolderContent(quotationId, folderContentEl) {
+            const quotation = approvedQuotations.find(function(q) { return idsMatch(q.id, quotationId); });
+            if (!quotation || !folderContentEl) return;
+            delete folderContentEl.dataset.lazyId;
+            const termsText = quotation.termsText || defaultTermsText || '';
+            const approveButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); saveQuotation(${JSON.stringify(quotation.id)})">✅ Approve</button>`;
+            const saveButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); saveQuotationChanges(${JSON.stringify(quotation.id)})">💾 Save</button>`;
+            const downloadButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); downloadQuotationPdf(${JSON.stringify(quotation.id)})">⬇️ Download PDF</button>`;
+            folderContentEl.innerHTML = buildApprovalSplitLayout({ quotation, termsText, approveButtonHTML, saveButtonHTML, downloadButtonHTML });
+            attachApprovalSectionListeners(folderContentEl);
+        }
+
         /*
             ============================================
             ATTACH APPROVAL SECTION LISTENERS FUNCTION
@@ -5261,7 +5261,7 @@
             This function adds event listeners to all editable fields in the Approval section
             so that manual changes are automatically saved.
         */
-        function attachApprovalSectionListeners() {
+        function attachApprovalSectionListeners(targetFolderContentEl) {
             /*
                 This function:
                 1. Finds all editable inputs in Approval section quotations
@@ -5325,8 +5325,10 @@
                 });
             }
             
-            // Find all quotation folders in Approval section
-            const quotationFolders = document.querySelectorAll('#approvedQuotationsContainer .quotation-folder');
+            // Find all quotation folders to process — or just the one that was just rendered
+            const quotationFolders = targetFolderContentEl
+                ? [targetFolderContentEl.closest('.quotation-folder')].filter(Boolean)
+                : Array.from(document.querySelectorAll('#approvedQuotationsContainer .quotation-folder'));
             
             quotationFolders.forEach(function(folder) {
                 // Get quotation ID from folder ID (format: folder-1234567890)
@@ -5336,8 +5338,10 @@
                     return idsMatch(q.id, quotationId);
                 });
                 
-                const folderContent = folder.querySelector('.quotation-folder-content');
+                const folderContent = targetFolderContentEl || folder.querySelector('.quotation-folder-content');
                 if (!folderContent) return;
+                // Skip folders that haven't been rendered yet (lazy placeholder)
+                if (folderContent.dataset.lazyId) return;
                 
                 // Find the table in this quotation
                 const table = folderContent.querySelector('table');
@@ -5946,7 +5950,7 @@
                     </td>
                 `;
                 tbody.appendChild(newHeaderRow);
-                attachApprovalSectionListeners();
+                attachApprovalSectionListeners(folderContent);
                 return;
             }
 
@@ -5961,7 +5965,7 @@
                 const aprvPipeRow = createMPlusPipeHeaderRow(aprvPipeHeaderId, aprvColHeaderId, colspan2, buildMPlusButtonsHtmlForApproval(quotationId, aprvPipeHeaderId));
                 const anchorRow = insertAfterId ? tbody.querySelector('#' + insertAfterId) : null;
                 insertMPlusRowPair(tbody, aprvColRow, aprvPipeRow, anchorRow);
-                attachApprovalSectionListeners();
+                attachApprovalSectionListeners(folderContent);
                 return;
             }
             
@@ -7363,6 +7367,10 @@
                 folderContent.classList.remove('show');
                 toggleIcon.classList.remove('open');
             } else {
+                // Lazy-render content on first open
+                if (folderContent.dataset.lazyId) {
+                    renderApprovalFolderContent(folderContent.dataset.lazyId, folderContent);
+                }
                 // Open the folder
                 folderContent.classList.add('show');
                 toggleIcon.classList.add('open');

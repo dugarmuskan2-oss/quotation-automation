@@ -458,6 +458,9 @@
     function printWeightTable() {
         const tbody = $('pipeWeightTableBody');
         const totalEl = $('pipeWeightGrandTotal');
+        // #region agent log
+        fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H3',location:'weight-calculator.js:printWeightTable:entry',message:'printWeightTable entry',data:{hasTbody:!!tbody},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         if (!tbody) return;
 
         const rows = Array.from(tbody.querySelectorAll('tr')).map(row => {
@@ -470,6 +473,10 @@
                 : '';
             return { desc, kgPerMeter, qtyMeters, totalKg };
         }).filter(r => r.desc || r.kgPerMeter || r.qtyMeters || r.totalKg);
+
+        // #region agent log
+        fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H2',location:'weight-calculator.js:printWeightTable:rows',message:'rows after filter',data:{rowCount:rows.length,sample:rows[0]||null,inputCounts:Array.from(tbody.querySelectorAll('tr')).slice(0,1).map(r=>r.querySelectorAll('input').length)},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
 
         if (!rows.length) {
             return;
@@ -485,6 +492,9 @@
         `).join('');
 
         const printWindow = window.open('', '_blank', 'noopener,noreferrer');
+        // #region agent log
+        fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H1',location:'weight-calculator.js:printWeightTable:afterOpen',message:'window.open result',data:{printWindowIsNull:printWindow==null,typeofPrintWindow:typeof printWindow},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         if (!printWindow) {
             return;
         }
@@ -525,11 +535,20 @@
             </html>
         `;
 
-        printWindow.document.open();
-        printWindow.document.write(html);
-        printWindow.document.close();
-        printWindow.focus();
-        printWindow.print();
+        try {
+            printWindow.document.open();
+            printWindow.document.write(html);
+            printWindow.document.close();
+            printWindow.focus();
+            printWindow.print();
+            // #region agent log
+            fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H4',location:'weight-calculator.js:printWeightTable:afterWrite',message:'write+print completed',data:{htmlLen:html.length},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion
+        } catch (e) {
+            // #region agent log
+            fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H4',location:'weight-calculator.js:printWeightTable:catch',message:'write/print threw',data:{err:String(e&&e.message)},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion
+        }
     }
 
     function escapeHtml(value) {
