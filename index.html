@@ -1321,8 +1321,15 @@
             updateLoadMoreApprovedButton();
             try {
                 const offset = append ? approvedQuotationsOffset : 0;
-                const response = await fetch(`${API_BASE_URL}/quotations?limit=${APPROVED_QUOTATIONS_PAGE_SIZE}&offset=${offset}`);
+                const requestUrl = `${API_BASE_URL}/quotations?limit=${APPROVED_QUOTATIONS_PAGE_SIZE}&offset=${offset}`;
+                // #region agent log
+                fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'baseline-client',hypothesisId:'H6',location:'index.html:loadQuotationsFromBackend:beforeFetch',message:'about to fetch quotations list',data:{append,offset,requestUrl},timestamp:Date.now()})}).catch(()=>{});
+                // #endregion
+                const response = await fetch(requestUrl);
                 const result = await safeJsonParse(response);
+                // #region agent log
+                fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'baseline-client',hypothesisId:'H7',location:'index.html:loadQuotationsFromBackend:afterFetch',message:'quotations response headers and payload shape',data:{status:response.status,url:response.url,headers:{scanMs:response.headers.get('x-scan-ms'),totalMs:response.headers.get('x-total-ms'),scanPages:response.headers.get('x-scan-pages'),itemCount:response.headers.get('x-item-count')},hasQuotationsArray:Array.isArray(result&&result.quotations),quotationCount:Array.isArray(result&&result.quotations)?result.quotations.length:0,firstQuotationKeys:Object.keys((result&&Array.isArray(result.quotations)&&result.quotations[0])||{}),firstHasHeavyFields:{headerHTML:!!(result&&result.quotations&&result.quotations[0]&&result.quotations[0].headerHTML),tableHTML:!!(result&&result.quotations&&result.quotations[0]&&result.quotations[0].tableHTML),emailContentHtml:!!(result&&result.quotations&&result.quotations[0]&&result.quotations[0].emailContentHtml),lineItems:Array.isArray(result&&result.quotations&&result.quotations[0]&&result.quotations[0].lineItems)}},timestamp:Date.now()})}).catch(()=>{});
+                // #endregion
                 if (!response.ok) {
                     const detailMsg = result.details ? ': ' + result.details : '';
                     throw new Error((result.error || 'Failed to load quotations') + detailMsg);
