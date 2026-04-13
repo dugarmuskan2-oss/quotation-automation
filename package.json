@@ -8,9 +8,14 @@
   },
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "test:e2e": "node tools/e2e-smoke.mjs"
   },
-  "keywords": ["quotation", "automation", "openai"],
+  "keywords": [
+    "quotation",
+    "automation",
+    "openai"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
@@ -25,5 +30,8 @@
     "multer": "^1.4.5-lts.1",
     "openai": "^4.20.1",
     "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.1"
   }
 }

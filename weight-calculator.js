@@ -106,6 +106,18 @@
         if (weightApp) weightApp.style.display = '';
         if (qBtn) qBtn.classList.remove('main-tools-button--active');
         if (wBtn) wBtn.classList.add('main-tools-button--active');
+
+        ensurePipeWeightTableHasRow();
+    }
+
+    /**
+     * The tbody starts empty in HTML; without at least one row, Print / recalc do nothing useful.
+     */
+    function ensurePipeWeightTableHasRow() {
+        const tbody = $('pipeWeightTableBody');
+        if (!tbody || tbody.querySelectorAll('tr').length > 0) return;
+        addPipeRowToTable('', NaN, NaN);
+        recalculateFromTable();
     }
 
     /**
@@ -456,6 +468,8 @@
     }
 
     function printWeightTable() {
+        ensurePipeWeightTableHasRow();
+
         const tbody = $('pipeWeightTableBody');
         const totalEl = $('pipeWeightGrandTotal');
         if (!tbody) return;
@@ -520,46 +534,31 @@
             </html>
         `;
 
-        // Hidden iframe + document.write: avoids popup/blob timing issues that yield blank print previews in Chromium.
-        // Use real dimensions off-screen (not 0×0 or opacity:0) so the print engine lays out content.
+        // Hidden iframe: use srcdoc + load so the document is a normal parsed page (reliable vs document.write in some browsers).
+        // Real dimensions off-screen (not 0×0) so layout runs for print.
         const iframe = document.createElement('iframe');
         iframe.setAttribute('aria-hidden', 'true');
         iframe.style.cssText =
             'position:absolute;left:-9999px;top:0;width:8.5in;min-height:11in;border:0;';
         document.body.appendChild(iframe);
 
-        const idoc = iframe.contentDocument || iframe.contentWindow.document;
-        idoc.open();
-        idoc.write(html);
-        idoc.close();
-
         const pwin = iframe.contentWindow;
-        function runPrint() {
-            let bodyLen = -1;
-            try {
-                if (idoc.body) {
-                    bodyLen = (idoc.body.innerHTML || '').length;
-                }
-            } catch (e) {
-                bodyLen = -2;
-            }
-            // #region agent log
-            fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'iframe-print',hypothesisId:'H7',location:'weight-calculator.js:printWeightTable:runPrint',message:'iframe print',data:{bodyInnerHtmlLen:bodyLen,htmlLen:html.length,rowCount:rows.length},timestamp:Date.now()})}).catch(()=>{});
-            // #endregion
-            pwin.focus();
-            pwin.print();
-            pwin.addEventListener(
-                'afterprint',
-                function removeIframe() {
-                    iframe.remove();
-                },
-                { once: true }
-            );
-        }
-
-        pwin.requestAnimationFrame(function () {
-            pwin.requestAnimationFrame(runPrint);
-        });
+        iframe.onload = function () {
+            pwin.requestAnimationFrame(function () {
+                pwin.requestAnimationFrame(function () {
+                    pwin.focus();
+                    pwin.print();
+                    pwin.addEventListener(
+                        'afterprint',
+                        function removeIframe() {
+                            iframe.remove();
+                        },
+                        { once: true }
+                    );
+                });
+            });
+        };
+        iframe.srcdoc = html;
     }
 
     function escapeHtml(value) {

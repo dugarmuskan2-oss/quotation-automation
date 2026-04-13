@@ -1098,6 +1098,18 @@ function toQuotationSummary(q) {
     return summary;
 }
 
+// Summary fields projected directly from DynamoDB — avoids reading large payload sub-fields
+// (tableHTML, emailContent, emailContentHtml, fileContent, etc.) which reduces scan pages.
+// 'saved' is aliased because it can conflict with DynamoDB reserved words.
+const SUMMARY_PROJECTION = [
+    'id', 'updatedAt', 'createdAt',
+    '#p.id', '#p.quoteNumber', '#p.companyName', '#p.projectName',
+    '#p.customerName', '#p.quotationDate', '#p.#sv',
+    '#p.assignedTo', '#p.checkedBy', '#p.emailLink',
+    '#p.gmailMessageId', '#p.billTo', '#p.shipTo', '#p.grandTotal'
+].join(', ');
+const SUMMARY_EXPR_NAMES = { '#p': 'payload', '#sv': 'saved' };
+
 // Get all quotations from DynamoDB (summary fields only — heavy fields stripped for speed)
 app.get('/api/quotations', async (req, res) => {
     try {
@@ -1113,13 +1125,14 @@ app.get('/api/quotations', async (req, res) => {
         let items = [];
         let lastKey = null;
         let scanPages = 0;
-        // #region agent log
         const _t0 = Date.now();
-        // #endregion
         do {
             const scanParams = {
-                TableName: ddbTableName
-                // ConsistentRead omitted — eventually consistent reads are 2× faster and sufficient for a list view
+                TableName: ddbTableName,
+                // ProjectionExpression tells DynamoDB to only return summary fields.
+                // This reduces data per scan page → fewer pages → faster scan.
+                ProjectionExpression: SUMMARY_PROJECTION,
+                ExpressionAttributeNames: SUMMARY_EXPR_NAMES
             };
             if (lastKey) scanParams.ExclusiveStartKey = lastKey;
             const result = await ddbDocClient.send(new ScanCommand(scanParams));
@@ -1127,10 +1140,11 @@ app.get('/api/quotations', async (req, res) => {
             lastKey = result.LastEvaluatedKey || null;
             scanPages++;
         } while (lastKey);
-        // #region agent log
         const _tScan = Date.now();
-        // #endregion
-        let quotations = items.map(item => item.payload || item.data || item).filter(Boolean);
+        let quotations = items
+            .filter(item => item.id !== 'QUOTE_NUMBER_COUNTER')
+            .map(item => item.payload || item.data || item)
+            .filter(Boolean);
         quotations.sort((a, b) => {
             const aTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
             const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
@@ -1139,13 +1153,15 @@ app.get('/api/quotations', async (req, res) => {
         const total = quotations.length;
         const pagedQuotations = quotations.slice(requestedOffset, requestedOffset + requestedLimit);
         const hasMore = (requestedOffset + pagedQuotations.length) < total;
-        // #region agent log
         const _tDone = Date.now();
-        const _logLine = JSON.stringify({sessionId:'f5e334',location:'server.js:/api/quotations',message:'scan timing',data:{scanMs:_tScan-_t0,totalMs:_tDone-_t0,scanPages,itemCount:items.length,totalQuotations:total},timestamp:_tDone,hypothesisId:'H1_H3'});
-        try { fs.appendFileSync('debug-f5e334.log', _logLine + '\n'); } catch(_e) {}
-        // #endregion
+        // Timing headers visible in browser Network tab — useful for diagnosing production speed
+        res.set('X-Scan-Ms', String(_tScan - _t0));
+        res.set('X-Total-Ms', String(_tDone - _t0));
+        res.set('X-Scan-Pages', String(scanPages));
+        res.set('X-Item-Count', String(items.length));
+        console.log(`[quotations] scanMs=${_tScan-_t0} totalMs=${_tDone-_t0} pages=${scanPages} items=${items.length}`);
         res.json({
-            quotations: pagedQuotations.map(toQuotationSummary),
+            quotations: pagedQuotations,
             hasMore,
             total,
             limit: requestedLimit,

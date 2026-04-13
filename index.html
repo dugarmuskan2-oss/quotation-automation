@@ -2345,14 +2345,9 @@
             }
             attachCreationFolderRowButtons(entryId);
             attachCreationFolderCalculationListeners(entryId);
-            const quoteInput = content.querySelector('[data-field="quoteNumber"]');
-            if (quoteInput && !quoteInput.value.trim()) {
-                try {
-                    quoteInput.value = await consumeNextQuoteNumber('finalizeCreationFolder');
-                } catch (e) {
-                    console.error('Failed to set quote number in creation folder:', e);
-                }
-            }
+            // Quote number is intentionally NOT pre-assigned here.
+            // It is consumed only when the user clicks "Create Quotation" in approveQuotationFromCreationFolder,
+            // preventing numbers from being wasted on quotations that are generated but never saved.
         }
 
         function removeCreationFolderEntry(entryId) {
@@ -2815,6 +2810,9 @@
             // Always use today's date — the AI date comes from the email, not the quotation creation date
             const todayDate = getTodayFormatted();
             document.getElementById('quotationDate').value = todayDate;
+            // #region agent log
+            fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',location:'index.html:populateQuotationHeader',message:'date set',data:{todayDate,aiDate:data.quotationDate},timestamp:Date.now(),hypothesisId:'DATE'})}).catch(()=>{});
+            // #endregion
             document.getElementById('billTo').value = data.companyName || data.billTo || '';
             document.getElementById('shipTo').value = data.projectName || data.shipTo || '';
             document.getElementById('kindAttn').value = data.customerName || '';
@@ -4363,18 +4361,40 @@
         }
 
         function storeFreightForUndoSnapshot(quotationId, snapshot) {
+            const key = String(quotationId);
             const store = getFreightForUndoStore();
-            store[String(quotationId)] = snapshot;
+            store[key] = snapshot;
+            var qi = approvedQuotations.findIndex(function(q) { return idsMatch(q.id, quotationId); });
+            if (qi !== -1) {
+                approvedQuotations[qi].freightForUndoSnapshot = snapshot;
+            }
+            try {
+                sessionStorage.setItem('freightForUndoSnapshot:' + key, JSON.stringify(snapshot));
+            } catch (e) { /* quota / private mode */ }
         }
 
         function getFreightForUndoSnapshot(quotationId) {
+            const key = String(quotationId);
             const store = getFreightForUndoStore();
-            return store[String(quotationId)] || null;
+            if (store[key]) return store[key];
+            var q = approvedQuotations.find(function(q2) { return idsMatch(q2.id, quotationId); });
+            if (q && q.freightForUndoSnapshot) return q.freightForUndoSnapshot;
+            try {
+                var raw = sessionStorage.getItem('freightForUndoSnapshot:' + key);
+                if (raw) return JSON.parse(raw);
+            } catch (e) { /* */ }
+            return null;
         }
 
         function clearFreightForUndoSnapshot(quotationId) {
+            const key = String(quotationId);
             const store = getFreightForUndoStore();
-            delete store[String(quotationId)];
+            delete store[key];
+            var q = approvedQuotations.find(function(q2) { return idsMatch(q2.id, quotationId); });
+            if (q) delete q.freightForUndoSnapshot;
+            try {
+                sessionStorage.removeItem('freightForUndoSnapshot:' + key);
+            } catch (e) { /* */ }
         }
 
         function getNumberFromInput(inputEl) {
@@ -4860,6 +4880,11 @@
                 return;
             }
             const folderState = creationFolderState[entryId] || {};
+            // Ensure the date field always shows today before reading header values
+            const dateInputInFolder = folderContent.querySelector('[data-field="quotationDate"]');
+            if (dateInputInFolder && !dateInputInFolder.value.trim()) {
+                dateInputInFolder.value = getTodayFormatted();
+            }
             const quotationHeaderValues = getQuotationHeaderValuesFromContainer(folderContent);
             const quotationTable = folderContent.querySelector('table');
             const tableClone = quotationTable ? cloneQuotationTableWithValues(quotationTable) : null;
@@ -4879,6 +4904,9 @@
             quotationData.emailContent = folderState.emailContent || '';
             quotationData.emailContentHtml = folderState.emailContentHtml || '';
             quotationData.fileContent = folderState.fileContent || '';
+            // #region agent log
+            fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',location:'index.html:approveFromCreationFolder',message:'saving quotation',data:{quotationDate:quotationData.quotationDate,quoteNumber:quotationData.quoteNumber,today:getTodayFormatted()},timestamp:Date.now(),hypothesisId:'DATE_QN'})}).catch(()=>{});
+            // #endregion
             const quotationWithStatus = addQuotationToApprovedQuotations(quotationData);
             await saveQuotationToBackend(quotationWithStatus);
             persistAndRefreshApprovals();
