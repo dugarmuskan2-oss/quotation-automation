@@ -458,9 +458,6 @@
     function printWeightTable() {
         const tbody = $('pipeWeightTableBody');
         const totalEl = $('pipeWeightGrandTotal');
-        // #region agent log
-        fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H3',location:'weight-calculator.js:printWeightTable:entry',message:'printWeightTable entry',data:{hasTbody:!!tbody},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         if (!tbody) return;
 
         const rows = Array.from(tbody.querySelectorAll('tr')).map(row => {
@@ -473,10 +470,6 @@
                 : '';
             return { desc, kgPerMeter, qtyMeters, totalKg };
         }).filter(r => r.desc || r.kgPerMeter || r.qtyMeters || r.totalKg);
-
-        // #region agent log
-        fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'pre-fix',hypothesisId:'H2',location:'weight-calculator.js:printWeightTable:rows',message:'rows after filter',data:{rowCount:rows.length,sample:rows[0]||null,inputCounts:Array.from(tbody.querySelectorAll('tr')).slice(0,1).map(r=>r.querySelectorAll('input').length)},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
 
         if (!rows.length) {
             return;
@@ -527,47 +520,46 @@
             </html>
         `;
 
-        const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-        const blobUrl = URL.createObjectURL(blob);
-        const printWindowBlob = window.open(blobUrl, '_blank');
-        // #region agent log
-        fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'blob-defer',hypothesisId:'H6',location:'weight-calculator.js:printWeightTable:blobOpen',message:'blob window.open',data:{printWindowIsNull:printWindowBlob==null,htmlLen:html.length},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
-        if (!printWindowBlob) {
-            URL.revokeObjectURL(blobUrl);
-            return;
-        }
+        // Hidden iframe + document.write: avoids popup/blob timing issues that yield blank print previews in Chromium.
+        // Use real dimensions off-screen (not 0×0 or opacity:0) so the print engine lays out content.
+        const iframe = document.createElement('iframe');
+        iframe.setAttribute('aria-hidden', 'true');
+        iframe.style.cssText =
+            'position:absolute;left:-9999px;top:0;width:8.5in;min-height:11in;border:0;';
+        document.body.appendChild(iframe);
 
-        function printWhenLoaded() {
+        const idoc = iframe.contentDocument || iframe.contentWindow.document;
+        idoc.open();
+        idoc.write(html);
+        idoc.close();
+
+        const pwin = iframe.contentWindow;
+        function runPrint() {
             let bodyLen = -1;
-            let rs = '';
             try {
-                rs = printWindowBlob.document.readyState || '';
-                if (printWindowBlob.document.body) {
-                    bodyLen = (printWindowBlob.document.body.innerHTML || '').length;
+                if (idoc.body) {
+                    bodyLen = (idoc.body.innerHTML || '').length;
                 }
-            } catch (err) {
-                rs = 'error:' + String(err && err.message);
+            } catch (e) {
+                bodyLen = -2;
             }
             // #region agent log
-            fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'blob-defer',hypothesisId:'H6',location:'weight-calculator.js:printWeightTable:beforePrint',message:'deferred print',data:{readyState:rs,bodyInnerHtmlLen:bodyLen},timestamp:Date.now()})}).catch(()=>{});
+            fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'iframe-print',hypothesisId:'H7',location:'weight-calculator.js:printWeightTable:runPrint',message:'iframe print',data:{bodyInnerHtmlLen:bodyLen,htmlLen:html.length,rowCount:rows.length},timestamp:Date.now()})}).catch(()=>{});
             // #endregion
-            printWindowBlob.focus();
-            printWindowBlob.print();
-            printWindowBlob.addEventListener(
+            pwin.focus();
+            pwin.print();
+            pwin.addEventListener(
                 'afterprint',
-                function revokeBlobUrl() {
-                    URL.revokeObjectURL(blobUrl);
+                function removeIframe() {
+                    iframe.remove();
                 },
                 { once: true }
             );
         }
 
-        if (printWindowBlob.document.readyState === 'complete') {
-            printWhenLoaded();
-        } else {
-            printWindowBlob.addEventListener('load', printWhenLoaded, { once: true });
-        }
+        pwin.requestAnimationFrame(function () {
+            pwin.requestAnimationFrame(runPrint);
+        });
     }
 
     function escapeHtml(value) {
