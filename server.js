@@ -1113,6 +1113,9 @@ const SUMMARY_EXPR_NAMES = { '#p': 'payload', '#sv': 'saved' };
 // Get all quotations from DynamoDB (summary fields only — heavy fields stripped for speed)
 app.get('/api/quotations', async (req, res) => {
     try {
+        // #region agent log
+        fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'baseline',hypothesisId:'H2',location:'server.js:/api/quotations:entry',message:'entered quotations route',data:{path:req.path,originalUrl:req.originalUrl,query:req.query,table:ddbTableName},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         if (!ddbDocClient || !ddbTableName) {
             return res.status(500).json({ error: 'DynamoDB not configured. Set DYNAMODB_TABLE in environment variables.' });
         }
@@ -1134,6 +1137,9 @@ app.get('/api/quotations', async (req, res) => {
                 ProjectionExpression: SUMMARY_PROJECTION,
                 ExpressionAttributeNames: SUMMARY_EXPR_NAMES
             };
+            // #region agent log
+            fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'baseline',hypothesisId:'H1',location:'server.js:/api/quotations:scanParams',message:'scan params prepared',data:{hasProjection:!!scanParams.ProjectionExpression,projection:scanParams.ProjectionExpression,exprNames:scanParams.ExpressionAttributeNames,hasStartKey:!!scanParams.ExclusiveStartKey},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion
             if (lastKey) scanParams.ExclusiveStartKey = lastKey;
             const result = await ddbDocClient.send(new ScanCommand(scanParams));
             items = items.concat(result.Items || []);
@@ -1141,10 +1147,16 @@ app.get('/api/quotations', async (req, res) => {
             scanPages++;
         } while (lastKey);
         const _tScan = Date.now();
+        // #region agent log
+        fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'baseline',hypothesisId:'H3',location:'server.js:/api/quotations:postScan',message:'first raw item keys after scan',data:{rawCount:items.length,firstItemKeys:Object.keys(items[0]||{}),firstPayloadKeys:Object.keys((items[0]&&items[0].payload)||{})},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         let quotations = items
             .filter(item => item.id !== 'QUOTE_NUMBER_COUNTER')
             .map(item => item.payload || item.data || item)
             .filter(Boolean);
+        // #region agent log
+        fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'baseline',hypothesisId:'H4',location:'server.js:/api/quotations:postMap',message:'mapped quotation keys and heavy field presence',data:{mappedCount:quotations.length,firstQuotationKeys:Object.keys(quotations[0]||{}),heavyPresence:{headerHTML:!!(quotations[0]&&quotations[0].headerHTML),tableHTML:!!(quotations[0]&&quotations[0].tableHTML),emailContentHtml:!!(quotations[0]&&quotations[0].emailContentHtml),lineItems:Array.isArray(quotations[0]&&quotations[0].lineItems)}},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         quotations.sort((a, b) => {
             const aTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
             const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
