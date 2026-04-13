@@ -1112,6 +1112,10 @@ app.get('/api/quotations', async (req, res) => {
         const { ScanCommand } = require('@aws-sdk/lib-dynamodb');
         let items = [];
         let lastKey = null;
+        let scanPages = 0;
+        // #region agent log
+        const _t0 = Date.now();
+        // #endregion
         do {
             const scanParams = {
                 TableName: ddbTableName
@@ -1121,7 +1125,11 @@ app.get('/api/quotations', async (req, res) => {
             const result = await ddbDocClient.send(new ScanCommand(scanParams));
             items = items.concat(result.Items || []);
             lastKey = result.LastEvaluatedKey || null;
+            scanPages++;
         } while (lastKey);
+        // #region agent log
+        const _tScan = Date.now();
+        // #endregion
         let quotations = items.map(item => item.payload || item.data || item).filter(Boolean);
         quotations.sort((a, b) => {
             const aTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
@@ -1131,6 +1139,11 @@ app.get('/api/quotations', async (req, res) => {
         const total = quotations.length;
         const pagedQuotations = quotations.slice(requestedOffset, requestedOffset + requestedLimit);
         const hasMore = (requestedOffset + pagedQuotations.length) < total;
+        // #region agent log
+        const _tDone = Date.now();
+        const _logLine = JSON.stringify({sessionId:'f5e334',location:'server.js:/api/quotations',message:'scan timing',data:{scanMs:_tScan-_t0,totalMs:_tDone-_t0,scanPages,itemCount:items.length,totalQuotations:total},timestamp:_tDone,hypothesisId:'H1_H3'});
+        try { fs.appendFileSync('debug-f5e334.log', _logLine + '\n'); } catch(_e) {}
+        // #endregion
         res.json({
             quotations: pagedQuotations.map(toQuotationSummary),
             hasMore,

@@ -2348,7 +2348,7 @@
             const quoteInput = content.querySelector('[data-field="quoteNumber"]');
             if (quoteInput && !quoteInput.value.trim()) {
                 try {
-                    quoteInput.value = await consumeNextQuoteNumber();
+                    quoteInput.value = await consumeNextQuoteNumber('finalizeCreationFolder');
                 } catch (e) {
                     console.error('Failed to set quote number in creation folder:', e);
                 }
@@ -2557,7 +2557,10 @@
             return `DSC-${numberValue}`;
         }
 
-        async function consumeNextQuoteNumber() {
+        async function consumeNextQuoteNumber(calledFrom) {
+            // #region agent log
+            fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',location:'index.html:consumeNextQuoteNumber',message:'counter consumed',data:{calledFrom:calledFrom||'unknown',stack:(new Error()).stack?.split('\n').slice(1,4).join(' | ')},timestamp:Date.now(),hypothesisId:'H_SKIP'})}).catch(()=>{});
+            // #endregion
             const response = await fetch(`${API_BASE_URL}/next-quote-number`);
             const result = await safeJsonParse(response);
             if (!response.ok) {
@@ -3152,7 +3155,7 @@
             }
             const quoteNumberInput = document.getElementById('quoteNumber');
             if (quoteNumberInput && !quoteNumberInput.value.trim() && !hasCreationFolder) {
-                consumeNextQuoteNumber()
+                consumeNextQuoteNumber('displayQuotation_noFolder')
                     .then(nextNumber => {
                         quoteNumberInput.value = nextNumber;
                     })
@@ -4763,7 +4766,7 @@
             const quoteNumberInput = document.getElementById('quoteNumber');
             if (quoteNumberInput && !quoteNumberInput.value.trim()) {
                 try {
-                    quoteNumberInput.value = await consumeNextQuoteNumber();
+                    quoteNumberInput.value = await consumeNextQuoteNumber('approveQuotation_mainForm');
                 } catch (error) {
                     console.error('Failed to generate quote number:', error);
                 }
@@ -4866,7 +4869,7 @@
             removeCreationFolderEntry(entryId);
             if (!quoteNumber.trim()) {
                 try {
-                    quoteNumber = await consumeNextQuoteNumber();
+                    quoteNumber = await consumeNextQuoteNumber('approveFromCreationFolder_fallback');
                 } catch (error) {
                     console.error('Failed to generate quote number:', error);
                 }
