@@ -1115,7 +1115,40 @@ const SUMMARY_PROJECTION = [
 ].join(', ');
 const SUMMARY_EXPR_NAMES = { '#p': 'payload', '#d': 'data', '#sv': 'saved' };
 
-/** Merge `payload` and `data` maps from a DynamoDB item into one quotation summary object. */
+/** When both `data` and `payload` exist, shallow-merge can leave header fields empty if one map has "" and the other has the real value. Prefer a non-empty string from either map. */
+const QUOTATION_HEADER_MERGE_KEYS = [
+    'quoteNumber', 'companyName', 'projectName', 'customerName', 'quotationDate',
+    'assignedTo', 'checkedBy', 'grandTotal', 'billTo', 'shipTo', 'emailLink', 'gmailMessageId'
+];
+
+function isEmptyStringish(value) {
+    if (value == null) {
+        return true;
+    }
+    if (typeof value === 'string') {
+        return value.trim() === '';
+    }
+    return false;
+}
+
+function mergeQuotationPayloadAndDataMaps(data, payload) {
+    const merged = { ...(data || {}), ...(payload || {}) };
+    QUOTATION_HEADER_MERGE_KEYS.forEach((key) => {
+        if (!isEmptyStringish(merged[key])) {
+            return;
+        }
+        const dVal = data && data[key];
+        const pVal = payload && payload[key];
+        if (!isEmptyStringish(dVal)) {
+            merged[key] = dVal;
+        } else if (!isEmptyStringish(pVal)) {
+            merged[key] = pVal;
+        }
+    });
+    return merged;
+}
+
+/** Merge `payload` and `data` maps from a DynamoDB item into one quotation object (list or full GET). */
 function quotationSummaryFromDdbItem(item) {
     if (!item || item.id === 'QUOTE_NUMBER_COUNTER') {
         return null;
@@ -1125,7 +1158,7 @@ function quotationSummaryFromDdbItem(item) {
     if (!payload && !data) {
         return null;
     }
-    const merged = { ...(data || {}), ...(payload || {}) };
+    const merged = mergeQuotationPayloadAndDataMaps(data, payload);
     if (merged.id == null) {
         merged.id = item.id;
     }
@@ -1214,7 +1247,10 @@ app.get('/api/quotations/:id', async (req, res) => {
         if (!result.Item) {
             return res.status(404).json({ error: 'Quotation not found' });
         }
-        const quotation = result.Item.payload || result.Item.data || result.Item;
+        const quotation = quotationSummaryFromDdbItem(result.Item);
+        if (!quotation) {
+            return res.status(404).json({ error: 'Quotation not found' });
+        }
         res.json({ quotation });
     } catch (error) {
         console.error('Error fetching quotation:', error);

@@ -5149,6 +5149,26 @@
             `;
         }
 
+        /** headerHTML snapshots can have an empty quote input while quotation.quoteNumber is set (e.g. after data/payload merge). */
+        function syncApprovalHeaderQuoteInputFromQuotationModel(folderContentEl, quotation) {
+            if (!folderContentEl || !quotation) {
+                return;
+            }
+            const v = String(quotation.quoteNumber || '').trim();
+            if (!v) {
+                return;
+            }
+            const header = folderContentEl.querySelector('.quotation-header');
+            if (!header) {
+                return;
+            }
+            const inp = header.querySelector('[data-field="quoteNumber"]') || header.querySelector('#quoteNumber');
+            if (inp) {
+                inp.value = v;
+                inp.setAttribute('value', v);
+            }
+        }
+
         function updateEmailPreviewScroll(folderContent) {
             const quoteColumn = folderContent.querySelector('.approval-quotation');
             const emailPreview = folderContent.querySelector('.email-html-preview');
@@ -5278,6 +5298,7 @@
                 const saveButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); saveQuotationChanges(${JSON.stringify(quotation.id)})">💾 Save</button>`;
                 const downloadButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); downloadQuotationPdf(${JSON.stringify(quotation.id)})">⬇️ Download PDF</button>`;
                 folderContentEl.innerHTML = buildApprovalSplitLayout({ quotation, termsText, approveButtonHTML, saveButtonHTML, downloadButtonHTML });
+                syncApprovalHeaderQuoteInputFromQuotationModel(folderContentEl, quotation);
                 attachApprovalSectionListeners(folderContentEl);
             }
 
