@@ -1321,15 +1321,8 @@
             updateLoadMoreApprovedButton();
             try {
                 const offset = append ? approvedQuotationsOffset : 0;
-                const requestUrl = `${API_BASE_URL}/quotations?limit=${APPROVED_QUOTATIONS_PAGE_SIZE}&offset=${offset}`;
-                // #region agent log
-                fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'baseline-client',hypothesisId:'H6',location:'index.html:loadQuotationsFromBackend:beforeFetch',message:'about to fetch quotations list',data:{append,offset,requestUrl},timestamp:Date.now()})}).catch(()=>{});
-                // #endregion
-                const response = await fetch(requestUrl);
+                const response = await fetch(`${API_BASE_URL}/quotations?limit=${APPROVED_QUOTATIONS_PAGE_SIZE}&offset=${offset}`);
                 const result = await safeJsonParse(response);
-                // #region agent log
-                fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'baseline-client',hypothesisId:'H7',location:'index.html:loadQuotationsFromBackend:afterFetch',message:'quotations response headers and payload shape',data:{status:response.status,url:response.url,headers:{scanMs:response.headers.get('x-scan-ms'),totalMs:response.headers.get('x-total-ms'),scanPages:response.headers.get('x-scan-pages'),itemCount:response.headers.get('x-item-count')},hasQuotationsArray:Array.isArray(result&&result.quotations),quotationCount:Array.isArray(result&&result.quotations)?result.quotations.length:0,firstQuotationKeys:Object.keys((result&&Array.isArray(result.quotations)&&result.quotations[0])||{}),firstHasHeavyFields:{headerHTML:!!(result&&result.quotations&&result.quotations[0]&&result.quotations[0].headerHTML),tableHTML:!!(result&&result.quotations&&result.quotations[0]&&result.quotations[0].tableHTML),emailContentHtml:!!(result&&result.quotations&&result.quotations[0]&&result.quotations[0].emailContentHtml),lineItems:Array.isArray(result&&result.quotations&&result.quotations[0]&&result.quotations[0].lineItems)}},timestamp:Date.now()})}).catch(()=>{});
-                // #endregion
                 if (!response.ok) {
                     const detailMsg = result.details ? ': ' + result.details : '';
                     throw new Error((result.error || 'Failed to load quotations') + detailMsg);
@@ -2560,9 +2553,6 @@
         }
 
         async function consumeNextQuoteNumber(calledFrom) {
-            // #region agent log
-            fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',location:'index.html:consumeNextQuoteNumber',message:'counter consumed',data:{calledFrom:calledFrom||'unknown',stack:(new Error()).stack?.split('\n').slice(1,4).join(' | ')},timestamp:Date.now(),hypothesisId:'H_SKIP'})}).catch(()=>{});
-            // #endregion
             const response = await fetch(`${API_BASE_URL}/next-quote-number`);
             const result = await safeJsonParse(response);
             if (!response.ok) {
@@ -2817,9 +2807,6 @@
             // Always use today's date — the AI date comes from the email, not the quotation creation date
             const todayDate = getTodayFormatted();
             document.getElementById('quotationDate').value = todayDate;
-            // #region agent log
-            fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',location:'index.html:populateQuotationHeader',message:'date set',data:{todayDate,aiDate:data.quotationDate},timestamp:Date.now(),hypothesisId:'DATE'})}).catch(()=>{});
-            // #endregion
             document.getElementById('billTo').value = data.companyName || data.billTo || '';
             document.getElementById('shipTo').value = data.projectName || data.shipTo || '';
             document.getElementById('kindAttn').value = data.customerName || '';
@@ -4911,9 +4898,6 @@
             quotationData.emailContent = folderState.emailContent || '';
             quotationData.emailContentHtml = folderState.emailContentHtml || '';
             quotationData.fileContent = folderState.fileContent || '';
-            // #region agent log
-            fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',location:'index.html:approveFromCreationFolder',message:'saving quotation',data:{quotationDate:quotationData.quotationDate,quoteNumber:quotationData.quoteNumber,today:getTodayFormatted()},timestamp:Date.now(),hypothesisId:'DATE_QN'})}).catch(()=>{});
-            // #endregion
             const quotationWithStatus = addQuotationToApprovedQuotations(quotationData);
             await saveQuotationToBackend(quotationWithStatus);
             persistAndRefreshApprovals();
@@ -5256,7 +5240,8 @@
             // feels stable instead of collapsing/jumping the list.
             expandedFolderIds.forEach(function(folderId) {
                 const contentEl = document.getElementById('folder-content-' + folderId);
-                const iconEl = document.querySelector('#folder-' + folderId + ' .folder-toggle-icon');
+                const folderElForIcon = document.getElementById('folder-' + folderId);
+                const iconEl = folderElForIcon ? folderElForIcon.querySelector('.folder-toggle-icon') : null;
                 if (contentEl) {
                     // Render content for folders that were open before the re-render
                     if (contentEl.dataset.lazyId) {
@@ -7417,7 +7402,8 @@
             */
             
             const folderContent = document.getElementById('folder-content-' + quotationId);
-            const toggleIcon = document.querySelector(`#folder-${quotationId} .folder-toggle-icon`);
+            const folderEl = document.getElementById('folder-' + quotationId);
+            const toggleIcon = folderEl ? folderEl.querySelector('.folder-toggle-icon') : null;
             
             if (!folderContent || !toggleIcon) {
                 return;

@@ -27,9 +27,6 @@ try {
 function handler(req, res) {
     const pathSeg = (req.query && req.query.path) || '';
     const method = (req.method || '').toUpperCase();
-    // #region agent log
-    fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'baseline',hypothesisId:'H5',location:'api/index.js:handler:entry',message:'vercel handler entry',data:{method,pathSeg,url:req.url,query:req.query},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
 
     // Bypass Express routing: call handler directly so Vercel req.path doesn't matter
     if (pathSeg === 'ingest-from-gmail' && method === 'POST' && app.ingestFromGmailHandler) {

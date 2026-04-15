@@ -1098,24 +1098,49 @@ function toQuotationSummary(q) {
     return summary;
 }
 
-// Summary fields projected directly from DynamoDB — avoids reading large payload sub-fields
+// Summary fields projected directly from DynamoDB — avoids reading large map sub-fields
 // (tableHTML, emailContent, emailContentHtml, fileContent, etc.) which reduces scan pages.
+// Some rows store the quotation under `payload`, others under `data`; we project both.
 // 'saved' is aliased because it can conflict with DynamoDB reserved words.
+const SUMMARY_NESTED_PATHS = [
+    'id', 'quoteNumber', 'companyName', 'projectName',
+    'customerName', 'quotationDate', '#sv',
+    'assignedTo', 'checkedBy', 'emailLink',
+    'gmailMessageId', 'billTo', 'shipTo', 'grandTotal'
+];
 const SUMMARY_PROJECTION = [
     'id', 'updatedAt', 'createdAt',
-    '#p.id', '#p.quoteNumber', '#p.companyName', '#p.projectName',
-    '#p.customerName', '#p.quotationDate', '#p.#sv',
-    '#p.assignedTo', '#p.checkedBy', '#p.emailLink',
-    '#p.gmailMessageId', '#p.billTo', '#p.shipTo', '#p.grandTotal'
+    ...SUMMARY_NESTED_PATHS.map(seg => (seg === '#sv' ? '#p.#sv' : '#p.' + seg)),
+    ...SUMMARY_NESTED_PATHS.map(seg => (seg === '#sv' ? '#d.#sv' : '#d.' + seg))
 ].join(', ');
-const SUMMARY_EXPR_NAMES = { '#p': 'payload', '#sv': 'saved' };
+const SUMMARY_EXPR_NAMES = { '#p': 'payload', '#d': 'data', '#sv': 'saved' };
+
+/** Merge `payload` and `data` maps from a DynamoDB item into one quotation summary object. */
+function quotationSummaryFromDdbItem(item) {
+    if (!item || item.id === 'QUOTE_NUMBER_COUNTER') {
+        return null;
+    }
+    const payload = item.payload && typeof item.payload === 'object' ? item.payload : null;
+    const data = item.data && typeof item.data === 'object' ? item.data : null;
+    if (!payload && !data) {
+        return null;
+    }
+    const merged = { ...(data || {}), ...(payload || {}) };
+    if (merged.id == null) {
+        merged.id = item.id;
+    }
+    if (!merged.createdAt && item.createdAt) {
+        merged.createdAt = item.createdAt;
+    }
+    if (!merged.updatedAt && item.updatedAt) {
+        merged.updatedAt = item.updatedAt;
+    }
+    return merged;
+}
 
 // Get all quotations from DynamoDB (summary fields only — heavy fields stripped for speed)
 app.get('/api/quotations', async (req, res) => {
     try {
-        // #region agent log
-        fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'baseline',hypothesisId:'H2',location:'server.js:/api/quotations:entry',message:'entered quotations route',data:{path:req.path,originalUrl:req.originalUrl,query:req.query,table:ddbTableName},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         if (!ddbDocClient || !ddbTableName) {
             return res.status(500).json({ error: 'DynamoDB not configured. Set DYNAMODB_TABLE in environment variables.' });
         }
@@ -1137,9 +1162,6 @@ app.get('/api/quotations', async (req, res) => {
                 ProjectionExpression: SUMMARY_PROJECTION,
                 ExpressionAttributeNames: SUMMARY_EXPR_NAMES
             };
-            // #region agent log
-            fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'baseline',hypothesisId:'H1',location:'server.js:/api/quotations:scanParams',message:'scan params prepared',data:{hasProjection:!!scanParams.ProjectionExpression,projection:scanParams.ProjectionExpression,exprNames:scanParams.ExpressionAttributeNames,hasStartKey:!!scanParams.ExclusiveStartKey},timestamp:Date.now()})}).catch(()=>{});
-            // #endregion
             if (lastKey) scanParams.ExclusiveStartKey = lastKey;
             const result = await ddbDocClient.send(new ScanCommand(scanParams));
             items = items.concat(result.Items || []);
@@ -1147,16 +1169,9 @@ app.get('/api/quotations', async (req, res) => {
             scanPages++;
         } while (lastKey);
         const _tScan = Date.now();
-        // #region agent log
-        fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'baseline',hypothesisId:'H3',location:'server.js:/api/quotations:postScan',message:'first raw item keys after scan',data:{rawCount:items.length,firstItemKeys:Object.keys(items[0]||{}),firstPayloadKeys:Object.keys((items[0]&&items[0].payload)||{})},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         let quotations = items
-            .filter(item => item.id !== 'QUOTE_NUMBER_COUNTER')
-            .map(item => item.payload || item.data || item)
+            .map(quotationSummaryFromDdbItem)
             .filter(Boolean);
-        // #region agent log
-        fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'baseline',hypothesisId:'H4',location:'server.js:/api/quotations:postMap',message:'mapped quotation keys and heavy field presence',data:{mappedCount:quotations.length,firstQuotationKeys:Object.keys(quotations[0]||{}),heavyPresence:{headerHTML:!!(quotations[0]&&quotations[0].headerHTML),tableHTML:!!(quotations[0]&&quotations[0].tableHTML),emailContentHtml:!!(quotations[0]&&quotations[0].emailContentHtml),lineItems:Array.isArray(quotations[0]&&quotations[0].lineItems)}},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         quotations.sort((a, b) => {
             const aTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
             const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
