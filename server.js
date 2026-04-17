@@ -314,6 +314,22 @@ async function saveDefaultTermsToGCS(content) {
     await uploadToGCS(Buffer.from(content, 'utf8'), 'default-terms.txt', '');
 }
 
+async function readDefaultMarginsFromGCS() {
+    try {
+        const buffer = await readFileFromGCS('default-margins.json');
+        return buffer.toString('utf8');
+    } catch (error) {
+        if (error.code === 404) {
+            return null;
+        }
+        throw error;
+    }
+}
+
+async function saveDefaultMarginsToGCS(content) {
+    await uploadToGCS(Buffer.from(content, 'utf8'), 'default-margins.json', '');
+}
+
 // AWS S3 Helper Functions
 async function uploadToS3(fileBuffer, fileName, folder = 'rates') {
     if (!s3Client || !s3BucketName) {
@@ -431,6 +447,22 @@ async function readDefaultTermsFromS3() {
 
 async function saveDefaultTermsToS3(content) {
     await uploadToS3(Buffer.from(content, 'utf8'), 'default-terms.txt', '');
+}
+
+async function readDefaultMarginsFromS3() {
+    try {
+        const buffer = await readFileFromS3('default-margins.json');
+        return buffer.toString('utf8');
+    } catch (error) {
+        if (error.name === 'NoSuchKey' || error.$metadata?.httpStatusCode === 404) {
+            return null;
+        }
+        throw error;
+    }
+}
+
+async function saveDefaultMarginsToS3(content) {
+    await uploadToS3(Buffer.from(content, 'utf8'), 'default-margins.json', '');
 }
 
 // ===============================
@@ -1012,6 +1044,97 @@ app.get('/api/get-default-terms', async (req, res) => {
         console.error('Error getting default terms:', error);
         res.status(500).json({
             error: 'Failed to get default terms',
+            details: error.message
+        });
+    }
+});
+
+function normalizeMarginValue(value) {
+    if (value === '' || value === null || value === undefined) {
+        return '';
+    }
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+        return '';
+    }
+    return String(parsed);
+}
+
+function sanitizeDefaultMargins(input) {
+    const source = (input && typeof input === 'object') ? input : {};
+    return {
+        erw: normalizeMarginValue(source.erw),
+        gi: normalizeMarginValue(source.gi),
+        seamless: normalizeMarginValue(source.seamless)
+    };
+}
+
+// Save default margins to server (shared across all users/devices)
+app.post('/api/save-default-margins', express.json(), async (req, res) => {
+    try {
+        const sanitized = sanitizeDefaultMargins(req.body && req.body.defaultMargins);
+        const content = JSON.stringify(sanitized);
+
+        if (useGoogleCloud && bucket) {
+            await saveDefaultMarginsToGCS(content);
+        } else if (useAWS && s3Client) {
+            await saveDefaultMarginsToS3(content);
+        } else {
+            const defaultMarginsFile = path.join(baseDir, 'default-margins.json');
+            fs.writeFileSync(defaultMarginsFile, content, 'utf8');
+        }
+
+        res.json({
+            success: true,
+            defaultMargins: sanitized
+        });
+    } catch (error) {
+        console.error('Error saving default margins:', error);
+        res.status(500).json({
+            error: 'Failed to save default margins',
+            details: error.message
+        });
+    }
+});
+
+// Get default margins from server (shared across all users/devices)
+app.get('/api/get-default-margins', async (req, res) => {
+    try {
+        let content = null;
+        let hasFile = false;
+
+        if (useGoogleCloud && bucket) {
+            content = await readDefaultMarginsFromGCS();
+            hasFile = content !== null;
+        } else if (useAWS && s3Client) {
+            content = await readDefaultMarginsFromS3();
+            hasFile = content !== null;
+        } else {
+            const defaultMarginsFile = path.join(baseDir, 'default-margins.json');
+            if (fs.existsSync(defaultMarginsFile)) {
+                content = fs.readFileSync(defaultMarginsFile, 'utf8');
+                hasFile = true;
+            }
+        }
+
+        let parsed = {};
+        if (content) {
+            try {
+                parsed = JSON.parse(content);
+            } catch (parseError) {
+                parsed = {};
+            }
+        }
+        const sanitized = sanitizeDefaultMargins(parsed);
+
+        res.json({
+            hasFile: hasFile,
+            defaultMargins: sanitized
+        });
+    } catch (error) {
+        console.error('Error getting default margins:', error);
+        res.status(500).json({
+            error: 'Failed to get default margins',
             details: error.message
         });
     }

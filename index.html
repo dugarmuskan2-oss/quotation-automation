@@ -892,6 +892,29 @@
                     </button>
                     <p id="defaultTermsStatus" style="margin-top: 8px; font-size: 12px; color: #666;"></p>
                 </div>
+
+                <!-- Default Margins -->
+                <div style="margin-top: 20px;">
+                    <label style="display:block; margin-bottom:8px;">Default Margin % by Pipe Type (auto-applies when margin is empty):</label>
+                    <div style="display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;">
+                        <div>
+                            <label for="defaultMarginErw">ERW</label>
+                            <input type="number" id="defaultMarginErw" min="0" step="0.01" placeholder="e.g. 8" style="width:100%; margin-top:6px; padding:8px; border:2px solid #ddd; border-radius:4px;">
+                        </div>
+                        <div>
+                            <label for="defaultMarginGi">GI</label>
+                            <input type="number" id="defaultMarginGi" min="0" step="0.01" placeholder="e.g. 10" style="width:100%; margin-top:6px; padding:8px; border:2px solid #ddd; border-radius:4px;">
+                        </div>
+                        <div>
+                            <label for="defaultMarginSeamless">Seamless</label>
+                            <input type="number" id="defaultMarginSeamless" min="0" step="0.01" placeholder="e.g. 12" style="width:100%; margin-top:6px; padding:8px; border:2px solid #ddd; border-radius:4px;">
+                        </div>
+                    </div>
+                    <button type="button" class="upload-btn" onclick="saveDefaultMargins()" style="margin-top: 10px; width: 100%;">
+                        💾 Save Default Margins
+                    </button>
+                    <p id="defaultMarginsStatus" style="margin-top: 8px; font-size: 12px; color: #666;"></p>
+                </div>
                 
                 <!-- Uploaded Files Management Section -->
                 <div class="input-section" id="filesManagementSection" style="margin-top: 30px;">
@@ -1787,6 +1810,140 @@
                 console.error('Error loading default terms:', error);
                 defaultTermsText = fallback;
                 if (textarea) textarea.value = fallback;
+            }
+        }
+
+        function normalizeDefaultMarginInputValue(value) {
+            if (value === '' || value === null || value === undefined) {
+                return '';
+            }
+            const parsed = Number(value);
+            if (!Number.isFinite(parsed) || parsed < 0) {
+                return '';
+            }
+            return String(parsed);
+        }
+
+        function getDefaultMarginsFromConfigInputs() {
+            const erwInput = document.getElementById('defaultMarginErw');
+            const giInput = document.getElementById('defaultMarginGi');
+            const seamlessInput = document.getElementById('defaultMarginSeamless');
+            return {
+                erw: normalizeDefaultMarginInputValue(erwInput ? erwInput.value : ''),
+                gi: normalizeDefaultMarginInputValue(giInput ? giInput.value : ''),
+                seamless: normalizeDefaultMarginInputValue(seamlessInput ? seamlessInput.value : '')
+            };
+        }
+
+        function applyDefaultMarginsToConfigInputs(margins) {
+            const normalized = margins || {};
+            const erwInput = document.getElementById('defaultMarginErw');
+            const giInput = document.getElementById('defaultMarginGi');
+            const seamlessInput = document.getElementById('defaultMarginSeamless');
+            if (erwInput) erwInput.value = normalizeDefaultMarginInputValue(normalized.erw);
+            if (giInput) giInput.value = normalizeDefaultMarginInputValue(normalized.gi);
+            if (seamlessInput) seamlessInput.value = normalizeDefaultMarginInputValue(normalized.seamless);
+        }
+
+        function resolveDefaultMarginBucket(pipeTypeText) {
+            const value = String(pipeTypeText || '').toLowerCase();
+            if (value.includes('seamless') || value.includes('sch')) {
+                return 'seamless';
+            }
+            if (value.includes('gi') || value.includes('galvanized') || value.includes('galvanised')) {
+                return 'gi';
+            }
+            if (value.includes('erw')) {
+                return 'erw';
+            }
+            return '';
+        }
+
+        function getDefaultMarginForPipeType(pipeTypeText) {
+            const bucket = resolveDefaultMarginBucket(pipeTypeText);
+            if (!bucket) {
+                return '';
+            }
+            return defaultMarginsByPipeType[bucket] || '';
+        }
+
+        function shouldUseDefaultMarginForRawValue(rawMarginValue) {
+            if (rawMarginValue === '' || rawMarginValue === null || rawMarginValue === undefined) {
+                return true;
+            }
+            const parsed = Number(rawMarginValue);
+            if (!Number.isFinite(parsed)) {
+                return true;
+            }
+            return parsed <= 0;
+        }
+
+        function getMarginValueWithDefault(rawMarginValue, pipeTypeText) {
+            const explicit = normalizeDefaultMarginInputValue(rawMarginValue);
+            if (!shouldUseDefaultMarginForRawValue(rawMarginValue) && explicit !== '') {
+                return explicit;
+            }
+            return getDefaultMarginForPipeType(pipeTypeText);
+        }
+
+        function shouldPopulateDefaultMarginForQuotation(quotation) {
+            return !!(quotation && quotation.defaultMarginsEnabled === true);
+        }
+
+        async function saveDefaultMargins() {
+            const statusEl = document.getElementById('defaultMarginsStatus');
+            if (!statusEl) return;
+            const margins = getDefaultMarginsFromConfigInputs();
+            try {
+                statusEl.textContent = 'Saving...';
+                statusEl.style.color = '#666';
+                const response = await fetch(`${API_BASE_URL}/save-default-margins`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ defaultMargins: margins })
+                });
+                const result = await safeJsonParse(response);
+                if (!response.ok) {
+                    throw new Error(result.error || 'Failed to save default margins');
+                }
+                defaultMarginsByPipeType = {
+                    erw: normalizeDefaultMarginInputValue(result.defaultMargins && result.defaultMargins.erw),
+                    gi: normalizeDefaultMarginInputValue(result.defaultMargins && result.defaultMargins.gi),
+                    seamless: normalizeDefaultMarginInputValue(result.defaultMargins && result.defaultMargins.seamless)
+                };
+                applyDefaultMarginsToConfigInputs(defaultMarginsByPipeType);
+                statusEl.textContent = '✓ Default margins saved (shared with all devices)';
+                statusEl.style.color = '#4CAF50';
+            } catch (error) {
+                statusEl.textContent = `Error: ${error.message}`;
+                statusEl.style.color = '#f44336';
+                console.error('Error saving default margins:', error);
+            }
+        }
+
+        async function loadDefaultMargins() {
+            const statusEl = document.getElementById('defaultMarginsStatus');
+            try {
+                const response = await fetch(`${API_BASE_URL}/get-default-margins`);
+                const result = await safeJsonParse(response);
+                if (response.ok && result.defaultMargins) {
+                    defaultMarginsByPipeType = {
+                        erw: normalizeDefaultMarginInputValue(result.defaultMargins.erw),
+                        gi: normalizeDefaultMarginInputValue(result.defaultMargins.gi),
+                        seamless: normalizeDefaultMarginInputValue(result.defaultMargins.seamless)
+                    };
+                    applyDefaultMarginsToConfigInputs(defaultMarginsByPipeType);
+                    if (statusEl) {
+                        statusEl.textContent = result.hasFile ? '✓ Default margins loaded from server' : 'No default margins saved yet';
+                        statusEl.style.color = result.hasFile ? '#4CAF50' : '#999';
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading default margins:', error);
+                if (statusEl) {
+                    statusEl.textContent = 'Error loading default margins';
+                    statusEl.style.color = '#f44336';
+                }
             }
         }
         
@@ -3038,6 +3195,7 @@
                     row.setAttribute('data-line-item-id', lineItemId);
                     
                     // Create editable inputs for all fields (no pipe type column)
+                    const marginPercentValue = getMarginValueWithDefault(item.marginPercent, pipeType);
                     row.innerHTML = `
                         <td style="text-align: center; vertical-align: middle; padding: 5px;">
                             <div style="display: flex; flex-direction: column; align-items: center; gap: 5px;">
@@ -3080,7 +3238,7 @@
                                    data-field="marginPercent"
                                    data-pipe-type="${pipeType}"
                                    data-row-id="${rowId}"
-                                   value="${item.marginPercent || ''}" 
+                                   value="${marginPercentValue}"
                                    min="0" 
                                    step="0.01" style="width: 60px;">
                         </td>
@@ -3270,7 +3428,8 @@
             // Get all fields in this row
             const quantity = parseFloat(row.querySelector('[data-field="quantity"]')?.value || 0) || 0;
             const unitRate = parseFloat(row.querySelector('[data-field="unitRate"]')?.value || 0) || 0;
-            const marginValue = row.querySelector('[data-field="marginPercent"]')?.value || '';
+            const marginInput = row.querySelector('[data-field="marginPercent"]');
+            const marginValue = marginInput ? marginInput.value : '';
             const marginPercent = marginValue === '' ? 0 : (parseFloat(marginValue) || 0);
             
             // Check if finalRate was edited directly
@@ -3464,6 +3623,7 @@
                 pipeType = existingRows.length ? (existingRows[existingRows.length - 1].getAttribute('data-pipe-type') || 'Default') : 'Default';
             }
             const resolvedPipeType = pipeType;
+            const defaultMarginValue = getDefaultMarginForPipeType(resolvedPipeType);
             const row = document.createElement('tr');
             row.className = 'item-row';
             row.setAttribute('data-pipe-type', resolvedPipeType);
@@ -3480,7 +3640,7 @@
                 <td><input type="text" class="editable-field" data-field="originalDescription" data-pipe-type="${resolvedPipeType}" value="" placeholder="Enter description"></td>
                 <td><input type="number" class="editable-field" data-field="quantity" data-pipe-type="${resolvedPipeType}" value="0" min="0" step="1"></td>
                 <td class="col-base-rate">₹<input type="number" class="editable-field" data-field="unitRate" data-pipe-type="${resolvedPipeType}" value="0" min="0" step="0.01" style="width: 80px;"></td>
-                <td class="col-margin"><input type="number" class="editable-field" data-field="marginPercent" data-pipe-type="${resolvedPipeType}" value="" min="0" step="0.01" style="width: 60px;"></td>
+                <td class="col-margin"><input type="number" class="editable-field" data-field="marginPercent" data-pipe-type="${resolvedPipeType}" value="${defaultMarginValue}" min="0" step="0.01" style="width: 60px;"></td>
                 <td>₹<input type="number" class="editable-field rate-per-mtr" data-field="finalRate" data-pipe-type="${resolvedPipeType}" value="0" min="0" step="0.01" style="width: 100px;"></td>
                 <td>₹<input type="number" class="editable-field line-total-input" data-field="lineTotal" value="0" min="0" step="1" style="width: 100px;"></td>
             `;
@@ -3570,7 +3730,8 @@
             }
             const quantity = parseFloat(row.querySelector('[data-field="quantity"]')?.value || 0) || 0;
             const unitRate = parseFloat(row.querySelector('[data-field="unitRate"]')?.value || 0) || 0;
-            const marginValue = row.querySelector('[data-field="marginPercent"]')?.value || '';
+            const marginInput = row.querySelector('[data-field="marginPercent"]');
+            const marginValue = marginInput ? marginInput.value : '';
             const marginPercent = marginValue === '' ? 0 : (parseFloat(marginValue) || 0);
             const finalRateInput = row.querySelector('[data-field="finalRate"]');
             const lineTotalInput = row.querySelector('[data-field="lineTotal"]');
@@ -3991,6 +4152,7 @@
             }
             
             const resolvedPipeType = pipeType;
+            const defaultMarginValue = getDefaultMarginForPipeType(resolvedPipeType);
             
             // Create new row
             const row = document.createElement('tr');
@@ -4044,7 +4206,7 @@
                            data-field="marginPercent"
                            data-pipe-type="${resolvedPipeType}"
                            data-row-id="${rowId}"
-                           value="" 
+                           value="${defaultMarginValue}" 
                            min="0" 
                            step="0.01" style="width: 60px;">
                 </td>
@@ -4729,7 +4891,13 @@
                 phoneNumber: phoneNumber,
                 mobileNumber: mobileNumber,
                 checkedBy: checkedBy,
-                quoteNumber: quoteNumber
+                quoteNumber: quoteNumber,
+                defaultMarginsEnabled: true,
+                defaultMarginsSnapshot: {
+                    erw: defaultMarginsByPipeType.erw || '',
+                    gi: defaultMarginsByPipeType.gi || '',
+                    seamless: defaultMarginsByPipeType.seamless || ''
+                }
             };
 
             return quotationData;
@@ -5985,6 +6153,7 @@
         function addApprovalRow(quotationId, pipeType = null, insertAfterId = null) {
             const folder = document.getElementById('folder-' + quotationId);
             if (!folder) return;
+            const quotation = approvedQuotations.find(function(q) { return idsMatch(q.id, quotationId); });
             
             const folderContent = folder.querySelector('.quotation-folder-content');
             if (!folderContent) return;
@@ -6047,6 +6216,9 @@
             }
             
             // Create new row
+            const defaultMarginValue = shouldPopulateDefaultMarginForQuotation(quotation)
+                ? getDefaultMarginForPipeType(resolvedPipeType)
+                : '';
             const row = document.createElement('tr');
             row.className = 'item-row';
             const rowId = `approval-row-${quotationId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -6092,7 +6264,7 @@
                            data-field="marginPercent"
                            data-pipe-type="${resolvedPipeType}"
                            data-row-id="${rowId}"
-                           value="" 
+                           value="${defaultMarginValue}" 
                            min="0" 
                            step="0.01" style="width: 60px;">
                 </td>
@@ -6381,7 +6553,8 @@
                 }
                 const quantity = parseFloat(row.querySelector('[data-field="quantity"]')?.value || 0) || 0;
                 const unitRate = parseFloat(row.querySelector('[data-field="unitRate"]')?.value || 0) || 0;
-                const marginValue = row.querySelector('[data-field="marginPercent"]')?.value || '';
+                const marginInput = row.querySelector('[data-field="marginPercent"]');
+                const marginValue = marginInput ? marginInput.value : '';
                 const marginPercent = marginValue === '' ? 0 : (parseFloat(marginValue) || 0);
                 
                 // Check if finalRate is editable (input) or calculated
@@ -7529,6 +7702,7 @@
             const el = document.getElementById('termsText');
             return el ? el.value : '';
         })();
+        let defaultMarginsByPipeType = { erw: '', gi: '', seamless: '' };
         
         /*
             ============================================
@@ -7548,6 +7722,7 @@
         
         // Load default terms from server (sets defaultTermsText for new quotations)
         loadDefaultTerms();
+        loadDefaultMargins();
         
         // Load and display uploaded files
         loadUploadedFiles();
