@@ -316,24 +316,53 @@
         fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'quote-weight',hypothesisId:'H1',location:'weight-calculator.js:calculateFromQuotationNumber:entry',message:'start quote->weight',data:{quoteNumber,approvedCount:Array.isArray(window.approvedQuotations)?window.approvedQuotations.length:null},timestamp:Date.now()})}).catch(()=>{});
         // #endregion
 
+        const base = (typeof API_BASE_URL === 'string' && API_BASE_URL) ? API_BASE_URL : '/api';
+
+        async function fetchAllSummariesUntilFound(qnLower) {
+            const limit = 200;
+            let offset = 0;
+            let hasMore = true;
+            let page = 0;
+            while (hasMore && page < 50) {
+                page++;
+                const res = await fetch(`${base}/quotations?limit=${limit}&offset=${offset}`);
+                const data = await (res.ok ? res.json() : Promise.resolve(null));
+                const list = data && Array.isArray(data.quotations) ? data.quotations : [];
+                hasMore = !!(data && data.hasMore);
+                // #region agent log
+                fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'quote-weight',hypothesisId:'H2',location:'weight-calculator.js:calculateFromQuotationNumber:pageSummaries',message:'paged /api/quotations',data:{ok:!!res&&res.ok,status:res?res.status:null,page,offset,receivedCount:list.length,hasMore},timestamp:Date.now()})}).catch(()=>{});
+                // #endregion
+                const found = list.find(q => {
+                    const header = q.header || {};
+                    const qn = q.quoteNumber || header.quoteNumber || '';
+                    return String(qn).trim().toLowerCase() === qnLower;
+                });
+                if (found) return { found, list };
+                offset += list.length;
+                if (!list.length) break;
+            }
+            return { found: null, list: [] };
+        }
+
         // Lazy-load approvals so weight calc works even if user never opened Approval section.
         if (!Array.isArray(window.approvedQuotations) || window.approvedQuotations.length === 0) {
+            if (statusEl) {
+                statusEl.textContent = 'Loading approved quotations…';
+                statusEl.style.color = '#666';
+            }
             try {
-                const base = (typeof API_BASE_URL === 'string' && API_BASE_URL) ? API_BASE_URL : '/api';
-                const res = await fetch(base + '/quotations');
-                const data = await (res.ok ? res.json() : Promise.resolve(null));
-                const list = Array.isArray(data)
-                    ? data
-                    : (data && Array.isArray(data.quotations) ? data.quotations : null);
-                if (Array.isArray(list)) {
+                const { found, list } = await fetchAllSummariesUntilFound(quoteNumber.toLowerCase());
+                // Cache whatever we got on the window for later searches.
+                if (found) {
+                    window.approvedQuotations = [found];
+                } else if (Array.isArray(list) && list.length) {
                     window.approvedQuotations = list;
+                } else {
+                    window.approvedQuotations = window.approvedQuotations || [];
                 }
-                // #region agent log
-                fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'quote-weight',hypothesisId:'H2',location:'weight-calculator.js:calculateFromQuotationNumber:fetchQuotations',message:'fetched /api/quotations for weight calc',data:{ok:!!res&&res.ok,status:res?res.status:null,receivedCount:Array.isArray(data)?data.length:null},timestamp:Date.now()})}).catch(()=>{});
-                // #endregion
             } catch (e) {
                 // #region agent log
-                fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'quote-weight',hypothesisId:'H2',location:'weight-calculator.js:calculateFromQuotationNumber:fetchQuotationsCatch',message:'fetch /api/quotations threw',data:{err:String(e&&e.message)},timestamp:Date.now()})}).catch(()=>{});
+                fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'quote-weight',hypothesisId:'H2',location:'weight-calculator.js:calculateFromQuotationNumber:pageSummariesCatch',message:'paging /api/quotations threw',data:{err:String(e&&e.message)},timestamp:Date.now()})}).catch(()=>{});
                 // #endregion
             }
         }
@@ -346,11 +375,21 @@
             return;
         }
 
-        const match = window.approvedQuotations.find(q => {
+        let match = (Array.isArray(window.approvedQuotations) ? window.approvedQuotations : []).find(q => {
             const header = q.header || {};
             const qn = q.quoteNumber || header.quoteNumber || '';
             return String(qn).trim().toLowerCase() === quoteNumber.toLowerCase();
         });
+
+        // If still not found, do a paged lookup now (covers cases where approvals were loaded but the quote is outside the cached slice).
+        if (!match) {
+            try {
+                const result = await fetchAllSummariesUntilFound(quoteNumber.toLowerCase());
+                match = result.found;
+            } catch (e) {
+                // ignore; handled below
+            }
+        }
 
         // #region agent log
         fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'quote-weight',hypothesisId:'H3',location:'weight-calculator.js:calculateFromQuotationNumber:match',message:'match lookup result',data:{found:!!match,matchKeys:match?Object.keys(match).slice(0,20):null,hasLineItems:!!(match&&Array.isArray(match.lineItems)),lineItemCount:match&&Array.isArray(match.lineItems)?match.lineItems.length:null,hasTableHtml:!!(match&&match.tableHTML)},timestamp:Date.now()})}).catch(()=>{});
@@ -367,7 +406,6 @@
         // If the list endpoint returned a summary quotation, fetch the full quotation by ID.
         if ((!Array.isArray(match.lineItems) || match.lineItems.length === 0) && match.id) {
             try {
-                const base = (typeof API_BASE_URL === 'string' && API_BASE_URL) ? API_BASE_URL : '/api';
                 const res = await fetch(base + '/quotations/' + encodeURIComponent(String(match.id)));
                 const data = await (res.ok ? res.json() : Promise.resolve(null));
                 const full = data && data.quotation && typeof data.quotation === 'object' ? data.quotation : null;
