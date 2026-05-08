@@ -806,7 +806,8 @@
 
         /* Ensure main containers have a bit of left padding so they don't sit under the buttons */
         #quotationApp,
-        #weightCalculatorApp {
+        #weightCalculatorApp,
+        #enquiryPreparerApp {
             padding-left: 70px;
         }
     </style>
@@ -839,6 +840,15 @@
             title="Weight Calculator"
         >
             <span>⚖️</span>
+        </button>
+        <button
+            type="button"
+            class="main-tools-button"
+            id="mainToolEnquiryButton"
+            onclick="switchToEnquiryTab()"
+            title="Enquiry Preparer"
+        >
+            <span>📨</span>
         </button>
     </div>
 
@@ -1210,6 +1220,112 @@
                     🖨️ Print
                 </button>
             </div>
+        </div>
+    </div>
+
+    <!-- Enquiry Preparer main container (hidden by default, toggled via left icons) -->
+    <div class="container" id="enquiryPreparerApp" style="display: none;">
+        <h1>📨 Enquiry Preparer</h1>
+
+        <div class="info-message">
+            Create supplier enquiries from approved quotation data or from pasted/uploaded client enquiry content.
+        </div>
+
+        <div class="input-section">
+            <h2>Choose Input Method</h2>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px;">
+                <div style="border: 1px solid #ddd; border-radius: 6px; padding: 12px; background-color: #fafafa;">
+                    <h3 style="margin-bottom: 8px;">1. From Quotation Number</h3>
+                    <p style="font-size: 13px; color: #555; margin-bottom: 8px;">
+                        Load line items from an approved quotation and generate enquiry text.
+                    </p>
+                    <label for="enquiryFromQuoteNumber">Quotation Number:</label>
+                    <input
+                        type="text"
+                        id="enquiryFromQuoteNumber"
+                        placeholder="Enter quotation number (e.g., DSC/24-25/001)"
+                        style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"
+                    />
+                    <button
+                        type="button"
+                        class="generate-btn"
+                        style="margin-top: 10px;"
+                        onclick="window.enquiryPreparer && window.enquiryPreparer.createEnquiryFromQuotationNumber()"
+                    >
+                        🔍 Create From Quotation
+                    </button>
+                    <p id="enquiryFromQuoteStatus" style="margin-top: 6px; font-size: 12px; color: #666;"></p>
+                </div>
+
+                <div style="border: 1px solid #ddd; border-radius: 6px; padding: 12px; background-color: #fafafa;">
+                    <h3 style="margin-bottom: 8px;">2. Paste Text or Upload File</h3>
+                    <p style="font-size: 13px; color: #555; margin-bottom: 8px;">
+                        Paste client enquiry content, upload a file, or do both. AI will extract details and prepare enquiry draft.
+                    </p>
+                    <label for="enquiryInputText" style="display: block;">Paste Content:</label>
+                    <textarea
+                        id="enquiryInputText"
+                        placeholder="Paste client enquiry content here..."
+                        style="width: 100%; min-height: 110px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;"
+                    ></textarea>
+                    <label for="enquiryInputFile" style="margin-top: 8px; display: block;">Upload File:</label>
+                    <input
+                        type="file"
+                        id="enquiryInputFile"
+                        accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.png,.jpg,.jpeg,.gif,.webp"
+                        style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"
+                    />
+                    <button
+                        type="button"
+                        class="generate-btn"
+                        style="margin-top: 10px;"
+                        onclick="window.enquiryPreparer && window.enquiryPreparer.createEnquiryFromAiInput()"
+                    >
+                        🤖 Create From Text/File
+                    </button>
+                    <p id="enquiryInputStatus" style="margin-top: 6px; font-size: 12px; color: #666;"></p>
+                </div>
+            </div>
+        </div>
+
+        <div class="input-section">
+            <h2>Enquiry Format Template</h2>
+            <p style="font-size: 13px; color: #555; margin-bottom: 8px;">
+                Customize your format here. Supported placeholders: {{quoteNumber}}, {{customerName}}, {{kindAttn}}, {{projectName}}, {{date}}, {{lineItems}}
+            </p>
+            <textarea
+                id="enquiryTemplateText"
+                style="width: 100%; min-height: 240px; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace;"
+            ></textarea>
+            <div style="display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap;">
+                <button
+                    type="button"
+                    class="upload-btn"
+                    onclick="window.enquiryPreparer && window.enquiryPreparer.resetTemplateToDefault()"
+                >
+                    ♻️ Reset Default Template
+                </button>
+            </div>
+        </div>
+
+        <div class="input-section">
+            <h2>Generated Enquiry</h2>
+            <textarea
+                id="generatedEnquiryText"
+                placeholder="Generated enquiry will appear here..."
+                style="width: 100%; min-height: 300px; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit;"
+            ></textarea>
+            <div style="display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap;">
+                <button
+                    type="button"
+                    class="approve-btn"
+                    onclick="window.enquiryPreparer && window.enquiryPreparer.copyGeneratedEnquiry()"
+                >
+                    📋 Copy Enquiry
+                </button>
+            </div>
+            <p id="generatedEnquiryStatus" style="margin-top: 6px; font-size: 12px; color: #666;"></p>
         </div>
     </div>
     
@@ -7764,6 +7880,7 @@
         checkCurrentFiles();
     </script>
     <script src="weight-calculator.js"></script>
+    <script src="enquiry-preparer.js"></script>
 </body>
 </html>
 

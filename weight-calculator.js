@@ -87,27 +87,51 @@
     function switchToQuotationTab() {
         const quotationApp = $('quotationApp');
         const weightApp = $('weightCalculatorApp');
+        const enquiryApp = $('enquiryPreparerApp');
         const qBtn = $('mainToolQuotationButton');
         const wBtn = $('mainToolWeightButton');
+        const eBtn = $('mainToolEnquiryButton');
 
         if (quotationApp) quotationApp.style.display = '';
         if (weightApp) weightApp.style.display = 'none';
+        if (enquiryApp) enquiryApp.style.display = 'none';
         if (qBtn) qBtn.classList.add('main-tools-button--active');
         if (wBtn) wBtn.classList.remove('main-tools-button--active');
+        if (eBtn) eBtn.classList.remove('main-tools-button--active');
     }
 
     function switchToWeightTab() {
         const quotationApp = $('quotationApp');
         const weightApp = $('weightCalculatorApp');
+        const enquiryApp = $('enquiryPreparerApp');
         const qBtn = $('mainToolQuotationButton');
         const wBtn = $('mainToolWeightButton');
+        const eBtn = $('mainToolEnquiryButton');
 
         if (quotationApp) quotationApp.style.display = 'none';
         if (weightApp) weightApp.style.display = '';
+        if (enquiryApp) enquiryApp.style.display = 'none';
         if (qBtn) qBtn.classList.remove('main-tools-button--active');
         if (wBtn) wBtn.classList.add('main-tools-button--active');
+        if (eBtn) eBtn.classList.remove('main-tools-button--active');
 
         ensurePipeWeightTableHasRow();
+    }
+
+    function switchToEnquiryTab() {
+        const quotationApp = $('quotationApp');
+        const weightApp = $('weightCalculatorApp');
+        const enquiryApp = $('enquiryPreparerApp');
+        const qBtn = $('mainToolQuotationButton');
+        const wBtn = $('mainToolWeightButton');
+        const eBtn = $('mainToolEnquiryButton');
+
+        if (quotationApp) quotationApp.style.display = 'none';
+        if (weightApp) weightApp.style.display = 'none';
+        if (enquiryApp) enquiryApp.style.display = '';
+        if (qBtn) qBtn.classList.remove('main-tools-button--active');
+        if (wBtn) wBtn.classList.remove('main-tools-button--active');
+        if (eBtn) eBtn.classList.add('main-tools-button--active');
     }
 
     /**
@@ -269,7 +293,7 @@
      * Option 1: from existing quotation number.
      * This uses approvedQuotations (if available) and their lineItems.
      */
-    function calculateFromQuotationNumber() {
+    async function calculateFromQuotationNumber() {
         const input = $('weightFromQuoteNumber');
         const statusEl = $('weightFromQuoteStatus');
         if (statusEl) {
@@ -288,9 +312,32 @@
             return;
         }
 
+        // #region agent log
+        fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'quote-weight',hypothesisId:'H1',location:'weight-calculator.js:calculateFromQuotationNumber:entry',message:'start quote->weight',data:{quoteNumber,approvedCount:Array.isArray(window.approvedQuotations)?window.approvedQuotations.length:null},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+
+        // Lazy-load approvals so weight calc works even if user never opened Approval section.
+        if (!Array.isArray(window.approvedQuotations) || window.approvedQuotations.length === 0) {
+            try {
+                const base = (typeof API_BASE_URL === 'string' && API_BASE_URL) ? API_BASE_URL : '/api';
+                const res = await fetch(base + '/quotations');
+                const data = await (res.ok ? res.json() : Promise.resolve(null));
+                if (Array.isArray(data)) {
+                    window.approvedQuotations = data;
+                }
+                // #region agent log
+                fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'quote-weight',hypothesisId:'H2',location:'weight-calculator.js:calculateFromQuotationNumber:fetchQuotations',message:'fetched /api/quotations for weight calc',data:{ok:!!res&&res.ok,status:res?res.status:null,receivedCount:Array.isArray(data)?data.length:null},timestamp:Date.now()})}).catch(()=>{});
+                // #endregion
+            } catch (e) {
+                // #region agent log
+                fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'quote-weight',hypothesisId:'H2',location:'weight-calculator.js:calculateFromQuotationNumber:fetchQuotationsCatch',message:'fetch /api/quotations threw',data:{err:String(e&&e.message)},timestamp:Date.now()})}).catch(()=>{});
+                // #endregion
+            }
+        }
+
         if (!Array.isArray(window.approvedQuotations) || window.approvedQuotations.length === 0) {
             if (statusEl) {
-                statusEl.textContent = 'No approved quotations are loaded yet. Open the Approval tab once to load them.';
+                statusEl.textContent = 'No approved quotations are available to load. Please check the server and try again.';
                 statusEl.style.color = '#c62828';
             }
             return;
@@ -301,6 +348,10 @@
             const qn = q.quoteNumber || header.quoteNumber || '';
             return String(qn).trim().toLowerCase() === quoteNumber.toLowerCase();
         });
+
+        // #region agent log
+        fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'quote-weight',hypothesisId:'H3',location:'weight-calculator.js:calculateFromQuotationNumber:match',message:'match lookup result',data:{found:!!match,matchKeys:match?Object.keys(match).slice(0,20):null,hasLineItems:!!(match&&Array.isArray(match.lineItems)),lineItemCount:match&&Array.isArray(match.lineItems)?match.lineItems.length:null,hasTableHtml:!!(match&&match.tableHTML)},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
 
         if (!match) {
             if (statusEl) {
@@ -577,6 +628,7 @@
         // Expose tab switchers for the buttons in index.html
         window.switchToQuotationTab = switchToQuotationTab;
         window.switchToWeightTab = switchToWeightTab;
+        window.switchToEnquiryTab = switchToEnquiryTab;
 
         // Public API for the weight calculator UI
         window.pipeWeightCalculator = {
