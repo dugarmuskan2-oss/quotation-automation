@@ -126,6 +126,39 @@
         const wBtn = $('mainToolWeightButton');
         const eBtn = $('mainToolEnquiryButton');
 
+        // #region agent log
+        try {
+            fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '5f7ab2' },
+                body: JSON.stringify({
+                    sessionId: '5f7ab2',
+                    runId: 'pre-fix',
+                    hypothesisId: 'H1',
+                    location: 'weight-calculator.js:121',
+                    message: 'switchToEnquiryTab called',
+                    data: { hasEnquiryApp: !!enquiryApp, hasEnquiryBtn: !!eBtn },
+                    timestamp: Date.now()
+                })
+            }).catch(() => { });
+        } catch (_) { }
+        try {
+            fetch('/api/debug-ingest', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    sessionId: '5f7ab2',
+                    runId: 'pre-fix',
+                    hypothesisId: 'H1',
+                    location: 'weight-calculator.js:121',
+                    message: 'switchToEnquiryTab called',
+                    data: { hasEnquiryApp: !!enquiryApp, hasEnquiryBtn: !!eBtn },
+                    timestamp: Date.now()
+                })
+            }).catch(() => { });
+        } catch (_) { }
+        // #endregion
+
         if (quotationApp) quotationApp.style.display = 'none';
         if (weightApp) weightApp.style.display = 'none';
         if (enquiryApp) enquiryApp.style.display = '';

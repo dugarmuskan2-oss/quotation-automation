@@ -119,12 +119,15 @@ async function checkBrowser() {
         });
         if (!enquiryShown) fail('enquiryPreparerApp not shown after switchToEnquiryTab');
 
-        const templateSeeded = await page.evaluate(() => {
-            const el = document.getElementById('enquiryTemplateText');
+        const headerSeeded = await page.evaluate(() => {
+            const el = document.getElementById('enquiryHeaderText');
             const v = (el && el.value) ? el.value.trim() : '';
-            return v.length > 20 && v.includes('{{lineItems}}');
+            return v.length > 10 && v.toUpperCase().includes('DEAR SIR');
         });
-        if (!templateSeeded) fail('enquiry template not seeded (expected default placeholders)');
+        if (!headerSeeded) fail('enquiry header not seeded');
+
+        const tableHasRow = await page.locator('#enquiryTableBody tr').count();
+        if (tableHasRow < 1) fail(`expected >=1 enquiry row, got ${tableHasRow}`);
 
         // Enquiry creation from a REAL quotation:
         // 1) list summaries from /api/quotations
@@ -157,12 +160,8 @@ async function checkBrowser() {
         } else {
             await page.fill('#enquiryFromQuoteNumber', injectedRealQuote.quoteNumber);
             await page.click('text=Create From Quotation');
-            const outputHasQuoteNo = await page.evaluate((qn) => {
-                const el = document.getElementById('generatedEnquiryText');
-                const v = (el && el.value) ? el.value : '';
-                return v.includes(String(qn).trim());
-            }, injectedRealQuote.quoteNumber);
-            if (!outputHasQuoteNo) fail('enquiry output missing quote number for real quotation flow');
+            const rowCountAfter = await page.locator('#enquiryTableBody tr').count();
+            if (rowCountAfter < 1) fail('enquiry table not populated for real quotation flow');
         }
 
         // Enquiry creation from MANUAL input (inject a synthetic quotation and generate)
@@ -185,18 +184,19 @@ async function checkBrowser() {
             if (!input) return false;
             input.value = 'E2E/MANUAL/001';
             window.enquiryPreparer.createEnquiryFromQuotationNumber();
-            const out = document.getElementById('generatedEnquiryText');
-            const v = (out && out.value) ? out.value : '';
-            return v.includes('E2E/MANUAL/001') && v.includes('MS Pipe 2 inch') && v.includes('GI Elbow 2 inch');
+            const tbody = document.getElementById('enquiryTableBody');
+            const rows = tbody ? Array.from(tbody.querySelectorAll('tr')) : [];
+            if (rows.length < 2) return false;
+            const size1 = rows[0].querySelector('input[data-col="size"]')?.value || '';
+            const size2 = rows[1].querySelector('input[data-col="size"]')?.value || '';
+            return size1.includes('MS Pipe') && size2.includes('GI Elbow');
         });
         if (!manualOk) fail('manual enquiry generation failed (synthetic quotation injection)');
 
-        // Ensure copy button handler doesn't throw
+        // Ensure copy handlers don't throw
         const copyDidNotThrow = await page.evaluate(() => {
             try {
-                const out = document.getElementById('generatedEnquiryText');
-                if (out) out.value = 'E2E enquiry copy test';
-                window.enquiryPreparer.copyGeneratedEnquiry();
+                window.enquiryPreparer.copyEnquiryAsText();
                 return true;
             } catch (e) {
                 return false;

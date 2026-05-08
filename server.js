@@ -565,6 +565,25 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', message: 'Server is running' });
 });
 
+// Debug-mode log sink (writes NDJSON into workspace file).
+// NOTE: Do not send secrets/PII here.
+app.post('/api/debug-ingest', express.json({ limit: '1mb' }), (req, res) => {
+    try {
+        const payload = req.body || {};
+        const sessionId = String(payload.sessionId || '');
+        if (sessionId !== '5f7ab2') {
+            return res.status(400).json({ error: 'Invalid sessionId' });
+        }
+        const fs = require('fs');
+        const path = require('path');
+        const logPath = path.join(__dirname, 'debug-5f7ab2.log');
+        fs.appendFileSync(logPath, JSON.stringify(payload) + '\n', 'utf8');
+        return res.status(204).end();
+    } catch (e) {
+        return res.status(500).json({ error: 'Failed to write debug log', details: e.message });
+    }
+});
+
 // Upload rate files (PDF) - Multiple files allowed
 app.post('/api/upload-rates', upload.array('rateFiles', 10), async (req, res) => {
     try {

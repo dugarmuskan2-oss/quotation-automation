@@ -1291,39 +1291,142 @@
         </div>
 
         <div class="input-section">
-            <h2>Enquiry Format Template</h2>
+            <h2>Enquiry Header</h2>
             <p style="font-size: 13px; color: #555; margin-bottom: 8px;">
-                Customize your format here. Supported placeholders: {{quoteNumber}}, {{customerName}}, {{kindAttn}}, {{projectName}}, {{date}}, {{lineItems}}
+                This header is included above the enquiry table when copying/printing.
             </p>
             <textarea
-                id="enquiryTemplateText"
-                style="width: 100%; min-height: 240px; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace;"
+                id="enquiryHeaderText"
+                style="width: 100%; min-height: 140px; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; white-space: pre-wrap;"
             ></textarea>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 12px;">
+                <div>
+                    <label for="enquiryDefaultProductSpec">Default Product & Specification</label>
+                    <input id="enquiryDefaultProductSpec" type="text" style="width:100%; margin-top:6px; padding:8px; border:1px solid #ddd; border-radius:4px;">
+                </div>
+                <div>
+                    <label for="enquiryDefaultUom">Default UOM</label>
+                    <input id="enquiryDefaultUom" type="text" placeholder="MTR" style="width:100%; margin-top:6px; padding:8px; border:1px solid #ddd; border-radius:4px;">
+                </div>
+                <div>
+                    <label for="enquiryDefaultMake">Default Make Required</label>
+                    <input id="enquiryDefaultMake" type="text" placeholder="JINDAL" style="width:100%; margin-top:6px; padding:8px; border:1px solid #ddd; border-radius:4px;">
+                </div>
+            </div>
             <div style="display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap;">
                 <button
                     type="button"
                     class="upload-btn"
-                    onclick="window.enquiryPreparer && window.enquiryPreparer.resetTemplateToDefault()"
+                    onclick="window.enquiryPreparer && window.enquiryPreparer.resetEnquiryDefaults()"
                 >
-                    ♻️ Reset Default Template
+                    ♻️ Reset Enquiry Defaults
                 </button>
             </div>
         </div>
 
         <div class="input-section">
-            <h2>Generated Enquiry</h2>
-            <textarea
-                id="generatedEnquiryText"
-                placeholder="Generated enquiry will appear here..."
-                style="width: 100%; min-height: 300px; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit;"
-            ></textarea>
+            <h2>Enquiry Table</h2>
+            <p style="font-size: 13px; color: #555; margin-bottom: 8px;">
+                Add / delete rows as needed, then copy as HTML to paste into email.
+            </p>
+
+            <style>
+                #enquiryTable {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin-top: 10px;
+                    font-size: 13px;
+                }
+                #enquiryTable th, #enquiryTable td {
+                    border: 1px solid #c7d5ee;
+                    padding: 8px;
+                    vertical-align: top;
+                }
+                #enquiryTable thead th {
+                    background: #0b4aa2;
+                    color: #fff;
+                    text-align: center;
+                    font-weight: 700;
+                }
+                #enquiryTable tbody tr:nth-child(odd) {
+                    background: #ffffff;
+                }
+                #enquiryTable tbody tr:nth-child(even) {
+                    background: #eef5ff;
+                }
+                #enquiryTable input {
+                    width: 100%;
+                    padding: 6px 8px;
+                    border: 1px solid #c7d5ee;
+                    border-radius: 4px;
+                    font-family: inherit;
+                    font-size: 13px;
+                    background: rgba(255,255,255,0.92);
+                }
+                .enquiry-actions {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 6px;
+                    align-items: center;
+                    justify-content: center;
+                }
+                .enquiry-action-btn {
+                    width: 28px;
+                    height: 28px;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    color: #fff;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 14px;
+                }
+                .enquiry-action-btn--add { background: #2e7d32; }
+                .enquiry-action-btn--del { background: #c62828; }
+            </style>
+
+            <table id="enquiryTable">
+                <thead>
+                    <tr>
+                        <th style="width:72px;">ACTIONS</th>
+                        <th style="width:64px;">S. NO</th>
+                        <th>PRODUCT &amp; SPECIFICATION</th>
+                        <th style="width:140px;">SIZE</th>
+                        <th style="width:90px;">QTY</th>
+                        <th style="width:90px;">UOM</th>
+                        <th style="width:150px;">LENGTH REQ BY US</th>
+                        <th style="width:150px;">MAKE REQUIRED BY US</th>
+                        <th style="width:110px;">RATE</th>
+                        <th style="width:90px;">UOM</th>
+                        <th style="width:150px;">MAKE OFFERED BY YOU</th>
+                    </tr>
+                </thead>
+                <tbody id="enquiryTableBody">
+                    <!-- Rows inserted via JS -->
+                </tbody>
+            </table>
             <div style="display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap;">
                 <button
                     type="button"
                     class="approve-btn"
-                    onclick="window.enquiryPreparer && window.enquiryPreparer.copyGeneratedEnquiry()"
+                    onclick="window.enquiryPreparer && window.enquiryPreparer.copyEnquiryAsHtml()"
                 >
-                    📋 Copy Enquiry
+                    📋 Copy as HTML
+                </button>
+                <button
+                    type="button"
+                    class="upload-btn"
+                    onclick="window.enquiryPreparer && window.enquiryPreparer.copyEnquiryAsText()"
+                >
+                    📝 Copy as Text
+                </button>
+                <button
+                    type="button"
+                    class="upload-btn"
+                    onclick="window.enquiryPreparer && window.enquiryPreparer.addManualRow()"
+                >
+                    ➕ Add Row
                 </button>
             </div>
             <p id="generatedEnquiryStatus" style="margin-top: 6px; font-size: 12px; color: #666;"></p>
