@@ -322,8 +322,11 @@
                 const base = (typeof API_BASE_URL === 'string' && API_BASE_URL) ? API_BASE_URL : '/api';
                 const res = await fetch(base + '/quotations');
                 const data = await (res.ok ? res.json() : Promise.resolve(null));
-                if (Array.isArray(data)) {
-                    window.approvedQuotations = data;
+                const list = Array.isArray(data)
+                    ? data
+                    : (data && Array.isArray(data.quotations) ? data.quotations : null);
+                if (Array.isArray(list)) {
+                    window.approvedQuotations = list;
                 }
                 // #region agent log
                 fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'quote-weight',hypothesisId:'H2',location:'weight-calculator.js:calculateFromQuotationNumber:fetchQuotations',message:'fetched /api/quotations for weight calc',data:{ok:!!res&&res.ok,status:res?res.status:null,receivedCount:Array.isArray(data)?data.length:null},timestamp:Date.now()})}).catch(()=>{});
@@ -359,6 +362,28 @@
                 statusEl.style.color = '#c62828';
             }
             return;
+        }
+
+        // If the list endpoint returned a summary quotation, fetch the full quotation by ID.
+        if ((!Array.isArray(match.lineItems) || match.lineItems.length === 0) && match.id) {
+            try {
+                const base = (typeof API_BASE_URL === 'string' && API_BASE_URL) ? API_BASE_URL : '/api';
+                const res = await fetch(base + '/quotations/' + encodeURIComponent(String(match.id)));
+                const data = await (res.ok ? res.json() : Promise.resolve(null));
+                const full = data && data.quotation && typeof data.quotation === 'object' ? data.quotation : null;
+                // #region agent log
+                fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'quote-weight',hypothesisId:'H4',location:'weight-calculator.js:calculateFromQuotationNumber:fetchQuotationById',message:'fetched /api/quotations/:id for full payload',data:{ok:!!res&&res.ok,status:res?res.status:null,hasFull:!!full,lineItemCount:full&&Array.isArray(full.lineItems)?full.lineItems.length:null,hasTableHtml:!!(full&&full.tableHTML)},timestamp:Date.now()})}).catch(()=>{});
+                // #endregion
+                if (full) {
+                    // Mutate match in-place so the rest of the flow stays the same.
+                    match.lineItems = full.lineItems;
+                    match.tableHTML = full.tableHTML;
+                }
+            } catch (e) {
+                // #region agent log
+                fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'quote-weight',hypothesisId:'H4',location:'weight-calculator.js:calculateFromQuotationNumber:fetchQuotationByIdCatch',message:'fetch /api/quotations/:id threw',data:{err:String(e&&e.message)},timestamp:Date.now()})}).catch(()=>{});
+                // #endregion
+            }
         }
 
         // Prefer AI lineItems if present; otherwise try to parse table HTML.
