@@ -196,7 +196,7 @@ async function checkBrowser() {
         // Ensure copy handlers don't throw
         const copyDidNotThrow = await page.evaluate(() => {
             try {
-                window.enquiryPreparer.copyEnquiryAsText();
+                window.enquiryPreparer.copyEnquiryAsHtml();
                 return true;
             } catch (e) {
                 return false;

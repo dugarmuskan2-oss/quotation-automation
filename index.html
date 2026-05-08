@@ -810,6 +810,21 @@
         #enquiryPreparerApp {
             padding-left: 70px;
         }
+
+        /* Enquiry copy button pressed/active feedback */
+        #copyEnquiryHtmlBtn {
+            transition: transform 0.06s ease, box-shadow 0.06s ease, filter 0.06s ease;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.18);
+        }
+        #copyEnquiryHtmlBtn:active {
+            transform: translateY(1px) scale(0.99);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.22);
+            filter: brightness(0.92);
+        }
+        #copyEnquiryHtmlBtn:focus {
+            outline: 3px solid rgba(123, 31, 162, 0.35);
+            outline-offset: 2px;
+        }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -1287,51 +1302,13 @@
                     </button>
                     <p id="enquiryInputStatus" style="margin-top: 6px; font-size: 12px; color: #666;"></p>
                 </div>
-            </div>
-        </div>
 
-        <div class="input-section">
-            <h2>Enquiry Header</h2>
-            <p style="font-size: 13px; color: #555; margin-bottom: 8px;">
-                This header is included above the enquiry table when copying/printing.
-            </p>
-            <textarea
-                id="enquiryHeaderText"
-                style="width: 100%; min-height: 140px; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; white-space: pre-wrap;"
-            ></textarea>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 12px;">
-                <div>
-                    <label for="enquiryDefaultProductSpec">Default Product & Specification</label>
-                    <input id="enquiryDefaultProductSpec" type="text" style="width:100%; margin-top:6px; padding:8px; border:1px solid #ddd; border-radius:4px;">
-                </div>
-                <div>
-                    <label for="enquiryDefaultUom">Default UOM</label>
-                    <input id="enquiryDefaultUom" type="text" placeholder="MTR" style="width:100%; margin-top:6px; padding:8px; border:1px solid #ddd; border-radius:4px;">
-                </div>
-                <div>
-                    <label for="enquiryDefaultMake">Default Make Required</label>
-                    <input id="enquiryDefaultMake" type="text" placeholder="JINDAL" style="width:100%; margin-top:6px; padding:8px; border:1px solid #ddd; border-radius:4px;">
-                </div>
-            </div>
-            <div style="display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap;">
-                <button
-                    type="button"
-                    class="upload-btn"
-                    onclick="window.enquiryPreparer && window.enquiryPreparer.resetEnquiryDefaults()"
-                >
-                    ♻️ Reset Enquiry Defaults
-                </button>
-            </div>
-        </div>
-
-        <div class="input-section">
-            <h2>Enquiry Table</h2>
-            <p style="font-size: 13px; color: #555; margin-bottom: 8px;">
-                Add / delete rows as needed, then copy as HTML to paste into email.
-            </p>
-            <div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin: 8px 0 2px;">
-                <div style="min-width:260px;">
-                    <label for="enquiryRowsFile">Upload Enquiry Rows (CSV)</label>
+                <div style="border: 1px solid #ddd; border-radius: 6px; padding: 12px; background-color: #fafafa;">
+                    <h3 style="margin-bottom: 8px;">3. Upload Enquiry Rows (CSV)</h3>
+                    <p style="font-size: 13px; color: #555; margin-bottom: 8px;">
+                        Upload a CSV containing enquiry rows to populate the table.
+                    </p>
+                    <label for="enquiryRowsFile">Choose CSV file:</label>
                     <input
                         type="file"
                         id="enquiryRowsFile"
@@ -1341,17 +1318,25 @@
                     <p style="margin-top:6px; font-size:12px; color:#666;">
                         Expected columns: productSpec,size,qty,uom,lengthReqByUs,makeRequiredByUs,rate,offerUom,makeOfferedByYou
                     </p>
+                    <button
+                        type="button"
+                        class="upload-btn"
+                        style="margin-top: 10px; width: 100%;"
+                        onclick="window.enquiryPreparer && window.enquiryPreparer.loadRowsFromUploadedCsv()"
+                    >
+                        📥 Load Rows
+                    </button>
+                    <p id="enquiryRowsFileStatus" style="margin-top: 6px; font-size: 12px; color: #666;"></p>
                 </div>
-                <button
-                    type="button"
-                    class="upload-btn"
-                    onclick="window.enquiryPreparer && window.enquiryPreparer.loadRowsFromUploadedCsv()"
-                    style="height: 40px;"
-                >
-                    📥 Load Rows
-                </button>
-                <p id="enquiryRowsFileStatus" style="margin:0; font-size:12px; color:#666;"></p>
             </div>
+        </div>
+
+        <div class="input-section">
+            <h2>Enquiry Email</h2>
+            <textarea
+                id="enquiryHeaderText"
+                style="width: 100%; min-height: 140px; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; white-space: pre-wrap;"
+            ></textarea>
 
             <style>
                 #enquiryTable {
@@ -1361,15 +1346,37 @@
                     font-size: 13px;
                 }
                 #enquiryTable th, #enquiryTable td {
-                    border: 1px solid #c7d5ee;
+                    border: 1px solid #000;
                     padding: 8px;
                     vertical-align: top;
                 }
                 #enquiryTable thead th {
-                    background: #0b4aa2;
-                    color: #fff;
                     text-align: center;
                     font-weight: 700;
+                }
+                #enquiryTable thead th.enquiry-group {
+                    background: #0b4aa2;
+                    color: #fff;
+                }
+                #enquiryTable thead th.enquiry-group-offer {
+                    background: #2e7d32;
+                    color: #fff;
+                }
+                #enquiryTable thead th.enquiry-col-req-a {
+                    background: #ffffff;
+                    color: #0b4aa2;
+                }
+                #enquiryTable thead th.enquiry-col-req-b {
+                    background: #0b4aa2;
+                    color: #ffffff;
+                }
+                #enquiryTable thead th.enquiry-col-offer-a {
+                    background: #2e7d32;
+                    color: #ffffff;
+                }
+                #enquiryTable thead th.enquiry-col-offer-b {
+                    background: #ffffff;
+                    color: #2e7d32;
                 }
                 #enquiryTable tbody tr:nth-child(odd) {
                     background: #ffffff;
@@ -1412,17 +1419,22 @@
             <table id="enquiryTable">
                 <thead>
                     <tr>
-                        <th style="width:72px;">ACTIONS</th>
-                        <th style="width:64px;">S. NO</th>
-                        <th>PRODUCT &amp; SPECIFICATION</th>
-                        <th style="width:140px;">SIZE</th>
-                        <th style="width:90px;">QTY</th>
-                        <th style="width:90px;">UOM</th>
-                        <th style="width:150px;">LENGTH REQ BY US</th>
-                        <th style="width:150px;">MAKE REQUIRED BY US</th>
-                        <th style="width:110px;">RATE</th>
-                        <th style="width:90px;">UOM</th>
-                        <th style="width:150px;">MAKE OFFERED BY YOU</th>
+                        <th class="enquiry-group" colspan="2"></th>
+                        <th class="enquiry-group" colspan="6">OUR REQUIREMENT (ENQUIRY)</th>
+                        <th class="enquiry-group-offer" colspan="3">YOUR OFFER</th>
+                    </tr>
+                    <tr>
+                        <th class="enquiry-col-req-a" style="width:72px;">ACTIONS</th>
+                        <th class="enquiry-col-req-b" style="width:64px;">S. NO</th>
+                        <th class="enquiry-col-req-a">PRODUCT &amp; SPECIFICATION</th>
+                        <th class="enquiry-col-req-b" style="width:140px;">SIZE</th>
+                        <th class="enquiry-col-req-a" style="width:90px;">QTY</th>
+                        <th class="enquiry-col-req-b" style="width:90px;">UOM</th>
+                        <th class="enquiry-col-req-a" style="width:150px;">LENGTH REQ BY US</th>
+                        <th class="enquiry-col-req-b" style="width:150px;">MAKE REQUIRED BY US</th>
+                        <th class="enquiry-col-offer-a" style="width:110px;">RATE</th>
+                        <th class="enquiry-col-offer-b" style="width:90px;">UOM</th>
+                        <th class="enquiry-col-offer-a" style="width:150px;">MAKE OFFERED BY YOU</th>
                     </tr>
                 </thead>
                 <tbody id="enquiryTableBody">
@@ -1431,25 +1443,13 @@
             </table>
             <div style="display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap;">
                 <button
+                    id="copyEnquiryHtmlBtn"
                     type="button"
                     class="approve-btn"
+                    style="background:#7b1fa2;"
                     onclick="window.enquiryPreparer && window.enquiryPreparer.copyEnquiryAsHtml()"
                 >
                     📋 Copy as HTML
-                </button>
-                <button
-                    type="button"
-                    class="upload-btn"
-                    onclick="window.enquiryPreparer && window.enquiryPreparer.copyEnquiryAsText()"
-                >
-                    📝 Copy as Text
-                </button>
-                <button
-                    type="button"
-                    class="upload-btn"
-                    onclick="window.enquiryPreparer && window.enquiryPreparer.addManualRow()"
-                >
-                    ➕ Add Row
                 </button>
             </div>
             <p id="generatedEnquiryStatus" style="margin-top: 6px; font-size: 12px; color: #666;"></p>
