@@ -380,18 +380,20 @@
         const tableRows = rows.map((tr, idx) => {
             const getVal = (key) => (tr.querySelector(`input[data-col="${key}"]`)?.value || '').trim();
             const bg = (idx % 2 === 0) ? '#ffffff' : '#eef5ff';
+            const cellBase = `border:1px solid #c7d5ee;padding:8px;background-color:${bg};`;
+            // Outlook often ignores <tr background>, so apply on each <td> + bgcolor.
             return `
-                <tr style="background:${bg};">
-                    <td style="border:1px solid #c7d5ee;padding:8px;text-align:center;">${escapeHtml(getVal('slNo'))}</td>
-                    <td style="border:1px solid #c7d5ee;padding:8px;">${escapeHtml(getVal('productSpec'))}</td>
-                    <td style="border:1px solid #c7d5ee;padding:8px;">${escapeHtml(getVal('size'))}</td>
-                    <td style="border:1px solid #c7d5ee;padding:8px;text-align:right;">${escapeHtml(getVal('qty'))}</td>
-                    <td style="border:1px solid #c7d5ee;padding:8px;text-align:center;">${escapeHtml(getVal('uom'))}</td>
-                    <td style="border:1px solid #c7d5ee;padding:8px;text-align:center;">${escapeHtml(getVal('lengthReqByUs'))}</td>
-                    <td style="border:1px solid #c7d5ee;padding:8px;text-align:center;">${escapeHtml(getVal('makeRequiredByUs'))}</td>
-                    <td style="border:1px solid #c7d5ee;padding:8px;text-align:center;">${escapeHtml(getVal('rate'))}</td>
-                    <td style="border:1px solid #c7d5ee;padding:8px;text-align:center;">${escapeHtml(getVal('offerUom'))}</td>
-                    <td style="border:1px solid #c7d5ee;padding:8px;text-align:center;">${escapeHtml(getVal('makeOfferedByYou'))}</td>
+                <tr>
+                    <td bgcolor="${bg}" style="${cellBase}text-align:center;">${escapeHtml(getVal('slNo'))}</td>
+                    <td bgcolor="${bg}" style="${cellBase}">${escapeHtml(getVal('productSpec'))}</td>
+                    <td bgcolor="${bg}" style="${cellBase}">${escapeHtml(getVal('size'))}</td>
+                    <td bgcolor="${bg}" style="${cellBase}text-align:right;">${escapeHtml(getVal('qty'))}</td>
+                    <td bgcolor="${bg}" style="${cellBase}text-align:center;">${escapeHtml(getVal('uom'))}</td>
+                    <td bgcolor="${bg}" style="${cellBase}text-align:center;">${escapeHtml(getVal('lengthReqByUs'))}</td>
+                    <td bgcolor="${bg}" style="${cellBase}text-align:center;">${escapeHtml(getVal('makeRequiredByUs'))}</td>
+                    <td bgcolor="${bg}" style="${cellBase}text-align:center;">${escapeHtml(getVal('rate'))}</td>
+                    <td bgcolor="${bg}" style="${cellBase}text-align:center;">${escapeHtml(getVal('offerUom'))}</td>
+                    <td bgcolor="${bg}" style="${cellBase}text-align:center;">${escapeHtml(getVal('makeOfferedByYou'))}</td>
                 </tr>
             `;
         }).join('');
