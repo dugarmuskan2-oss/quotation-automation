@@ -481,6 +481,9 @@
         container.innerHTML = html;
         document.body.appendChild(container);
 
+        // Some editors require the element to be focused for rich copy.
+        try { container.focus(); } catch (_) { }
+
         const range = document.createRange();
         range.selectNodeContents(container);
         const sel = window.getSelection();
@@ -565,10 +568,10 @@
         ensureEnquiryTableHasRow();
         const html = buildEnquiryHtmlForCopy();
         const text = buildEnquiryTextForCopy();
-        let ok = await copyHtmlToClipboard(html, text);
-        if (!ok) {
-            ok = copyHtmlWithExecCommand(html);
-        }
+        // IMPORTANT: Many Windows email clients (notably Outlook) will ignore ClipboardItem HTML
+        // and paste the text/plain fallback. Prefer execCommand rich copy first.
+        let ok = copyHtmlWithExecCommand(html);
+        if (!ok) ok = await copyHtmlToClipboard(html, text);
         if (statusEl) {
             statusEl.textContent = ok ? 'Enquiry copied (HTML table).' : 'Copy failed. Try Copy as Text.';
             statusEl.style.color = ok ? '#2e7d32' : '#c62828';
