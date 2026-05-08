@@ -50,10 +50,14 @@ async function checkBrowser() {
         const apis = await page.evaluate(() => ({
             hasWeight: typeof window.pipeWeightCalculator === 'object',
             hasSwitchQ: typeof window.switchToQuotationTab === 'function',
-            hasSwitchW: typeof window.switchToWeightTab === 'function'
+            hasSwitchW: typeof window.switchToWeightTab === 'function',
+            hasSwitchE: typeof window.switchToEnquiryTab === 'function',
+            hasEnquiry: typeof window.enquiryPreparer === 'object'
         }));
         if (!apis.hasWeight) fail('window.pipeWeightCalculator missing');
         if (!apis.hasSwitchQ || !apis.hasSwitchW) fail('tab switchers missing');
+        if (!apis.hasSwitchE) fail('switchToEnquiryTab missing');
+        if (!apis.hasEnquiry) fail('window.enquiryPreparer missing');
 
         await page.evaluate(() => window.switchToWeightTab());
         const weightShown = await page.evaluate(() => {
@@ -106,6 +110,99 @@ async function checkBrowser() {
             return el && el.style.display !== 'none';
         });
         if (!qAgain) fail('quotationApp not visible after switch back');
+
+        // Enquiry tab basic wiring + template seeded
+        await page.evaluate(() => window.switchToEnquiryTab());
+        const enquiryShown = await page.evaluate(() => {
+            const el = document.getElementById('enquiryPreparerApp');
+            return el && el.style.display !== 'none';
+        });
+        if (!enquiryShown) fail('enquiryPreparerApp not shown after switchToEnquiryTab');
+
+        const templateSeeded = await page.evaluate(() => {
+            const el = document.getElementById('enquiryTemplateText');
+            const v = (el && el.value) ? el.value.trim() : '';
+            return v.length > 20 && v.includes('{{lineItems}}');
+        });
+        if (!templateSeeded) fail('enquiry template not seeded (expected default placeholders)');
+
+        // Enquiry creation from a REAL quotation:
+        // 1) list summaries from /api/quotations
+        // 2) fetch details via /api/quotations/:id until we find one with lineItems
+        const injectedRealQuote = await page.evaluate(async (baseUrl) => {
+            const listRes = await fetch(`${baseUrl}/api/quotations?limit=50&offset=0`);
+            const listJson = await listRes.json();
+            const list = Array.isArray(listJson?.quotations) ? listJson.quotations : (Array.isArray(listJson) ? listJson : []);
+            if (!list.length) return { ok: false, reason: 'No quotations returned from /api/quotations' };
+
+            for (const q of list) {
+                const id = q?.id != null ? String(q.id) : '';
+                if (!id) continue;
+                const detailRes = await fetch(`${baseUrl}/api/quotations/${encodeURIComponent(id)}`);
+                if (!detailRes.ok) continue;
+                const detailJson = await detailRes.json();
+                const full = detailJson?.quotation || null;
+                const header = full?.header || {};
+                const qn = full?.quoteNumber || header?.quoteNumber || '';
+                const items = Array.isArray(full?.lineItems) ? full.lineItems : [];
+                if (String(qn).trim() && items.length > 0) {
+                    window.approvedQuotations = [full];
+                    return { ok: true, quoteNumber: String(qn).trim(), itemCount: items.length };
+                }
+            }
+            return { ok: false, reason: 'Could not find a quotation with lineItems via /api/quotations/:id' };
+        }, base);
+        if (!injectedRealQuote?.ok) {
+            fail(`could not inject real quotation for enquiry test: ${injectedRealQuote?.reason || 'unknown'}`);
+        } else {
+            await page.fill('#enquiryFromQuoteNumber', injectedRealQuote.quoteNumber);
+            await page.click('text=Create From Quotation');
+            const outputHasQuoteNo = await page.evaluate((qn) => {
+                const el = document.getElementById('generatedEnquiryText');
+                const v = (el && el.value) ? el.value : '';
+                return v.includes(String(qn).trim());
+            }, injectedRealQuote.quoteNumber);
+            if (!outputHasQuoteNo) fail('enquiry output missing quote number for real quotation flow');
+        }
+
+        // Enquiry creation from MANUAL input (inject a synthetic quotation and generate)
+        const manualOk = await page.evaluate(() => {
+            window.approvedQuotations = [
+                {
+                    header: {
+                        quoteNumber: 'E2E/MANUAL/001',
+                        billTo: 'Manual Client',
+                        kindAttn: 'Mr Manual',
+                        projectName: 'Manual Project'
+                    },
+                    lineItems: [
+                        { originalDescription: 'MS Pipe 2 inch Sch 40', quantity: '10', unit: 'Nos' },
+                        { originalDescription: 'GI Elbow 2 inch', quantity: '5', unit: 'Nos' }
+                    ]
+                }
+            ];
+            const input = document.getElementById('enquiryFromQuoteNumber');
+            if (!input) return false;
+            input.value = 'E2E/MANUAL/001';
+            window.enquiryPreparer.createEnquiryFromQuotationNumber();
+            const out = document.getElementById('generatedEnquiryText');
+            const v = (out && out.value) ? out.value : '';
+            return v.includes('E2E/MANUAL/001') && v.includes('MS Pipe 2 inch') && v.includes('GI Elbow 2 inch');
+        });
+        if (!manualOk) fail('manual enquiry generation failed (synthetic quotation injection)');
+
+        // Ensure copy button handler doesn't throw
+        const copyDidNotThrow = await page.evaluate(() => {
+            try {
+                const out = document.getElementById('generatedEnquiryText');
+                if (out) out.value = 'E2E enquiry copy test';
+                window.enquiryPreparer.copyGeneratedEnquiry();
+                return true;
+            } catch (e) {
+                return false;
+            }
+        });
+        if (!copyDidNotThrow) fail('enquiry copy handler threw an exception');
 
         if (consoleErrors.length) {
             console.warn('Browser console errors (may be env-related):', consoleErrors);

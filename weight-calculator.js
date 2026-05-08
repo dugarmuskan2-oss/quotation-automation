@@ -321,18 +321,11 @@
             loadBtn.style.cursor = 'not-allowed';
         }
 
-        // #region agent log
-        fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'quote-weight',hypothesisId:'H1',location:'weight-calculator.js:calculateFromQuotationNumber:entry',message:'start quote->weight',data:{quoteNumber,approvedCount:Array.isArray(window.approvedQuotations)?window.approvedQuotations.length:null},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
-
         const base = (typeof API_BASE_URL === 'string' && API_BASE_URL) ? API_BASE_URL : '/api';
 
         async function fetchQuotationIdByNumber(qn) {
             const res = await fetch(`${base}/quotations/by-number/${encodeURIComponent(String(qn || '').trim())}`);
             const data = await (res.ok ? res.json() : Promise.resolve(null));
-            // #region agent log
-            fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'quote-weight',hypothesisId:'H2',location:'weight-calculator.js:calculateFromQuotationNumber:byNumber',message:'GET /api/quotations/by-number',data:{ok:!!res&&res.ok,status:res?res.status:null,found:!!(data&&data.found),id:data?data.id:null,cached:!!(data&&data.cached)},timestamp:Date.now()})}).catch(()=>{});
-            // #endregion
             if (data && data.found && data.id) return String(data.id);
             return null;
         }
@@ -358,10 +351,6 @@
                 }) || null;
             }
 
-            // #region agent log
-            fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'quote-weight',hypothesisId:'H3',location:'weight-calculator.js:calculateFromQuotationNumber:match',message:'match lookup result',data:{found:!!match,matchKeys:match?Object.keys(match).slice(0,20):null,hasLineItems:!!(match&&Array.isArray(match.lineItems)),lineItemCount:match&&Array.isArray(match.lineItems)?match.lineItems.length:null,hasTableHtml:!!(match&&match.tableHTML)},timestamp:Date.now()})}).catch(()=>{});
-            // #endregion
-
             if (!match) {
                 if (statusEl) {
                     statusEl.textContent = 'Quotation not found.';
@@ -376,18 +365,13 @@
                     const res = await fetch(base + '/quotations/' + encodeURIComponent(String(match.id)));
                     const data = await (res.ok ? res.json() : Promise.resolve(null));
                     const full = data && data.quotation && typeof data.quotation === 'object' ? data.quotation : null;
-                    // #region agent log
-                    fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'quote-weight',hypothesisId:'H4',location:'weight-calculator.js:calculateFromQuotationNumber:fetchQuotationById',message:'fetched /api/quotations/:id for full payload',data:{ok:!!res&&res.ok,status:res?res.status:null,hasFull:!!full,lineItemCount:full&&Array.isArray(full.lineItems)?full.lineItems.length:null,hasTableHtml:!!(full&&full.tableHTML)},timestamp:Date.now()})}).catch(()=>{});
-                    // #endregion
                     if (full) {
                         // Mutate match in-place so the rest of the flow stays the same.
                         match.lineItems = full.lineItems;
                         match.tableHTML = full.tableHTML;
                     }
                 } catch (e) {
-                    // #region agent log
-                    fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e575a6'},body:JSON.stringify({sessionId:'e575a6',runId:'quote-weight',hypothesisId:'H4',location:'weight-calculator.js:calculateFromQuotationNumber:fetchQuotationByIdCatch',message:'fetch /api/quotations/:id threw',data:{err:String(e&&e.message)},timestamp:Date.now()})}).catch(()=>{});
-                    // #endregion
+                    console.warn('Failed to fetch quotation by id for weight calculation:', e);
                 }
             }
 
