@@ -1238,6 +1238,25 @@ const SUMMARY_PROJECTION = [
 ].join(', ');
 const SUMMARY_EXPR_NAMES = { '#p': 'payload', '#d': 'data', '#sv': 'saved' };
 
+// In-memory cache: quoteNumber(lower) -> quotation id
+// Keeps the "load by quote number" flow fast after first hit.
+const quotationIdByQuoteNumberCache = new Map();
+const QUOTE_NUMBER_CACHE_MAX = 2000;
+
+function normalizeQuoteNumberKey(value) {
+    return String(value || '').trim().toLowerCase();
+}
+
+function setQuoteNumberCache(key, id) {
+    if (!key || !id) return;
+    // Simple bounded map. If it grows too large, drop oldest insertion.
+    if (quotationIdByQuoteNumberCache.size >= QUOTE_NUMBER_CACHE_MAX) {
+        const firstKey = quotationIdByQuoteNumberCache.keys().next().value;
+        if (firstKey) quotationIdByQuoteNumberCache.delete(firstKey);
+    }
+    quotationIdByQuoteNumberCache.set(key, String(id));
+}
+
 /** When both `data` and `payload` exist, shallow-merge can leave header fields empty if one map has "" and the other has the real value. Prefer a non-empty string from either map. */
 const QUOTATION_HEADER_MERGE_KEYS = [
     'quoteNumber', 'companyName', 'projectName', 'customerName', 'quotationDate',
@@ -1353,6 +1372,68 @@ app.get('/api/quotations', async (req, res) => {
     } catch (error) {
         console.error('Error loading quotations:', error);
         res.status(500).json({ error: 'Failed to load quotations', details: error.message });
+    }
+});
+
+// Lookup quotation id by quoteNumber (fast path for weight calculator).
+// Uses a filtered scan with summary projection and returns as soon as a match is found.
+app.get('/api/quotations/by-number/:quoteNumber', async (req, res) => {
+    try {
+        if (!ddbDocClient || !ddbTableName) {
+            return res.status(500).json({ error: 'DynamoDB not configured. Set DYNAMODB_TABLE in environment variables.' });
+        }
+        const rawQn = req.params.quoteNumber;
+        const qn = String(rawQn || '').trim();
+        if (!qn) {
+            return res.status(400).json({ error: 'quoteNumber is required' });
+        }
+        const key = normalizeQuoteNumberKey(qn);
+        const cached = quotationIdByQuoteNumberCache.get(key);
+        if (cached) {
+            return res.json({ found: true, id: cached, cached: true });
+        }
+
+        const { ScanCommand } = require('@aws-sdk/lib-dynamodb');
+        const t0 = Date.now();
+        let lastKey = null;
+        let pages = 0;
+        let scanned = 0;
+
+        // Filter must check both payload.quoteNumber and data.quoteNumber.
+        const exprNames = { ...SUMMARY_EXPR_NAMES, '#qn': 'quoteNumber' };
+        const filter = '(#p.#qn = :qn OR #d.#qn = :qn)';
+
+        while (pages < 200) {
+            pages++;
+            const params = {
+                TableName: ddbTableName,
+                ProjectionExpression: SUMMARY_PROJECTION,
+                ExpressionAttributeNames: exprNames,
+                FilterExpression: filter,
+                ExpressionAttributeValues: { ':qn': qn }
+            };
+            if (lastKey) params.ExclusiveStartKey = lastKey;
+            const result = await ddbDocClient.send(new ScanCommand(params));
+            scanned += (result.ScannedCount || 0);
+            const items = result.Items || [];
+            if (items.length) {
+                const quotation = quotationSummaryFromDdbItem(items[0]);
+                const id = quotation && quotation.id != null ? String(quotation.id) : null;
+                if (id) {
+                    setQuoteNumberCache(key, id);
+                    console.log(`[quotations-by-number] qn=${qn} found id=${id} pages=${pages} scanned=${scanned} ms=${Date.now() - t0}`);
+                    return res.json({ found: true, id, cached: false });
+                }
+            }
+            lastKey = result.LastEvaluatedKey || null;
+            if (!lastKey) break;
+        }
+
+        console.log(`[quotations-by-number] qn=${qn} not-found pages=${pages} scanned=${scanned} ms=${Date.now() - t0}`);
+        return res.json({ found: false });
+    } catch (error) {
+        console.error('Error looking up quotation by number:', error);
+        return res.status(500).json({ error: 'Failed to lookup quotation', details: error.message });
     }
 });
 
