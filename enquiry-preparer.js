@@ -76,6 +76,13 @@
         el.style.color = ok ? '#2e7d32' : '#c62828';
     }
 
+    function setInlineStatus(id, text, ok) {
+        var el = $(id);
+        if (!el) return;
+        el.textContent = text || '';
+        el.style.color = ok ? '#2e7d32' : '#c62828';
+    }
+
     // ===== Enquiry Table Functions (and sub-functions) =====
 
     function getEnquiryTbody() {
@@ -218,6 +225,145 @@
         renumberEnquiryRows();
     }
 
+    // ===== Upload rows (CSV) =====
+
+    function normalizeHeaderKey(key) {
+        return String(key || '')
+            .trim()
+            .toLowerCase()
+            .replace(/\s+/g, '')
+            .replace(/_/g, '');
+    }
+
+    function splitCsvLine(line) {
+        const out = [];
+        let cur = '';
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+            const ch = line[i];
+            if (ch === '"') {
+                // handle escaped quote ""
+                if (inQuotes && line[i + 1] === '"') {
+                    cur += '"';
+                    i++;
+                } else {
+                    inQuotes = !inQuotes;
+                }
+                continue;
+            }
+            if (ch === ',' && !inQuotes) {
+                out.push(cur);
+                cur = '';
+                continue;
+            }
+            cur += ch;
+        }
+        out.push(cur);
+        return out.map(v => String(v || '').trim());
+    }
+
+    function parseEnquiryRowsCsv(text) {
+        const raw = String(text || '').replace(/^\uFEFF/, '');
+        const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+        if (!lines.length) return { rows: [], error: 'CSV is empty.' };
+
+        const first = splitCsvLine(lines[0]);
+        const looksLikeHeader = first.some(c => /[a-zA-Z]/.test(c));
+        let header = null;
+        let startIdx = 0;
+        if (looksLikeHeader) {
+            header = first.map(normalizeHeaderKey);
+            startIdx = 1;
+        }
+
+        const rows = [];
+        for (let i = startIdx; i < lines.length; i++) {
+            const cols = splitCsvLine(lines[i]);
+            if (!cols.length || cols.every(c => !c)) continue;
+
+            const obj = {};
+            if (header) {
+                header.forEach((h, idx) => {
+                    obj[h] = cols[idx] || '';
+                });
+            } else {
+                // positional fallback
+                obj.productspec = cols[0] || '';
+                obj.size = cols[1] || '';
+                obj.qty = cols[2] || '';
+                obj.uom = cols[3] || '';
+                obj.lengthreqbyus = cols[4] || '';
+                obj.makerequiredbyus = cols[5] || '';
+                obj.rate = cols[6] || '';
+                obj.offeruom = cols[7] || '';
+                obj.makeofferedbyyou = cols[8] || '';
+            }
+
+            rows.push({
+                productSpec: obj.productspec || obj.productspecification || obj.product || obj.specification || '',
+                size: obj.size || '',
+                qty: obj.qty || obj.quantity || '',
+                uom: obj.uom || '',
+                lengthReqByUs: obj.lengthreqbyus || obj.length || '',
+                makeRequiredByUs: obj.makerequiredbyus || obj.makerequired || obj.make || '',
+                rate: obj.rate || '',
+                offerUom: obj.offeruom || obj.offerunit || '',
+                makeOfferedByYou: obj.makeofferedbyyou || obj.makeoffered || ''
+            });
+        }
+
+        return { rows, error: '' };
+    }
+
+    function modelFromUploadedRow(row) {
+        const d = getDefaults();
+        return {
+            productSpec: String(row.productSpec || d.productSpec || 'MS ERW PIPE AS PER IS 1239/3589').trim(),
+            size: String(row.size || '').trim(),
+            qty: String(row.qty || '').trim(),
+            uom: String(row.uom || d.uom || 'MTR').trim(),
+            lengthReqByUs: String(row.lengthReqByUs || '').trim(),
+            makeRequiredByUs: String(row.makeRequiredByUs || d.makeRequired || 'JINDAL').trim(),
+            rate: String(row.rate || '').trim(),
+            offerUom: String(row.offerUom || '').trim(),
+            makeOfferedByYou: String(row.makeOfferedByYou || '').trim()
+        };
+    }
+
+    function loadRowsFromUploadedCsv() {
+        const fileEl = $('enquiryRowsFile');
+        if (!fileEl || !fileEl.files || fileEl.files.length === 0) {
+            setInlineStatus('enquiryRowsFileStatus', 'Please choose a CSV file first.', false);
+            return;
+        }
+        const file = fileEl.files[0];
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            try {
+                const text = String(e && e.target && e.target.result || '');
+                const parsed = parseEnquiryRowsCsv(text);
+                if (parsed.error) {
+                    setInlineStatus('enquiryRowsFileStatus', parsed.error, false);
+                    return;
+                }
+                if (!parsed.rows.length) {
+                    setInlineStatus('enquiryRowsFileStatus', 'No valid rows found in CSV.', false);
+                    return;
+                }
+                clearEnquiryTable();
+                parsed.rows.forEach(r => addEnquiryRowToTable(modelFromUploadedRow(r)));
+                renumberEnquiryRows();
+                setInlineStatus('enquiryRowsFileStatus', `Loaded ${parsed.rows.length} row(s) from CSV.`, true);
+            } catch (err) {
+                setInlineStatus('enquiryRowsFileStatus', 'Failed to parse CSV: ' + (err.message || 'Unknown error'), false);
+            }
+        };
+        reader.onerror = function () {
+            setInlineStatus('enquiryRowsFileStatus', 'Could not read the selected file.', false);
+        };
+        reader.readAsText(file);
+    }
+
     function readHeaderText() {
         return String(($('enquiryHeaderText') && $('enquiryHeaderText').value) || '').trim();
     }
@@ -231,29 +377,30 @@
             ? headerText.split(/\r?\n/).map(l => `<div style="font-weight:${l.trim().toUpperCase()==='DEAR SIR'?'700':'600'}; margin:2px 0;">${escapeHtml(l)}</div>`).join('')
             : '';
 
-        const tableRows = rows.map((tr) => {
+        const tableRows = rows.map((tr, idx) => {
             const getVal = (key) => (tr.querySelector(`input[data-col="${key}"]`)?.value || '').trim();
+            const bg = (idx % 2 === 0) ? '#ffffff' : '#eef5ff';
             return `
-                <tr>
-                    <td style="text-align:center;">${escapeHtml(getVal('slNo'))}</td>
-                    <td>${escapeHtml(getVal('productSpec'))}</td>
-                    <td>${escapeHtml(getVal('size'))}</td>
-                    <td style="text-align:right;">${escapeHtml(getVal('qty'))}</td>
-                    <td style="text-align:center;">${escapeHtml(getVal('uom'))}</td>
-                    <td style="text-align:center;">${escapeHtml(getVal('lengthReqByUs'))}</td>
-                    <td style="text-align:center;">${escapeHtml(getVal('makeRequiredByUs'))}</td>
-                    <td style="text-align:center;">${escapeHtml(getVal('rate'))}</td>
-                    <td style="text-align:center;">${escapeHtml(getVal('offerUom'))}</td>
-                    <td style="text-align:center;">${escapeHtml(getVal('makeOfferedByYou'))}</td>
+                <tr style="background:${bg};">
+                    <td style="border:1px solid #c7d5ee;padding:8px;text-align:center;">${escapeHtml(getVal('slNo'))}</td>
+                    <td style="border:1px solid #c7d5ee;padding:8px;">${escapeHtml(getVal('productSpec'))}</td>
+                    <td style="border:1px solid #c7d5ee;padding:8px;">${escapeHtml(getVal('size'))}</td>
+                    <td style="border:1px solid #c7d5ee;padding:8px;text-align:right;">${escapeHtml(getVal('qty'))}</td>
+                    <td style="border:1px solid #c7d5ee;padding:8px;text-align:center;">${escapeHtml(getVal('uom'))}</td>
+                    <td style="border:1px solid #c7d5ee;padding:8px;text-align:center;">${escapeHtml(getVal('lengthReqByUs'))}</td>
+                    <td style="border:1px solid #c7d5ee;padding:8px;text-align:center;">${escapeHtml(getVal('makeRequiredByUs'))}</td>
+                    <td style="border:1px solid #c7d5ee;padding:8px;text-align:center;">${escapeHtml(getVal('rate'))}</td>
+                    <td style="border:1px solid #c7d5ee;padding:8px;text-align:center;">${escapeHtml(getVal('offerUom'))}</td>
+                    <td style="border:1px solid #c7d5ee;padding:8px;text-align:center;">${escapeHtml(getVal('makeOfferedByYou'))}</td>
                 </tr>
             `;
         }).join('');
 
         return `
-            <div style="font-family: Arial, sans-serif; color:#111;">
+            <div style="font-family: Arial, sans-serif; color:#111; font-size:13px;">
                 ${headerLines}
                 <div style="height:10px;"></div>
-                <table style="width:100%; border-collapse:collapse; font-size:13px;">
+                <table cellpadding="0" cellspacing="0" border="0" style="width:100%; border-collapse:collapse; mso-table-lspace:0pt; mso-table-rspace:0pt;">
                     <thead>
                         <tr>
                             <th colspan="7" style="background:#0b4aa2;color:#fff;border:1px solid #0b4aa2;padding:8px;text-align:center;">OUR REQUIREMENT (ENQUIRY)</th>
@@ -326,6 +473,32 @@
         }
     }
 
+    function copyHtmlWithExecCommand(html) {
+        // Outlook-friendly fallback: copy selection from DOM.
+        const container = document.createElement('div');
+        container.setAttribute('contenteditable', 'true');
+        container.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none;';
+        container.innerHTML = html;
+        document.body.appendChild(container);
+
+        const range = document.createRange();
+        range.selectNodeContents(container);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+
+        let ok = false;
+        try {
+            ok = document.execCommand('copy');
+        } catch (_) {
+            ok = false;
+        }
+
+        sel.removeAllRanges();
+        container.remove();
+        return ok;
+    }
+
     function findByQuotationNumber(quoteNumber) {
         var all = Array.isArray(window.approvedQuotations) ? window.approvedQuotations : [];
         var target = String(quoteNumber || '').trim().toLowerCase();
@@ -392,9 +565,12 @@
         ensureEnquiryTableHasRow();
         const html = buildEnquiryHtmlForCopy();
         const text = buildEnquiryTextForCopy();
-        const ok = await copyHtmlToClipboard(html, text);
+        let ok = await copyHtmlToClipboard(html, text);
+        if (!ok) {
+            ok = copyHtmlWithExecCommand(html);
+        }
         if (statusEl) {
-            statusEl.textContent = ok ? 'Enquiry copied (HTML).' : 'Copy failed. Try Copy as Text.';
+            statusEl.textContent = ok ? 'Enquiry copied (HTML table).' : 'Copy failed. Try Copy as Text.';
             statusEl.style.color = ok ? '#2e7d32' : '#c62828';
         }
     }
@@ -432,7 +608,8 @@
             copyEnquiryAsHtml: copyEnquiryAsHtml,
             copyEnquiryAsText: copyEnquiryAsText,
             addManualRow: addManualRow,
-            resetEnquiryDefaults: resetEnquiryDefaults
+            resetEnquiryDefaults: resetEnquiryDefaults,
+            loadRowsFromUploadedCsv: loadRowsFromUploadedCsv
         };
     }
 
