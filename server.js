@@ -1282,6 +1282,15 @@ const QUOTATION_HEADER_MERGE_KEYS = [
     'assignedTo', 'checkedBy', 'grandTotal', 'billTo', 'shipTo', 'emailLink', 'gmailMessageId'
 ];
 
+// Prefer non-empty array/object fields from either map (some older rows store these in only one map,
+// or one map can contain an empty array while the other contains the real data).
+const QUOTATION_NON_EMPTY_MERGE_KEYS = [
+    'lineItems',
+    'tableHTML',
+    'headerHTML',
+    'termsText'
+];
+
 function isEmptyStringish(value) {
     if (value == null) {
         return true;
@@ -1303,6 +1312,29 @@ function mergeQuotationPayloadAndDataMaps(data, payload) {
         if (!isEmptyStringish(dVal)) {
             merged[key] = dVal;
         } else if (!isEmptyStringish(pVal)) {
+            merged[key] = pVal;
+        }
+    });
+
+    QUOTATION_NON_EMPTY_MERGE_KEYS.forEach((key) => {
+        const cur = merged[key];
+        const dVal = data && data[key];
+        const pVal = payload && payload[key];
+
+        const curIsEmptyArray = Array.isArray(cur) && cur.length === 0;
+        const dIsNonEmptyArray = Array.isArray(dVal) && dVal.length > 0;
+        const pIsNonEmptyArray = Array.isArray(pVal) && pVal.length > 0;
+
+        if ((cur == null || curIsEmptyArray) && (dIsNonEmptyArray || pIsNonEmptyArray)) {
+            merged[key] = dIsNonEmptyArray ? dVal : pVal;
+            return;
+        }
+
+        if (isEmptyStringish(cur) && !isEmptyStringish(dVal)) {
+            merged[key] = dVal;
+            return;
+        }
+        if (isEmptyStringish(cur) && !isEmptyStringish(pVal)) {
             merged[key] = pVal;
         }
     });
