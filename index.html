@@ -219,10 +219,14 @@
             background-color: #1976d2;
         }
 
+        .approval-header-block {
+            margin-bottom: 12px;
+        }
+
         .approval-layout {
             display: flex;
-            gap: 16px;
-            align-items: stretch;
+            gap: 12px;
+            align-items: flex-start;
             position: relative;
         }
 
@@ -242,14 +246,13 @@
 
         .approval-resize-handle {
             width: 6px;
-            height: 100%;
+            min-height: 120px;
             cursor: col-resize;
             border-radius: 4px;
-            background: #9e9e9e;
+            background: #bdbdbd;
             flex: 0 0 6px;
-            margin-top: 0;
-            box-shadow: inset 0 0 0 1px #7f7f7f;
             align-self: stretch;
+            box-shadow: inset 0 0 0 1px #9e9e9e;
         }
 
         .approval-quotation {
@@ -347,6 +350,10 @@
         @media (max-width: 900px) {
             .approval-layout {
                 flex-direction: column;
+                gap: 16px;
+            }
+            .approval-resize-handle {
+                display: none;
             }
             .approval-side {
                 flex: 1 1 auto;
@@ -5064,6 +5071,33 @@
             if (lineTotalInput.dataset) lineTotalInput.dataset.manual = 'true';
         }
 
+        function processLogoRemoveDarkBackground(img, callback) {
+            try {
+                const w = img.naturalWidth || img.width;
+                const h = img.naturalHeight || img.height;
+                if (!w || !h) {
+                    callback(null);
+                    return;
+                }
+                const canvas = document.createElement('canvas');
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                const imageData = ctx.getImageData(0, 0, w, h);
+                const data = imageData.data;
+                for (let i = 0; i < data.length; i += 4) {
+                    if (data[i] <= 22 && data[i + 1] <= 22 && data[i + 2] <= 22) {
+                        data[i + 3] = 0;
+                    }
+                }
+                ctx.putImageData(imageData, 0, 0);
+                callback(canvas.toDataURL('image/png'));
+            } catch (err) {
+                callback(null);
+            }
+        }
+
         function setLogoSource() {
             const logoImg = document.getElementById('logoImg');
             const logoText = document.getElementById('logoText');
@@ -5074,11 +5108,16 @@
 
             // Set up handlers BEFORE changing the src
             logoImg.onload = function() {
-                // Image loaded successfully - show image, hide text
-                this.style.display = 'block';
-                if (logoText) {
-                    logoText.style.display = 'none';
-                }
+                const self = this;
+                processLogoRemoveDarkBackground(self, function(dataUrl) {
+                    if (dataUrl) {
+                        self.src = dataUrl;
+                    }
+                    self.style.display = 'block';
+                    if (logoText) {
+                        logoText.style.display = 'none';
+                    }
+                });
             };
             
             logoImg.onerror = function() {
@@ -5714,11 +5753,15 @@
         function buildApprovalSplitLayout({ quotation, termsText, approveButtonHTML, saveButtonHTML, downloadButtonHTML }) {
             const sidePanelHTML = buildApprovalSidePanelHTML(quotation);
 
+            const headerBlock = quotation.headerHTML
+                ? `<div class="approval-header-block">${quotation.headerHTML}</div>`
+                : '';
+
             return `
+                ${headerBlock}
                 <div class="approval-layout">
                     <div class="approval-quotation">
-                            ${quotation.headerHTML || ''}
-                            ${quotation.tableHTML}
+                        ${quotation.tableHTML}
                         <div class="freight-summary" style="display:none; margin-top: 6px; font-weight: bold; font-size: 14px;">
                             Freight: ₹<span class="freight-summary-amount">0</span>
                         </div>
@@ -5732,7 +5775,7 @@
                                 ${downloadButtonHTML}
                             </div>
                         </div>
-                    <div class="approval-resize-handle" aria-label="Resize panels" style="height: 100%; background: #c7c7c7; align-self: stretch; min-height: 200px;"></div>
+                    <div class="approval-resize-handle" aria-label="Resize panels"></motion>
                     ${sidePanelHTML}
                     </div>
                 `;
