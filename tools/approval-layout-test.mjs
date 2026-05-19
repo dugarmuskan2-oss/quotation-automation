@@ -1,4 +1,5 @@
 import { chromium } from 'playwright';
+import { cleanupAutomatedTestQuotations } from './e2e-cleanup-lib.mjs';
 
 const base = process.env.TEST_URL || 'http://127.0.0.1:3000';
 const browser = await chromium.launch({ headless: true });
@@ -47,4 +48,10 @@ const ok = result.hasQuote && result.hasTable && !result.hasSidePanel && !result
   && result.hasHeaderTop && result.hasCompanyTitle && result.quoteUsesFullWidth;
 console.log(ok ? 'PASS: full-width approval without email preview' : 'FAIL');
 await browser.close();
+
+const cleanup = await cleanupAutomatedTestQuotations(base);
+if (cleanup.ok && cleanup.deletedCount > 0) {
+    console.log(`Cleaned up ${cleanup.deletedCount} test quotation(s).`);
+}
+
 process.exit(ok ? 0 : 1);

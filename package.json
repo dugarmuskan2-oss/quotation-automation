@@ -9,7 +9,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test:e2e": "node tools/e2e-smoke.mjs"
+    "test:e2e": "node tools/e2e-smoke.mjs",
+    "cleanup:e2e": "node tools/cleanup-e2e-quotations.mjs"
   },
   "keywords": [
     "quotation",

@@ -1490,7 +1490,7 @@
                     const detailMsg = result.details ? ': ' + result.details : '';
                     throw new Error((result.error || 'Failed to load quotations') + detailMsg);
                 }
-                const quotations = Array.isArray(result.quotations) ? result.quotations : [];
+                const quotations = (Array.isArray(result.quotations) ? result.quotations : []).map(normalizeQuotationRecord);
                 if (append) {
                     approvedQuotations = approvedQuotations.concat(quotations);
                 } else {
@@ -5399,6 +5399,9 @@
                 const quoteNumber = (quotation.quoteNumber || '').trim();
                 let folderName = [companyName, kindAttn, quoteNumber].filter(Boolean).join(' - ');
                 if (!folderName) folderName = quotation.customerName || 'Quotation';
+                const testBadgeHTML = isAutomatedTestQuotation(quotation)
+                    ? '<span class="saved-badge" style="background:#757575;margin-left:6px;">TEST DATA</span>'
+                    : '';
                 const termsText = quotation.termsText || defaultTermsText || '';
                 
                 // Show APPROVED badge only if saved, with checked by name
@@ -5425,6 +5428,7 @@
                             <span>
                                 <span class="folder-icon">📁</span>
                                 ${folderName}
+                                ${testBadgeHTML}
                                 ${approvedBadgeHTML}
                                 ${assignedBadgeHTML}
                                 ${gmailLinkHTML}
@@ -5449,6 +5453,32 @@
 
         function idsMatch(a, b) {
             return String(a) === String(b);
+        }
+
+        function isAutomatedTestQuotation(quotation) {
+            const id = String(quotation && quotation.id || '');
+            const qn = String(quotation && quotation.quoteNumber || '');
+            return /^e2e/i.test(id) || /^E2E\//i.test(qn);
+        }
+
+        /** Flatten nested header maps from API/test saves so Approval folders open reliably. */
+        function normalizeQuotationRecord(quotation) {
+            if (!quotation || typeof quotation !== 'object') {
+                return quotation;
+            }
+            const q = { ...quotation };
+            const h = q.header && typeof q.header === 'object' ? q.header : null;
+            if (h) {
+                if (!q.companyName && h.billTo) q.companyName = h.billTo;
+                if (!q.projectName && (h.projectName || h.billTo)) q.projectName = h.projectName || h.billTo;
+                if (!q.customerName && h.kindAttn) q.customerName = h.kindAttn;
+                if (!q.quotationDate && h.quotationDate) q.quotationDate = h.quotationDate;
+                if (!q.quoteNumber && h.quoteNumber) q.quoteNumber = h.quoteNumber;
+            }
+            if (!q.quoteNumber && q.id && /^e2e/i.test(String(q.id))) {
+                q.quoteNumber = q.quoteNumber || '';
+            }
+            return q;
         }
 
         function getMonthIndexFromToken(token) {
@@ -5797,11 +5827,23 @@
         // If the quotation's heavy fields (tableHTML etc.) haven't been fetched yet,
         // shows a loading spinner, fetches them, then renders.
         function renderApprovalFolderContent(quotationId, folderContentEl) {
+            if (!folderContentEl) return;
             const quotation = approvedQuotations.find(function(q) { return idsMatch(q.id, quotationId); });
-            if (!quotation || !folderContentEl) return;
+            if (!quotation) {
+                folderContentEl.innerHTML = '<div style="padding:20px;color:#c62828;">Could not find this quotation in the list. Please refresh the page and try again.</div>';
+                delete folderContentEl.dataset.lazyId;
+                return;
+            }
             delete folderContentEl.dataset.lazyId;
 
             function _doRender() {
+                if (!quotation.tableHTML || !String(quotation.tableHTML).trim()) {
+                    const testHint = isAutomatedTestQuotation(quotation)
+                        ? ' This looks like an automated test record (E2E) with no quotation table — safe to ignore.'
+                        : '';
+                    folderContentEl.innerHTML = '<div style="padding:20px;color:#666;">No quotation table is stored for this entry.' + testHint + '</div>';
+                    return;
+                }
                 const termsText = quotation.termsText || defaultTermsText || '';
                 const approveButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); saveQuotation(${JSON.stringify(quotation.id)})">✅ Approve</button>`;
                 const saveButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); saveQuotationChanges(${JSON.stringify(quotation.id)})">💾 Save</button>`;
@@ -5819,7 +5861,7 @@
                     .then(function(r) { return r.json(); })
                     .then(function(result) {
                         if (result && result.quotation) {
-                            Object.assign(quotation, result.quotation);
+                            Object.assign(quotation, normalizeQuotationRecord(result.quotation));
                         }
                         _doRender();
                     })
@@ -7783,6 +7825,9 @@
             const toggleIcon = folderEl ? folderEl.querySelector('.folder-toggle-icon') : null;
             
             if (!folderContent || !toggleIcon) {
+                // #region agent log
+                fetch('http://127.0.0.1:7694/ingest/eb0363b7-c605-45af-945f-2e2f395a6d8d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'folder-toggle',hypothesisId:'H3',location:'index.html:toggleQuotationFolder',message:'folder DOM missing',data:{quotationId:String(quotationId),hasFolderContent:!!folderContent,hasFolderEl:!!folderEl,hasToggleIcon:!!toggleIcon},timestamp:Date.now()})}).catch(function(){});
+                // #endregion
                 return;
             }
 
