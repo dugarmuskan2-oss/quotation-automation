@@ -223,144 +223,18 @@
             margin-bottom: 12px;
         }
 
-        .approval-layout {
-            display: flex;
-            gap: 12px;
-            align-items: flex-start;
-            position: relative;
-        }
-
         .approval-quotation {
-            flex: 1 1 0;
-            min-width: 0;
+            width: 100%;
+            box-sizing: border-box;
+            overflow-x: auto;
+            font-size: 12px;
         }
 
         .approval-quotation table {
             width: 100%;
+            max-width: 100%;
         }
 
-        .approval-side {
-            flex: 0 0 520px;
-            max-width: 580px;
-        }
-
-        .approval-resize-handle {
-            width: 6px;
-            min-height: 120px;
-            cursor: col-resize;
-            border-radius: 4px;
-            background: #bdbdbd;
-            flex: 0 0 6px;
-            align-self: stretch;
-            box-shadow: inset 0 0 0 1px #9e9e9e;
-        }
-
-        .approval-quotation {
-            font-size: 12px;
-        }
-
-        .approval-scroll-panel {
-            overflow: visible;
-        }
-
-        .approval-drag-area {
-            position: relative;
-            min-height: 120px;
-        }
-
-        .approval-drag-panel {
-            position: relative;
-            cursor: grab;
-        }
-
-        .approval-drag-panel.dragging {
-            cursor: grabbing;
-            user-select: none;
-        }
-
-        .approval-drag-handle {
-            font-size: 11px;
-            color: #666;
-            margin-bottom: 6px;
-        }
-
-        .email-table-preview table {
-            width: 100%;
-            border-collapse: collapse;
-            table-layout: fixed;
-            font-size: 12px;
-        }
-
-        .email-table-preview th,
-        .email-table-preview td {
-            border: 1px solid #ddd;
-            padding: 4px 6px;
-            text-align: left;
-            vertical-align: top;
-            word-break: break-word;
-        }
-
-        .email-html-preview {
-            white-space: pre-wrap;
-            font-size: 12px;
-            background: #fafafa;
-            border: 1px solid #eee;
-            padding: 8px;
-            border-radius: 4px;
-            overflow-y: visible;
-            overflow-x: auto;
-        }
-
-        .email-html-preview table {
-            white-space: normal;
-            width: 100%;
-            border-collapse: collapse;
-            table-layout: auto;
-        }
-
-        .email-html-preview th,
-        .email-html-preview td {
-            white-space: normal;
-            word-break: break-word;
-        }
-
-        .email-html-preview th,
-        .email-html-preview td {
-            border: 1px solid #ddd;
-            padding: 4px 6px;
-            text-align: left;
-            vertical-align: top;
-            word-break: break-word;
-        }
-
-        .email-table-preview table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 12px;
-        }
-
-        .email-table-preview th,
-        .email-table-preview td {
-            border: 1px solid #ddd;
-            padding: 4px 6px;
-            text-align: left;
-            vertical-align: top;
-        }
-
-        @media (max-width: 900px) {
-            .approval-layout {
-                flex-direction: column;
-                gap: 16px;
-            }
-            .approval-resize-handle {
-                display: none;
-            }
-            .approval-side {
-                flex: 1 1 auto;
-                max-width: none;
-                width: 100%;
-            }
-        }
         
         /* IMPORTANT: do NOT use layout containment here.
            It prevents the container from expanding when a folder opens,
@@ -2134,9 +2008,6 @@
                 return '';
             }
             const marginValue = defaultMarginsByPipeType[bucket] || '';
-            // #region agent log
-            fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'baseline-default-margin',hypothesisId:'H3',location:'index.html:getDefaultMarginForPipeType:resolved',message:'resolved default margin from bucket',data:{pipeTypeText:String(pipeTypeText||''),bucket,marginValue},timestamp:Date.now()})}).catch(()=>{});
-            // #endregion
             return marginValue;
         }
 
@@ -2886,45 +2757,6 @@
             return table.outerHTML;
         }
 
-        function sanitizeEmailHtmlForPreview(html) {
-            if (!html) {
-                return '';
-            }
-            const wrapper = document.createElement('div');
-            wrapper.innerHTML = html;
-            wrapper.querySelectorAll('script, style, link, meta').forEach(node => node.remove());
-            const allowedTags = new Set([
-                'DIV', 'P', 'BR', 'SPAN', 'STRONG', 'B', 'EM', 'I', 'U',
-                'TABLE', 'THEAD', 'TBODY', 'TFOOT', 'TR', 'TH', 'TD',
-                'UL', 'OL', 'LI'
-            ]);
-            wrapper.querySelectorAll('*').forEach(node => {
-                if (!allowedTags.has(node.tagName)) {
-                    const text = node.textContent || '';
-                    node.replaceWith(document.createTextNode(text));
-                    return;
-                }
-                Array.from(node.attributes).forEach(attr => {
-                    if (attr.name.toLowerCase().startsWith('on')) {
-                        node.removeAttribute(attr.name);
-                    }
-                });
-            });
-            return wrapper.innerHTML;
-        }
-
-        function buildEmailContentPreviewHTML(quotation) {
-            const htmlPreview = sanitizeEmailHtmlForPreview(quotation.emailContentHtml);
-            if (htmlPreview) {
-                return `<div class="email-html-preview">${htmlPreview}</div>`;
-            }
-            const textTable = buildTableFromTabbedText(quotation.emailContent || '');
-            if (textTable) {
-                return `<div class="email-table-preview">${textTable}</div>`;
-            }
-            return `<div style="white-space: pre-wrap; font-size: 12px; background:#fafafa; border:1px solid #eee; padding:8px; border-radius:4px;">${escapeHtml(quotation.emailContent || '')}</div>`;
-        }
-
         function extractSurroundingTextFromHtml(html) {
             if (!html) {
                 return { before: '', after: '' };
@@ -2954,37 +2786,6 @@
             const beforeText = (beforeWrapper.textContent || '').replace(/\s+\n/g, '\n').trim();
             const afterText = (afterWrapper.textContent || '').replace(/\s+\n/g, '\n').trim();
             return { before: beforeText, after: afterText };
-        }
-
-        function buildTableFromTabbedText(text) {
-            const raw = String(text || '').trim();
-            if (!raw) {
-                return '';
-            }
-            if (!raw.includes('\t')) {
-                return '';
-            }
-            const rows = raw.split(/\r?\n/).filter(line => line.trim());
-            if (rows.length < 2) {
-                return '';
-            }
-            const cells = rows.map(row => row.split('\t'));
-            const maxCols = Math.max(...cells.map(row => row.length));
-            const normalized = cells.map(row => {
-                const filled = row.slice();
-                while (filled.length < maxCols) {
-                    filled.push('');
-                }
-                return filled;
-            });
-            const header = normalized[0];
-            const bodyRows = normalized.slice(1);
-            const headerHtml = header.map(cell => `<th>${escapeHtml(cell)}</th>`).join('');
-            const bodyHtml = bodyRows.map(row => {
-                const cols = row.map(cell => `<td>${escapeHtml(cell)}</td>`).join('');
-                return `<tr>${cols}</tr>`;
-            }).join('');
-            return `<table><thead><tr>${headerHtml}</tr></thead><tbody>${bodyHtml}</tbody></table>`;
         }
 
         function attachEmailPasteListener() {
@@ -5750,62 +5551,131 @@
             searchInput.dataset.bound = 'true';
         }
 
-        function buildApprovalSplitLayout({ quotation, termsText, approveButtonHTML, saveButtonHTML, downloadButtonHTML }) {
-            const sidePanelHTML = buildApprovalSidePanelHTML(quotation);
-
-            const headerBlock = quotation.headerHTML
-                ? `<div class="approval-header-block">${quotation.headerHTML}</div>`
-                : '';
-
-            return `
-                ${headerBlock}
-                <div class="approval-layout">
-                    <div class="approval-quotation">
-                        ${quotation.tableHTML}
-                        <div class="freight-summary" style="display:none; margin-top: 6px; font-weight: bold; font-size: 14px;">
-                            Freight: ₹<span class="freight-summary-amount">0</span>
-                        </div>
-                            <div class="grand-total">
-                                <span>Total: ₹${quotation.grandTotal}</span>
-                            </div>
-                        ${buildEditableTermsBoxHtml(termsText)}
-                        <div style="margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
-                                ${approveButtonHTML}
-                            ${saveButtonHTML || ''}
-                                ${downloadButtonHTML}
-                            </div>
-                        </div>
-                    <div class="approval-resize-handle" aria-label="Resize panels"></motion>
-                    ${sidePanelHTML}
-                    </div>
-                `;
+        function buildQuotationHeaderTopHTML() {
+            return [
+                '<div class="quote-header-top">',
+                '<div style="display:flex; align-items:center;">',
+                '<div class="logo-placeholder">',
+                '<img class="quotation-header-logo" src="/logo.png" alt="Logo" style="display:block;">',
+                '</div>',
+                '<div class="company-info">',
+                '<h3>DSC PIPES AND TUBES PVT LTD</h3>',
+                '<p>REGD OFFICE: 7C, 7TH FLOOR, DOSHI TOWERS, NO:156</p>',
+                '<p>P.H ROAD, KILAPUK, CHENNAI - 600 010</p>',
+                '<p>EMAIL ID: info@dscpipes.com</p>',
+                '</div>',
+                '</div>',
+                '<div class="quote-title">QUOTATION</div>',
+                '</div>'
+            ].join('');
         }
 
-        function buildApprovalSidePanelHTML(quotation) {
-            const gmailLinkUrl = quotation.emailLink || (quotation.gmailMessageId ? 'https://mail.google.com/mail/u/0/#inbox/' + quotation.gmailMessageId : '');
-            const gmailLinkBlock = gmailLinkUrl ? `<div style="margin-bottom:8px;"><a href="${escapeHtml(gmailLinkUrl)}" target="_blank" rel="noopener" class="gmail-link">📧 View in Gmail</a></div>` : '';
-            const emailBlock = quotation.emailContent || quotation.emailContentHtml
-                ? `<div style="margin-top:10px;">${gmailLinkBlock}<strong>Email Content</strong>${buildEmailContentPreviewHTML(quotation)}</div>`
-                : (gmailLinkBlock ? `<div style="margin-top:10px;">${gmailLinkBlock}</div>` : '');
-            const fileBlock = quotation.fileContent
-                ? `<div style="margin-top:10px;"><strong>File Content</strong><div style="white-space: pre-wrap; font-size: 12px; background:#fafafa; border:1px solid #eee; padding:8px; border-radius:4px;">${escapeHtml(quotation.fileContent)}</div></div>`
-                : '';
-            const panelContent = emailBlock || fileBlock
-                ? `${emailBlock}${fileBlock}`
-                : `<div style="margin-top:10px; font-size: 12px; color:#777; background:#fafafa; border:1px dashed #ddd; padding:8px; border-radius:4px;">No email or file content available.</div>`;
+        function quotationHeaderHTMLHasBranding(headerHTML) {
+            return /quote-header-top/i.test(String(headerHTML || ''));
+        }
 
-            return `
-                <div class="approval-side">
-                    <div class="approval-drag-area">
-                        <div class="approval-drag-panel" data-drag="email-panel">
-                            <div class="approval-drag-handle">Drag to move</div>
-                            <div class="approval-scroll-panel">
-                                ${panelContent}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
+        function sanitizeStoredHeaderHTMLForApproval(headerHTML) {
+            let html = String(headerHTML || '');
+            html = html.replace(/\sid="creationQuotationHeader"/gi, ' data-approval-header="1"');
+            html = html.replace(/style="display:\s*none;?"/gi, '');
+            return html.trim();
+        }
+
+        function injectQuotationHeaderBranding(headerHTML) {
+            const top = buildQuotationHeaderTopHTML();
+            const match = headerHTML.match(/<div[^>]*class="[^"]*quotation-header[^"]*"[^>]*>/i);
+            if (match) {
+                return headerHTML.replace(match[0], match[0] + top);
+            }
+            return '<div class="quotation-header">' + top + headerHTML + '</div>';
+        }
+
+        function buildQuotationMetaAndBillShipHTML(quotation) {
+            const q = quotation || {};
+            const quotationDate = escapeHtml(q.quotationDate || '');
+            const kindAttn = escapeHtml(q.customerName || q.kindAttn || '');
+            const billTo = escapeHtml(q.companyName || q.projectName || q.billTo || '');
+            const shipTo = escapeHtml(q.shipTo || '');
+            const phoneNumber = escapeHtml(q.phoneNumber || '');
+            const mobileNumber = escapeHtml(q.mobileNumber || '');
+            const quoteNumber = escapeHtml(q.quoteNumber || '');
+            const preparedBy = escapeHtml(q.preparedBy || '');
+            const assignedTo = escapeHtml(q.assignedTo || '');
+            const checkedBy = escapeHtml(q.checkedBy || '');
+            return [
+                '<div class="quote-meta">',
+                '<div>',
+                '<div class="meta-row"><span>QUOTATION DATE</span><input type="text" data-field="quotationDate" class="header-editable" style="width:140px;" value="' + quotationDate + '"></div>',
+                '<div class="meta-row"><span>KIND ATTN</span><input type="text" data-field="kindAttn" class="header-editable" style="width:140px;" value="' + kindAttn + '"></div>',
+                '<div class="meta-row"><span>PHONE NUMBER</span><input type="text" data-field="phoneNumber" class="header-editable" style="width:140px;" value="' + phoneNumber + '"></div>',
+                '<div class="meta-row"><span>MOBILE NUMBER</span><input type="text" data-field="mobileNumber" class="header-editable" style="width:140px;" value="' + mobileNumber + '"></div>',
+                '</div>',
+                '<div>',
+                '<div class="meta-row"><span>PREPARED BY</span><input type="text" data-field="preparedBy" class="header-editable" style="width:140px;" value="' + preparedBy + '"></div>',
+                '<div class="meta-row"><span>ASSIGNED TO</span><input type="text" data-field="assignedTo" class="header-editable" style="width:140px;" value="' + assignedTo + '"></div>',
+                '<div class="meta-row"><span>CHECKED BY</span><input type="text" data-field="checkedBy" class="header-editable" style="width:140px;" value="' + checkedBy + '"></div>',
+                '<div class="meta-row"><span>QUOTE NUMBER</span><input type="text" data-field="quoteNumber" class="header-editable" style="width:140px;" value="' + quoteNumber + '"></div>',
+                '</div>',
+                '</div>',
+                '<div class="bill-ship">',
+                '<div><strong>Bill To</strong><br><input type="text" data-field="billTo" class="header-editable" style="width:100%;" value="' + billTo + '"></div>',
+                '<div><strong>Ship To</strong><br><input type="text" data-field="shipTo" class="header-editable" style="width:100%;" value="' + shipTo + '"></div>',
+                '</div>'
+            ].join('');
+        }
+
+        function buildQuotationHeaderHTMLFromFields(quotation) {
+            return '<div class="quotation-header">' + buildQuotationHeaderTopHTML() + buildQuotationMetaAndBillShipHTML(quotation) + '</div>';
+        }
+
+        function buildApprovalHeaderHTML(quotation) {
+            let html = quotation && quotation.headerHTML ? sanitizeStoredHeaderHTMLForApproval(quotation.headerHTML) : '';
+            const hadStored = !!html;
+            const hadBrandingBefore = quotationHeaderHTMLHasBranding(html);
+            if (!html) {
+                html = buildQuotationHeaderHTMLFromFields(quotation);
+            } else if (!hadBrandingBefore) {
+                html = injectQuotationHeaderBranding(html);
+            }
+            const hasBrandingAfter = quotationHeaderHTMLHasBranding(html);
+            return html;
+        }
+
+        function initApprovalHeaderLogos(folderContentEl) {
+            if (!folderContentEl) {
+                return;
+            }
+            folderContentEl.querySelectorAll('.quote-header-top .quotation-header-logo, .quote-header-top .logo-placeholder img').forEach(function(img) {
+                if (!img.getAttribute('src')) {
+                    img.setAttribute('src', '/logo.png');
+                }
+                img.style.display = 'block';
+                const placeholder = img.closest('.logo-placeholder');
+                if (placeholder) {
+                    placeholder.querySelectorAll('span').forEach(function(span) {
+                        span.style.display = 'none';
+                    });
+                }
+            });
+        }
+
+        function buildApprovalSplitLayout({ quotation, termsText, approveButtonHTML, saveButtonHTML, downloadButtonHTML }) {
+            const headerHtml = buildApprovalHeaderHTML(quotation);
+            const headerBlock = headerHtml
+                ? '<div class="approval-header-block">' + headerHtml + '</div>'
+                : '';
+            return (
+                headerBlock +
+                '<div class="approval-quotation">' +
+                (quotation.tableHTML || '') +
+                '<div class="freight-summary" style="display:none; margin-top: 6px; font-weight: bold; font-size: 14px;">' +
+                'Freight: ₹<span class="freight-summary-amount">0</span></div>' +
+                '<div class="grand-total"><span>Total: ₹' + (quotation.grandTotal || '') + '</span></div>' +
+                buildEditableTermsBoxHtml(termsText) +
+                '<div style="margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;">' +
+                approveButtonHTML + (saveButtonHTML || '') + downloadButtonHTML +
+                '</div></div>'
+            );
         }
 
         /** headerHTML snapshots can have an empty quote input while quotation.quoteNumber is set (e.g. after data/payload merge). */
@@ -5825,26 +5695,6 @@
             if (inp) {
                 inp.value = v;
                 inp.setAttribute('value', v);
-            }
-        }
-
-        function updateEmailPreviewScroll(folderContent) {
-            const quoteColumn = folderContent.querySelector('.approval-quotation');
-            const emailPreview = folderContent.querySelector('.email-html-preview');
-            if (!quoteColumn || !emailPreview) {
-                return;
-            }
-            const quoteHeight = quoteColumn.getBoundingClientRect().height;
-            if (!quoteHeight) {
-                return;
-            }
-            const threshold = Math.max(quoteHeight * 0.5, 200);
-            if (emailPreview.scrollHeight > threshold) {
-                emailPreview.style.maxHeight = `${Math.floor(threshold)}px`;
-                emailPreview.style.overflowY = 'auto';
-            } else {
-                emailPreview.style.maxHeight = '';
-                emailPreview.style.overflowY = 'visible';
             }
         }
 
@@ -5958,6 +5808,7 @@
                 const downloadButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); downloadQuotationPdf(${JSON.stringify(quotation.id)})">⬇️ Download PDF</button>`;
                 folderContentEl.innerHTML = buildApprovalSplitLayout({ quotation, termsText, approveButtonHTML, saveButtonHTML, downloadButtonHTML });
                 syncApprovalHeaderQuoteInputFromQuotationModel(folderContentEl, quotation);
+                initApprovalHeaderLogos(folderContentEl);
                 attachApprovalSectionListeners(folderContentEl);
             }
 
@@ -6426,127 +6277,9 @@
                     }
                 }
 
-                attachApprovalSidePanelDrag(folderContent);
-                updateEmailPreviewScroll(folderContent);
-                attachApprovalResizeHandle(folderContent);
             });
         }
 
-        function attachApprovalSidePanelDrag(folderContent) {
-            const dragPanel = folderContent.querySelector('.approval-drag-panel');
-            const dragArea = folderContent.querySelector('.approval-drag-area');
-            if (!dragPanel || !dragArea || dragPanel.dataset.dragBound === 'true') {
-                return;
-            }
-
-            const handle = dragPanel.querySelector('.approval-drag-handle');
-            if (!handle) {
-                return;
-            }
-
-            dragArea.style.position = 'relative';
-            const quotationColumn = folderContent.querySelector('.approval-quotation');
-            const getQuoteHeight = () => quotationColumn ? quotationColumn.getBoundingClientRect().height : dragArea.getBoundingClientRect().height;
-            const getMaxOffset = () => {
-                const quoteHeight = getQuoteHeight();
-                return Math.max(0, quoteHeight - dragPanel.offsetHeight);
-            };
-            dragArea.style.paddingBottom = `${getMaxOffset()}px`;
-            dragPanel.style.position = 'absolute';
-            dragPanel.style.left = '0';
-            dragPanel.style.right = '0';
-            dragPanel.style.top = '0px';
-            dragPanel.style.transform = dragPanel.style.transform || 'translateY(0px)';
-            dragPanel.style.willChange = 'transform';
-            dragArea.style.minHeight = `${Math.max(dragArea.clientHeight, dragPanel.offsetHeight + getMaxOffset())}px`;
-
-            let startY = 0;
-            let startOffset = 0;
-            let dragging = false;
-
-            const onPointerMove = (event) => {
-                if (!dragging) return;
-                const delta = event.clientY - startY;
-                const maxTop = getMaxOffset();
-                const nextOffset = Math.min(Math.max(startOffset + delta, 0), maxTop);
-                dragPanel.style.transform = `translateY(${nextOffset}px)`;
-            };
-
-            const onPointerUp = () => {
-                if (!dragging) return;
-                dragging = false;
-                dragPanel.classList.remove('dragging');
-                document.removeEventListener('pointermove', onPointerMove);
-                document.removeEventListener('pointerup', onPointerUp);
-            };
-
-            handle.addEventListener('pointerdown', (event) => {
-                event.preventDefault();
-                dragging = true;
-                dragPanel.classList.add('dragging');
-                startY = event.clientY;
-                const currentTransform = dragPanel.style.transform || 'translateY(0px)';
-                const match = currentTransform.match(/translateY\((-?\d+(\.\d+)?)px\)/);
-                startOffset = match ? parseFloat(match[1]) : 0;
-                document.addEventListener('pointermove', onPointerMove);
-                document.addEventListener('pointerup', onPointerUp);
-            });
-
-            dragPanel.dataset.dragBound = 'true';
-        }
-
-        function applyApprovalSideWidth(layout, sidePanel, widthPx) {
-            if (!layout || !sidePanel) {
-                return;
-            }
-            const safeWidth = Math.max(320, Math.min(widthPx, 900));
-            sidePanel.style.flex = `0 0 ${safeWidth}px`;
-            sidePanel.style.maxWidth = `${safeWidth}px`;
-            layout.dataset.emailWidth = String(safeWidth);
-        }
-
-        function attachApprovalResizeHandle(folderContent) {
-            const layout = folderContent.querySelector('.approval-layout');
-            const handle = folderContent.querySelector('.approval-resize-handle');
-            const sidePanel = folderContent.querySelector('.approval-side');
-            if (!layout || !handle || !sidePanel || handle.dataset.bound === 'true') {
-                return;
-            }
-
-            let startX = 0;
-            let startWidth = 0;
-            let resizing = false;
-
-            const onMove = (event) => {
-                if (!resizing) return;
-                const delta = event.clientX - startX;
-                applyApprovalSideWidth(layout, sidePanel, startWidth - delta);
-            };
-
-            const onUp = () => {
-                if (!resizing) return;
-                resizing = false;
-                document.removeEventListener('pointermove', onMove);
-                document.removeEventListener('pointerup', onUp);
-            };
-
-            handle.addEventListener('pointerdown', (event) => {
-                event.preventDefault();
-                resizing = true;
-                startX = event.clientX;
-                startWidth = sidePanel.getBoundingClientRect().width;
-                document.addEventListener('pointermove', onMove);
-                document.addEventListener('pointerup', onUp);
-            });
-
-            const storedWidth = parseInt(layout.dataset.emailWidth || '', 10);
-            if (Number.isFinite(storedWidth)) {
-                applyApprovalSideWidth(layout, sidePanel, storedWidth);
-            }
-
-            handle.dataset.bound = 'true';
-        }
-        
         /*
             ============================================
             DELETE APPROVAL ROW FUNCTION

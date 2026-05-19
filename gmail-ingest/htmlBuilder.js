@@ -146,6 +146,23 @@ function buildTableHTMLFromLineItems(lineItems) {
  * }} q - Quotation fields
  * @returns {string} HTML string for the header block
  */
+function buildQuotationHeaderTopHTML() {
+    return `<div class="quote-header-top">
+  <div style="display:flex; align-items:center;">
+    <div class="logo-placeholder">
+      <img class="quotation-header-logo" src="/logo.png" alt="Logo" style="display:block;">
+    </div>
+    <div class="company-info">
+      <h3>DSC PIPES AND TUBES PVT LTD</h3>
+      <p>REGD OFFICE: 7C, 7TH FLOOR, DOSHI TOWERS, NO:156</p>
+      <p>P.H ROAD, KILAPUK, CHENNAI - 600 010</p>
+      <p>EMAIL ID: info@dscpipes.com</p>
+    </div>
+  </div>
+  <div class="quote-title">QUOTATION</div>
+</div>`;
+}
+
 function buildHeaderHTMLFromQuotation(q) {
     const quotationDate = escapeHtmlForTable(q.quotationDate || '');
     const kindAttn = escapeHtmlForTable(q.customerName || q.kindAttn || '');
@@ -158,7 +175,8 @@ function buildHeaderHTMLFromQuotation(q) {
     const assignedTo = escapeHtmlForTable(q.assignedTo || '');
     const checkedBy = escapeHtmlForTable(q.checkedBy || '');
 
-    return `<div class="quotation-header" id="creationQuotationHeader">
+    return `<div class="quotation-header">
+${buildQuotationHeaderTopHTML()}
 <div class="quote-meta">
   <div>
     <div class="meta-row"><span>QUOTATION DATE</span><input type="text" data-field="quotationDate" class="header-editable" style="width:140px;" value="${quotationDate}"></div>
