@@ -632,6 +632,22 @@
             font-size: 14px;
         }
 
+        .pipe-type-header .drag-handle,
+        .pipe-type-header .pipe-type-drag-handle {
+            cursor: grab;
+            font-size: 18px;
+            color: rgba(255, 255, 255, 0.85);
+            user-select: none;
+            flex: 0 0 auto;
+            line-height: 1;
+            padding: 0 4px;
+        }
+
+        .pipe-type-header .drag-handle:active,
+        .pipe-type-header .pipe-type-drag-handle:active {
+            cursor: grabbing;
+        }
+
         /* Main column header row (M+) — paired column label row */
         .main-column-header-row {
             background-color: var(--brand-color);
@@ -3402,22 +3418,14 @@
         }
 
         function createDefaultPipeHeaderRow() {
-            const id = `pipe-header-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-            const row = document.createElement('tr');
-            row.className = 'pipe-type-header';
-            row.id = id;
-            row.setAttribute('data-pipe-type', 'Default');
-            row.innerHTML =
-                '<td colspan="9">' +
-                '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">' +
-                '<input type="text" class="editable-field" data-field="pipeTypeHeader" value="Enter Section Name" style="flex:1;border:none;background:transparent;font-weight:bold">' +
-                '<div style="display:flex;gap:6px">' +
-                '<button onclick="addRow(\'Default\',null,event)" title="Add item row" style="background:#4CAF50;color:white;border:none;padding:4px 8px;cursor:pointer;border-radius:3px;font-size:12px">➕</button>' +
-                '<button onclick="addRow(\'__NEW_HEADER__\',\'' + id + '\',event)" title="Add pipe type" style="background:#2196F3;color:white;border:none;padding:4px 8px;cursor:pointer;border-radius:3px;font-size:12px">H+</button>' +
-                '<button onclick="addRow(\'__NEW_MAIN_HEADER__\',\'' + id + '\',event)" title="Add main heading row" style="background:#673AB7;color:white;border:none;padding:4px 8px;cursor:pointer;border-radius:3px;font-size:12px">M+</button>' +
-                '<button onclick="deleteRow(event)" title="Delete pipe type" style="background:#f44336;color:white;border:none;padding:4px 8px;cursor:pointer;border-radius:3px;font-size:12px">🗑️</button>' +
-                '</div></div></td>';
-            return row;
+            const id = 'pipe-header-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+            return createPipeTypeHeaderRow({
+                headerId: id,
+                pipeType: 'Default',
+                headerLabel: 'Enter Section Name',
+                colspan: '9',
+                buttonsHtml: buildMainTablePipeHeaderButtonsHtml('Default', id)
+            });
         }
 
         function appendGroupedItems(tableBody, groupedItems, grandTotal) {
@@ -3427,24 +3435,15 @@
                 let typeSubtotal = 0;
                 
                 // Step 6a: Create header row for this pipe type
-                const headerRow = document.createElement('tr');
-                headerRow.className = 'pipe-type-header';
-                headerRow.id = `pipe-header-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                headerRow.setAttribute('data-pipe-type', pipeType);
-                const headerLabel = getPipeHeaderLabel(pipeType);
-                headerRow.innerHTML = `
-                    <td colspan="9">
-                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
-                            <input type="text" class="editable-field" data-field="pipeTypeHeader" value="${headerLabel}" style="flex: 1; border: none; background: transparent; font-weight: bold;">
-                            <div style="display: flex; gap: 6px;">
-                                <button onclick="addRow('${pipeType}', null, event)" title="Add item row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">➕</button>
-                                <button onclick="addRow('__NEW_HEADER__', '${headerRow.id}', event)" title="Add pipe type" style="background: #2196F3; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">H+</button>
-                                <button onclick="addRow('__NEW_MAIN_HEADER__', '${headerRow.id}', event)" title="Add main heading row" style="background: #673AB7; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">M+</button>
-                                <button onclick="deleteRow(event)" title="Delete pipe type" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
-                            </div>
-                        </div>
-                    </td>
-                `;
+                const headerId = 'pipe-header-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+                const headerRow = createPipeTypeHeaderRow({
+                    headerId: headerId,
+                    pipeType: pipeType,
+                    headerLabel: getPipeHeaderLabel(pipeType),
+                    colspan: '9',
+                    tableBody: tableBody,
+                    buttonsHtml: buildMainTablePipeHeaderButtonsHtml(pipeType, headerId)
+                });
                 tableBody.appendChild(headerRow);
                 
                 // Step 6b: Create rows for each item in this pipe type
@@ -3463,13 +3462,7 @@
                     
                     // Create editable inputs for all fields (no pipe type column)
                     const marginPercentValue = getMarginValueWithDefault(item.marginPercent, pipeType);
-                    // #region agent log
-                    fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'baseline-default-margin',hypothesisId:'H4',location:'index.html:appendGroupedItems:rowMarginAssigned',message:'assigned margin value while building creation row',data:{pipeType,itemMargin:item.marginPercent,assignedMargin:marginPercentValue,description:item.originalDescription||''},timestamp:Date.now()})}).catch(()=>{});
-                    // #endregion
                     const initialFinalRate = computeInitialFinalRateForRow(item, marginPercentValue);
-                    // #region agent log
-                    fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'baseline-default-margin',hypothesisId:'H5',location:'index.html:appendGroupedItems:finalRateDecision',message:'computed initial finalRate based on default margin state',data:{pipeType,itemMargin:item.marginPercent,unitRate:item.unitRate,givenFinalRate:item.finalRate,marginPercentValue,initialFinalRate},timestamp:Date.now()})}).catch(()=>{});
-                    // #endregion
                     const lineTotal = roundAmountToWhole(parseFloat(item.quantity) * parseFloat(initialFinalRate));
                     grandTotal += lineTotal;
                     row.innerHTML = `
@@ -3857,23 +3850,12 @@
             if (!tableBody) return;
 
             if (pipeType === '__NEW_HEADER__') {
-                const existingHeaderCell = tableBody.querySelector('.pipe-type-header td[colspan]');
-                const colspan = existingHeaderCell ? existingHeaderCell.getAttribute('colspan') : '8';
-                const headerRow = document.createElement('tr');
-                headerRow.className = 'pipe-type-header';
-                headerRow.innerHTML = `
-                    <td colspan="${colspan}">
-                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
-                            <input type="text" class="editable-field" data-field="pipeTypeHeader" value="Default" style="flex: 1; border: none; background: transparent; font-weight: bold;">
-                            <div style="display: flex; gap: 6px;">
-                                <button type="button" data-creation-entry-id="${entryId}" data-creation-action="add-row" data-creation-pipe-type="Default" title="Add item row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">➕</button>
-                                <button type="button" data-creation-entry-id="${entryId}" data-creation-action="add-header" title="Add pipe type" style="background: #2196F3; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">H+</button>
-                                <button type="button" data-creation-entry-id="${entryId}" data-creation-action="add-main-header" title="Add main heading row" style="background: #673AB7; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">M+</button>
-                                <button type="button" data-creation-entry-id="${entryId}" data-creation-action="delete-row" title="Delete pipe type" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
-                            </div>
-                        </div>
-                    </td>
-                `;
+                const headerRow = createPipeTypeHeaderRow({
+                    pipeType: 'Default',
+                    headerLabel: 'Default',
+                    tableBody: tableBody,
+                    buttonsHtml: buildCreationFolderPipeHeaderButtonsHtml(entryId)
+                });
                 tableBody.appendChild(headerRow);
                 attachCreationFolderCalculationListeners(entryId);
                 recalculateAllTotalsInContainer(folderContent);
@@ -4159,106 +4141,321 @@
         */
         /*
             ============================================
-            ROW DRAG-AND-DROP (main-column-header-row)
+            PIPE SECTION DRAG-AND-DROP HELPERS
+            Drag handle: LEFT (creation/main) — aligns with action column.
+                         RIGHT (approval) — aligns with ACTIONS column.
+            Moves the full section (M+ column row if any, pipe header, line items).
             ============================================
         */
-        var _draggedRow = null;
-        var _draggedPair = null;
+        var _draggedSectionRows = null;
 
-        function setupRowDrag(pipeHeaderRow, colHeaderRow) {
-            var rows = [pipeHeaderRow];
-            if (colHeaderRow) rows.push(colHeaderRow);
+        function createPipeSectionDragHandleHtml() {
+            return '<span class="pipe-type-drag-handle drag-handle" title="Drag section to reorder" aria-label="Drag section to reorder">\u2807</span>';
+        }
 
-            rows.forEach(function(row) {
+        function getPipeHeaderColspan(tableBodyOrTable) {
+            const root = tableBodyOrTable || document.getElementById('quotationTableBody');
+            if (!root) return '8';
+            const table = root.tagName === 'TABLE' ? root : root.closest('table');
+            const tableBody = root.tagName === 'TBODY' ? root : (root.querySelector && root.querySelector('tbody')) || root;
+            const existingHeaderCell = tableBody.querySelector('.pipe-type-header td[colspan]');
+            if (existingHeaderCell) {
+                return existingHeaderCell.getAttribute('colspan') || '8';
+            }
+            const headerRow = table ? table.querySelector('thead tr') : null;
+            return headerRow && headerRow.children.length ? String(headerRow.children.length) : '8';
+        }
+
+        function escapeHtmlAttr(value) {
+            return String(value || '')
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        }
+
+        function escapeJsStringSingleQuoted(value) {
+            return String(value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        }
+
+        function buildMainTablePipeHeaderButtonsHtml(pipeType, headerId) {
+            var pt = escapeJsStringSingleQuoted(pipeType);
+            var hid = escapeJsStringSingleQuoted(headerId);
+            var s = 'background:%c;color:white;border:none;padding:4px 8px;cursor:pointer;border-radius:3px;font-size:12px';
+            return '<button onclick="addRow(\'' + pt + '\',null,event)" title="Add item row" style="' + s.replace('%c', '#4CAF50') + '">➕</button>' +
+                '<button onclick="addRow(\'__NEW_HEADER__\',\'' + hid + '\',event)" title="Add pipe type" style="' + s.replace('%c', '#2196F3') + '">H+</button>' +
+                '<button onclick="addRow(\'__NEW_MAIN_HEADER__\',\'' + hid + '\',event)" title="Add main heading row" style="' + s.replace('%c', '#673AB7') + '">M+</button>' +
+                '<button onclick="deleteRow(event)" title="Delete pipe type" style="' + s.replace('%c', '#f44336') + '">🗑️</button>';
+        }
+
+        function buildCreationFolderPipeHeaderButtonsHtml(entryId) {
+            var eid = escapeHtmlAttr(entryId);
+            var s = 'background:%c;color:white;border:none;padding:4px 8px;cursor:pointer;border-radius:3px;font-size:12px';
+            return '<button type="button" data-creation-entry-id="' + eid + '" data-creation-action="add-row" data-creation-pipe-type="Default" title="Add item row" style="' + s.replace('%c', '#4CAF50') + '">➕</button>' +
+                '<button type="button" data-creation-entry-id="' + eid + '" data-creation-action="add-header" title="Add pipe type" style="' + s.replace('%c', '#2196F3') + '">H+</button>' +
+                '<button type="button" data-creation-entry-id="' + eid + '" data-creation-action="add-main-header" title="Add main heading row" style="' + s.replace('%c', '#673AB7') + '">M+</button>' +
+                '<button type="button" data-creation-entry-id="' + eid + '" data-creation-action="delete-row" title="Delete pipe type" style="' + s.replace('%c', '#f44336') + '">🗑️</button>';
+        }
+
+        function buildApprovalPipeHeaderButtonsHtml(quotationId, headerId) {
+            var qid = escapeJsStringSingleQuoted(quotationId);
+            var hid = escapeJsStringSingleQuoted(headerId);
+            var s = 'background:%c;color:white;border:none;padding:4px 8px;cursor:pointer;border-radius:3px;font-size:12px';
+            return '<button onclick="addApprovalRow(\'' + qid + '\',\'Default\',\'' + hid + '\')" title="Add item row" style="' + s.replace('%c', '#4CAF50') + '">➕</button>' +
+                '<button onclick="addApprovalRow(\'' + qid + '\',\'__NEW_HEADER__\',\'' + hid + '\')" title="Add pipe type" style="' + s.replace('%c', '#2196F3') + '">H+</button>' +
+                '<button onclick="addApprovalRow(\'' + qid + '\',\'__NEW_MAIN_HEADER__\',\'' + hid + '\')" title="Add main heading row" style="' + s.replace('%c', '#673AB7') + '">M+</button>' +
+                '<button onclick="deleteApprovalRow(\'' + qid + '\',\'' + hid + '\')" title="Delete pipe type" style="' + s.replace('%c', '#f44336') + '">🗑️</button>';
+        }
+
+        function buildPipeTypeHeaderInnerHtml(options) {
+            const headerLabel = options.headerLabel != null ? options.headerLabel : 'Default';
+            const buttonsHtml = options.buttonsHtml || '';
+            const dragAtEnd = !!options.dragAtEnd;
+            const dragHandle = createPipeSectionDragHandleHtml();
+            const inputHtml =
+                '<input type="text" class="editable-field" data-field="pipeTypeHeader" value="' +
+                escapeHtmlAttr(headerLabel) +
+                '" style="flex:1;border:none;background:transparent;color:white;font-weight:bold;font-size:14px">';
+            const actionsHtml = '<div class="pipe-header-actions" style="display:flex;gap:6px">' + buttonsHtml + '</div>';
+            if (dragAtEnd) {
+                return inputHtml + actionsHtml + dragHandle;
+            }
+            return dragHandle + inputHtml + actionsHtml;
+        }
+
+        function buildPipeTypeHeaderRowHtml(colspan, innerHtml) {
+            return '<td colspan="' + colspan + '">' +
+                '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">' +
+                innerHtml +
+                '</div></td>';
+        }
+
+        function createPipeTypeHeaderRow(options) {
+            const pipeType = options.pipeType || 'Default';
+            const headerId = options.headerId || ('pipe-header-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9));
+            const colspan = options.colspan || getPipeHeaderColspan(options.tableBody);
+            const row = document.createElement('tr');
+            row.className = 'pipe-type-header';
+            row.id = headerId;
+            row.setAttribute('data-pipe-type', pipeType);
+            if (options.pairedColumnHeaderId) {
+                row.setAttribute('data-paired-column-header', options.pairedColumnHeaderId);
+            }
+            const innerHtml = buildPipeTypeHeaderInnerHtml({
+                headerLabel: options.headerLabel,
+                buttonsHtml: options.buttonsHtml,
+                dragAtEnd: options.dragAtEnd
+            });
+            row.innerHTML = buildPipeTypeHeaderRowHtml(colspan, innerHtml);
+            if (options.dragAtEnd) {
+                movePipeTypeHeaderDragHandleToEnd(row);
+            }
+            setupPipeSectionDrag(row);
+            return row;
+        }
+
+        function getPairedColumnHeaderRow(pipeHeaderRow) {
+            if (!pipeHeaderRow) return null;
+            const tbody = pipeHeaderRow.closest('tbody');
+            const pairedColId = pipeHeaderRow.getAttribute('data-paired-column-header');
+            if (!pairedColId) return null;
+            return document.getElementById(pairedColId) ||
+                (tbody ? tbody.querySelector('.main-column-header-row[data-parent-header="' + pipeHeaderRow.id + '"]') : null);
+        }
+
+        function resolvePipeSectionHeaderRow(row) {
+            if (!row) return null;
+            if (row.classList.contains('pipe-type-header')) return row;
+            if (row.classList.contains('main-column-header-row')) {
+                const parentId = row.getAttribute('data-parent-header');
+                return parentId ? document.getElementById(parentId) : null;
+            }
+            let cur = row.previousElementSibling;
+            while (cur) {
+                if (cur.classList.contains('pipe-type-header')) return cur;
+                if (cur.classList.contains('main-column-header-row')) {
+                    const parentId = cur.getAttribute('data-parent-header');
+                    return parentId ? document.getElementById(parentId) : null;
+                }
+                cur = cur.previousElementSibling;
+            }
+            return null;
+        }
+
+        function collectPipeSectionRows(pipeHeaderRow) {
+            if (!pipeHeaderRow) return [];
+            const tbody = pipeHeaderRow.closest('tbody');
+            const rows = [];
+            const colRow = getPairedColumnHeaderRow(pipeHeaderRow);
+            if (colRow) rows.push(colRow);
+            rows.push(pipeHeaderRow);
+            let next = pipeHeaderRow.nextElementSibling;
+            while (next && !next.classList.contains('pipe-type-header') && !next.classList.contains('main-column-header-row')) {
+                rows.push(next);
+                next = next.nextElementSibling;
+            }
+            return rows;
+        }
+
+        function clearPipeSectionDragOverStyles() {
+            document.querySelectorAll('.row-drag-over-top, .row-drag-over-bottom').forEach(function(r) {
+                r.classList.remove('row-drag-over-top', 'row-drag-over-bottom');
+            });
+        }
+
+        function sectionRowsOverlap(sectionA, sectionB) {
+            if (!sectionA || !sectionB || !sectionA.length || !sectionB.length) return false;
+            return sectionA.some(function(row) { return sectionB.indexOf(row) !== -1; });
+        }
+
+        function getSectionBoundaryInsertBefore(tbody, targetRow, clientY) {
+            const targetHeader = resolvePipeSectionHeaderRow(targetRow);
+            if (!targetHeader) return null;
+            const targetSection = collectPipeSectionRows(targetHeader);
+            if (!targetSection.length) return null;
+            const rect = targetRow.getBoundingClientRect();
+            const mid = rect.top + rect.height / 2;
+            if (clientY < mid) {
+                return targetSection[0];
+            }
+            const last = targetSection[targetSection.length - 1];
+            return last.nextElementSibling;
+        }
+
+        function insertPipeSectionAt(tbody, sectionRows, beforeNode) {
+            sectionRows.forEach(function(row) {
+                tbody.insertBefore(row, beforeNode);
+            });
+        }
+
+        function isPipeSectionDragHandleTarget(target) {
+            return !!(target && target.closest && target.closest('.pipe-type-drag-handle, .drag-handle'));
+        }
+
+        function shouldIgnorePipeSectionDragStart(event) {
+            const target = event.target;
+            if (!target || !target.closest) return false;
+            if (isPipeSectionDragHandleTarget(target)) return false;
+            return !!target.closest('input, button, textarea, select, a');
+        }
+
+        function movePipeTypeHeaderDragHandleToEnd(pipeHeaderRow) {
+            const headerCell = pipeHeaderRow ? pipeHeaderRow.querySelector('td[colspan]') : null;
+            if (!headerCell) return;
+            const flex = headerCell.querySelector('div[style*="display:flex"], div[style*="display: flex"]');
+            let handle = headerCell.querySelector('.pipe-type-drag-handle, .drag-handle');
+            if (!handle && flex) {
+                flex.insertAdjacentHTML('afterbegin', createPipeSectionDragHandleHtml());
+                handle = headerCell.querySelector('.pipe-type-drag-handle, .drag-handle');
+            }
+            if (!flex || !handle) return;
+            flex.appendChild(handle);
+        }
+
+        function setupPipeSectionDrag(pipeHeaderRow) {
+            if (!pipeHeaderRow || pipeHeaderRow._pipeSectionDragSetup) return;
+            pipeHeaderRow._pipeSectionDragSetup = true;
+
+            const colRow = getPairedColumnHeaderRow(pipeHeaderRow);
+            const triggerRows = colRow ? [colRow, pipeHeaderRow] : [pipeHeaderRow];
+
+            triggerRows.forEach(function(row) {
                 row.setAttribute('draggable', 'true');
                 row.addEventListener('dragstart', function(e) {
-                    _draggedRow = pipeHeaderRow;
-                    _draggedPair = colHeaderRow || null;
+                    if (shouldIgnorePipeSectionDragStart(e)) {
+                        e.preventDefault();
+                        return;
+                    }
+                    _draggedSectionRows = collectPipeSectionRows(pipeHeaderRow);
                     e.dataTransfer.effectAllowed = 'move';
                     e.dataTransfer.setData('text/plain', pipeHeaderRow.id || '');
                     setTimeout(function() {
-                        pipeHeaderRow.classList.add('row-dragging');
-                        if (colHeaderRow) colHeaderRow.classList.add('row-dragging');
+                        _draggedSectionRows.forEach(function(r) { r.classList.add('row-dragging'); });
                     }, 0);
                 });
                 row.addEventListener('dragend', function() {
-                    pipeHeaderRow.classList.remove('row-dragging');
-                    if (colHeaderRow) colHeaderRow.classList.remove('row-dragging');
-                    document.querySelectorAll('.row-drag-over-top, .row-drag-over-bottom').forEach(function(r) {
-                        r.classList.remove('row-drag-over-top', 'row-drag-over-bottom');
-                    });
-                    _draggedRow = null;
-                    _draggedPair = null;
+                    if (_draggedSectionRows) {
+                        _draggedSectionRows.forEach(function(r) { r.classList.remove('row-dragging'); });
+                    }
+                    clearPipeSectionDragOverStyles();
+                    _draggedSectionRows = null;
                 });
             });
 
-            var tbody = pipeHeaderRow.closest('tbody');
-            if (tbody && !tbody._rowDragSetup) {
-                tbody._rowDragSetup = true;
-                tbody.addEventListener('dragover', function(e) {
-                    if (!_draggedRow) return;
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = 'move';
-                    document.querySelectorAll('.row-drag-over-top, .row-drag-over-bottom').forEach(function(r) {
-                        r.classList.remove('row-drag-over-top', 'row-drag-over-bottom');
-                    });
-                    var target = e.target.closest('tr');
-                    if (!target || target.parentNode !== tbody) {
-                        // Hovering over empty space below all rows — highlight last row bottom
-                        var lastRow = tbody.lastElementChild;
-                        if (lastRow && lastRow !== _draggedRow && lastRow !== _draggedPair) {
-                            lastRow.classList.add('row-drag-over-bottom');
-                        }
-                        return;
+            const tbody = pipeHeaderRow.closest('tbody');
+            if (!tbody || tbody._pipeSectionDragSetup) return;
+            tbody._pipeSectionDragSetup = true;
+
+            tbody.addEventListener('dragover', function(e) {
+                if (!_draggedSectionRows || !_draggedSectionRows.length) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                clearPipeSectionDragOverStyles();
+                const target = e.target.closest('tr');
+                if (!target || target.parentNode !== tbody) {
+                    const lastRow = tbody.lastElementChild;
+                    if (lastRow && _draggedSectionRows.indexOf(lastRow) === -1) {
+                        lastRow.classList.add('row-drag-over-bottom');
                     }
-                    if (target !== _draggedRow && target !== _draggedPair) {
-                        var rect = target.getBoundingClientRect();
-                        var mid = rect.top + rect.height / 2;
-                        if (e.clientY < mid) {
-                            target.classList.add('row-drag-over-top');
-                        } else {
-                            target.classList.add('row-drag-over-bottom');
-                        }
-                    }
-                });
-                        tbody.addEventListener('drop', function(e) {
-                    if (!_draggedRow) return;
-                    e.preventDefault();
-                    document.querySelectorAll('.row-drag-over-top, .row-drag-over-bottom').forEach(function(r) {
-                        r.classList.remove('row-drag-over-top', 'row-drag-over-bottom');
-                    });
-                    var target = e.target.closest('tr');
-                    if (!target || target.parentNode !== tbody) {
-                        // Drop after last row — append both to end
-                        tbody.appendChild(_draggedRow);
-                        if (_draggedPair) tbody.appendChild(_draggedPair);
-                        updateRowNumbers(tbody);
-                        return;
-                    }
-                    if (target !== _draggedRow && target !== _draggedPair && target.parentNode === tbody) {
-                        var rect = target.getBoundingClientRect();
-                        var mid = rect.top + rect.height / 2;
-                        if (e.clientY < mid) {
-                            // Insert before target: [pipeHeader, colHeader, target, ...]
-                            tbody.insertBefore(_draggedRow, target);
-                            if (_draggedPair) tbody.insertBefore(_draggedPair, target);
-                        } else {
-                            // Insert after target: [..., target, pipeHeader, colHeader, ...]
-                            var nextSib = target.nextElementSibling;
-                            tbody.insertBefore(_draggedRow, nextSib);
-                            if (_draggedPair) tbody.insertBefore(_draggedPair, _draggedRow.nextElementSibling);
-                        }
-                        updateRowNumbers(tbody);
-                    }
-                });
-                tbody.addEventListener('dragleave', function(e) {
-                    if (!tbody.contains(e.relatedTarget)) {
-                        document.querySelectorAll('.row-drag-over-top, .row-drag-over-bottom').forEach(function(r) {
-                            r.classList.remove('row-drag-over-top', 'row-drag-over-bottom');
-                        });
-                    }
-                });
-            }
+                    return;
+                }
+                if (_draggedSectionRows.indexOf(target) !== -1) return;
+                const rect = target.getBoundingClientRect();
+                const mid = rect.top + rect.height / 2;
+                if (e.clientY < mid) {
+                    target.classList.add('row-drag-over-top');
+                } else {
+                    target.classList.add('row-drag-over-bottom');
+                }
+            });
+
+            tbody.addEventListener('drop', function(e) {
+                if (!_draggedSectionRows || !_draggedSectionRows.length) return;
+                e.preventDefault();
+                clearPipeSectionDragOverStyles();
+                const target = e.target.closest('tr');
+                if (!target || target.parentNode !== tbody) {
+                    _draggedSectionRows.forEach(function(row) { tbody.appendChild(row); });
+                    updateRowNumbers(tbody);
+                    _draggedSectionRows = null;
+                    return;
+                }
+                const targetHeader = resolvePipeSectionHeaderRow(target);
+                if (!targetHeader) {
+                    _draggedSectionRows = null;
+                    return;
+                }
+                const targetSection = collectPipeSectionRows(targetHeader);
+                if (sectionRowsOverlap(_draggedSectionRows, targetSection)) {
+                    _draggedSectionRows = null;
+                    return;
+                }
+                const insertBefore = getSectionBoundaryInsertBefore(tbody, target, e.clientY);
+                if (insertBefore) {
+                    insertPipeSectionAt(tbody, _draggedSectionRows, insertBefore);
+                } else {
+                    _draggedSectionRows.forEach(function(row) { tbody.appendChild(row); });
+                }
+                updateRowNumbers(tbody);
+                _draggedSectionRows = null;
+            });
+
+            tbody.addEventListener('dragleave', function(e) {
+                if (!tbody.contains(e.relatedTarget)) {
+                    clearPipeSectionDragOverStyles();
+                }
+            });
+        }
+
+        function setupAllPipeSectionDragsInTable(table) {
+            if (!table) return;
+            table.querySelectorAll('.pipe-type-header').forEach(function(pipeRow) {
+                setupPipeSectionDrag(pipeRow);
+            });
+        }
+
+        function setupRowDrag(pipeHeaderRow, colHeaderRow) {
+            setupPipeSectionDrag(pipeHeaderRow || colHeaderRow);
         }
 
         /*
@@ -4291,18 +4488,16 @@
             return row;
         }
 
-        function createMPlusPipeHeaderRow(pipeHeaderId, colHeaderId, colspan, actionsHtml) {
-            var row = document.createElement('tr');
-            row.className = 'pipe-type-header';
-            row.id = pipeHeaderId;
-            row.setAttribute('data-pipe-type', 'Custom');
-            row.setAttribute('data-paired-column-header', colHeaderId);
-            row.innerHTML = '<td colspan="' + colspan + '">' +
-                '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">' +
-                '<input type="text" class="editable-field" data-field="pipeTypeHeader" value="Custom Section" style="flex:1;border:none;background:transparent;color:white;font-weight:bold;font-size:14px">' +
-                '<div class="pipe-header-actions" style="display:flex;gap:4px">' + actionsHtml + '</div>' +
-                '</div></td>';
-            return row;
+        function createMPlusPipeHeaderRow(pipeHeaderId, colHeaderId, colspan, actionsHtml, dragAtEnd) {
+            return createPipeTypeHeaderRow({
+                headerId: pipeHeaderId,
+                pipeType: 'Custom',
+                headerLabel: 'Custom Section',
+                colspan: colspan,
+                buttonsHtml: actionsHtml,
+                pairedColumnHeaderId: colHeaderId,
+                dragAtEnd: !!dragAtEnd
+            });
         }
 
         function insertMPlusRowPair(tableBody, colHeaderRow, pipeHeaderRow, anchorRow) {
@@ -4350,25 +4545,14 @@
             const container = tableBodyToUse.closest('.quotation-folder-content');
             
             if (pipeType === '__NEW_HEADER__') {
-                const existingHeaderCell = tableBodyToUse.querySelector('.pipe-type-header td[colspan]');
-                const colspan = existingHeaderCell ? existingHeaderCell.getAttribute('colspan') : '8';
-                const headerRow = document.createElement('tr');
-                headerRow.className = 'pipe-type-header';
-                headerRow.id = `pipe-header-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                headerRow.setAttribute('data-pipe-type', 'Default');
-                headerRow.innerHTML = `
-                    <td colspan="${colspan}">
-                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
-                            <input type="text" class="editable-field" data-field="pipeTypeHeader" value="Default" style="flex: 1; border: none; background: transparent; font-weight: bold;">
-                            <div style="display: flex; gap: 6px;">
-                                <button onclick="addRow('Default', null, event)" title="Add item row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">➕</button>
-                                <button onclick="addRow('__NEW_HEADER__', '${headerRow.id}', event)" title="Add pipe type" style="background: #2196F3; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">H+</button>
-                                <button onclick="addRow('__NEW_MAIN_HEADER__', '${headerRow.id}', event)" title="Add main heading row" style="background: #673AB7; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">M+</button>
-                                <button onclick="deleteRow(event)" title="Delete pipe type" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
-                            </div>
-                        </div>
-                    </td>
-                `;
+                const headerId = 'pipe-header-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+                const headerRow = createPipeTypeHeaderRow({
+                    headerId: headerId,
+                    pipeType: 'Default',
+                    headerLabel: 'Default',
+                    tableBody: tableBodyToUse,
+                    buttonsHtml: buildMainTablePipeHeaderButtonsHtml('Default', headerId)
+                });
                 tableBodyToUse.appendChild(headerRow);
                 if (container) {
                     const entryId = container.id && container.id.startsWith('folder-content-') ? container.id.replace('folder-content-', '') : '';
@@ -4403,26 +4587,14 @@
                     pipeType = lastRow.getAttribute('data-pipe-type') || 'Default';
                 } else {
                     pipeType = 'Default';
-                    // Create a header row if it doesn't exist
-                    const existingHeaderCell = tableBodyToUse.querySelector('.pipe-type-header td[colspan]');
-                    const colspan = existingHeaderCell ? existingHeaderCell.getAttribute('colspan') : '8';
-                    const headerRow = document.createElement('tr');
-                    headerRow.className = 'pipe-type-header';
-                    headerRow.id = `pipe-header-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                    headerRow.setAttribute('data-pipe-type', pipeType);
-                    headerRow.innerHTML = `
-                        <td colspan="${colspan}">
-                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
-                                <input type="text" class="editable-field" data-field="pipeTypeHeader" value="${pipeType}" style="flex: 1; border: none; background: transparent; font-weight: bold;">
-                                <div style="display: flex; gap: 6px;">
-                                    <button onclick="addRow('${pipeType}', null, event)" title="Add item row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">➕</button>
-                                    <button onclick="addRow('__NEW_HEADER__', '${headerRow.id}', event)" title="Add pipe type" style="background: #2196F3; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">H+</button>
-                                    <button onclick="addRow('__NEW_MAIN_HEADER__', '${headerRow.id}', event)" title="Add main heading row" style="background: #673AB7; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">M+</button>
-                                    <button onclick="deleteRow(event)" title="Delete pipe type" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
-                                </div>
-                            </div>
-                        </td>
-                    `;
+                    const headerId = 'pipe-header-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+                    const headerRow = createPipeTypeHeaderRow({
+                        headerId: headerId,
+                        pipeType: pipeType,
+                        headerLabel: pipeType,
+                        tableBody: tableBodyToUse,
+                        buttonsHtml: buildMainTablePipeHeaderButtonsHtml(pipeType, headerId)
+                    });
                     tableBodyToUse.appendChild(headerRow);
                 }
             }
@@ -6009,54 +6181,26 @@
                     if (!table.querySelector('tbody .pipe-type-header')) {
                         var defTbody = table.querySelector('tbody');
                         if (defTbody) {
-                            var defRow = createDefaultPipeHeaderRow();
-                            // Match colspan to actual header column count
                             var defHeaderRow = table.querySelector('thead tr');
                             var defColspan = defHeaderRow ? defHeaderRow.children.length : 8;
-                            var defTd = defRow.querySelector('td[colspan]');
-                            if (defTd) defTd.setAttribute('colspan', String(defColspan));
-                            // Rebuild buttons to use addApprovalRow instead of addRow
-                            var defId = defRow.id;
-                            var defCell = defRow.querySelector('td');
-                            if (defCell) {
-                                var defActions = defCell.querySelector('.pipe-header-actions') || defCell.querySelector('div:last-child');
-                                if (defActions) {
-                                    defActions.innerHTML = '';
-                                    var s = 'background:%c;color:white;border:none;padding:4px 8px;cursor:pointer;border-radius:3px;font-size:12px';
-                                    var btnAdd = document.createElement('button');
-                                    btnAdd.type = 'button'; btnAdd.textContent = '➕'; btnAdd.title = 'Add item row';
-                                    btnAdd.style.cssText = s.replace('%c','#4CAF50');
-                                    btnAdd.onclick = function() { addApprovalRow(quotationId, 'Default', defId); };
-                                    var btnH = document.createElement('button');
-                                    btnH.type = 'button'; btnH.textContent = 'H+'; btnH.title = 'Add pipe type';
-                                    btnH.style.cssText = s.replace('%c','#2196F3');
-                                    btnH.onclick = function() { addApprovalRow(quotationId, '__NEW_HEADER__', defId); };
-                                    var btnM = document.createElement('button');
-                                    btnM.type = 'button'; btnM.textContent = 'M+'; btnM.title = 'Add main heading row';
-                                    btnM.style.cssText = s.replace('%c','#673AB7');
-                                    btnM.onclick = function() { addApprovalRow(quotationId, '__NEW_MAIN_HEADER__', defId); };
-                                    var btnDel = document.createElement('button');
-                                    btnDel.type = 'button'; btnDel.textContent = '🗑️'; btnDel.title = 'Delete pipe type';
-                                    btnDel.style.cssText = s.replace('%c','#f44336');
-                                    btnDel.onclick = function() { deleteApprovalRow(quotationId, defId); };
-                                    defActions.appendChild(btnAdd);
-                                    defActions.appendChild(btnH);
-                                    defActions.appendChild(btnM);
-                                    defActions.appendChild(btnDel);
-                                }
-                            }
+                            var defId = 'approval-header-' + quotationId + '-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+                            var defRow = createPipeTypeHeaderRow({
+                                headerId: defId,
+                                pipeType: 'Default',
+                                headerLabel: 'Enter Section Name',
+                                colspan: String(defColspan),
+                                tableBody: defTbody,
+                                buttonsHtml: buildApprovalPipeHeaderButtonsHtml(quotationId, defId),
+                                dragAtEnd: true
+                            });
                             defTbody.insertBefore(defRow, defTbody.firstChild);
                         }
                     }
 
-                    // Set up drag for M+ row pairs loaded from tableHTML
-                    table.querySelectorAll('.pipe-type-header[data-paired-column-header]').forEach(function(pipeRow) {
-                        var colHeaderId = pipeRow.getAttribute('data-paired-column-header');
-                        var colRow = colHeaderId ? (document.getElementById(colHeaderId) || table.querySelector('[data-parent-header="' + pipeRow.id + '"]')) : null;
-                        if (colRow && colRow.closest('tbody') === pipeRow.closest('tbody')) {
-                            setupRowDrag(colRow, pipeRow);
-                        }
+                    table.querySelectorAll('.pipe-type-header').forEach(function(headerRow) {
+                        movePipeTypeHeaderDragHandleToEnd(headerRow);
                     });
+                    setupAllPipeSectionDragsInTable(table);
 
                     // Process each item row (all tbody rows that aren't pipe-type-header, freight, or main-column-header-row)
                     ensureLineItemIdsInTable(table, quotation && quotation.lineItems);
@@ -6441,28 +6585,15 @@
             if (!tbody) return;
             
             if (pipeType === '__NEW_HEADER__') {
-                const existingHeaderCell = table.querySelector('.pipe-type-header td[colspan]');
-                const headerRow = table.querySelector('thead tr');
-                const colspan = existingHeaderCell
-                    ? existingHeaderCell.getAttribute('colspan')
-                    : (headerRow ? headerRow.children.length : 8);
-                const newHeaderRow = document.createElement('tr');
-                newHeaderRow.className = 'pipe-type-header';
-                newHeaderRow.id = `approval-header-${quotationId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                newHeaderRow.setAttribute('data-pipe-type', 'Default');
-                newHeaderRow.innerHTML = `
-                    <td colspan="${colspan}">
-                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
-                            <input type="text" class="editable-field" data-field="pipeTypeHeader" value="Default" style="flex: 1; border: none; background: transparent; font-weight: bold;">
-                            <div style="display: flex; gap: 6px;">
-                                <button onclick="addApprovalRow('${quotationId}', 'Default', '${newHeaderRow.id}')" title="Add item row" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">➕</button>
-                                <button onclick="addApprovalRow('${quotationId}', '__NEW_HEADER__', '${newHeaderRow.id}')" title="Add pipe type" style="background: #2196F3; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">H+</button>
-                                <button onclick="addApprovalRow('${quotationId}', '__NEW_MAIN_HEADER__', '${newHeaderRow.id}')" title="Add main heading row" style="background: #673AB7; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">M+</button>
-                                <button onclick="deleteApprovalRow('${quotationId}', '${newHeaderRow.id}')" title="Delete pipe type" style="background: #f44336; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px;">🗑️</button>
-                            </div>
-                        </div>
-                    </td>
-                `;
+                const headerId = 'approval-header-' + quotationId + '-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+                const newHeaderRow = createPipeTypeHeaderRow({
+                    headerId: headerId,
+                    pipeType: 'Default',
+                    headerLabel: 'Default',
+                    tableBody: tbody,
+                    buttonsHtml: buildApprovalPipeHeaderButtonsHtml(quotationId, headerId),
+                    dragAtEnd: true
+                });
                 tbody.appendChild(newHeaderRow);
                 attachApprovalSectionListeners(folderContent);
                 return;
@@ -6476,7 +6607,7 @@
                     : (headerRow2 ? headerRow2.children.length : 8);
                 const { pipeHeaderId: aprvPipeHeaderId, colHeaderId: aprvColHeaderId } = generateMPlusIds('approval-m-' + quotationId);
                 const aprvColRow = createMPlusColumnLabelRow(aprvPipeHeaderId, aprvColHeaderId, true);
-                const aprvPipeRow = createMPlusPipeHeaderRow(aprvPipeHeaderId, aprvColHeaderId, colspan2, buildMPlusButtonsHtmlForApproval(quotationId, aprvPipeHeaderId));
+                const aprvPipeRow = createMPlusPipeHeaderRow(aprvPipeHeaderId, aprvColHeaderId, colspan2, buildMPlusButtonsHtmlForApproval(quotationId, aprvPipeHeaderId), true);
                 const anchorRow = insertAfterId ? tbody.querySelector('#' + insertAfterId) : null;
                 insertMPlusRowPair(tbody, aprvColRow, aprvPipeRow, anchorRow);
                 attachApprovalSectionListeners(folderContent);
