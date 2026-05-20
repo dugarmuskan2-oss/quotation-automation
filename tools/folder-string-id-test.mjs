@@ -1,15 +1,15 @@
 import { chromium } from 'playwright';
-import { appendFileSync } from 'fs';
 import { runTestQuotationCleanup } from './e2e-cleanup-lib.mjs';
 
-const LOG = 'debug-f5e334.log';
 const base = process.env.TEST_URL || 'http://127.0.0.1:3000';
 
-function log(hypothesisId, location, message, data) {
-  appendFileSync(
-    LOG,
-    JSON.stringify({ sessionId: 'f5e334', hypothesisId, location, message, data, timestamp: Date.now(), runId: 'string-id' }) + '\n'
-  );
+const listRes = await fetch(`${base}/api/quotations`);
+const listJson = await listRes.json();
+const rows = Array.isArray(listJson) ? listJson : listJson.quotations || [];
+const stringIdRow = rows.find((r) => r && r.id != null && /[a-z]/i.test(String(r.id)));
+if (!stringIdRow) {
+  console.log(JSON.stringify({ skip: true, reason: 'no_string_id_quotation_in_api' }, null, 2));
+  process.exit(0);
 }
 
 const browser = await chromium.launch({ headless: true });
@@ -17,24 +17,22 @@ const page = await browser.newPage();
 await page.goto(base, { waitUntil: 'domcontentloaded', timeout: 60000 });
 await page.waitForTimeout(2500);
 
-const result = await page.evaluate(() => {
+const sid = String(stringIdRow.id);
+const result = await page.evaluate((id) => {
   if (typeof switchToQuotationTab === 'function') switchToQuotationTab();
-  const folder = document.getElementById('folder-test-save-20260518131450');
-  const header = folder && folder.querySelector('.quotation-folder-header');
-  const onclick = header && header.getAttribute('onclick');
+  const folder = document.getElementById('folder-' + id);
   if (typeof toggleQuotationFolder === 'function') {
-    toggleQuotationFolder('test-save-20260518131450');
+    toggleQuotationFolder(id);
   }
-  const content = document.getElementById('folder-content-test-save-20260518131450');
+  const content = document.getElementById('folder-content-' + id);
   return {
+    id,
     found: !!folder,
-    onclick,
     isOpen: content && content.classList.contains('show'),
     innerLen: content && (content.innerHTML || '').length
   };
-});
+}, sid);
 
-log('H1', 'string-id-open', 'test-save folder', result);
 console.log(JSON.stringify(result, null, 2));
 await browser.close();
 await runTestQuotationCleanup(base);

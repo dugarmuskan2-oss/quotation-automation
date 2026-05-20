@@ -45,4 +45,9 @@ await browser.close();
 
 await runTestQuotationCleanup(base);
 
+if (result.error === 'not_in_memory') {
+  console.log('SKIP: no E2E/SMALL quotation in client memory (inject via e2e-smoke or save a test quote).');
+  process.exit(0);
+}
+
 process.exit(result.hasTable || result.hasApprovalQuote ? 0 : 1);

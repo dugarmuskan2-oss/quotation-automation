@@ -1435,7 +1435,9 @@
                 });
                 const result = await safeJsonParse(response);
                 if (!response.ok) {
-                    throw new Error(result.error || 'Failed to save quotation');
+                    const base = result.error || 'Failed to save quotation';
+                    const detail = result.details ? String(result.details) : '';
+                    throw new Error(detail ? `${base}: ${detail}` : base);
                 }
                 return true;
             } catch (error) {
@@ -1517,6 +1519,9 @@
                     : (Array.isArray(result.quotations) ? result.quotations : []);
                 const quotations = rawQuotations.map(normalizeQuotationRecord);
                 const hasMore = Array.isArray(result) ? false : !!result.hasMore;
+                // #region agent log
+                fetch('http://127.0.0.1:7694/ingest/eb0363b7-c605-45af-945f-2e2f395a6d8d', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'f5e334' }, body: JSON.stringify({ sessionId: 'f5e334', location: 'index.html:loadQuotationsFromBackend', message: 'quotations list fetch', data: { append: !!append, offset, received: quotations.length, apiTotal: typeof result.total === 'number' ? result.total : null, hasMore }, timestamp: Date.now(), hypothesisId: 'H3', runId: (typeof window !== 'undefined' && window.__AGENT_DEBUG_RUN) || 'pre' }) }).catch(function() {});
+                // #endregion
                 if (append) {
                     appendApprovedQuotationsFromBackend(quotations);
                 } else {

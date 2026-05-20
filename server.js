@@ -1165,6 +1165,61 @@ app.get('/api/get-default-margins', async (req, res) => {
     }
 });
 
+/** DynamoDB single-item limit is 400 KiB; large table/header/email HTML exceeds it. Keep under limit (see save-quotation). */
+const DDB_MAX_ITEM_BYTES = 390 * 1024;
+const DDB_QUOTATION_HEAVY_STRING_FIELDS = ['emailContentHtml', 'emailContent', 'tableHTML', 'headerHTML', 'fileContent'];
+
+function approxDynamoItemJsonUtf8Bytes(quotationLike) {
+    const item = {
+        id: String(quotationLike.id),
+        updatedAt: quotationLike.updatedAt,
+        createdAt: quotationLike.createdAt,
+        payload: quotationLike
+    };
+    return Buffer.byteLength(JSON.stringify(item), 'utf8');
+}
+
+function truncateHeavyStringForDdb(s, maxLen) {
+    if (typeof s !== 'string' || s.length <= maxLen) {
+        return s;
+    }
+    return s.slice(0, maxLen) + '\n\n[…truncated: DynamoDB 400KB item limit]';
+}
+
+function clampQuotationPayloadForDynamoDb(quotation) {
+    if (!quotation || typeof quotation !== 'object') {
+        return quotation;
+    }
+    const q = { ...quotation };
+    const fc = String(q.fileContent || '').trim();
+    if (fc && (fc.startsWith('%PDF') || fc.length > 500000)) {
+        q.fileContent = '(PDF uploaded - content extracted by AI)';
+    }
+    let guard = 0;
+    while (approxDynamoItemJsonUtf8Bytes(q) > DDB_MAX_ITEM_BYTES && guard < 80) {
+        guard++;
+        const fields = DDB_QUOTATION_HEAVY_STRING_FIELDS.map((k) => ({
+            k,
+            len: typeof q[k] === 'string' ? q[k].length : 0
+        }))
+            .filter((x) => x.len > 500)
+            .sort((a, b) => b.len - a.len);
+        if (fields.length) {
+            const target = fields[0];
+            const newLen = Math.max(500, Math.floor(target.len / 2));
+            q[target.k] = truncateHeavyStringForDdb(q[target.k], newLen);
+        } else {
+            DDB_QUOTATION_HEAVY_STRING_FIELDS.forEach((k) => {
+                if (typeof q[k] === 'string' && q[k].length > 0) {
+                    q[k] = '[Omitted: exceeded storage size limit]';
+                }
+            });
+            break;
+        }
+    }
+    return q;
+}
+
 // Save quotation to DynamoDB (shared across devices)
 app.post('/api/save-quotation', async (req, res) => {
     try {
@@ -1182,20 +1237,25 @@ app.post('/api/save-quotation', async (req, res) => {
             createdAt: quotation.createdAt || now,
             updatedAt: now
         };
-        if (isAutomatedTestQuotation(updatedQuotation)) {
+        const classifiedAsTest = isAutomatedTestQuotation(updatedQuotation);
+        if (classifiedAsTest) {
             updatedQuotation.automatedTest = true;
             updatedQuotation.testExpiresAt = new Date(Date.now() + AUTOMATED_TEST_TTL_MS).toISOString();
         }
+        const payloadForDb = clampQuotationPayloadForDynamoDb(updatedQuotation);
         const item = {
-            id: String(updatedQuotation.id),
-            updatedAt: updatedQuotation.updatedAt,
-            createdAt: updatedQuotation.createdAt,
-            payload: updatedQuotation
+            id: String(payloadForDb.id),
+            updatedAt: payloadForDb.updatedAt,
+            createdAt: payloadForDb.createdAt,
+            payload: payloadForDb
         };
         await ddbDocClient.send(new PutCommand({
             TableName: ddbTableName,
             Item: item
         }));
+        // #region agent log
+        fetch('http://127.0.0.1:7694/ingest/eb0363b7-c605-45af-945f-2e2f395a6d8d', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'f5e334' }, body: JSON.stringify({ sessionId: 'f5e334', location: 'server.js:save-quotation', message: 'save classification', data: { id: String(updatedQuotation.id || ''), quoteNumber: String(updatedQuotation.quoteNumber || ''), headerQn: updatedQuotation.header && String(updatedQuotation.header.quoteNumber || ''), incomingAutomatedTest: quotation.automatedTest === true, classifiedAsTest, persistedAutomatedTest: updatedQuotation.automatedTest === true, approxItemBytes: approxDynamoItemJsonUtf8Bytes(payloadForDb) }, timestamp: Date.now(), hypothesisId: 'H1', runId: process.env.AGENT_DEBUG_RUN || 'pre' }) }).catch(() => {});
+        // #endregion
         if (updatedQuotation.automatedTest) {
             scheduleAutomatedTestQuotationDeletion(String(updatedQuotation.id));
         }
@@ -1544,6 +1604,9 @@ async function deleteAutomatedTestQuotationById(id) {
         TableName: ddbTableName,
         Key: { id: String(id) }
     }));
+    // #region agent log
+    fetch('http://127.0.0.1:7694/ingest/eb0363b7-c605-45af-945f-2e2f395a6d8d', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'f5e334' }, body: JSON.stringify({ sessionId: 'f5e334', location: 'server.js:deleteAutomatedTestQuotationById', message: 'ddb row deleted as automated test', data: { id: String(id) }, timestamp: Date.now(), hypothesisId: 'H1', runId: process.env.AGENT_DEBUG_RUN || 'pre' }) }).catch(() => {});
+    // #endregion
     return true;
 }
 
@@ -1568,6 +1631,9 @@ function scheduleAutomatedTestQuotationDeletion(id) {
         timer.unref();
     }
     testDeletionTimers.set(key, timer);
+    // #region agent log
+    fetch('http://127.0.0.1:7694/ingest/eb0363b7-c605-45af-945f-2e2f395a6d8d', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'f5e334' }, body: JSON.stringify({ sessionId: 'f5e334', location: 'server.js:scheduleAutomatedTestQuotationDeletion', message: 'timer set for test quotation TTL delete', data: { id: key, ttlMs: AUTOMATED_TEST_TTL_MS }, timestamp: Date.now(), hypothesisId: 'H1', runId: process.env.AGENT_DEBUG_RUN || 'pre' }) }).catch(() => {});
+    // #endregion
 }
 
 /**
@@ -1601,6 +1667,11 @@ async function cleanupAutomatedTestQuotationsFromDdb(options = {}) {
         deletedIds.push(String(item.id));
         testDeletionTimers.delete(String(item.id));
     }
+    // #region agent log
+    if (deletedIds.length > 0 || forceAll) {
+        fetch('http://127.0.0.1:7694/ingest/eb0363b7-c605-45af-945f-2e2f395a6d8d', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'f5e334' }, body: JSON.stringify({ sessionId: 'f5e334', location: 'server.js:cleanupAutomatedTestQuotationsFromDdb', message: 'test cleanup scan finished', data: { deletedCount: deletedIds.length, forceAll, sampleIds: deletedIds.slice(0, 20) }, timestamp: Date.now(), hypothesisId: forceAll ? 'H4' : 'H2', runId: process.env.AGENT_DEBUG_RUN || 'pre' }) }).catch(() => {});
+    }
+    // #endregion
     return { deletedIds, deletedCount: deletedIds.length };
 }
 
@@ -2785,13 +2856,14 @@ async function saveQuotationInternal(quotation) {
     const { PutCommand } = require('@aws-sdk/lib-dynamodb');
     const now = new Date().toISOString();
     const updated = { ...quotation, updatedAt: now, createdAt: quotation.createdAt || now };
+    const payloadForDb = clampQuotationPayloadForDynamoDb(updated);
     await ddbDocClient.send(new PutCommand({
         TableName: ddbTableName,
         Item: {
-            id: String(updated.id),
-            updatedAt: updated.updatedAt,
-            createdAt: updated.createdAt,
-            payload: updated
+            id: String(payloadForDb.id),
+            updatedAt: payloadForDb.updatedAt,
+            createdAt: payloadForDb.createdAt,
+            payload: payloadForDb
         }
     }));
 }
