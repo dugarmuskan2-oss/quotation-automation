@@ -1466,14 +1466,36 @@
             backendSaveTimers.set(quotation.id, timeoutId);
         }
 
+        function isApprovalSearchActive() {
+            return !!normalizeSearchText(approvalSearchQuery);
+        }
+
         function updateLoadMoreApprovedButton() {
             const loadMoreBtn = document.getElementById('loadMoreApprovedBtn');
             if (!loadMoreBtn) {
                 return;
             }
-            loadMoreBtn.style.display = approvedQuotationsHasMore ? 'inline-block' : 'none';
+            const showLoadMore = approvedQuotationsHasMore && !isApprovalSearchActive();
+            loadMoreBtn.style.display = showLoadMore ? 'inline-block' : 'none';
             loadMoreBtn.disabled = approvedQuotationsLoading;
             loadMoreBtn.textContent = approvedQuotationsLoading ? 'Loading...' : 'Load more';
+            loadMoreBtn.title = isApprovalSearchActive()
+                ? 'Clear the search box to load more quotations'
+                : '';
+        }
+
+        function appendApprovedQuotationsFromBackend(quotations) {
+            const seen = new Set(approvedQuotations.map(function(q) {
+                return String(q && q.id || '');
+            }));
+            quotations.forEach(function(quotation) {
+                const id = String(quotation && quotation.id || '');
+                if (!id || seen.has(id)) {
+                    return;
+                }
+                seen.add(id);
+                approvedQuotations.push(quotation);
+            });
         }
 
         async function loadQuotationsFromBackend(append = false) {
@@ -1490,19 +1512,25 @@
                     const detailMsg = result.details ? ': ' + result.details : '';
                     throw new Error((result.error || 'Failed to load quotations') + detailMsg);
                 }
-                const quotations = (Array.isArray(result.quotations) ? result.quotations : []).map(normalizeQuotationRecord);
+                const rawQuotations = Array.isArray(result)
+                    ? result
+                    : (Array.isArray(result.quotations) ? result.quotations : []);
+                const quotations = rawQuotations.map(normalizeQuotationRecord);
+                const hasMore = Array.isArray(result) ? false : !!result.hasMore;
                 if (append) {
-                    approvedQuotations = approvedQuotations.concat(quotations);
+                    appendApprovedQuotationsFromBackend(quotations);
                 } else {
                     approvedQuotations = quotations;
                 }
-                approvedQuotationsOffset = approvedQuotations.length;
-                approvedQuotationsHasMore = !!result.hasMore;
+                approvedQuotationsOffset = offset + quotations.length;
+                approvedQuotationsHasMore = hasMore;
                 syncApprovedQuotationsGlobal();
                 displayAllApprovedQuotations();
                 return quotations.length > 0;
             } catch (error) {
                 console.error('Error loading quotations from backend:', error);
+                const actionLabel = append ? 'load more quotations' : 'load quotations';
+                showUploadStatus('Failed to ' + actionLabel + ': ' + (error.message || 'Network error'), true);
                 return false;
             } finally {
                 approvedQuotationsLoading = false;
@@ -1520,8 +1548,13 @@
             if (!approvedQuotationsHasMore || approvedQuotationsLoading) {
                 return;
             }
+            if (isApprovalSearchActive()) {
+                showUploadStatus('Clear the search box to load and view more quotations.', false);
+                return;
+            }
             await loadQuotationsFromBackend(true);
         }
+        window.loadMoreApprovedQuotations = loadMoreApprovedQuotations;
 
         /*
             ============================================
@@ -5728,6 +5761,14 @@
                     </p>
                 `;
             }
+
+        function renderNoApprovalSearchMatchesMessage(container) {
+            container.innerHTML = `
+                <p id="noApprovedSearchMatches" style="text-align: center; color: #999; padding: 20px;">
+                    No quotations match your search. Clear the search box to see loaded quotations, or load more from the server when search is cleared.
+                </p>
+            `;
+        }
             
         function hideNoApprovedQuotationsMessage() {
             // Hide the "no quotations" message
@@ -5776,7 +5817,7 @@
 
                 allQuotationsHTML += `
                     <div class="quotation-folder" id="folder-${quotation.id}">
-                        <div class="quotation-folder-header" data-quotation-id="${escapeHtmlAttr(String(quotation.id))}" onclick='toggleQuotationFolder(${JSON.stringify(String(quotation.id))})'>
+                        <div class="quotation-folder-header" data-quotation-id="${escapeHtmlAttr(String(quotation.id))}" role="button" tabindex="0">
                             <span>
                                 <span class="folder-icon">📁</span>
                                 ${folderName}
@@ -5807,10 +5848,33 @@
             return String(a) === String(b);
         }
 
+        /** Keep in sync with lib/automated-test-quotation.js */
         function isAutomatedTestQuotation(quotation) {
-            const id = String(quotation && quotation.id || '');
-            const qn = String(quotation && quotation.quoteNumber || '');
-            return /^e2e/i.test(id) || /^E2E\//i.test(qn);
+            if (!quotation) {
+                return false;
+            }
+            let id = String(quotation.id || '');
+            let qn = String(quotation.quoteNumber || '');
+            const header = quotation.header && typeof quotation.header === 'object' ? quotation.header : null;
+            if (!qn && header && header.quoteNumber) {
+                qn = String(header.quoteNumber);
+            }
+            if (!id || id === 'QUOTE_NUMBER_COUNTER') {
+                return false;
+            }
+            if (quotation.automatedTest === true) {
+                return true;
+            }
+            if (/^e2e|^test-save|^dbg-|^status-check|^small-test|^big-test/i.test(id)) {
+                return true;
+            }
+            if (/^E2E\//i.test(qn) || /^TEST-/i.test(qn)) {
+                return true;
+            }
+            if (qn === 'S1' || qn === 'CHK' || qn === 'BIG' || qn === 'BIG2' || qn === 'L1') {
+                return true;
+            }
+            return false;
         }
 
         /** Flatten nested header maps from API/test saves so Approval folders open reliably. */
@@ -6147,6 +6211,7 @@
             // If no quotations, show message
             if (approvedQuotations.length === 0) {
                 renderNoApprovedQuotationsMessage(container);
+                updateLoadMoreApprovedButton();
                 return;
             }
             
@@ -6157,6 +6222,11 @@
             attachApprovalSearchListener();
             attachApprovalFolderToggleDelegation();
             const filteredQuotations = getFilteredApprovedQuotations(approvalSearchQuery);
+            if (filteredQuotations.length === 0) {
+                renderNoApprovalSearchMatchesMessage(container);
+                updateLoadMoreApprovedButton();
+                return;
+            }
             const sortedByQuotationDate = filteredQuotations.slice().sort(function (a, b) {
                 const aQuote = getQuoteNumberSortValue(a.quoteNumber);
                 const bQuote = getQuoteNumberSortValue(b.quoteNumber);
@@ -8320,6 +8390,15 @@
         console.log("Quotation Generator loaded successfully!");
         
         // Load saved quotations from backend
+        (function bindLoadMoreApprovedButton() {
+            const loadMoreBtn = document.getElementById('loadMoreApprovedBtn');
+            if (loadMoreBtn && loadMoreBtn.dataset.bound !== 'true') {
+                loadMoreBtn.dataset.bound = 'true';
+                loadMoreBtn.addEventListener('click', function() {
+                    loadMoreApprovedQuotations();
+                });
+            }
+        })();
         initQuotations();
         
         // Load instructions from server

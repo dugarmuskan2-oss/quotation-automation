@@ -1,5 +1,6 @@
 import { chromium } from 'playwright';
 import { appendFileSync } from 'fs';
+import { runTestQuotationCleanup } from './e2e-cleanup-lib.mjs';
 
 const LOG = 'debug-f5e334.log';
 const base = process.env.TEST_URL || 'http://127.0.0.1:3000';
@@ -65,6 +66,7 @@ log('H7', 'approval-open', 'folder diagnostics', diag);
 if (diag.error || diag.headerCount < 2) {
   console.log('SKIP/FAIL:', diag);
   await browser.close();
+  await runTestQuotationCleanup(base);
   process.exit(diag.error ? 1 : 1);
 }
 
@@ -90,4 +92,5 @@ const result = {
 log('H2', 'approval-drag', 'drag result', result);
 console.log(JSON.stringify(result, null, 2));
 await browser.close();
+await runTestQuotationCleanup(base);
 process.exit(result.reordered && result.stuck === 0 ? 0 : 1);

@@ -1,5 +1,8 @@
 import { chromium } from 'playwright';
 import { writeFileSync, appendFileSync } from 'fs';
+import { runTestQuotationCleanup, getTestServerBaseUrl } from './e2e-cleanup-lib.mjs';
+
+const base = getTestServerBaseUrl();
 
 const LOG = 'debug-f5e334.log';
 const sessionId = 'f5e334';
@@ -29,6 +32,7 @@ try {
 } catch (e) {
   log('H0', 'goto', 'page load failed', { error: String(e) });
   await browser.close();
+  await runTestQuotationCleanup(base);
   process.exit(1);
 }
 
@@ -94,3 +98,4 @@ const result = await page.evaluate(async () => {
 log('H1', 'automated', 'drag simulation result', result);
 console.log(JSON.stringify(result, null, 2));
 await browser.close();
+await runTestQuotationCleanup(base);

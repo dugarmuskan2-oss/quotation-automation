@@ -1,5 +1,6 @@
 import { chromium } from 'playwright';
 import { appendFileSync } from 'fs';
+import { runTestQuotationCleanup } from './e2e-cleanup-lib.mjs';
 
 const LOG = 'debug-f5e334.log';
 const base = process.env.TEST_URL || 'http://127.0.0.1:3000';
@@ -72,3 +73,4 @@ if (diag.length) {
 }
 
 await browser.close();
+await runTestQuotationCleanup(base);

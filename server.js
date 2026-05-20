@@ -18,6 +18,12 @@ const cors = require('cors');
 const { Readable } = require('stream');
 require('dotenv').config();
 
+const {
+    isAutomatedTestQuotation,
+    isTestQuotationExpired,
+    AUTOMATED_TEST_TTL_MS
+} = require('./lib/automated-test-quotation');
+
 // Cloud Storage Configuration (Google Cloud or AWS S3)
 let storageClient = null;
 let bucket = null;
@@ -1176,6 +1182,10 @@ app.post('/api/save-quotation', async (req, res) => {
             createdAt: quotation.createdAt || now,
             updatedAt: now
         };
+        if (isAutomatedTestQuotation(updatedQuotation)) {
+            updatedQuotation.automatedTest = true;
+            updatedQuotation.testExpiresAt = new Date(Date.now() + AUTOMATED_TEST_TTL_MS).toISOString();
+        }
         const item = {
             id: String(updatedQuotation.id),
             updatedAt: updatedQuotation.updatedAt,
@@ -1186,6 +1196,9 @@ app.post('/api/save-quotation', async (req, res) => {
             TableName: ddbTableName,
             Item: item
         }));
+        if (updatedQuotation.automatedTest) {
+            scheduleAutomatedTestQuotationDeletion(String(updatedQuotation.id));
+        }
         res.json({ success: true });
     } catch (error) {
         console.error('Error saving quotation:', error);
@@ -1488,59 +1501,137 @@ app.get('/api/quotations/by-number/:quoteNumber', async (req, res) => {
     }
 });
 
-/** Automated E2E/API test rows (not real customer quotations). */
-function isAutomatedTestQuotationRecord(quotation) {
-    if (!quotation) {
-        return false;
-    }
-    const id = String(quotation.id || '');
-    const quoteNumber = String(quotation.quoteNumber || '');
-    if (id === 'QUOTE_NUMBER_COUNTER') {
-        return false;
-    }
-    return /^e2e/i.test(id) || /^E2E\//i.test(quoteNumber);
+const testDeletionTimers = new Map();
+const TEST_CLEANUP_INTERVAL_MS = Number(process.env.TEST_CLEANUP_INTERVAL_MS) || 5 * 60 * 1000;
+
+async function scanQuotationItemsForTestCleanup() {
+    const { ScanCommand } = require('@aws-sdk/lib-dynamodb');
+    let items = [];
+    let lastKey = null;
+    do {
+        const scanParams = {
+            TableName: ddbTableName,
+            ProjectionExpression: 'id, updatedAt, #p, #d',
+            ExpressionAttributeNames: { '#p': 'payload', '#d': 'data' }
+        };
+        if (lastKey) {
+            scanParams.ExclusiveStartKey = lastKey;
+        }
+        const result = await ddbDocClient.send(new ScanCommand(scanParams));
+        items = items.concat(result.Items || []);
+        lastKey = result.LastEvaluatedKey || null;
+    } while (lastKey);
+    return items;
 }
 
-// Remove all automated test quotations from DynamoDB (run after e2e scripts).
+async function deleteAutomatedTestQuotationById(id) {
+    if (!ddbDocClient || !ddbTableName || !id || id === 'QUOTE_NUMBER_COUNTER') {
+        return false;
+    }
+    const { GetCommand, DeleteCommand } = require('@aws-sdk/lib-dynamodb');
+    const result = await ddbDocClient.send(new GetCommand({
+        TableName: ddbTableName,
+        Key: { id: String(id) }
+    }));
+    if (!result.Item) {
+        return false;
+    }
+    const quotation = quotationSummaryFromDdbItem(result.Item);
+    if (!isAutomatedTestQuotation(quotation || { id })) {
+        return false;
+    }
+    await ddbDocClient.send(new DeleteCommand({
+        TableName: ddbTableName,
+        Key: { id: String(id) }
+    }));
+    return true;
+}
+
+function scheduleAutomatedTestQuotationDeletion(id) {
+    const key = String(id);
+    const existing = testDeletionTimers.get(key);
+    if (existing) {
+        clearTimeout(existing);
+    }
+    const timer = setTimeout(async () => {
+        testDeletionTimers.delete(key);
+        try {
+            const deleted = await deleteAutomatedTestQuotationById(key);
+            if (deleted) {
+                console.log(`[test-cleanup] Auto-deleted test quotation ${key}`);
+            }
+        } catch (error) {
+            console.warn(`[test-cleanup] Failed to auto-delete ${key}:`, error.message);
+        }
+    }, AUTOMATED_TEST_TTL_MS);
+    if (typeof timer.unref === 'function') {
+        timer.unref();
+    }
+    testDeletionTimers.set(key, timer);
+}
+
+/**
+ * @param {{ forceAll?: boolean }} options
+ *   forceAll: delete every automated test row (e2e script cleanup).
+ *   otherwise: only expired / legacy test rows.
+ */
+async function cleanupAutomatedTestQuotationsFromDdb(options = {}) {
+    const forceAll = !!options.forceAll;
+    if (!ddbDocClient || !ddbTableName) {
+        return { deletedIds: [], deletedCount: 0 };
+    }
+    const { DeleteCommand } = require('@aws-sdk/lib-dynamodb');
+    const items = await scanQuotationItemsForTestCleanup();
+    const deletedIds = [];
+    for (const item of items) {
+        if (!item || !item.id || item.id === 'QUOTE_NUMBER_COUNTER') {
+            continue;
+        }
+        const quotation = quotationSummaryFromDdbItem(item) || { id: item.id };
+        if (!isAutomatedTestQuotation(quotation)) {
+            continue;
+        }
+        if (!forceAll && !isTestQuotationExpired(quotation, item.updatedAt)) {
+            continue;
+        }
+        await ddbDocClient.send(new DeleteCommand({
+            TableName: ddbTableName,
+            Key: { id: String(item.id) }
+        }));
+        deletedIds.push(String(item.id));
+        testDeletionTimers.delete(String(item.id));
+    }
+    return { deletedIds, deletedCount: deletedIds.length };
+}
+
+function startAutomatedTestQuotationMaintenance() {
+    cleanupAutomatedTestQuotationsFromDdb()
+        .then(({ deletedCount }) => {
+            if (deletedCount > 0) {
+                console.log(`[test-cleanup] Removed ${deletedCount} expired test quotation(s) on startup`);
+            }
+        })
+        .catch((error) => {
+            console.warn('[test-cleanup] Startup cleanup failed:', error.message);
+        });
+    const interval = setInterval(() => {
+        cleanupAutomatedTestQuotationsFromDdb().catch((error) => {
+            console.warn('[test-cleanup] Periodic cleanup failed:', error.message);
+        });
+    }, TEST_CLEANUP_INTERVAL_MS);
+    if (typeof interval.unref === 'function') {
+        interval.unref();
+    }
+}
+
+// Remove automated test quotations from DynamoDB (run after e2e scripts; deletes all test rows).
 app.post('/api/quotations/cleanup-test-data', async (req, res) => {
     try {
         if (!ddbDocClient || !ddbTableName) {
             return res.status(500).json({ error: 'DynamoDB not configured.' });
         }
-        const { ScanCommand, DeleteCommand } = require('@aws-sdk/lib-dynamodb');
-        let items = [];
-        let lastKey = null;
-        do {
-            const scanParams = {
-                TableName: ddbTableName,
-                ProjectionExpression: 'id, #p.quoteNumber, #d.quoteNumber',
-                ExpressionAttributeNames: { '#p': 'payload', '#d': 'data' }
-            };
-            if (lastKey) {
-                scanParams.ExclusiveStartKey = lastKey;
-            }
-            const result = await ddbDocClient.send(new ScanCommand(scanParams));
-            items = items.concat(result.Items || []);
-            lastKey = result.LastEvaluatedKey || null;
-        } while (lastKey);
-
-        const deletedIds = [];
-        for (const item of items) {
-            if (!item || !item.id || item.id === 'QUOTE_NUMBER_COUNTER') {
-                continue;
-            }
-            const quotation = quotationSummaryFromDdbItem(item) || { id: item.id };
-            if (!isAutomatedTestQuotationRecord(quotation)) {
-                continue;
-            }
-            await ddbDocClient.send(new DeleteCommand({
-                TableName: ddbTableName,
-                Key: { id: String(item.id) }
-            }));
-            deletedIds.push(String(item.id));
-        }
-
-        res.json({ success: true, deletedCount: deletedIds.length, deletedIds });
+        const { deletedIds, deletedCount } = await cleanupAutomatedTestQuotationsFromDdb({ forceAll: true });
+        res.json({ success: true, deletedCount, deletedIds });
     } catch (error) {
         console.error('Error cleaning up test quotations:', error);
         res.status(500).json({ error: 'Failed to clean up test quotations', details: error.message });
@@ -1563,9 +1654,9 @@ app.delete('/api/quotations/:id', async (req, res) => {
             return res.status(404).json({ error: 'Quotation not found' });
         }
         const quotation = quotationSummaryFromDdbItem(result.Item);
-        if (!isAutomatedTestQuotationRecord(quotation || { id })) {
+        if (!isAutomatedTestQuotation(quotation || { id })) {
             return res.status(403).json({
-                error: 'Only automated test quotations (id starting with e2e or quote E2E/...) can be deleted via this endpoint.'
+                error: 'Only automated test quotations can be deleted via this endpoint.'
             });
         }
         await ddbDocClient.send(new DeleteCommand({
@@ -2770,6 +2861,9 @@ if (!isVercel) {
     app.listen(PORT, '0.0.0.0', () => {
         console.log(`Server running on port ${PORT}`);
         if (!process.env.OPENAI_API_KEY) console.log('Set OPENAI_API_KEY in env');
+        if (ddbDocClient && ddbTableName) {
+            startAutomatedTestQuotationMaintenance();
+        }
     });
 }
 

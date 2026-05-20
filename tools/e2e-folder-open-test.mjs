@@ -1,5 +1,5 @@
 import { chromium } from 'playwright';
-import { cleanupAutomatedTestQuotations } from './e2e-cleanup-lib.mjs';
+import { runTestQuotationCleanup } from './e2e-cleanup-lib.mjs';
 
 const base = process.env.TEST_URL || 'http://127.0.0.1:3000';
 const browser = await chromium.launch({ headless: true });
@@ -43,9 +43,6 @@ const result = await page.evaluate(async () => {
 console.log(JSON.stringify(result, null, 2));
 await browser.close();
 
-const cleanup = await cleanupAutomatedTestQuotations(base);
-if (cleanup.ok && cleanup.deletedCount > 0) {
-    console.log(`Cleaned up ${cleanup.deletedCount} test quotation(s).`);
-}
+await runTestQuotationCleanup(base);
 
 process.exit(result.hasTable || result.hasApprovalQuote ? 0 : 1);

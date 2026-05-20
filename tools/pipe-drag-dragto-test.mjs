@@ -1,5 +1,7 @@
 import { chromium } from 'playwright';
+import { runTestQuotationCleanup, getTestServerBaseUrl } from './e2e-cleanup-lib.mjs';
 
+const base = getTestServerBaseUrl();
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage();
 await page.goto('http://127.0.0.1:3000', { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -27,3 +29,4 @@ const after = await page.evaluate(() => ({
 
 console.log(JSON.stringify({ before, after, reordered: before.join() !== after.order.join() }, null, 2));
 await browser.close();
+await runTestQuotationCleanup(base);

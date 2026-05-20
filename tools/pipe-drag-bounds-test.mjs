@@ -1,4 +1,7 @@
 import { chromium } from 'playwright';
+import { runTestQuotationCleanup, getTestServerBaseUrl } from './e2e-cleanup-lib.mjs';
+
+const base = getTestServerBaseUrl();
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage();
 await page.goto('http://127.0.0.1:3000');
@@ -23,3 +26,4 @@ const r = await page.evaluate(() => {
 });
 console.log(JSON.stringify(r, null, 2));
 await browser.close();
+await runTestQuotationCleanup(base);

@@ -1,6 +1,6 @@
 /**
- * Delete automated E2E test quotations from DynamoDB (id e2e-* or quote E2E/...).
- * Run: node tools/cleanup-e2e-quotations.mjs
+ * Delete all automated test quotations from DynamoDB (debug/E2E rows).
+ * Run: npm run cleanup:e2e
  */
 const base = process.env.TEST_URL || 'http://127.0.0.1:3000';
 

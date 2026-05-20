@@ -3,6 +3,7 @@
  * Run: node tools/pipe-drag-test.mjs
  */
 import { chromium } from 'playwright';
+import { runTestQuotationCleanup } from './e2e-cleanup-lib.mjs';
 
 const base = process.env.BASE_URL || 'http://127.0.0.1:3000';
 
@@ -48,3 +49,4 @@ const result = await page.evaluate(() => {
 
 console.log(JSON.stringify(result, null, 2));
 await browser.close();
+await runTestQuotationCleanup(base);

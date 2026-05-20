@@ -1,5 +1,6 @@
 import { chromium } from 'playwright';
 import { appendFileSync } from 'fs';
+import { runTestQuotationCleanup } from './e2e-cleanup-lib.mjs';
 
 const LOG = 'debug-f5e334.log';
 const base = process.env.TEST_URL || 'http://127.0.0.1:3000';
@@ -36,4 +37,5 @@ const result = await page.evaluate(() => {
 log('H1', 'string-id-open', 'test-save folder', result);
 console.log(JSON.stringify(result, null, 2));
 await browser.close();
+await runTestQuotationCleanup(base);
 process.exit(result.isOpen ? 0 : 1);

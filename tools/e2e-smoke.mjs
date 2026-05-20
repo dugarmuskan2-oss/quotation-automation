@@ -4,7 +4,7 @@
  * Run: node tools/e2e-smoke.mjs
  */
 import { chromium } from 'playwright';
-import { cleanupAutomatedTestQuotations } from './e2e-cleanup-lib.mjs';
+import { runTestQuotationCleanup } from './e2e-cleanup-lib.mjs';
 
 const base = process.env.TEST_URL || 'http://127.0.0.1:3000';
 
@@ -216,12 +216,7 @@ async function checkBrowser() {
 await checkHttp();
 await checkBrowser();
 
-const cleanup = await cleanupAutomatedTestQuotations(base);
-if (cleanup.ok && cleanup.deletedCount > 0) {
-    console.log(`\nCleaned up ${cleanup.deletedCount} automated test quotation(s) from the database.`);
-} else if (!cleanup.ok) {
-    console.warn('\nTest quotation cleanup skipped:', cleanup.error);
-}
+await runTestQuotationCleanup(base);
 
 if (failures.length) {
     console.error(`\nE2E smoke: ${failures.length} failure(s)`);

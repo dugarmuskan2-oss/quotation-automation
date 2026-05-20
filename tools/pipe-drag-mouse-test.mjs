@@ -1,5 +1,8 @@
 import { chromium } from 'playwright';
 import { appendFileSync } from 'fs';
+import { runTestQuotationCleanup, getTestServerBaseUrl } from './e2e-cleanup-lib.mjs';
+
+const base = getTestServerBaseUrl();
 
 const LOG = 'debug-f5e334.log';
 const sessionId = 'f5e334';
@@ -61,3 +64,4 @@ log('H1', 'mouse-test', 'after real mouse drag', {
 
 console.log(JSON.stringify({ before, after, stuck: after.stuck }, null, 2));
 await browser.close();
+await runTestQuotationCleanup(base);
