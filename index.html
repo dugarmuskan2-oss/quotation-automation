@@ -990,7 +990,7 @@
                 <input
                     type="text"
                     id="approvalSearchInput"
-                    placeholder="Search by company, kind attn, or month (e.g., January)"
+                    placeholder="Search company, customer, quote # (e.g. 1609 or DSC-1609), id, or month"
                     style="width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 4px;"
                 >
             </div>
@@ -2035,9 +2035,6 @@
         function getDefaultMarginForPipeType(pipeTypeText) {
             const bucket = resolveDefaultMarginBucket(pipeTypeText);
             if (!bucket) {
-                // #region agent log
-                fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'baseline-default-margin',hypothesisId:'H2',location:'index.html:getDefaultMarginForPipeType:noBucket',message:'no default margin bucket matched',data:{pipeTypeText:String(pipeTypeText||'')},timestamp:Date.now()})}).catch(()=>{});
-                // #endregion
                 return '';
             }
             const marginValue = defaultMarginsByPipeType[bucket] || '';
@@ -2118,18 +2115,12 @@
             try {
                 const response = await fetch(`${API_BASE_URL}/get-default-margins`);
                 const result = await safeJsonParse(response);
-                // #region agent log
-                fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'baseline-default-margin',hypothesisId:'H1',location:'index.html:loadDefaultMargins:response',message:'loaded default margins response',data:{ok:response.ok,hasFile:result&&result.hasFile,defaultMargins:result&&result.defaultMargins},timestamp:Date.now()})}).catch(()=>{});
-                // #endregion
                 if (response.ok && result.defaultMargins) {
                     defaultMarginsByPipeType = {
                         erw: normalizeDefaultMarginInputValue(result.defaultMargins.erw),
                         gi: normalizeDefaultMarginInputValue(result.defaultMargins.gi),
                         seamless: normalizeDefaultMarginInputValue(result.defaultMargins.seamless)
                     };
-                    // #region agent log
-                    fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'baseline-default-margin',hypothesisId:'H1',location:'index.html:loadDefaultMargins:applied',message:'applied normalized default margins in memory',data:{defaultMarginsByPipeType},timestamp:Date.now()})}).catch(()=>{});
-                    // #endregion
                     applyDefaultMarginsToConfigInputs(defaultMarginsByPipeType);
                     if (statusEl) {
                         statusEl.textContent = result.hasFile ? '✓ Default margins loaded from server' : 'No default margins saved yet';
@@ -4008,13 +3999,6 @@
                 if (!_pipeDragVisualRows && !_draggedSectionRows) {
                     return;
                 }
-                // #region agent log
-                pipeDragDebugLog('initGlobalPipeSectionDragGuards:dragend', 'document dragend cleanup', {
-                    runId: 'post-fix-2',
-                    hadVisual: !!_pipeDragVisualRows,
-                    hadDragged: !!_draggedSectionRows
-                }, 'H1');
-                // #endregion
                 var tbody = _draggedSectionRows && _draggedSectionRows[0]
                     ? _draggedSectionRows[0].closest('tbody')
                     : null;
@@ -4026,23 +4010,6 @@
             });
         }
         initGlobalPipeSectionDragGuards();
-
-        // #region agent log
-        function pipeDragDebugLog(location, message, data, hypothesisId) {
-            fetch('http://127.0.0.1:7694/ingest/eb0363b7-c605-45af-945f-2e2f395a6d8d', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'f5e334' },
-                body: JSON.stringify({
-                    sessionId: 'f5e334',
-                    location: location,
-                    message: message,
-                    data: data || {},
-                    hypothesisId: hypothesisId || '',
-                    timestamp: Date.now()
-                })
-            }).catch(function() {});
-        }
-        // #endregion
 
         function createPipeSectionDragHandleHtml() {
             return '<span class="pipe-type-drag-handle drag-handle" title="Drag section to reorder" aria-label="Drag section to reorder" draggable="false">\u2807</span>';
@@ -4119,14 +4086,6 @@
                 (Date.now() - colRow._pipeDragHandleDownAt) < 3000) {
                 return true;
             }
-            // #region agent log
-            pipeDragDebugLog('canStartPipeSectionDrag', 'drag blocked', {
-                runId: 'post-fix-2',
-                headerId: pipeHeaderRow && pipeHeaderRow.id,
-                targetTag: event.target && event.target.tagName,
-                fromHandle: !!(pipeHeaderRow && pipeHeaderRow._pipeDragFromHandle)
-            }, 'H8');
-            // #endregion
             return false;
         }
 
@@ -4451,11 +4410,6 @@
                 return;
             }
             tbody._pipeSectionDragSetup = true;
-            // #region agent log
-            pipeDragDebugLog('ensurePipeSectionTbodyDropListeners', 'tbody drop listeners bound', {
-                tbodyId: tbody.id || null
-            }, 'H7');
-            // #endregion
 
             tbody.addEventListener('dragover', function(e) {
                 if (!_draggedSectionRows || !_draggedSectionRows.length) return;
@@ -4482,48 +4436,28 @@
 
             tbody.addEventListener('drop', function(e) {
                 if (!_draggedSectionRows || !_draggedSectionRows.length) {
-                    // #region agent log
-                    pipeDragDebugLog('setupPipeSectionDrag:drop', 'drop skipped no dragged rows', {}, 'H2');
-                    // #endregion
                     return;
                 }
                 e.preventDefault();
                 clearPipeSectionDragOverStyles();
                 const target = e.target.closest('tr');
-                var dropPath = 'unknown';
                 if (!target || target.parentNode !== tbody) {
-                    dropPath = 'appendTail';
                     _draggedSectionRows.forEach(function(row) { tbody.appendChild(row); });
                     updateRowNumbers(tbody);
                     _draggedSectionRows = null;
                     clearPipeSectionDragVisualState(tbody);
-                    // #region agent log
-                    pipeDragDebugLog('setupPipeSectionDrag:drop', 'drop done', { dropPath: dropPath, runId: 'post-fix' }, 'H2');
-                    // #endregion
                     return;
                 }
                 const targetHeader = resolvePipeSectionHeaderRow(target);
                 if (!targetHeader) {
-                    dropPath = 'noTargetHeader';
                     _draggedSectionRows = null;
                     clearPipeSectionDragVisualState(tbody);
-                    // #region agent log
-                    pipeDragDebugLog('setupPipeSectionDrag:drop', 'drop aborted', { dropPath: dropPath, runId: 'post-fix' }, 'H5');
-                    // #endregion
                     return;
                 }
                 const targetSection = collectPipeSectionRows(targetHeader);
                 if (sectionRowsOverlap(_draggedSectionRows, targetSection)) {
-                    dropPath = 'overlap';
                     let insertFromY = findSectionInsertBeforeByClientY(tbody, e.clientY, _draggedSectionRows);
                     insertFromY = normalizeSectionInsertBefore(tbody, _draggedSectionRows, insertFromY);
-                    // #region agent log
-                    pipeDragDebugLog('setupPipeSectionDrag:drop', 'drop overlap resolved by clientY', {
-                        runId: 'post-fix',
-                        dropPath: dropPath,
-                        insertFromYId: insertFromY && insertFromY.id
-                    }, 'H4');
-                    // #endregion
                     if (insertFromY) {
                         insertPipeSectionAt(tbody, _draggedSectionRows, insertFromY);
                     } else {
@@ -4537,22 +4471,13 @@
                 let insertBefore = getSectionBoundaryInsertBefore(tbody, target, e.clientY);
                 insertBefore = normalizeSectionInsertBefore(tbody, _draggedSectionRows, insertBefore);
                 if (insertBefore) {
-                    dropPath = 'insertBefore';
                     insertPipeSectionAt(tbody, _draggedSectionRows, insertBefore);
                 } else {
-                    dropPath = 'appendFallback';
                     _draggedSectionRows.forEach(function(row) { tbody.appendChild(row); });
                 }
                 updateRowNumbers(tbody);
                 _draggedSectionRows = null;
                 clearPipeSectionDragVisualState(tbody);
-                // #region agent log
-                pipeDragDebugLog('setupPipeSectionDrag:drop', 'drop done', {
-                    dropPath: dropPath,
-                    insertBeforeId: insertBefore && insertBefore.id,
-                    runId: 'post-fix'
-                }, 'H2');
-                // #endregion
             });
 
             tbody.addEventListener('dragleave', function(e) {
@@ -4581,15 +4506,6 @@
                 row.setAttribute('draggable', 'true');
                 row.addEventListener('dragstart', function(e) {
                     var canStart = canStartPipeSectionDrag(e, pipeHeaderRow);
-                    // #region agent log
-                    pipeDragDebugLog('setupPipeSectionDrag:dragstart', 'dragstart', {
-                        canStart: canStart,
-                        fromHandle: !!pipeHeaderRow._pipeDragFromHandle,
-                        targetTag: e.target && e.target.tagName,
-                        headerId: pipeHeaderRow.id,
-                        tbodyBound: !!(tbody && tbody._pipeSectionDragSetup)
-                    }, 'H3');
-                    // #endregion
                     if (!canStart) {
                         e.preventDefault();
                         return;
@@ -4603,28 +4519,7 @@
                     applyPipeSectionDragVisualState(_draggedSectionRows);
                 });
                 row.addEventListener('dragend', function() {
-                    var cleanupRows = _pipeDragVisualRows;
-                    var stuckBefore = cleanupRows ? cleanupRows.filter(function(r) {
-                        return r.classList.contains('row-dragging');
-                    }).length : 0;
-                    // #region agent log
-                    pipeDragDebugLog('setupPipeSectionDrag:dragend', 'dragend', {
-                        runId: 'post-fix',
-                        draggedNull: _draggedSectionRows === null,
-                        visualRowsLen: cleanupRows ? cleanupRows.length : 0,
-                        stuckDraggingClassBeforeCleanup: stuckBefore,
-                        headerId: pipeHeaderRow.id
-                    }, 'H1');
-                    // #endregion
                     clearPipeSectionDragVisualState(tbody || pipeHeaderRow.closest('tbody'));
-                    var stuckAfter = (tbody || document).querySelectorAll('.row-dragging').length;
-                    // #region agent log
-                    pipeDragDebugLog('setupPipeSectionDrag:dragend-after', 'dragend cleanup result', {
-                        runId: 'post-fix',
-                        stuckDraggingClassAfterCleanup: stuckAfter,
-                        headerId: pipeHeaderRow.id
-                    }, 'H1');
-                    // #endregion
                     clearPipeSectionDragOverStyles();
                     _draggedSectionRows = null;
                     _pipeDragVisualRows = null;
@@ -5840,10 +5735,6 @@
             return buildAllApprovedQuotationsHTMLForList(approvedQuotations);
         }
 
-        function normalizeSearchText(value) {
-            return String(value || '').toLowerCase().trim();
-        }
-
         function idsMatch(a, b) {
             return String(a) === String(b);
         }
@@ -5875,6 +5766,149 @@
                 return true;
             }
             return false;
+        }
+
+        function normalizeSearchText(value) {
+            return String(value || '')
+                .toLowerCase()
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        /** Collapse separators so "dsc1609" matches "DSC-1609". */
+        function compactSearchText(value) {
+            return normalizeSearchText(value).replace(/[\s\-_/.,;:]+/g, '');
+        }
+
+        /** Join all fields users might search on (including header fallbacks). */
+        function buildApprovalSearchHaystack(quotation) {
+            if (!quotation || typeof quotation !== 'object') {
+                return '';
+            }
+            const header = quotation.header && typeof quotation.header === 'object' ? quotation.header : null;
+            const company = (quotation.companyName || quotation.projectName || '').trim();
+            const project = (quotation.projectName || '').trim();
+            const kind = (quotation.customerName || '').trim();
+            const qn = (quotation.quoteNumber || (header && header.quoteNumber) || '').trim();
+            const dateStr = (quotation.quotationDate || (header && header.quotationDate) || '').trim();
+            const hKind = header && (header.kindAttn || '').trim();
+            const hBill = header && (header.billTo || '').trim();
+            const parts = [
+                company,
+                project,
+                kind,
+                qn,
+                hKind,
+                hBill,
+                dateStr
+            ];
+            const normalizedParts = parts.map(function(p) {
+                return normalizeSearchText(p);
+            }).filter(Boolean);
+            const compactQn = compactSearchText(qn);
+            if (compactQn) {
+                normalizedParts.push(compactQn);
+            }
+            return normalizedParts.join(' ');
+        }
+
+        /** Ignore lone punctuation tokens from queries like "DSC - 163". */
+        function approvalSearchMeaningfulTokens(normalizedQuery) {
+            return normalizedQuery.split(' ').filter(function(t) {
+                return t && !/^[-_/.,;:]+$/.test(t);
+            });
+        }
+
+        /** Every meaningful token must appear somewhere in haystack (order-free). */
+        function approvalSearchTokensAllMatch(normalizedQuery, haystack) {
+            const tokens = approvalSearchMeaningfulTokens(normalizedQuery);
+            if (!tokens.length) {
+                return true;
+            }
+            for (let i = 0; i < tokens.length; i++) {
+                if (!haystack.includes(tokens[i])) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        /** e.g. "1609" or "609" matches "DSC-1609"; avoids "163" matching inside unrelated numbers. */
+        function queryDigitsMatchQuoteNumber(normalizedQuery, quoteNumberRaw) {
+            const qDigits = String(normalizedQuery || '').replace(/\D/g, '');
+            if (qDigits.length < 2) {
+                return false;
+            }
+            const qnDigits = String(quoteNumberRaw || '').replace(/\D/g, '');
+            if (!qnDigits) {
+                return false;
+            }
+            if (qnDigits === qDigits) {
+                return true;
+            }
+            if (qnDigits.endsWith(qDigits)) {
+                return true;
+            }
+            if (qnDigits.startsWith(qDigits)) {
+                return true;
+            }
+            return false;
+        }
+
+        /** Match internal id only when query is clearly targeting id (avoid digit substring false positives). */
+        function approvalSearchMatchesQuotationId(quotation, normalizedQuery) {
+            const id = String(quotation.id || '').trim();
+            if (!id || !normalizedQuery) {
+                return false;
+            }
+            const idNorm = normalizeSearchText(id);
+            if (idNorm === normalizedQuery) {
+                return true;
+            }
+            if (/^\d+$/.test(normalizedQuery) && normalizedQuery.length >= 10) {
+                return idNorm.includes(normalizedQuery);
+            }
+            if (!/^\d+$/.test(id) && normalizedQuery.length >= 6) {
+                return idNorm.includes(normalizedQuery);
+            }
+            return false;
+        }
+
+        function matchesApprovalSearch(quotation, query) {
+            const normalizedQuery = normalizeSearchText(query);
+            if (!normalizedQuery) {
+                return true;
+            }
+            const haystack = buildApprovalSearchHaystack(quotation);
+            const hayCompact = compactSearchText(haystack);
+            const queryCompact = compactSearchText(normalizedQuery);
+            if (haystack.includes(normalizedQuery)) {
+                return true;
+            }
+            if (approvalSearchTokensAllMatch(normalizedQuery, haystack)) {
+                return true;
+            }
+            if (queryCompact.length >= 2 && hayCompact.includes(queryCompact)) {
+                return true;
+            }
+            const qnRaw = quotation.quoteNumber || (quotation.header && quotation.header.quoteNumber) || '';
+            if (queryDigitsMatchQuoteNumber(normalizedQuery, qnRaw)) {
+                return true;
+            }
+            if (approvalSearchMatchesQuotationId(quotation, normalizedQuery)) {
+                return true;
+            }
+            return doesMonthMatchQuery(normalizedQuery, quotation.quotationDate || '');
+        }
+
+        function getFilteredApprovedQuotations(query) {
+            const normalizedQuery = normalizeSearchText(query);
+            if (!normalizedQuery) {
+                return approvedQuotations.slice();
+            }
+            return approvedQuotations.filter(function(quotation) {
+                return matchesApprovalSearch(quotation, normalizedQuery);
+            });
         }
 
         /** Flatten nested header maps from API/test saves so Approval folders open reliably. */
@@ -5953,29 +5987,6 @@
             return { num: Number.isFinite(num) ? num : -1, text: text.toLowerCase() };
         }
 
-        function matchesApprovalSearch(quotation, query) {
-            const normalizedQuery = normalizeSearchText(query);
-            if (!normalizedQuery) {
-                return true;
-            }
-            const companyName = normalizeSearchText(quotation.projectName);
-            const kindAttn = normalizeSearchText(quotation.customerName);
-            const quoteNumber = normalizeSearchText(quotation.quoteNumber);
-            const combined = `${companyName} ${kindAttn} ${quoteNumber}`;
-            if (combined.includes(normalizedQuery)) {
-                return true;
-            }
-            return doesMonthMatchQuery(normalizedQuery, quotation.quotationDate || '');
-        }
-
-        function getFilteredApprovedQuotations(query) {
-            const normalizedQuery = normalizeSearchText(query);
-            if (!normalizedQuery) {
-                return approvedQuotations.slice();
-            }
-            return approvedQuotations.filter(quotation => matchesApprovalSearch(quotation, normalizedQuery));
-        }
-
         function getApprovalSearchInput() {
             return document.getElementById('approvalSearchInput');
         }
@@ -5999,9 +6010,6 @@
                     return;
                 }
                 const quotationId = folder.id.slice('folder-'.length);
-                // #region agent log
-                fetch('http://127.0.0.1:7694/ingest/eb0363b7-c605-45af-945f-2e2f395a6d8d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'folder-toggle',hypothesisId:'H1',location:'attachApprovalFolderToggleDelegation',message:'folder header click',data:{quotationId:quotationId},timestamp:Date.now()})}).catch(function(){});
-                // #endregion
                 toggleQuotationFolder(quotationId);
             });
         }
@@ -8272,9 +8280,6 @@
             const toggleIcon = folderEl ? folderEl.querySelector('.folder-toggle-icon') : null;
             
             if (!folderContent || !toggleIcon) {
-                // #region agent log
-                fetch('http://127.0.0.1:7694/ingest/eb0363b7-c605-45af-945f-2e2f395a6d8d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'folder-toggle',hypothesisId:'H3',location:'index.html:toggleQuotationFolder',message:'folder DOM missing',data:{quotationId:String(quotationId),hasFolderContent:!!folderContent,hasFolderEl:!!folderEl,hasToggleIcon:!!toggleIcon},timestamp:Date.now()})}).catch(function(){});
-                // #endregion
                 return;
             }
 
