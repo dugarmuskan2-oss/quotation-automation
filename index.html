@@ -2667,6 +2667,7 @@
             }
             attachCreationFolderRowButtons(entryId);
             attachCreationFolderCalculationListeners(entryId);
+            preparePipeSectionDragInContainer(content);
             // Quote number is intentionally NOT pre-assigned here.
             // It is consumed only when the user clicks "Create Quotation" in approveQuotationFromCreationFolder,
             // preventing numbers from being wasted on quotations that are generated but never saved.
@@ -3956,9 +3957,199 @@
             ============================================
         */
         var _draggedSectionRows = null;
+        var _pipeDragActiveHeaderId = null;
+        var _pipeDragVisualRows = null;
+
+        function initGlobalPipeSectionDragGuards() {
+            if (window._pipeSectionGlobalDragBound) {
+                return;
+            }
+            window._pipeSectionGlobalDragBound = true;
+            document.addEventListener('dragover', function(e) {
+                if (!_draggedSectionRows || !_draggedSectionRows.length) {
+                    return;
+                }
+                e.preventDefault();
+            });
+            document.addEventListener('dragend', function() {
+                if (!_pipeDragVisualRows && !_draggedSectionRows) {
+                    return;
+                }
+                // #region agent log
+                pipeDragDebugLog('initGlobalPipeSectionDragGuards:dragend', 'document dragend cleanup', {
+                    runId: 'post-fix-2',
+                    hadVisual: !!_pipeDragVisualRows,
+                    hadDragged: !!_draggedSectionRows
+                }, 'H1');
+                // #endregion
+                var tbody = _draggedSectionRows && _draggedSectionRows[0]
+                    ? _draggedSectionRows[0].closest('tbody')
+                    : null;
+                clearPipeSectionDragVisualState(tbody);
+                clearPipeSectionDragOverStyles();
+                _draggedSectionRows = null;
+                _pipeDragVisualRows = null;
+                _pipeDragActiveHeaderId = null;
+            });
+        }
+        initGlobalPipeSectionDragGuards();
+
+        // #region agent log
+        function pipeDragDebugLog(location, message, data, hypothesisId) {
+            fetch('http://127.0.0.1:7694/ingest/eb0363b7-c605-45af-945f-2e2f395a6d8d', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'f5e334' },
+                body: JSON.stringify({
+                    sessionId: 'f5e334',
+                    location: location,
+                    message: message,
+                    data: data || {},
+                    hypothesisId: hypothesisId || '',
+                    timestamp: Date.now()
+                })
+            }).catch(function() {});
+        }
+        // #endregion
 
         function createPipeSectionDragHandleHtml() {
-            return '<span class="pipe-type-drag-handle drag-handle" title="Drag section to reorder" aria-label="Drag section to reorder">\u2807</span>';
+            return '<span class="pipe-type-drag-handle drag-handle" title="Drag section to reorder" aria-label="Drag section to reorder" draggable="false">\u2807</span>';
+        }
+
+        function getPipeHeaderFlexContainer(headerCell) {
+            if (!headerCell) {
+                return null;
+            }
+            return headerCell.querySelector('.pipe-header-flex') ||
+                headerCell.querySelector('div[style*="display:flex"], div[style*="display: flex"]');
+        }
+
+        function ensurePipeSectionDragHandleOnRow(pipeHeaderRow, position) {
+            if (!pipeHeaderRow) {
+                return;
+            }
+            const placeAtEnd = position === 'end';
+            const headerCell = pipeHeaderRow.querySelector('td[colspan]');
+            if (!headerCell) {
+                return;
+            }
+            const flex = getPipeHeaderFlexContainer(headerCell);
+            let handle = headerCell.querySelector('.pipe-type-drag-handle, .drag-handle');
+            if (!handle && flex) {
+                flex.insertAdjacentHTML(placeAtEnd ? 'beforeend' : 'afterbegin', createPipeSectionDragHandleHtml());
+                handle = headerCell.querySelector('.pipe-type-drag-handle, .drag-handle');
+            }
+            if (!flex || !handle) {
+                return;
+            }
+            if (placeAtEnd) {
+                flex.appendChild(handle);
+            } else {
+                flex.insertBefore(handle, flex.firstChild);
+            }
+            bindPipeSectionDragHandle(pipeHeaderRow, handle);
+        }
+
+        function bindPipeSectionDragHandle(pipeHeaderRow, handleEl) {
+            if (!pipeHeaderRow || !handleEl || handleEl._pipeDragHandleBound) {
+                return;
+            }
+            handleEl._pipeDragHandleBound = true;
+            const colRow = getPairedColumnHeaderRow(pipeHeaderRow);
+            handleEl.addEventListener('mousedown', function(e) {
+                e.stopPropagation();
+                _pipeDragActiveHeaderId = pipeHeaderRow.id || '';
+                pipeHeaderRow._pipeDragFromHandle = true;
+                pipeHeaderRow._pipeDragHandleDownAt = Date.now();
+                if (colRow) {
+                    colRow._pipeDragFromHandle = true;
+                    colRow._pipeDragHandleDownAt = pipeHeaderRow._pipeDragHandleDownAt;
+                }
+            });
+        }
+
+        function canStartPipeSectionDrag(event, pipeHeaderRow) {
+            if (isPipeSectionDragHandleTarget(event.target)) {
+                return true;
+            }
+            if (pipeHeaderRow && pipeHeaderRow._pipeDragFromHandle) {
+                return true;
+            }
+            if (pipeHeaderRow && pipeHeaderRow._pipeDragHandleDownAt &&
+                (Date.now() - pipeHeaderRow._pipeDragHandleDownAt) < 3000) {
+                return true;
+            }
+            const colRow = getPairedColumnHeaderRow(pipeHeaderRow);
+            if (colRow && colRow._pipeDragFromHandle) {
+                return true;
+            }
+            if (colRow && colRow._pipeDragHandleDownAt &&
+                (Date.now() - colRow._pipeDragHandleDownAt) < 3000) {
+                return true;
+            }
+            // #region agent log
+            pipeDragDebugLog('canStartPipeSectionDrag', 'drag blocked', {
+                runId: 'post-fix-2',
+                headerId: pipeHeaderRow && pipeHeaderRow.id,
+                targetTag: event.target && event.target.tagName,
+                fromHandle: !!(pipeHeaderRow && pipeHeaderRow._pipeDragFromHandle)
+            }, 'H8');
+            // #endregion
+            return false;
+        }
+
+        function resolvePipeSectionTbody(pipeHeaderRow, tbodyHint) {
+            if (pipeHeaderRow) {
+                const inDom = pipeHeaderRow.closest('tbody');
+                if (inDom) {
+                    return inDom;
+                }
+            }
+            if (tbodyHint && tbodyHint.tagName === 'TBODY') {
+                return tbodyHint;
+            }
+            if (tbodyHint && tbodyHint.querySelector) {
+                return tbodyHint.querySelector('tbody') || null;
+            }
+            return null;
+        }
+
+        function clearPipeSectionDragVisualState(tbody) {
+            const root = tbody || document;
+            root.querySelectorAll('.row-dragging').forEach(function(r) {
+                r.classList.remove('row-dragging');
+            });
+        }
+
+        function applyPipeSectionDragVisualState(rows) {
+            if (!rows || !rows.length) {
+                return;
+            }
+            rows.forEach(function(r) {
+                r.classList.add('row-dragging');
+            });
+        }
+
+        function preparePipeSectionDragInTable(table) {
+            if (!table) {
+                return;
+            }
+            const tbody = table.querySelector('tbody');
+            if (tbody) {
+                ensurePipeSectionTbodyDropListeners(tbody);
+            }
+            table.querySelectorAll('.pipe-type-header').forEach(function(pipeRow) {
+                ensurePipeSectionDragHandleOnRow(pipeRow, 'start');
+                if (!pipeRow._pipeSectionDragSetup) {
+                    setupPipeSectionDrag(pipeRow, tbody);
+                }
+            });
+        }
+
+        function preparePipeSectionDragInContainer(containerEl) {
+            if (!containerEl) {
+                return;
+            }
+            preparePipeSectionDragInTable(containerEl.querySelector('table'));
         }
 
         function getPipeHeaderColspan(tableBodyOrTable) {
@@ -4033,7 +4224,7 @@
 
         function buildPipeTypeHeaderRowHtml(colspan, innerHtml) {
             return '<td colspan="' + colspan + '">' +
-                '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">' +
+                '<div class="pipe-header-flex" style="display:flex;align-items:center;justify-content:space-between;gap:10px">' +
                 innerHtml +
                 '</div></td>';
         }
@@ -4055,10 +4246,8 @@
                 dragAtEnd: options.dragAtEnd
             });
             row.innerHTML = buildPipeTypeHeaderRowHtml(colspan, innerHtml);
-            if (options.dragAtEnd) {
-                movePipeTypeHeaderDragHandleToEnd(row);
-            }
-            setupPipeSectionDrag(row);
+            ensurePipeSectionDragHandleOnRow(row, options.dragAtEnd ? 'end' : 'start');
+            setupPipeSectionDrag(row, options.tableBody);
             return row;
         }
 
@@ -4118,16 +4307,89 @@
 
         function getSectionBoundaryInsertBefore(tbody, targetRow, clientY) {
             const targetHeader = resolvePipeSectionHeaderRow(targetRow);
-            if (!targetHeader) return null;
+            if (!targetHeader) {
+                return null;
+            }
             const targetSection = collectPipeSectionRows(targetHeader);
-            if (!targetSection.length) return null;
+            if (!targetSection.length) {
+                return null;
+            }
+            let mid;
             const rect = targetRow.getBoundingClientRect();
-            const mid = rect.top + rect.height / 2;
+            if (rect.height > 0) {
+                mid = rect.top + rect.height / 2;
+            } else {
+                const firstRect = targetSection[0].getBoundingClientRect();
+                const lastRect = targetSection[targetSection.length - 1].getBoundingClientRect();
+                if (firstRect.height > 0 && lastRect.height > 0) {
+                    mid = (firstRect.top + lastRect.bottom) / 2;
+                } else {
+                    mid = clientY;
+                }
+            }
             if (clientY < mid) {
                 return targetSection[0];
             }
             const last = targetSection[targetSection.length - 1];
             return last.nextElementSibling;
+        }
+
+        function findSectionInsertBeforeByClientY(tbody, clientY, draggedRows) {
+            if (!tbody) {
+                return null;
+            }
+            const headers = Array.from(tbody.querySelectorAll('.pipe-type-header'));
+            for (let i = 0; i < headers.length; i++) {
+                const section = collectPipeSectionRows(headers[i]);
+                if (!section.length || sectionRowsOverlap(section, draggedRows)) {
+                    continue;
+                }
+                const firstRect = section[0].getBoundingClientRect();
+                const lastRect = section[section.length - 1].getBoundingClientRect();
+                const top = firstRect.top;
+                const bottom = lastRect.bottom;
+                if (clientY < top) {
+                    return section[0];
+                }
+                if (clientY <= bottom) {
+                    const mid = (top + bottom) / 2;
+                    if (clientY < mid) {
+                        return section[0];
+                    }
+                    return section[section.length - 1].nextElementSibling;
+                }
+            }
+            return null;
+        }
+
+        function normalizeSectionInsertBefore(tbody, draggedRows, insertBefore) {
+            if (!tbody || !insertBefore) {
+                return insertBefore;
+            }
+            if (insertBefore.parentNode === tbody) {
+                return insertBefore;
+            }
+            if (insertBefore.id) {
+                const byId = document.getElementById(insertBefore.id);
+                if (byId && byId.parentNode === tbody) {
+                    return byId;
+                }
+            }
+            if (draggedRows && draggedRows.length) {
+                const firstDragged = draggedRows[0];
+                let walk = firstDragged ? firstDragged.previousElementSibling : null;
+                while (walk) {
+                    if (walk.parentNode === tbody && draggedRows.indexOf(walk) === -1) {
+                        const header = resolvePipeSectionHeaderRow(walk);
+                        if (header) {
+                            const section = collectPipeSectionRows(header);
+                            return section[section.length - 1].nextElementSibling;
+                        }
+                    }
+                    walk = walk.previousElementSibling;
+                }
+            }
+            return null;
         }
 
         function insertPipeSectionAt(tbody, sectionRows, beforeNode) {
@@ -4148,51 +4410,19 @@
         }
 
         function movePipeTypeHeaderDragHandleToEnd(pipeHeaderRow) {
-            const headerCell = pipeHeaderRow ? pipeHeaderRow.querySelector('td[colspan]') : null;
-            if (!headerCell) return;
-            const flex = headerCell.querySelector('div[style*="display:flex"], div[style*="display: flex"]');
-            let handle = headerCell.querySelector('.pipe-type-drag-handle, .drag-handle');
-            if (!handle && flex) {
-                flex.insertAdjacentHTML('afterbegin', createPipeSectionDragHandleHtml());
-                handle = headerCell.querySelector('.pipe-type-drag-handle, .drag-handle');
-            }
-            if (!flex || !handle) return;
-            flex.appendChild(handle);
+            ensurePipeSectionDragHandleOnRow(pipeHeaderRow, 'end');
         }
 
-        function setupPipeSectionDrag(pipeHeaderRow) {
-            if (!pipeHeaderRow || pipeHeaderRow._pipeSectionDragSetup) return;
-            pipeHeaderRow._pipeSectionDragSetup = true;
-
-            const colRow = getPairedColumnHeaderRow(pipeHeaderRow);
-            const triggerRows = colRow ? [colRow, pipeHeaderRow] : [pipeHeaderRow];
-
-            triggerRows.forEach(function(row) {
-                row.setAttribute('draggable', 'true');
-                row.addEventListener('dragstart', function(e) {
-                    if (shouldIgnorePipeSectionDragStart(e)) {
-                        e.preventDefault();
-                        return;
-                    }
-                    _draggedSectionRows = collectPipeSectionRows(pipeHeaderRow);
-                    e.dataTransfer.effectAllowed = 'move';
-                    e.dataTransfer.setData('text/plain', pipeHeaderRow.id || '');
-                    setTimeout(function() {
-                        _draggedSectionRows.forEach(function(r) { r.classList.add('row-dragging'); });
-                    }, 0);
-                });
-                row.addEventListener('dragend', function() {
-                    if (_draggedSectionRows) {
-                        _draggedSectionRows.forEach(function(r) { r.classList.remove('row-dragging'); });
-                    }
-                    clearPipeSectionDragOverStyles();
-                    _draggedSectionRows = null;
-                });
-            });
-
-            const tbody = pipeHeaderRow.closest('tbody');
-            if (!tbody || tbody._pipeSectionDragSetup) return;
+        function ensurePipeSectionTbodyDropListeners(tbody) {
+            if (!tbody || tbody._pipeSectionDragSetup) {
+                return;
+            }
             tbody._pipeSectionDragSetup = true;
+            // #region agent log
+            pipeDragDebugLog('ensurePipeSectionTbodyDropListeners', 'tbody drop listeners bound', {
+                tbodyId: tbody.id || null
+            }, 'H7');
+            // #endregion
 
             tbody.addEventListener('dragover', function(e) {
                 if (!_draggedSectionRows || !_draggedSectionRows.length) return;
@@ -4218,34 +4448,78 @@
             });
 
             tbody.addEventListener('drop', function(e) {
-                if (!_draggedSectionRows || !_draggedSectionRows.length) return;
+                if (!_draggedSectionRows || !_draggedSectionRows.length) {
+                    // #region agent log
+                    pipeDragDebugLog('setupPipeSectionDrag:drop', 'drop skipped no dragged rows', {}, 'H2');
+                    // #endregion
+                    return;
+                }
                 e.preventDefault();
                 clearPipeSectionDragOverStyles();
                 const target = e.target.closest('tr');
+                var dropPath = 'unknown';
                 if (!target || target.parentNode !== tbody) {
+                    dropPath = 'appendTail';
                     _draggedSectionRows.forEach(function(row) { tbody.appendChild(row); });
                     updateRowNumbers(tbody);
                     _draggedSectionRows = null;
+                    clearPipeSectionDragVisualState(tbody);
+                    // #region agent log
+                    pipeDragDebugLog('setupPipeSectionDrag:drop', 'drop done', { dropPath: dropPath, runId: 'post-fix' }, 'H2');
+                    // #endregion
                     return;
                 }
                 const targetHeader = resolvePipeSectionHeaderRow(target);
                 if (!targetHeader) {
+                    dropPath = 'noTargetHeader';
                     _draggedSectionRows = null;
+                    clearPipeSectionDragVisualState(tbody);
+                    // #region agent log
+                    pipeDragDebugLog('setupPipeSectionDrag:drop', 'drop aborted', { dropPath: dropPath, runId: 'post-fix' }, 'H5');
+                    // #endregion
                     return;
                 }
                 const targetSection = collectPipeSectionRows(targetHeader);
                 if (sectionRowsOverlap(_draggedSectionRows, targetSection)) {
+                    dropPath = 'overlap';
+                    let insertFromY = findSectionInsertBeforeByClientY(tbody, e.clientY, _draggedSectionRows);
+                    insertFromY = normalizeSectionInsertBefore(tbody, _draggedSectionRows, insertFromY);
+                    // #region agent log
+                    pipeDragDebugLog('setupPipeSectionDrag:drop', 'drop overlap resolved by clientY', {
+                        runId: 'post-fix',
+                        dropPath: dropPath,
+                        insertFromYId: insertFromY && insertFromY.id
+                    }, 'H4');
+                    // #endregion
+                    if (insertFromY) {
+                        insertPipeSectionAt(tbody, _draggedSectionRows, insertFromY);
+                    } else {
+                        _draggedSectionRows.forEach(function(row) { tbody.appendChild(row); });
+                    }
+                    updateRowNumbers(tbody);
                     _draggedSectionRows = null;
+                    clearPipeSectionDragVisualState(tbody);
                     return;
                 }
-                const insertBefore = getSectionBoundaryInsertBefore(tbody, target, e.clientY);
+                let insertBefore = getSectionBoundaryInsertBefore(tbody, target, e.clientY);
+                insertBefore = normalizeSectionInsertBefore(tbody, _draggedSectionRows, insertBefore);
                 if (insertBefore) {
+                    dropPath = 'insertBefore';
                     insertPipeSectionAt(tbody, _draggedSectionRows, insertBefore);
                 } else {
+                    dropPath = 'appendFallback';
                     _draggedSectionRows.forEach(function(row) { tbody.appendChild(row); });
                 }
                 updateRowNumbers(tbody);
                 _draggedSectionRows = null;
+                clearPipeSectionDragVisualState(tbody);
+                // #region agent log
+                pipeDragDebugLog('setupPipeSectionDrag:drop', 'drop done', {
+                    dropPath: dropPath,
+                    insertBeforeId: insertBefore && insertBefore.id,
+                    runId: 'post-fix'
+                }, 'H2');
+                // #endregion
             });
 
             tbody.addEventListener('dragleave', function(e) {
@@ -4255,15 +4529,92 @@
             });
         }
 
-        function setupAllPipeSectionDragsInTable(table) {
-            if (!table) return;
-            table.querySelectorAll('.pipe-type-header').forEach(function(pipeRow) {
-                setupPipeSectionDrag(pipeRow);
+        function setupPipeSectionDrag(pipeHeaderRow, tbodyHint) {
+            if (!pipeHeaderRow || pipeHeaderRow._pipeSectionDragSetup) {
+                return;
+            }
+            pipeHeaderRow._pipeSectionDragSetup = true;
+            ensurePipeSectionDragHandleOnRow(pipeHeaderRow, 'start');
+
+            const tbody = resolvePipeSectionTbody(pipeHeaderRow, tbodyHint);
+            if (tbody) {
+                ensurePipeSectionTbodyDropListeners(tbody);
+            }
+
+            const colRow = getPairedColumnHeaderRow(pipeHeaderRow);
+            const triggerRows = colRow ? [colRow, pipeHeaderRow] : [pipeHeaderRow];
+
+            triggerRows.forEach(function(row) {
+                row.setAttribute('draggable', 'true');
+                row.addEventListener('dragstart', function(e) {
+                    var canStart = canStartPipeSectionDrag(e, pipeHeaderRow);
+                    // #region agent log
+                    pipeDragDebugLog('setupPipeSectionDrag:dragstart', 'dragstart', {
+                        canStart: canStart,
+                        fromHandle: !!pipeHeaderRow._pipeDragFromHandle,
+                        targetTag: e.target && e.target.tagName,
+                        headerId: pipeHeaderRow.id,
+                        tbodyBound: !!(tbody && tbody._pipeSectionDragSetup)
+                    }, 'H3');
+                    // #endregion
+                    if (!canStart) {
+                        e.preventDefault();
+                        return;
+                    }
+                    _draggedSectionRows = collectPipeSectionRows(pipeHeaderRow);
+                    _pipeDragVisualRows = _draggedSectionRows ? _draggedSectionRows.slice() : null;
+                    e.dataTransfer.effectAllowed = 'move';
+                    try {
+                        e.dataTransfer.setData('text/plain', pipeHeaderRow.id || 'pipe-section');
+                    } catch (err) { /* IE legacy */ }
+                    applyPipeSectionDragVisualState(_draggedSectionRows);
+                });
+                row.addEventListener('dragend', function() {
+                    var cleanupRows = _pipeDragVisualRows;
+                    var stuckBefore = cleanupRows ? cleanupRows.filter(function(r) {
+                        return r.classList.contains('row-dragging');
+                    }).length : 0;
+                    // #region agent log
+                    pipeDragDebugLog('setupPipeSectionDrag:dragend', 'dragend', {
+                        runId: 'post-fix',
+                        draggedNull: _draggedSectionRows === null,
+                        visualRowsLen: cleanupRows ? cleanupRows.length : 0,
+                        stuckDraggingClassBeforeCleanup: stuckBefore,
+                        headerId: pipeHeaderRow.id
+                    }, 'H1');
+                    // #endregion
+                    clearPipeSectionDragVisualState(tbody || pipeHeaderRow.closest('tbody'));
+                    var stuckAfter = (tbody || document).querySelectorAll('.row-dragging').length;
+                    // #region agent log
+                    pipeDragDebugLog('setupPipeSectionDrag:dragend-after', 'dragend cleanup result', {
+                        runId: 'post-fix',
+                        stuckDraggingClassAfterCleanup: stuckAfter,
+                        headerId: pipeHeaderRow.id
+                    }, 'H1');
+                    // #endregion
+                    clearPipeSectionDragOverStyles();
+                    _draggedSectionRows = null;
+                    _pipeDragVisualRows = null;
+                    _pipeDragActiveHeaderId = null;
+                    pipeHeaderRow._pipeDragFromHandle = false;
+                    pipeHeaderRow._pipeDragHandleDownAt = 0;
+                    if (colRow) {
+                        colRow._pipeDragFromHandle = false;
+                        colRow._pipeDragHandleDownAt = 0;
+                    }
+                });
             });
         }
 
+        function setupAllPipeSectionDragsInTable(table) {
+            if (!table) return;
+            preparePipeSectionDragInTable(table);
+        }
+
         function setupRowDrag(pipeHeaderRow, colHeaderRow) {
-            setupPipeSectionDrag(pipeHeaderRow || colHeaderRow);
+            const row = pipeHeaderRow || colHeaderRow;
+            const tbody = row && row.closest('tbody');
+            setupPipeSectionDrag(row, tbody);
         }
 
         /*
@@ -4316,7 +4667,7 @@
                 tableBody.appendChild(colHeaderRow);
                 tableBody.appendChild(pipeHeaderRow);
             }
-            setupRowDrag(colHeaderRow, pipeHeaderRow);
+            setupRowDrag(pipeHeaderRow, colHeaderRow);
         }
 
         function buildMPlusButtonsHtmlForMainTable(pipeHeaderId) {
@@ -5415,16 +5766,17 @@
                     : '';
                 
                 // Show Approve button only if not saved yet
-                const approveButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); saveQuotation(${JSON.stringify(quotation.id)})">✅ Approve</button>`;
-                const saveButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); saveQuotationChanges(${JSON.stringify(quotation.id)})">💾 Save</button>`;
-                const downloadButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); downloadQuotationPdf(${JSON.stringify(quotation.id)})">⬇️ Download PDF</button>`;
+                const qidJs = JSON.stringify(String(quotation.id));
+                const approveButtonHTML = `<button class="save-btn" type="button" onclick='event.stopPropagation(); saveQuotation(${qidJs})'>✅ Approve</button>`;
+                const saveButtonHTML = `<button class="save-btn" type="button" onclick='event.stopPropagation(); saveQuotationChanges(${qidJs})'>💾 Save</button>`;
+                const downloadButtonHTML = `<button class="save-btn" type="button" onclick='event.stopPropagation(); downloadQuotationPdf(${qidJs})'>⬇️ Download PDF</button>`;
 
                 const gmailLinkUrl = quotation.emailLink || (quotation.gmailMessageId ? 'https://mail.google.com/mail/u/0/#inbox/' + quotation.gmailMessageId : '');
                 const gmailLinkHTML = gmailLinkUrl ? `<a href="${escapeHtml(gmailLinkUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation();" class="gmail-link" style="margin-left:8px;font-size:12px;">View in Gmail</a>` : '';
 
                 allQuotationsHTML += `
                     <div class="quotation-folder" id="folder-${quotation.id}">
-                        <div class="quotation-folder-header" onclick="toggleQuotationFolder(${JSON.stringify(quotation.id)})">
+                        <div class="quotation-folder-header" data-quotation-id="${escapeHtmlAttr(String(quotation.id))}" onclick='toggleQuotationFolder(${JSON.stringify(String(quotation.id))})'>
                             <span>
                                 <span class="folder-icon">📁</span>
                                 ${folderName}
@@ -5562,6 +5914,32 @@
 
         function getApprovalSearchInput() {
             return document.getElementById('approvalSearchInput');
+        }
+
+        function attachApprovalFolderToggleDelegation() {
+            const container = document.getElementById('approvedQuotationsContainer');
+            if (!container || container.dataset.folderToggleDelegationBound === '1') {
+                return;
+            }
+            container.dataset.folderToggleDelegationBound = '1';
+            container.addEventListener('click', function(e) {
+                if (e.target.closest('a, button, input, textarea, select')) {
+                    return;
+                }
+                const header = e.target.closest('.quotation-folder-header');
+                if (!header) {
+                    return;
+                }
+                const folder = header.closest('.quotation-folder');
+                if (!folder || !folder.id || folder.id.indexOf('folder-') !== 0) {
+                    return;
+                }
+                const quotationId = folder.id.slice('folder-'.length);
+                // #region agent log
+                fetch('http://127.0.0.1:7694/ingest/eb0363b7-c605-45af-945f-2e2f395a6d8d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'folder-toggle',hypothesisId:'H1',location:'attachApprovalFolderToggleDelegation',message:'folder header click',data:{quotationId:quotationId},timestamp:Date.now()})}).catch(function(){});
+                // #endregion
+                toggleQuotationFolder(quotationId);
+            });
         }
 
         function attachApprovalSearchListener() {
@@ -5777,6 +6155,7 @@
             
             // Build HTML for all approved quotations (by quotation date, newest first)
             attachApprovalSearchListener();
+            attachApprovalFolderToggleDelegation();
             const filteredQuotations = getFilteredApprovedQuotations(approvalSearchQuery);
             const sortedByQuotationDate = filteredQuotations.slice().sort(function (a, b) {
                 const aQuote = getQuoteNumberSortValue(a.quoteNumber);
@@ -5845,9 +6224,10 @@
                     return;
                 }
                 const termsText = quotation.termsText || defaultTermsText || '';
-                const approveButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); saveQuotation(${JSON.stringify(quotation.id)})">✅ Approve</button>`;
-                const saveButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); saveQuotationChanges(${JSON.stringify(quotation.id)})">💾 Save</button>`;
-                const downloadButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); downloadQuotationPdf(${JSON.stringify(quotation.id)})">⬇️ Download PDF</button>`;
+                const qidJs = JSON.stringify(String(quotation.id));
+                const approveButtonHTML = `<button class="save-btn" type="button" onclick='event.stopPropagation(); saveQuotation(${qidJs})'>✅ Approve</button>`;
+                const saveButtonHTML = `<button class="save-btn" type="button" onclick='event.stopPropagation(); saveQuotationChanges(${qidJs})'>💾 Save</button>`;
+                const downloadButtonHTML = `<button class="save-btn" type="button" onclick='event.stopPropagation(); downloadQuotationPdf(${qidJs})'>⬇️ Download PDF</button>`;
                 folderContentEl.innerHTML = buildApprovalSplitLayout({ quotation, termsText, approveButtonHTML, saveButtonHTML, downloadButtonHTML });
                 syncApprovalHeaderQuoteInputFromQuotationModel(folderContentEl, quotation);
                 initApprovalHeaderLogos(folderContentEl);
@@ -6111,6 +6491,7 @@
                         actions.appendChild(addHeaderBtn);
                         actions.appendChild(addMainHeaderBtn);
                         actions.appendChild(deleteHeaderBtn);
+                        ensurePipeSectionDragHandleOnRow(headerRow, 'start');
                     });
                     
                     // If the table has no pipe-type-header rows at all, add a default H+ row
@@ -6126,17 +6507,11 @@
                                 headerLabel: 'Enter Section Name',
                                 colspan: String(defColspan),
                                 tableBody: defTbody,
-                                buttonsHtml: buildApprovalPipeHeaderButtonsHtml(quotationId, defId),
-                                dragAtEnd: true
+                                buttonsHtml: buildApprovalPipeHeaderButtonsHtml(quotationId, defId)
                             });
                             defTbody.insertBefore(defRow, defTbody.firstChild);
                         }
                     }
-
-                    table.querySelectorAll('.pipe-type-header').forEach(function(headerRow) {
-                        movePipeTypeHeaderDragHandleToEnd(headerRow);
-                    });
-                    setupAllPipeSectionDragsInTable(table);
 
                     // Process each item row (all tbody rows that aren't pipe-type-header, freight, or main-column-header-row)
                     ensureLineItemIdsInTable(table, quotation && quotation.lineItems);
@@ -6317,6 +6692,8 @@
                             folderContent.appendChild(addRowDiv);
                         }
                     }
+
+                    preparePipeSectionDragInTable(table);
                 }
 
             });
@@ -6409,10 +6786,10 @@
                     pipeType: 'Default',
                     headerLabel: 'Default',
                     tableBody: tbody,
-                    buttonsHtml: buildApprovalPipeHeaderButtonsHtml(quotationId, headerId),
-                    dragAtEnd: true
+                    buttonsHtml: buildApprovalPipeHeaderButtonsHtml(quotationId, headerId)
                 });
                 tbody.appendChild(newHeaderRow);
+                preparePipeSectionDragInTable(table);
                 attachApprovalSectionListeners(folderContent);
                 return;
             }
@@ -6424,8 +6801,8 @@
                     ? existingHeaderCell2.getAttribute('colspan')
                     : (headerRow2 ? headerRow2.children.length : 8);
                 const { pipeHeaderId: aprvPipeHeaderId, colHeaderId: aprvColHeaderId } = generateMPlusIds('approval-m-' + quotationId);
-                const aprvColRow = createMPlusColumnLabelRow(aprvPipeHeaderId, aprvColHeaderId, true);
-                const aprvPipeRow = createMPlusPipeHeaderRow(aprvPipeHeaderId, aprvColHeaderId, colspan2, buildMPlusButtonsHtmlForApproval(quotationId, aprvPipeHeaderId), true);
+                const aprvColRow = createMPlusColumnLabelRow(aprvPipeHeaderId, aprvColHeaderId, false);
+                const aprvPipeRow = createMPlusPipeHeaderRow(aprvPipeHeaderId, aprvColHeaderId, colspan2, buildMPlusButtonsHtmlForApproval(quotationId, aprvPipeHeaderId), false);
                 const anchorRow = insertAfterId ? tbody.querySelector('#' + insertAfterId) : null;
                 insertMPlusRowPair(tbody, aprvColRow, aprvPipeRow, anchorRow);
                 attachApprovalSectionListeners(folderContent);
