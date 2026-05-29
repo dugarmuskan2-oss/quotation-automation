@@ -191,11 +191,16 @@
         }
     }
 
-    function addPipeRowToTable(description, kgPerMeter, qtyMeters, insertAfterRow) {
+    function addPipeRowToTable(description, kgPerMeter, qtyMeters, insertAfterRow, weightMissing) {
         const tbody = $('pipeWeightTableBody');
         if (!tbody) return;
 
         const row = document.createElement('tr');
+
+        // Tint the row red when the AI couldn't find a weight for this pipe size
+        if (weightMissing) {
+            row.style.backgroundColor = 'rgba(255, 0, 0, 0.15)';
+        }
 
         const actionCell = document.createElement('td');
         const descCell = document.createElement('td');
@@ -214,6 +219,16 @@
         kgInput.min = '0';
         kgInput.value = Number.isFinite(kgPerMeter) ? kgPerMeter : '';
         kgInput.style.width = '100%';
+
+        // Clear the red tint as soon as the user enters a valid kg/m value
+        if (weightMissing) {
+            kgInput.addEventListener('input', function clearTint() {
+                if (Number.isFinite(parseFloat(kgInput.value))) {
+                    row.style.backgroundColor = '';
+                    kgInput.removeEventListener('input', clearTint);
+                }
+            });
+        }
 
         const qtyInput = document.createElement('input');
         qtyInput.type = 'number';
@@ -282,7 +297,9 @@
             const sizeKey = normalizeSizeKey(desc);
             const kgPerMeter = resolveKgPerMeter(item, sizeKey);
             const qtyMeters = parseNumber(item.quantity || item.qty || item.meters);
-            addPipeRowToTable(desc, kgPerMeter, qtyMeters);
+            // Flag rows where the AI had a description but couldn't find a weight
+            const weightMissing = !!desc && !Number.isFinite(kgPerMeter);
+            addPipeRowToTable(desc, kgPerMeter, qtyMeters, null, weightMissing);
         });
 
         recalculateFromTable();
