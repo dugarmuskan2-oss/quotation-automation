@@ -1565,8 +1565,8 @@
         }
 
         const backendSaveTimers = new Map();
-        const APPROVED_QUOTATIONS_PAGE_SIZE = 40;
-        let approvedQuotationsOffset = 0;
+        const APPROVED_QUOTATIONS_PAGE_SIZE = 100;
+        let approvedQuotationsCursor = null;   // opaque DynamoDB page cursor; null = first page
         let approvedQuotationsHasMore = false;
         let approvedQuotationsLoading = false;
 
@@ -1602,8 +1602,11 @@
             approvedQuotationsLoading = true;
             updateLoadMoreApprovedButton();
             try {
-                const offset = append ? approvedQuotationsOffset : 0;
-                const response = await fetch(`${API_BASE_URL}/quotations?limit=${APPROVED_QUOTATIONS_PAGE_SIZE}&offset=${offset}`);
+                const cursor = append ? approvedQuotationsCursor : null;
+                const url = cursor
+                    ? `${API_BASE_URL}/quotations?limit=${APPROVED_QUOTATIONS_PAGE_SIZE}&cursor=${encodeURIComponent(cursor)}`
+                    : `${API_BASE_URL}/quotations?limit=${APPROVED_QUOTATIONS_PAGE_SIZE}`;
+                const response = await fetch(url);
                 const result = await safeJsonParse(response);
                 if (!response.ok) {
                     const detailMsg = result.details ? ': ' + result.details : '';
@@ -1615,7 +1618,7 @@
                 } else {
                     approvedQuotations = quotations;
                 }
-                approvedQuotationsOffset = approvedQuotations.length;
+                approvedQuotationsCursor = result.nextCursor || null;
                 approvedQuotationsHasMore = !!result.hasMore;
                 syncApprovedQuotationsGlobal();
                 displayAllApprovedQuotations();
@@ -1630,7 +1633,7 @@
         }
 
         async function initQuotations() {
-            approvedQuotationsOffset = 0;
+            approvedQuotationsCursor = null;
             approvedQuotationsHasMore = false;
             await loadQuotationsFromBackend(false);
         }

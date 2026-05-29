@@ -18,7 +18,8 @@ const {
 } = require('../utils/constants');
 
 // Local constants
-const MAX_SCAN_PAGES = 200;
+const MAX_SCAN_PAGES     = 200;
+const DEFAULT_PAGE_SIZE  = 100;   // items returned per page
 
 // Summary fields projected from DynamoDB — keeps scan/query pages small
 const SUMMARY_NESTED_PATHS = [
@@ -34,7 +35,32 @@ const SUMMARY_PROJECTION = [
 ].join(', ');
 const SUMMARY_EXPR_NAMES = { '#p': 'payload', '#d': 'data', '#sv': 'saved' };
 
-const QUOTATIONS_LIST_LIMIT = 600;
+const QUOTATIONS_LIST_LIMIT = 600;   // hard cap — never return more than this per page
+
+// ── Cursor helpers ────────────────────────────────────────────────────────────
+
+/**
+ * Encode a DynamoDB LastEvaluatedKey (or a plain offset object) into a
+ * URL-safe opaque string the client can pass back as ?cursor=.
+ */
+function encodeCursor(key) {
+    if (!key) return null;
+    return Buffer.from(JSON.stringify(key)).toString('base64url');
+}
+
+/**
+ * Decode the cursor back to a JS object.
+ * Returns null if cursor is missing, empty, or corrupt — callers treat
+ * null as "start from the beginning."
+ */
+function decodeCursor(cursor) {
+    if (!cursor) return null;
+    try {
+        return JSON.parse(Buffer.from(String(cursor), 'base64url').toString('utf8'));
+    } catch {
+        return null;
+    }
+}
 
 // ── Merge helpers ─────────────────────────────────────────────────────────────
 
@@ -159,19 +185,37 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName })
         }
     });
 
-    // List quotations (GSI fast path, scan fallback)
+    // List quotations — cursor-based, one DynamoDB call per page.
+    //
+    // GSI fast path: passes Limit directly to DynamoDB, gets back
+    // LastEvaluatedKey which becomes the next cursor (~80 ms per page).
+    //
+    // Scan fallback (only if GSI is missing): fetches ALL items, sorts them
+    // in JS, then encodes a plain offset as the cursor.  Slow but correct.
     router.get('/quotations', async (req, res) => {
         if (!requireDdb(res)) return;
         try {
-            const requestedLimit  = Math.min(QUOTATIONS_LIST_LIMIT, Math.max(1, parseInt(req.query.limit,  10) || QUOTATIONS_LIST_LIMIT));
-            const requestedOffset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+            const limit      = Math.min(QUOTATIONS_LIST_LIMIT, Math.max(1, parseInt(req.query.limit, 10) || DEFAULT_PAGE_SIZE));
+            const cursorData = decodeCursor(req.query.cursor);
             const { QueryCommand, ScanCommand } = require('@aws-sdk/lib-dynamodb');
 
-            let items = [], lastKey = null, pages = 0, mode = 'gsi';
             const t0 = Date.now();
+            let mode = 'gsi', items = [], nextKey = null, pages = 0;
 
             try {
-                do {
+                // ── GSI fast path ─────────────────────────────────────────────
+                // cursorData is either null (first page) or a DynamoDB key object.
+                // Scan-fallback cursors carry a `_scan_offset` sentinel — don't
+                // feed those back to DynamoDB.
+                let startKey = (cursorData && !cursorData._scan_offset) ? cursorData : null;
+
+                // DynamoDB caps each response at 1 MB of raw item data regardless
+                // of `Limit`.  Large quotation payloads (20–30 KB each) can reduce
+                // a page to ~40 items even when we asked for 100.  Loop until we
+                // have `limit` items OR DynamoDB says there are no more pages.
+                const MAX_INNER_PAGES = 10;
+                while (items.length < limit && pages < MAX_INNER_PAGES) {
+                    const remaining = limit - items.length;
                     const params = {
                         TableName:                 ddbTableName,
                         IndexName:                 QUOTATIONS_GSI_INDEX,
@@ -180,40 +224,61 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName })
                         ExpressionAttributeValues: { ':ent': ENTITY_QUOTATION },
                         ScanIndexForward:          false,
                         ProjectionExpression:      SUMMARY_PROJECTION,
+                        Limit:                     remaining,
                     };
-                    if (lastKey) params.ExclusiveStartKey = lastKey;
+                    if (startKey) params.ExclusiveStartKey = startKey;
+
                     const result = await ddbDocClient.send(new QueryCommand(params));
                     items   = items.concat(result.Items || []);
-                    lastKey = result.LastEvaluatedKey || null;
+                    nextKey = result.LastEvaluatedKey || null;
                     pages++;
-                } while (lastKey);
+                    if (!nextKey) break;   // no more pages
+                    startKey = nextKey;    // advance cursor for next inner call
+                }
+
             } catch (gsiError) {
                 const missing = gsiError.name === 'ResourceNotFoundException' ||
                     (gsiError.name === 'ValidationException' && gsiError.message?.includes('index'));
                 if (!missing) throw gsiError;
+
                 console.warn(`[quotations] GSI not found, falling back to scan. Create ${QUOTATIONS_GSI_INDEX} to speed this up.`);
-                mode = 'scan'; items = []; lastKey = null; pages = 0;
+                mode = 'scan';
+
+                // ── Scan fallback — fetch all, sort, slice ────────────────────
+                let allItems = [], scanKey = null;
                 do {
                     const params = { TableName: ddbTableName, ProjectionExpression: SUMMARY_PROJECTION, ExpressionAttributeNames: SUMMARY_EXPR_NAMES };
-                    if (lastKey) params.ExclusiveStartKey = lastKey;
+                    if (scanKey) params.ExclusiveStartKey = scanKey;
                     const result = await ddbDocClient.send(new ScanCommand(params));
-                    items   = items.concat(result.Items || []);
-                    lastKey = result.LastEvaluatedKey || null;
+                    allItems = allItems.concat(result.Items || []);
+                    scanKey  = result.LastEvaluatedKey || null;
                     pages++;
-                } while (lastKey);
+                } while (scanKey);
+
+                const scanOffset = cursorData?._scan_offset || 0;
+                const sorted = allItems
+                    .map(quotationFromItem).filter(Boolean)
+                    .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+
+                const page       = sorted.slice(scanOffset, scanOffset + limit);
+                const nextOffset = scanOffset + page.length;
+                nextKey = nextOffset < sorted.length ? { _scan_offset: nextOffset } : null;
+
+                const tQuery = Date.now();
+                const tDone  = Date.now();
+                res.set('X-Query-Ms',    String(tQuery - t0));
+                res.set('X-Total-Ms',    String(tDone  - t0));
+                res.set('X-Query-Pages', String(pages));
+                res.set('X-Item-Count',  String(allItems.length));
+                res.set('X-Query-Mode',  mode);
+                console.log(`[quotations] mode=${mode} queryMs=${tQuery-t0} pages=${pages} items=${allItems.length}`);
+                return res.json({ quotations: page, hasMore: !!nextKey, nextCursor: encodeCursor(nextKey), limit });
             }
 
             const tQuery = Date.now();
-            let quotations = items.map(quotationFromItem).filter(Boolean);
-            if (mode === 'scan') {
-                quotations.sort((a, b) =>
-                    new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
-            }
-
-            const total          = quotations.length;
-            const pagedQuotations = quotations.slice(requestedOffset, requestedOffset + requestedLimit);
-            const hasMore        = (requestedOffset + pagedQuotations.length) < total;
-            const tDone          = Date.now();
+            const quotations = items.map(quotationFromItem).filter(Boolean);
+            const nextCursor = encodeCursor(nextKey);
+            const tDone      = Date.now();
 
             res.set('X-Query-Ms',    String(tQuery - t0));
             res.set('X-Total-Ms',    String(tDone  - t0));
@@ -222,7 +287,7 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName })
             res.set('X-Query-Mode',  mode);
             console.log(`[quotations] mode=${mode} queryMs=${tQuery-t0} totalMs=${tDone-t0} pages=${pages} items=${items.length}`);
 
-            res.json({ quotations: pagedQuotations, hasMore, total, limit: requestedLimit, offset: requestedOffset });
+            res.json({ quotations, hasMore: !!nextCursor, nextCursor, limit });
         } catch (error) {
             console.error('Error loading quotations:', error);
             res.status(500).json({ error: 'Failed to load quotations', details: error.message });
