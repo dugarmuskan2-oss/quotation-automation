@@ -440,7 +440,7 @@ async function handleGenerateQuotation({ emailContent, fileContent, instructions
   ]
 }
 
-Extract all pipe information from the enquiry (including all attached enquiry PDFs if any). Read every enquiry document and combine relevant data. Match with rates from the uploaded PDF rate files, calculate final rates with margins, and return the complete JSON. When KG/meter is not available for a matched item, return an empty string for "kgPerMeter".`;
+Extract ALL items and materials from the enquiry — including pipes, plates, fittings, flanges, structural steel, and any other product types (including all attached enquiry PDFs if any). Do not skip or ignore any item regardless of type. Read every enquiry document and combine relevant data. Match with rates from the uploaded PDF rate files where possible, calculate final rates with margins, and return the complete JSON. When KG/meter is not available for a matched item, return an empty string for "kgPerMeter".`;
 
         const userContentParts = [
             {
@@ -467,7 +467,7 @@ Extract all pipe information from the enquiry (including all attached enquiry PD
             input: [
                 {
                     role: 'system',
-                    content: instructions || 'You are a quotation extraction assistant. Extract pipe information from enquiries and match them with rates from the provided PDF rate files. Read the PDF files directly to find the correct rates.'
+                    content: instructions || 'You are a quotation extraction assistant. Extract all items and materials from enquiries — pipes, plates, fittings, flanges, structural steel, or any other product. Match them with rates from the provided PDF rate files where possible. Read the PDF files directly to find the correct rates. Never skip or filter out items based on product type.'
                 },
                 {
                     role: 'user',
@@ -578,6 +578,100 @@ app.post('/api/generate-quotation-file', upload.single('enquiryFile'), async (re
         return res.status(500).json({ error: 'Failed to process enquiry file', details: error.message });
     }
     await handleGenerateQuotation({ emailContent, fileContent, instructions, enquiryFileId, enquiryImageDataUrl }, res);
+});
+
+// Lightweight endpoint for the Enquiry Preparer — no rate files, no margin calculations,
+// just extract every item exactly as written.
+app.post('/api/extract-enquiry-items', upload.single('enquiryFile'), async (req, res) => {
+    const emailContent = req.body?.emailContent || '';
+    let fileContent = '';
+    let enquiryFileId = null;
+    let enquiryImageDataUrl = null;
+
+    try {
+        if (req.file && isWordEnquiryFile(req.file.originalname)) {
+            fileContent = await extractTextFromWordFile(req.file);
+        } else if (req.file && isExcelEnquiryFile(req.file.originalname)) {
+            fileContent = extractTextFromExcelFile(req.file);
+        } else if (req.file && isImageEnquiryFile(req.file.originalname)) {
+            enquiryImageDataUrl = getImageDataUrl(req.file);
+        } else if (req.file) {
+            enquiryFileId = await uploadEnquiryFileToOpenAI(req.file);
+        }
+    } catch (error) {
+        console.error('Failed to process enquiry file:', error);
+        return res.status(500).json({ error: 'Failed to process file', details: error.message });
+    }
+
+    const contentText = emailContent || fileContent || '';
+    if (!contentText && !enquiryFileId && !enquiryImageDataUrl) {
+        return res.status(400).json({ error: 'No content provided' });
+    }
+
+    const promptText = `Extract every item and material from the following enquiry. Include ALL items — pipes, plates, fittings, flanges, structural steel, or any other product. Never skip any item.
+
+For each item, use your intelligence to separate the description into these four fields:
+- "productSpec": the product type plus any standard/grade (everything EXCEPT the size/dimensions). Examples: "ERW Pipe IS:1239 Gr B", "Checkered Plate", "90° Elbow ASTM A234 WPB", "MS Flat Bar"
+- "size": the dimensions or size designation only. Examples: "6\\" NB", "3X4", "4\\" NB SCH 40", "50x50x6 MM"
+- "quantity": numeric value only, empty string if not mentioned
+- "unit": unit of measure (MTRS, NOS, KG, MT, etc.), empty string if not mentioned
+
+Return JSON in this exact format:
+{
+  "lineItems": [
+    {
+      "originalDescription": "full item description as written",
+      "productSpec": "product type + standard/grade",
+      "size": "dimensions/size only",
+      "quantity": "numeric quantity or empty string",
+      "unit": "UOM or empty string"
+    }
+  ]
+}
+
+Enquiry:
+${contentText}`;
+
+    const userContentParts = [{ type: 'input_text', text: promptText }];
+    if (enquiryFileId) userContentParts.push({ type: 'input_file', file_id: enquiryFileId });
+    if (enquiryImageDataUrl) userContentParts.push({ type: 'input_image', image_url: enquiryImageDataUrl });
+
+    try {
+        const completion = await openai.responses.create({
+            model: 'gpt-5.2',
+            input: [
+                {
+                    role: 'system',
+                    content: 'You are a data extraction assistant for a steel and pipe trading company. Extract every item from the enquiry. For each item intelligently separate the product type+grade into "productSpec" and the dimensions into "size". Never skip any item. Return only valid JSON.'
+                },
+                {
+                    role: 'user',
+                    content: userContentParts
+                }
+            ]
+        });
+
+        const responseText =
+            completion.output_text ||
+            completion.output?.[0]?.content?.[0]?.text ||
+            completion.output?.[0]?.content?.[0]?.value || '';
+
+        let data;
+        try {
+            data = JSON.parse(responseText);
+        } catch (e) {
+            const match = responseText.match(/\{[\s\S]*\}/);
+            if (match) data = JSON.parse(match[0]);
+            else throw new Error('Failed to parse AI response as JSON');
+        }
+
+        if (!Array.isArray(data.lineItems)) data.lineItems = [];
+        return res.json({ lineItems: data.lineItems });
+
+    } catch (error) {
+        console.error('Enquiry item extraction failed:', error);
+        return res.status(500).json({ error: 'Failed to extract items', details: error.message });
+    }
 });
 
 function buildWeightExtractionInstructions(instructions) {

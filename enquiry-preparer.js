@@ -11,10 +11,9 @@
     }
 
     function getDefaults() {
-        // Defaults only when inputs do not provide values.
         return {
-            uom: 'MTRS',
-            makeRequired: 'JINDAL'
+            uom: '',
+            makeRequired: ''
         };
     }
 
@@ -56,8 +55,9 @@
                 return {
                     slNo: idx + 1,
                     description: item.originalDescription || item.description || item.identifiedPipeType || '',
-                    // If using the quotation option, treat the pipe type header as the specification.
-                    productSpec: String(item.identifiedPipeType || '').trim(),
+                    // AI-extracted productSpec takes priority; fall back to identifiedPipeType for quotation-sourced items
+                    productSpec: String(item.productSpec || item.identifiedPipeType || '').trim(),
+                    size: String(item.size || '').trim(),
                     quantity: Number.isFinite(qty) ? String(qty) : String(item.quantity || item.qty || '').trim(),
                     unit: String(item.unit || item.uom || 'Nos').trim()
                 };
@@ -81,7 +81,7 @@
         el.style.color = ok ? '#2e7d32' : '#c62828';
     }
 
-    // ===== Enquiry Table Functions (and sub-functions) =====
+    // ===== Enquiry Table Functions =====
 
     function getEnquiryTbody() {
         return $('enquiryTableBody');
@@ -110,7 +110,7 @@
         return firstLine;
     }
 
-    // ===== Spec extraction (functions/sub-functions) =====
+    // ===== Spec extraction =====
 
     function normalizeSpecToken(token) {
         return String(token || '')
@@ -169,14 +169,13 @@
         const t = String(text || '');
 
         // Standard bodies + codes/numbers.
-        // Examples:
-        // IS 1239, IS:3589, API 5L, API5CT, ASTM A106, ASTM-A53, EN 10255, DIN 2448, BS 1387, JIS G3452, ISO 3183, ASME B36.10, AWWA C200
+        // Examples: IS 1239, IS:3589, API 5L, API5CT, ASTM A106, ASTM-A53, EN 10255, DIN 2448,
+        //           BS 1387, JIS G3452, ISO 3183, ASME B36.10, AWWA C200
         const bodies = [
             'IS', 'API', 'ASTM', 'EN', 'DIN', 'BS', 'JIS', 'ISO', 'ASME', 'AWWA', 'NACE', 'CSA', 'GOST', 'SS'
         ];
         const bodyRe = new RegExp(
             `\\b(?:${bodies.join('|')})\\b\\s*[:\\-]?\\s*` +
-            // Allow: A106, B36.10, G3452, 5L, 5CT, 3183, 10255, C200 etc.
             `([A-Z]{0,2}\\s*[0-9]{1,5}(?:\\.[0-9]{1,4})?(?:\\s*[A-Z]{0,3})?)`,
             'gi'
         );
@@ -211,7 +210,6 @@
         const tokens = standards.concat(grades);
 
         if (!tokens.length) return '';
-        // Keep concise but informative.
         return tokens.join(' ');
     }
 
@@ -219,17 +217,10 @@
         const d = getDefaults();
         const desc = (fromLineItem && fromLineItem.description) || '';
         const qty = (fromLineItem && fromLineItem.quantity) || '';
-        const size = extractSizeFromDescription(desc);
+        // Use AI-extracted size if available, otherwise fall back to parsing the description
+        const size = String((fromLineItem && fromLineItem.size) || '').trim() || extractSizeFromDescription(desc);
         const inferredSpec = inferProductSpecFromText(desc, size);
-        const productSpec = String((fromLineItem && fromLineItem.productSpec) || '').trim() || inferredSpec;
-
-        // #region agent log
-        __dbg('H6', 'enquiry-preparer.js:buildEnquiryRowModel', 'spec inference', {
-            hasInferred: !!inferredSpec,
-            inferred: inferredSpec ? inferredSpec.slice(0, 40) : '',
-            used: productSpec ? productSpec.slice(0, 40) : ''
-        });
-        // #endregion
+        const productSpec = String((fromLineItem && fromLineItem.productSpec) || '').trim() || inferredSpec || desc;
 
         return {
             productSpec,
@@ -340,7 +331,7 @@
                         .map((r, idx) => ({
                             slNo: idx + 1,
                             description: String(r.desc || '').trim(),
-                            productSpec: String(r.desc || '').trim(), // best-effort; user can edit
+                            productSpec: String(r.desc || '').trim(),
                             quantity: String(r.qty || '').trim(),
                             unit: 'MTRS'
                         }))
@@ -348,42 +339,19 @@
                     : [];
                 if (extracted.length) {
                     normalized = { ...normalized, lineItems: extracted };
-                    __dbg('H10', 'enquiry-preparer.js:populateEnquiryTableFromQuotation', 'used tableHTML fallback', { count: extracted.length });
-                } else {
-                    __dbg('H10', 'enquiry-preparer.js:populateEnquiryTableFromQuotation', 'tableHTML fallback empty', {});
                 }
             } catch (e) {
-                __dbg('H10', 'enquiry-preparer.js:populateEnquiryTableFromQuotation', 'tableHTML fallback error', { message: String(e && e.message || e || '') });
+                // tableHTML fallback failed silently
             }
         }
 
         if (!normalized.lineItems.length) throw new Error('Quotation found, but it has no line items.');
-
-        // #region agent log
-        __dbg('H9', 'enquiry-preparer.js:populateEnquiryTableFromQuotation', 'normalized line items', {
-            quoteNumber: String(normalized.quoteNumber || ''),
-            lineItemCount: normalized.lineItems.length,
-            first: normalized.lineItems[0]
-                ? {
-                    hasDesc: !!String(normalized.lineItems[0].description || '').trim(),
-                    hasQty: !!String(normalized.lineItems[0].quantity || '').trim(),
-                    productSpec: String(normalized.lineItems[0].productSpec || '').slice(0, 60)
-                }
-                : null
-        });
-        // #endregion
 
         clearEnquiryTable();
         normalized.lineItems.forEach(li => {
             addEnquiryRowToTable(buildEnquiryRowModel(li));
         });
         renumberEnquiryRows();
-
-        // #region agent log
-        __dbg('H9', 'enquiry-preparer.js:populateEnquiryTableFromQuotation', 'table populated', {
-            rowCount: getEnquiryTbody() ? getEnquiryTbody().querySelectorAll('tr').length : null
-        });
-        // #endregion
     }
 
     // ===== Upload rows (CSV) =====
@@ -424,7 +392,7 @@
     }
 
     function parseEnquiryRowsCsv(text) {
-        const raw = String(text || '').replace(/^\uFEFF/, '');
+        const raw = String(text || '').replace(/^﻿/, '');
         const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
         if (!lines.length) return { rows: [], error: 'CSV is empty.' };
 
@@ -537,14 +505,13 @@
         const rows = tbody ? Array.from(tbody.querySelectorAll('tr')) : [];
 
         const headerLines = headerText
-            ? headerText.split(/\r?\n/).map(l => `<div style="font-weight:${l.trim().toUpperCase()==='DEAR SIR'?'700':'600'}; margin:2px 0;">${escapeHtml(l)}</div>`).join('')
+            ? headerText.split(/\r?\n/).map(l => `<div style="font-weight:${l.trim().toUpperCase() === 'DEAR SIR' ? '700' : '600'}; margin:2px 0;">${escapeHtml(l)}</div>`).join('')
             : '';
 
         const tableRows = rows.map((tr, idx) => {
             const getVal = (key) => (tr.querySelector(`input[data-col="${key}"]`)?.value || '').trim();
             const bg = (idx % 2 === 0) ? '#ffffff' : '#eef5ff';
             const cellBase = `border:1px solid #000;padding:8px;background-color:${bg};`;
-            // Outlook often ignores <tr background>, so apply on each <td> + bgcolor.
             return `
                 <tr>
                     <td bgcolor="${bg}" style="${cellBase}text-align:center;">${escapeHtml(getVal('slNo'))}</td>
@@ -561,7 +528,6 @@
             `;
         }).join('');
 
-        // ===== Header styling helpers (functions/sub-functions) =====
         const BORDER = 'border:1px solid #000;';
         function th(text, bg, color) {
             return `<th style="background:${bg};color:${color};${BORDER}padding:8px;text-align:center;">${escapeHtml(text)}</th>`;
@@ -571,7 +537,6 @@
             const fg = color || '#fff';
             return `<th colspan="${colspan}" style="background:${background};color:${fg};${BORDER}padding:8px;text-align:center;font-weight:700;">${escapeHtml(text)}</th>`;
         }
-        // Requirement headers alternate white/blue. Offer headers alternate green/blue.
         const reqA = { bg: '#ffffff', color: '#0b4aa2' };
         const reqB = { bg: '#0b4aa2', color: '#ffffff' };
         const offA = { bg: '#2e7d32', color: '#ffffff' };
@@ -588,13 +553,6 @@
             th('UOM', offB.bg, offB.color),
             th('MAKE OFFERED BY YOU', offA.bg, offA.color)
         ].join('');
-
-        // #region agent log
-        __dbg('H3', 'enquiry-preparer.js:buildEnquiryHtmlForCopy', 'header scheme applied', {
-            requirement: 'white/blue alternating',
-            offer: 'green/white alternating'
-        });
-        // #endregion
 
         return `
             <div style="font-family: Arial, sans-serif; color:#111; font-size:13px;">
@@ -664,37 +622,6 @@
         }
     }
 
-    // #region agent log
-    function __dbg(hypothesisId, location, message, data) {
-        fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '5f7ab2' },
-            body: JSON.stringify({
-                sessionId: '5f7ab2',
-                runId: 'copy-debug',
-                hypothesisId,
-                location,
-                message,
-                data: data || {},
-                timestamp: Date.now()
-            })
-        }).catch(() => { });
-        fetch('/api/debug-ingest', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                sessionId: '5f7ab2',
-                runId: 'copy-debug',
-                hypothesisId,
-                location,
-                message,
-                data: data || {},
-                timestamp: Date.now()
-            })
-        }).catch(() => { });
-    }
-    // #endregion
-
     function copyHtmlWithExecCommand(html, plainTextFallback) {
         // Outlook-friendly fallback: copy selection from DOM.
         const container = document.createElement('div');
@@ -703,28 +630,16 @@
         container.innerHTML = html;
         document.body.appendChild(container);
 
-        // Some editors require the element to be focused for rich copy.
         try { container.focus(); } catch (_) { }
 
-        // Hypothesis H1: execCommand copy succeeds but clipboard lacks text/html → email pastes plain text.
-        // We force clipboard payload via a copy handler.
         const onCopy = function (e) {
             try {
-                const hasClipboard = !!(e && e.clipboardData);
-                if (hasClipboard) {
+                if (e && e.clipboardData) {
                     e.clipboardData.setData('text/html', html);
                     e.clipboardData.setData('text/plain', plainTextFallback || '');
                     e.preventDefault();
                 }
-                __dbg('H1', 'enquiry-preparer.js:copyHtmlWithExecCommand', 'onCopy fired', {
-                    hasClipboard,
-                    htmlLen: String(html || '').length,
-                    hasTable: String(html || '').toLowerCase().includes('<table'),
-                    textLen: String(plainTextFallback || '').length
-                });
-            } catch (err) {
-                __dbg('H1', 'enquiry-preparer.js:copyHtmlWithExecCommand', 'onCopy error', { message: String(err && err.message || err || '') });
-            }
+            } catch (_) { }
         };
         document.addEventListener('copy', onCopy, true);
 
@@ -744,7 +659,6 @@
         sel.removeAllRanges();
         document.removeEventListener('copy', onCopy, true);
         container.remove();
-        __dbg('H2', 'enquiry-preparer.js:copyHtmlWithExecCommand', 'execCommand result', { ok });
         return ok;
     }
 
@@ -760,7 +674,6 @@
     }
 
     function getApiBaseUrl() {
-        // Mirror index.html logic but without depending on its local-scope const.
         const origin = window.location && window.location.origin;
         return (origin && origin !== 'null' && String(origin).startsWith('http'))
             ? origin + '/api'
@@ -781,34 +694,19 @@
 
     async function fetchQuotationByNumber(quoteNumber) {
         const api = getApiBaseUrl();
-        // Fast path: lookup id, then fetch full quotation with lineItems.
-        __dbg('H8', 'enquiry-preparer.js:fetchQuotationByNumber', 'lookup start', { quoteNumber });
         const lookup = await fetchJson(`${api}/quotations/by-number/${encodeURIComponent(quoteNumber)}`);
-        if (!lookup || !lookup.found || !lookup.id) {
-            __dbg('H8', 'enquiry-preparer.js:fetchQuotationByNumber', 'lookup not found', { quoteNumber });
-            return null;
-        }
-        __dbg('H8', 'enquiry-preparer.js:fetchQuotationByNumber', 'lookup found', { id: String(lookup.id) });
+        if (!lookup || !lookup.found || !lookup.id) return null;
         const full = await fetchJson(`${api}/quotations/${encodeURIComponent(String(lookup.id))}`);
         return full && full.quotation ? full.quotation : null;
     }
 
     async function createEnquiryFromQuotationNumber() {
-        // #region agent log
-        __dbg('H7', 'enquiry-preparer.js:createEnquiryFromQuotationNumber', 'enter', {
-            hasInput: !!$('enquiryFromQuoteNumber'),
-            approvedCount: Array.isArray(window.approvedQuotations) ? window.approvedQuotations.length : null
-        });
-        // #endregion
         setStatus('enquiryFromQuoteStatus', '', false);
         var quoteInput = $('enquiryFromQuoteNumber');
         var quoteNumber = quoteInput ? String(quoteInput.value || '').trim() : '';
 
         if (!quoteNumber) {
             setStatus('enquiryFromQuoteStatus', 'Please enter a quotation number.', false);
-            // #region agent log
-            __dbg('H7', 'enquiry-preparer.js:createEnquiryFromQuotationNumber', 'exit:emptyQuoteNumber', {});
-            // #endregion
             return;
         }
 
@@ -820,27 +718,20 @@
                 match = await fetchQuotationByNumber(quoteNumber);
             } catch (e) {
                 setStatus('enquiryFromQuoteStatus', 'Failed to fetch quotation: ' + (e.message || 'Unknown error'), false);
-                __dbg('H8', 'enquiry-preparer.js:createEnquiryFromQuotationNumber', 'fetch error', { quoteNumber, message: String(e && e.message || e || '') });
                 return;
             }
         }
 
         if (!match) {
             setStatus('enquiryFromQuoteStatus', 'Quotation not found.', false);
-            __dbg('H7', 'enquiry-preparer.js:createEnquiryFromQuotationNumber', 'exit:notFound', { quoteNumber });
             return;
         }
 
         try {
             populateEnquiryTableFromQuotation(match);
             setStatus('enquiryFromQuoteStatus', 'Enquiry table created from quotation number.', true);
-            __dbg('H7', 'enquiry-preparer.js:createEnquiryFromQuotationNumber', 'exit:success', { quoteNumber, usedFetch: !Array.isArray(window.approvedQuotations) || !window.approvedQuotations.length });
         } catch (e) {
             setStatus('enquiryFromQuoteStatus', 'Failed to populate table: ' + (e && e.message ? e.message : 'Unknown error'), false);
-            __dbg('H9', 'enquiry-preparer.js:createEnquiryFromQuotationNumber', 'exit:populateError', {
-                quoteNumber,
-                message: String(e && e.message || e || '')
-            });
         }
     }
 
@@ -854,14 +745,14 @@
             setStatus('enquiryInputStatus', 'Please paste content or choose a file first.', false);
             return;
         }
-        if (typeof window.extractQuotationWithAIFile !== 'function') {
+        if (typeof window.extractEnquiryItemsWithAI !== 'function') {
             setStatus('enquiryInputStatus', 'AI extraction is not available in this build.', false);
             return;
         }
 
         try {
             setStatus('enquiryInputStatus', 'Calling AI to extract enquiry details...', true);
-            var aiData = await window.extractQuotationWithAIFile(text, file);
+            var aiData = await window.extractEnquiryItemsWithAI(text, file);
             populateEnquiryTableFromQuotation(aiData);
             setStatus('enquiryInputStatus', 'Enquiry table created from pasted/uploaded content.', true);
         } catch (error) {
@@ -875,15 +766,7 @@
         ensureEnquiryTableHasRow();
         const html = buildEnquiryHtmlForCopy();
         const text = buildEnquiryTextForCopy();
-        // #region agent log
-        __dbg('H4', 'enquiry-preparer.js:copyEnquiryAsHtml', 'copy start', {
-            htmlHasTable: String(html || '').toLowerCase().includes('<table'),
-            htmlLen: String(html || '').length,
-            textLen: String(text || '').length
-        });
-        // #endregion
-        // IMPORTANT: Some editors ignore programmatic HTML clipboard from the browser.
-        // Provide an explicit "copy from rendered preview" fallback by selecting actual DOM nodes.
+
         let ok = false;
         try {
             // 1) Try execCommand with explicit clipboardData (best for Outlook).
@@ -903,9 +786,7 @@
             // 3) Last resort: open preview automatically so user can copy manually.
             openEnquiryPreview();
         }
-        // #region agent log
-        __dbg('H4', 'enquiry-preparer.js:copyEnquiryAsHtml', 'copy done', { ok });
-        // #endregion
+
         if (statusEl) {
             statusEl.textContent = ok
                 ? 'Enquiry copied (HTML table).'
@@ -996,26 +877,33 @@
         resetEnquiryDefaults();
         ensureEnquiryTableHasRow();
 
-        // #region agent log
-        __dbg('H5', 'enquiry-preparer.js:init', 'enquiry UI elements', {
-            hasCopyHtmlBtn: !!document.getElementById('copyEnquiryHtmlBtn'),
-            hasTable: !!document.getElementById('enquiryTable'),
-            hasTbody: !!document.getElementById('enquiryTableBody')
-        });
-        // #endregion
-
         window.enquiryPreparer = {
             createEnquiryFromQuotationNumber: createEnquiryFromQuotationNumber,
             createEnquiryFromAiInput: createEnquiryFromAiInput,
             copyEnquiryAsHtml: copyEnquiryAsHtml,
-            addManualRow: addManualRow,
-            loadRowsFromUploadedCsv: loadRowsFromUploadedCsv
+            addManualRow: addManualRow
         };
     }
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
-    } else {
-        init();
+    if (typeof document !== 'undefined') {
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+    }
+
+    // Node.js / Jest test exports — no-op in browsers where `module` is undefined
+    if (typeof module !== 'undefined') {
+        module.exports = {
+            _test: {
+                normalizeQuotation,
+                extractSizeFromDescription,
+                inferProductSpecFromText,
+                extractGradeTokens,
+                extractStandardTokens,
+                buildEnquiryRowModel,
+            }
+        };
     }
 })();
