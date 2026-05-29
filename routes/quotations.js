@@ -196,6 +196,7 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName })
         if (!requireDdb(res)) return;
         try {
             const limit      = Math.min(QUOTATIONS_LIST_LIMIT, Math.max(1, parseInt(req.query.limit, 10) || DEFAULT_PAGE_SIZE));
+            const offset     = Math.max(0, parseInt(req.query.offset, 10) || 0);
             const cursorData = decodeCursor(req.query.cursor);
             const { QueryCommand, ScanCommand } = require('@aws-sdk/lib-dynamodb');
 
@@ -272,22 +273,29 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName })
                 res.set('X-Item-Count',  String(allItems.length));
                 res.set('X-Query-Mode',  mode);
                 console.log(`[quotations] mode=${mode} queryMs=${tQuery-t0} pages=${pages} items=${allItems.length}`);
-                return res.json({ quotations: page, hasMore: !!nextKey, nextCursor: encodeCursor(nextKey), limit });
+                return res.json({ quotations: page, hasMore: !!nextKey, nextCursor: encodeCursor(nextKey), limit, total: sorted.length });
             }
 
             const tQuery = Date.now();
-            const quotations = items.map(quotationFromItem).filter(Boolean);
+            const allQuotations = items.map(quotationFromItem).filter(Boolean);
+            const total      = allQuotations.length;
+            // Apply optional offset-based slice (used when ?offset= is provided
+            // directly; cursor-based callers leave offset=0).
+            const quotations = offset > 0
+                ? allQuotations.slice(offset, offset + limit)
+                : allQuotations;
             const nextCursor = encodeCursor(nextKey);
+            const hasMore    = !!nextCursor || (offset + quotations.length < total);
             const tDone      = Date.now();
 
             res.set('X-Query-Ms',    String(tQuery - t0));
             res.set('X-Total-Ms',    String(tDone  - t0));
             res.set('X-Query-Pages', String(pages));
-            res.set('X-Item-Count',  String(items.length));
+            res.set('X-Item-Count',  String(total));
             res.set('X-Query-Mode',  mode);
-            console.log(`[quotations] mode=${mode} queryMs=${tQuery-t0} totalMs=${tDone-t0} pages=${pages} items=${items.length}`);
+            console.log(`[quotations] mode=${mode} queryMs=${tQuery-t0} totalMs=${tDone-t0} pages=${pages} items=${total}`);
 
-            res.json({ quotations, hasMore: !!nextCursor, nextCursor, limit });
+            res.json({ quotations, hasMore, nextCursor, limit, total });
         } catch (error) {
             console.error('Error loading quotations:', error);
             res.status(500).json({ error: 'Failed to load quotations', details: error.message });
