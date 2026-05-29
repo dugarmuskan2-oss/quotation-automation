@@ -18,71 +18,14 @@ const cors = require('cors');
 const { Readable } = require('stream');
 require('dotenv').config();
 
-// Cloud Storage Configuration (Google Cloud or AWS S3)
-let storageClient = null;
-let bucket = null;
-let s3Client = null;
-let s3BucketName = null;
+const storage = require('./storage');
+
+// DynamoDB (quotation persistence — not part of file storage)
 let ddbDocClient = null;
 let ddbTableName = null;
 
-const useGoogleCloud = !!(process.env.GOOGLE_CLOUD_BUCKET_NAME || process.env.GOOGLE_CLOUD_CREDENTIALS);
 const hasAwsCredentials = !!(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY);
 const awsRegion = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1';
-const useAWS = !!(process.env.AWS_S3_BUCKET_NAME || process.env.DYNAMODB_TABLE);
-
-// Initialize Google Cloud Storage (if configured)
-if (useGoogleCloud) {
-    try {
-        const { Storage } = require('@google-cloud/storage');
-        
-        // Initialize Google Cloud Storage
-        let credentials = null;
-        if (process.env.GOOGLE_CLOUD_CREDENTIALS) {
-            // For Vercel - credentials are in environment variable as JSON string
-            credentials = JSON.parse(process.env.GOOGLE_CLOUD_CREDENTIALS);
-        } else if (process.env.GOOGLE_CLOUD_KEY_FILE) {
-            // For local - credentials are in a file
-            const keyPath = path.join(__dirname, process.env.GOOGLE_CLOUD_KEY_FILE);
-            if (fs.existsSync(keyPath)) {
-                credentials = JSON.parse(fs.readFileSync(keyPath, 'utf8'));
-            }
-        }
-        
-        if (credentials) {
-            storageClient = new Storage({
-                projectId: process.env.GOOGLE_CLOUD_PROJECT_ID || credentials.project_id,
-                credentials: credentials
-            });
-            bucket = storageClient.bucket(process.env.GOOGLE_CLOUD_BUCKET_NAME);
-            console.log('Google Cloud Storage initialized successfully');
-        } else {
-            console.warn('Google Cloud Storage credentials not found, using local storage');
-        }
-    } catch (error) {
-        console.warn('Google Cloud Storage not available, using local storage:', error.message);
-    }
-}
-
-// Initialize AWS S3 (if configured)
-if (process.env.AWS_S3_BUCKET_NAME) {
-    try {
-        const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
-
-        const s3Config = { region: awsRegion };
-        if (hasAwsCredentials) {
-            s3Config.credentials = {
-                accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-                secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
-            };
-        }
-        s3Client = new S3Client(s3Config);
-        s3BucketName = process.env.AWS_S3_BUCKET_NAME;
-        console.log(`AWS S3 initialized successfully (bucket: ${s3BucketName})`);
-    } catch (error) {
-        console.warn('AWS S3 not available, using local storage:', error.message);
-    }
-}
 
 // Initialize DynamoDB (if configured)
 if (process.env.DYNAMODB_TABLE) {
@@ -114,25 +57,16 @@ app.use(express.json({ limit: '30mb' }));
 app.use(express.static('public')); // Serve static files if needed
 app.use(express.static(__dirname)); // Serve root files like index.html/logo.png
 
-// Ensure upload directories exist
-// On Vercel, use /tmp directory (writable), otherwise use project directory
-const isVercelEnv = process.env.VERCEL === '1' || process.env.VERCEL_ENV || process.env.VERCEL_URL;
-const baseDir = isVercelEnv ? '/tmp' : __dirname;
-
-const uploadsDir = path.join(baseDir, 'uploads');
-const ratesDir = path.join(uploadsDir, 'rates');
+// Pull dir paths from storage module (they're computed there)
+const { baseDir, uploadsDir, ratesDir } = storage;
 const instructionsDir = path.join(uploadsDir, 'instructions');
 
-// Create directories (they need to exist for multer to work)
-// On Vercel, /tmp exists but subdirectories need to be created
+// Ensure upload directories exist
 [uploadsDir, ratesDir, instructionsDir].forEach(dir => {
     try {
-        if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true });
-        }
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     } catch (error) {
         console.error(`Error creating directory ${dir}:`, error);
-        // Continue anyway - multer might handle it
     }
 });
 
@@ -141,11 +75,9 @@ const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY
 });
 
-// Configure multer for file uploads
-// Use memory storage if cloud storage (Google Cloud or AWS S3) is enabled, otherwise use disk storage
+// Configure multer — memory storage when cloud is active, disk otherwise
 let multerStorage;
-if ((useGoogleCloud && bucket) || (useAWS && s3Client)) {
-    // Memory storage - files will be uploaded to cloud storage
+if (storage.isCloudActive()) {
     multerStorage = multer.memoryStorage();
 } else {
     // Disk storage - files saved locally
@@ -174,389 +106,6 @@ const upload = multer({
     limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
 });
 
-// Helper function to get latest file from directory
-function getLatestFile(dir) {
-    try {
-        const files = fs.readdirSync(dir);
-        if (files.length === 0) return null;
-        
-        const fileStats = files.map(file => {
-            const filePath = path.join(dir, file);
-            return {
-                name: file,
-                path: filePath,
-                time: fs.statSync(filePath).mtime.getTime()
-            };
-        });
-        
-        // Sort by modification time (newest first)
-        fileStats.sort((a, b) => b.time - a.time);
-        return fileStats[0].path;
-    } catch (error) {
-        console.error('Error reading directory:', error);
-        return null;
-    }
-}
-
-// Helper function to get all files from directory (sorted by date, newest first)
-function getAllFiles(dir) {
-    try {
-        const files = fs.readdirSync(dir);
-        if (files.length === 0) return [];
-        
-        const fileStats = files.map(file => {
-            const filePath = path.join(dir, file);
-            return {
-                name: file,
-                path: filePath,
-                time: fs.statSync(filePath).mtime.getTime()
-            };
-        });
-        
-        // Sort by modification time (newest first)
-        fileStats.sort((a, b) => b.time - a.time);
-        return fileStats.map(f => f.path);
-    } catch (error) {
-        console.error('Error reading directory:', error);
-        return [];
-    }
-}
-
-// Helper function to read file content
-function readFileContent(filePath) {
-    try {
-        return fs.readFileSync(filePath, 'utf8');
-    } catch (error) {
-        console.error('Error reading file:', error);
-        return null;
-    }
-}
-
-// Google Cloud Storage Helper Functions
-async function uploadToGCS(fileBuffer, fileName, folder = 'rates') {
-    if (!bucket) {
-        throw new Error('Google Cloud Storage not configured');
-    }
-    
-    const filePath = `${folder}/${fileName}`;
-    const file = bucket.file(filePath);
-    
-    await file.save(fileBuffer, {
-        metadata: {
-            contentType: 'application/octet-stream'
-        }
-    });
-    
-    return filePath;
-}
-
-async function deleteFromGCS(filePath) {
-    if (!bucket) {
-        throw new Error('Google Cloud Storage not configured');
-    }
-    
-    const file = bucket.file(filePath);
-    await file.delete();
-}
-
-async function listFilesFromGCS(folder = 'rates') {
-    if (!bucket) {
-        return [];
-    }
-    
-    const [files] = await bucket.getFiles({ prefix: `${folder}/` });
-    return files.map(file => ({
-        name: file.name.split('/').pop(), // Get just the filename
-        path: file.name,
-        time: file.metadata.updated ? new Date(file.metadata.updated).getTime() : Date.now()
-    }));
-}
-
-async function readFileFromGCS(filePath) {
-    if (!bucket) {
-        throw new Error('Google Cloud Storage not configured');
-    }
-    
-    const file = bucket.file(filePath);
-    const [buffer] = await file.download();
-    return buffer;
-}
-
-async function readInstructionsFromGCS() {
-    try {
-        const buffer = await readFileFromGCS('instructions.txt');
-        return buffer.toString('utf8');
-    } catch (error) {
-        if (error.code === 404) {
-            return null; // File doesn't exist
-        }
-        throw error;
-    }
-}
-
-async function saveInstructionsToGCS(content) {
-    await uploadToGCS(Buffer.from(content, 'utf8'), 'instructions.txt', '');
-}
-
-async function readDefaultTermsFromGCS() {
-    try {
-        const buffer = await readFileFromGCS('default-terms.txt');
-        return buffer.toString('utf8');
-    } catch (error) {
-        if (error.code === 404) {
-            return null;
-        }
-        throw error;
-    }
-}
-
-async function saveDefaultTermsToGCS(content) {
-    await uploadToGCS(Buffer.from(content, 'utf8'), 'default-terms.txt', '');
-}
-
-async function readDefaultMarginsFromGCS() {
-    try {
-        const buffer = await readFileFromGCS('default-margins.json');
-        return buffer.toString('utf8');
-    } catch (error) {
-        if (error.code === 404) {
-            return null;
-        }
-        throw error;
-    }
-}
-
-async function saveDefaultMarginsToGCS(content) {
-    await uploadToGCS(Buffer.from(content, 'utf8'), 'default-margins.json', '');
-}
-
-// AWS S3 Helper Functions
-async function uploadToS3(fileBuffer, fileName, folder = 'rates') {
-    if (!s3Client || !s3BucketName) {
-        throw new Error('AWS S3 not configured');
-    }
-    
-    const { PutObjectCommand } = require('@aws-sdk/client-s3');
-    const filePath = folder ? `${folder}/${fileName}` : fileName;
-    
-    const command = new PutObjectCommand({
-        Bucket: s3BucketName,
-        Key: filePath,
-        Body: fileBuffer,
-        ContentType: 'application/octet-stream'
-    });
-    
-    await s3Client.send(command);
-    return filePath;
-}
-
-async function deleteFromS3(filePath) {
-    if (!s3Client || !s3BucketName) {
-        throw new Error('AWS S3 not configured');
-    }
-    
-    const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
-    const command = new DeleteObjectCommand({
-        Bucket: s3BucketName,
-        Key: filePath
-    });
-    
-    await s3Client.send(command);
-}
-
-async function listFilesFromS3(folder = 'rates') {
-    if (!s3Client || !s3BucketName) {
-        return [];
-    }
-    
-    const { ListObjectsV2Command } = require('@aws-sdk/client-s3');
-    const prefix = folder ? `${folder}/` : '';
-    
-    const command = new ListObjectsV2Command({
-        Bucket: s3BucketName,
-        Prefix: prefix
-    });
-    
-    const response = await s3Client.send(command);
-    
-    if (!response.Contents) {
-        return [];
-    }
-    
-    return response.Contents
-        .filter(item => {
-            const filename = item.Key.split('/').pop();
-            // Hide the rate index file from UI listings
-            return filename && filename.toLowerCase() !== 'index.json';
-        })
-        .map(item => ({
-            name: item.Key.split('/').pop(), // Get just the filename
-            path: item.Key,
-            time: item.LastModified ? item.LastModified.getTime() : Date.now()
-        }));
-}
-
-async function readFileFromS3(filePath) {
-    if (!s3Client || !s3BucketName) {
-        throw new Error('AWS S3 not configured');
-    }
-    
-    const { GetObjectCommand } = require('@aws-sdk/client-s3');
-    const command = new GetObjectCommand({
-        Bucket: s3BucketName,
-        Key: filePath
-    });
-    
-    const response = await s3Client.send(command);
-    const chunks = [];
-    
-    for await (const chunk of response.Body) {
-        chunks.push(chunk);
-    }
-    
-    return Buffer.concat(chunks);
-}
-
-async function readInstructionsFromS3() {
-    try {
-        const buffer = await readFileFromS3('instructions.txt');
-        return buffer.toString('utf8');
-    } catch (error) {
-        if (error.name === 'NoSuchKey' || error.$metadata?.httpStatusCode === 404) {
-            return null; // File doesn't exist
-        }
-        throw error;
-    }
-}
-
-async function saveInstructionsToS3(content) {
-    await uploadToS3(Buffer.from(content, 'utf8'), 'instructions.txt', '');
-}
-
-async function readDefaultTermsFromS3() {
-    try {
-        const buffer = await readFileFromS3('default-terms.txt');
-        return buffer.toString('utf8');
-    } catch (error) {
-        if (error.name === 'NoSuchKey' || error.$metadata?.httpStatusCode === 404) {
-            return null;
-        }
-        throw error;
-    }
-}
-
-async function saveDefaultTermsToS3(content) {
-    await uploadToS3(Buffer.from(content, 'utf8'), 'default-terms.txt', '');
-}
-
-async function readDefaultMarginsFromS3() {
-    try {
-        const buffer = await readFileFromS3('default-margins.json');
-        return buffer.toString('utf8');
-    } catch (error) {
-        if (error.name === 'NoSuchKey' || error.$metadata?.httpStatusCode === 404) {
-            return null;
-        }
-        throw error;
-    }
-}
-
-async function saveDefaultMarginsToS3(content) {
-    await uploadToS3(Buffer.from(content, 'utf8'), 'default-margins.json', '');
-}
-
-// ===============================
-// RATE FILE INDEX (JSON MAPPING)
-// ===============================
-// Stores mapping between S3 files and OpenAI file IDs
-// Format: [{ s3Key, openaiFileId, originalName, createdAt }, ...]
-
-async function loadRateIndex() {
-    // Returns an array of mappings
-    try {
-        if (useAWS && s3Client) {
-            // Try to read index from S3
-            try {
-                const buffer = await readFileFromS3('rates/index.json');
-                const text = buffer.toString('utf8');
-                const data = JSON.parse(text);
-                if (Array.isArray(data)) {
-                    return data;
-                }
-            } catch (error) {
-                // File doesn't exist yet or parse error - return empty array
-                if (error.name !== 'NoSuchKey' && error.$metadata?.httpStatusCode !== 404) {
-                    console.warn('loadRateIndex: parse error, returning empty index:', error.message);
-                }
-            }
-            return [];
-        } else if (useGoogleCloud && bucket) {
-            // Try to read from GCS
-            try {
-                const buffer = await readFileFromGCS('rates/index.json');
-                const text = buffer.toString('utf8');
-                const data = JSON.parse(text);
-                if (Array.isArray(data)) {
-                    return data;
-                }
-            } catch (error) {
-                if (error.code !== 404) {
-                    console.warn('loadRateIndex: parse error, returning empty index:', error.message);
-                }
-            }
-            return [];
-        } else {
-            // Fallback: local file
-            const indexPath = path.join(baseDir, 'rates-index.json');
-            if (fs.existsSync(indexPath)) {
-                const text = fs.readFileSync(indexPath, 'utf8');
-                const data = JSON.parse(text);
-                return Array.isArray(data) ? data : [];
-            }
-            return [];
-        }
-    } catch (error) {
-        // If any error, treat as empty index
-        console.warn('loadRateIndex: returning empty index due to error:', error.message);
-        return [];
-    }
-}
-
-async function saveRateIndex(index) {
-    const json = JSON.stringify(index, null, 2);
-    if (useAWS && s3Client) {
-        // Save index to S3 under rates/index.json
-        await uploadToS3(Buffer.from(json, 'utf8'), 'index.json', 'rates');
-    } else if (useGoogleCloud && bucket) {
-        // Save index to GCS
-        await uploadToGCS(Buffer.from(json, 'utf8'), 'index.json', 'rates');
-    } else {
-        // Save locally
-        const indexPath = path.join(baseDir, 'rates-index.json');
-        fs.writeFileSync(indexPath, json, 'utf8');
-    }
-}
-
-// Add or update a mapping { s3Key, openaiFileId, originalName, createdAt }
-async function addRateMapping(mapping) {
-    const index = await loadRateIndex();
-    // Remove any existing entry with same s3Key (update case)
-    const filtered = index.filter(m => m.s3Key !== mapping.s3Key);
-    filtered.push(mapping);
-    await saveRateIndex(filtered);
-}
-
-// Remove mapping by S3 key
-async function removeRateMappingByS3Key(s3Key) {
-    const index = await loadRateIndex();
-    const filtered = index.filter(m => m.s3Key !== s3Key);
-    await saveRateIndex(filtered);
-}
-
-// Get all mappings
-async function getAllRateMappings() {
-    return await loadRateIndex();
-}
 
 // API Routes
 
@@ -609,36 +158,24 @@ app.post('/api/upload-rates', upload.array('rateFiles', 10), async (req, res) =>
                 }
                 
                 let savedFileName;
-                
-                if (useGoogleCloud && bucket) {
-                    // Upload to Google Cloud Storage
+
+                if (storage.isCloudActive()) {
                     const timestamp = Date.now();
                     const ext = path.extname(file.originalname);
                     const name = path.basename(file.originalname, ext);
                     savedFileName = `${name}_${timestamp}${ext}`;
-                    
-                    // file.buffer is available when using memory storage
-                    await uploadToGCS(file.buffer, savedFileName, 'rates');
-                } else if (useAWS && s3Client) {
-                    // Upload to AWS S3
-                    const timestamp = Date.now();
-                    const ext = path.extname(file.originalname);
-                    const name = path.basename(file.originalname, ext);
-                    savedFileName = `${name}_${timestamp}${ext}`;
-                    
-                    // file.buffer is available when using memory storage
-                    await uploadToS3(file.buffer, savedFileName, 'rates');
+                    await storage.upload(file.buffer, savedFileName, 'rates');
                 } else {
                     // Local storage - file already saved by multer
                     savedFileName = file.filename;
                 }
-                
+
                 // For PDF files, also upload to OpenAI and save mapping
                 if (fileExt === '.pdf') {
                     try {
-                        const s3Key = useAWS && s3Client ? `rates/${savedFileName}` : 
-                                     useGoogleCloud && bucket ? `rates/${savedFileName}` : 
-                                     path.join(ratesDir, savedFileName);
+                        const s3Key = storage.isCloudActive()
+                            ? `rates/${savedFileName}`
+                            : path.join(ratesDir, savedFileName);
                         
                         // Ensure we have a proper Buffer (not a stream)
                         // Multer's buffer might have stream-like properties
@@ -680,7 +217,7 @@ app.post('/api/upload-rates', upload.array('rateFiles', 10), async (req, res) =>
                         });
                         
                         // Save mapping to index
-                        await addRateMapping({
+                        await storage.addRateMapping({
                             s3Key: s3Key,
                             openaiFileId: openAiFile.id,
                             originalName: file.originalname,
@@ -748,20 +285,12 @@ app.post('/api/delete-rate-file', async (req, res) => {
             return res.status(400).json({ error: 'Filename required' });
         }
         
-        // Determine S3 key based on storage type
-        let s3Key;
-        if (useGoogleCloud && bucket) {
-            s3Key = `rates/${filename}`;
-        } else if (useAWS && s3Client) {
-            s3Key = `rates/${filename}`;
-        } else {
-            s3Key = path.join(ratesDir, filename);
-        }
-        
+        const s3Key = storage.isCloudActive() ? `rates/${filename}` : path.join(ratesDir, filename);
+
         // Check if this file has a mapping in the index (for PDFs)
         // If so, delete from OpenAI and remove from index
         try {
-            const index = await loadRateIndex();
+            const index = await storage.loadRateIndex();
             const mapping = index.find(m => {
                 // Match by filename (handle different path formats)
                 const mappingFilename = m.s3Key.split('/').pop();
@@ -779,7 +308,7 @@ app.post('/api/delete-rate-file', async (req, res) => {
                 }
                 
                 // Remove from index
-                await removeRateMappingByS3Key(mapping.s3Key);
+                await storage.removeRateMappingByS3Key(mapping.s3Key);
                 console.log(`Removed mapping for ${filename} from index`);
             }
         } catch (indexError) {
@@ -788,39 +317,12 @@ app.post('/api/delete-rate-file', async (req, res) => {
         }
         
         // Delete from storage (S3/GCS/local)
-        if (useGoogleCloud && bucket) {
-            // Delete from Google Cloud Storage
-            const filePath = `rates/${filename}`;
-            try {
-                await deleteFromGCS(filePath);
-            } catch (error) {
-                if (error.code === 404) {
-                    return res.status(404).json({ error: 'File not found' });
-                }
-                throw error;
-            }
-        } else if (useAWS && s3Client) {
-            // Delete from AWS S3
-            const filePath = `rates/${filename}`;
-            try {
-                await deleteFromS3(filePath);
-            } catch (error) {
-                if (error.name === 'NoSuchKey' || error.$metadata?.httpStatusCode === 404) {
-                    return res.status(404).json({ error: 'File not found' });
-                }
-                throw error;
-            }
-        } else {
-            // Delete from local storage
-            const filePath = path.join(ratesDir, filename);
-            
-            // Check if file exists
-            if (!fs.existsSync(filePath)) {
-                return res.status(404).json({ error: 'File not found' });
-            }
-            
-            // Delete the file
-            fs.unlinkSync(filePath);
+        try {
+            await storage.deleteFile(`rates/${filename}`);
+        } catch (error) {
+            const is404 = error.code === 404 || error.name === 'NoSuchKey' || error.$metadata?.httpStatusCode === 404;
+            if (is404) return res.status(404).json({ error: 'File not found' });
+            throw error;
         }
         
         res.json({ 
@@ -861,37 +363,16 @@ app.get('/api/view-rate-file', async (req, res) => {
         res.setHeader('Content-Type', contentTypeMap[ext] || 'application/octet-stream');
         res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
 
-        if (useGoogleCloud && bucket) {
-            const filePath = `rates/${filename}`;
-            const file = bucket.file(filePath);
-            const stream = file.createReadStream();
-            stream.on('error', (error) => {
-                console.error('Error reading file from GCS:', error);
-                if (!res.headersSent) {
-                    res.status(404).json({ error: 'File not found' });
-                }
-            });
-            return stream.pipe(res);
-        }
-
-        if (useAWS && s3Client) {
-            const { GetObjectCommand } = require('@aws-sdk/client-s3');
-            const command = new GetObjectCommand({
-                Bucket: s3BucketName,
-                Key: `rates/${filename}`
-            });
-            const response = await s3Client.send(command);
-            if (!response.Body) {
-                return res.status(404).json({ error: 'File not found' });
+        try {
+            await storage.streamToResponse(`rates/${filename}`, res);
+        } catch (error) {
+            if (error.code === 404 && !res.headersSent) {
+                res.status(404).json({ error: 'File not found' });
+            } else if (!res.headersSent) {
+                throw error;
             }
-            return response.Body.pipe(res);
         }
-
-        const filePath = path.join(ratesDir, filename);
-        if (!fs.existsSync(filePath)) {
-            return res.status(404).json({ error: 'File not found' });
-        }
-        return res.sendFile(filePath);
+        return;
     } catch (error) {
         console.error('Error viewing rate file:', error);
         return res.status(500).json({ error: 'Failed to load rate file', details: error.message });
@@ -903,19 +384,8 @@ app.get('/api/current-rates', async (req, res) => {
     try {
         let filenames = [];
         
-        if (useGoogleCloud && bucket) {
-            // Get files from Google Cloud Storage
-            const files = await listFilesFromGCS('rates');
-            filenames = files.map(f => f.name);
-        } else if (useAWS && s3Client) {
-            // Get files from AWS S3
-            const files = await listFilesFromS3('rates');
-            filenames = files.map(f => f.name);
-        } else {
-            // Get files from local storage
-            const allFiles = getAllFiles(ratesDir);
-            filenames = allFiles.map(filePath => path.basename(filePath));
-        }
+        const files = await storage.list('rates');
+        filenames = files.map(f => f.name);
         
         if (filenames.length === 0) {
             return res.json({ hasFiles: false, filenames: [], count: 0 });
@@ -941,17 +411,7 @@ app.post('/api/save-instructions', express.json(), async (req, res) => {
             return res.status(400).json({ error: 'Instructions text is required' });
         }
         
-        if (useGoogleCloud && bucket) {
-            // Save to Google Cloud Storage
-            await saveInstructionsToGCS(instructions);
-        } else if (useAWS && s3Client) {
-            // Save to AWS S3
-            await saveInstructionsToS3(instructions);
-        } else {
-            // Save to local file
-            const instructionsFile = path.join(baseDir, 'instructions.txt');
-            fs.writeFileSync(instructionsFile, instructions, 'utf8');
-        }
+        await storage.saveText('instructions.txt', instructions);
         
         res.json({ 
             success: true,
@@ -972,22 +432,8 @@ app.get('/api/get-instructions', async (req, res) => {
         let content = null;
         let hasFile = false;
         
-        if (useGoogleCloud && bucket) {
-            // Get from Google Cloud Storage
-            content = await readInstructionsFromGCS();
-            hasFile = content !== null;
-        } else if (useAWS && s3Client) {
-            // Get from AWS S3
-            content = await readInstructionsFromS3();
-            hasFile = content !== null;
-        } else {
-            // Get from local file
-            const instructionsFile = path.join(baseDir, 'instructions.txt');
-            if (fs.existsSync(instructionsFile)) {
-                content = fs.readFileSync(instructionsFile, 'utf8');
-                hasFile = true;
-            }
-        }
+        content = await storage.readText('instructions.txt');
+        hasFile = content !== null;
         
         res.json({ 
             hasFile: hasFile,
@@ -1013,14 +459,7 @@ app.post('/api/save-default-terms', express.json(), async (req, res) => {
 
         const content = typeof defaultTerms === 'string' ? defaultTerms : String(defaultTerms);
 
-        if (useGoogleCloud && bucket) {
-            await saveDefaultTermsToGCS(content);
-        } else if (useAWS && s3Client) {
-            await saveDefaultTermsToS3(content);
-        } else {
-            const defaultTermsFile = path.join(baseDir, 'default-terms.txt');
-            fs.writeFileSync(defaultTermsFile, content, 'utf8');
-        }
+        await storage.saveText('default-terms.txt', content);
 
         res.json({
             success: true,
@@ -1041,19 +480,8 @@ app.get('/api/get-default-terms', async (req, res) => {
         let content = null;
         let hasFile = false;
 
-        if (useGoogleCloud && bucket) {
-            content = await readDefaultTermsFromGCS();
-            hasFile = content !== null;
-        } else if (useAWS && s3Client) {
-            content = await readDefaultTermsFromS3();
-            hasFile = content !== null;
-        } else {
-            const defaultTermsFile = path.join(baseDir, 'default-terms.txt');
-            if (fs.existsSync(defaultTermsFile)) {
-                content = fs.readFileSync(defaultTermsFile, 'utf8');
-                hasFile = true;
-            }
-        }
+        content = await storage.readText('default-terms.txt');
+        hasFile = content !== null;
 
         res.json({
             hasFile: hasFile,
@@ -1094,14 +522,7 @@ app.post('/api/save-default-margins', express.json(), async (req, res) => {
         const sanitized = sanitizeDefaultMargins(req.body && req.body.defaultMargins);
         const content = JSON.stringify(sanitized);
 
-        if (useGoogleCloud && bucket) {
-            await saveDefaultMarginsToGCS(content);
-        } else if (useAWS && s3Client) {
-            await saveDefaultMarginsToS3(content);
-        } else {
-            const defaultMarginsFile = path.join(baseDir, 'default-margins.json');
-            fs.writeFileSync(defaultMarginsFile, content, 'utf8');
-        }
+        await storage.saveText('default-margins.json', content);
 
         res.json({
             success: true,
@@ -1122,19 +543,8 @@ app.get('/api/get-default-margins', async (req, res) => {
         let content = null;
         let hasFile = false;
 
-        if (useGoogleCloud && bucket) {
-            content = await readDefaultMarginsFromGCS();
-            hasFile = content !== null;
-        } else if (useAWS && s3Client) {
-            content = await readDefaultMarginsFromS3();
-            hasFile = content !== null;
-        } else {
-            const defaultMarginsFile = path.join(baseDir, 'default-margins.json');
-            if (fs.existsSync(defaultMarginsFile)) {
-                content = fs.readFileSync(defaultMarginsFile, 'utf8');
-                hasFile = true;
-            }
-        }
+        content = await storage.readText('default-margins.json');
+        hasFile = content !== null;
 
         let parsed = {};
         if (content) {
@@ -1681,7 +1091,7 @@ async function handleGenerateQuotation({ emailContent, fileContent, instructions
         let uploadedFileNames = [];
 
         try {
-            const mappings = await getAllRateMappings();
+            const mappings = await storage.getAllRateMappings();
             if (mappings && mappings.length > 0) {
                 uploadedFileIds = mappings.map(m => m.openaiFileId);
                 uploadedFileNames = mappings.map(m => m.originalName || m.s3Key.split('/').pop());
@@ -1696,16 +1106,7 @@ async function handleGenerateQuotation({ emailContent, fileContent, instructions
             console.log('Rate index empty or invalid, falling back to reading from storage and uploading to OpenAI...');
             // Get all rate files (from cloud storage or local storage)
             let rateFiles = [];
-            if (useGoogleCloud && bucket) {
-                const gcsFiles = await listFilesFromGCS('rates');
-                rateFiles = gcsFiles.map(f => ({ name: f.name, path: f.path, storageType: 'gcs' }));
-            } else if (useAWS && s3Client) {
-                const s3Files = await listFilesFromS3('rates');
-                rateFiles = s3Files.map(f => ({ name: f.name, path: f.path, storageType: 's3' }));
-            } else {
-                const localFiles = getAllFiles(ratesDir);
-                rateFiles = localFiles.map(filePath => ({ name: path.basename(filePath), path: filePath, storageType: 'local' }));
-            }
+            rateFiles = await storage.list('rates');
 
             if (rateFiles.length === 0) {
                 throw new Error('No rate files uploaded. Please upload rate files first.');
@@ -1727,14 +1128,7 @@ async function handleGenerateQuotation({ emailContent, fileContent, instructions
                 pdfFilesFound++;
 
                 try {
-                    let fileBuffer;
-                    if (rateFile.storageType === 'gcs') {
-                        fileBuffer = await readFileFromGCS(rateFile.path);
-                    } else if (rateFile.storageType === 's3') {
-                        fileBuffer = await readFileFromS3(rateFile.path);
-                    } else {
-                        fileBuffer = fs.readFileSync(rateFile.path);
-                    }
+                    let fileBuffer = await storage.read(rateFile.path);
 
                     console.log(`Uploading file ${fileName} to OpenAI...`);
                     console.log(`Storage type: ${rateFile.storageType}, Path: ${rateFile.path}`);
@@ -1761,7 +1155,7 @@ async function handleGenerateQuotation({ emailContent, fileContent, instructions
                     pdfFilesUploaded++;
 
                     const s3Key = rateFile.path; // Already includes 'rates/' prefix for cloud storage
-                    await addRateMapping({ s3Key, openaiFileId: file.id, originalName: fileName });
+                    await storage.addRateMapping({ s3Key, openaiFileId: file.id, originalName: fileName });
                 } catch (error) {
                     console.error(`Error uploading file ${fileName} to OpenAI:`, error);
                     let errorMessage = error.message || 'Failed to upload to OpenAI';
@@ -2099,28 +1493,10 @@ app.post('/api/ai-chat', async (req, res) => {
 
 // ---------- Gmail ingest (new files: gmail-ingest/*.js) ----------
 async function getInstructionsContent() {
-    if (useGoogleCloud && bucket) {
-        const c = await readInstructionsFromGCS();
-        return c || '';
-    }
-    if (useAWS && s3Client) {
-        const c = await readInstructionsFromS3();
-        return c || '';
-    }
-    const p = path.join(baseDir, 'instructions.txt');
-    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
+    return (await storage.readText('instructions.txt')) || '';
 }
 async function getDefaultTermsContent() {
-    if (useGoogleCloud && bucket) {
-        const c = await readDefaultTermsFromGCS();
-        return c || '';
-    }
-    if (useAWS && s3Client) {
-        const c = await readDefaultTermsFromS3();
-        return c || '';
-    }
-    const p = path.join(baseDir, 'default-terms.txt');
-    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
+    return (await storage.readText('default-terms.txt')) || '';
 }
 
 function createLineItemId(prefix = 'line-item') {
@@ -2300,7 +1676,13 @@ app.use((err, req, res, next) => {
     });
 });
 
-// 404 handler for undefined routes
+// SPA catch-all — serve index.html for any non-API route so that
+// browser history navigation (e.g. /dashboard) works locally too.
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// 404 handler for undefined API routes
 app.use((req, res) => {
     res.status(404).json({
         error: 'Not Found',
