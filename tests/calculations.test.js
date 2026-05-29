@@ -7,21 +7,8 @@
  *   lineTotal  = quantity × finalRate
  */
 
-jest.mock('@aws-sdk/client-dynamodb', () => ({ DynamoDBClient: jest.fn() }));
-jest.mock('@aws-sdk/lib-dynamodb', () => ({
-    DynamoDBDocumentClient: { from: jest.fn(() => ({})) },
-    ScanCommand: jest.fn(), GetCommand: jest.fn(), PutCommand: jest.fn(),
-    QueryCommand: jest.fn(), UpdateCommand: jest.fn(),
-}));
-jest.mock('@aws-sdk/client-s3', () => ({ S3Client: jest.fn() }));
-jest.mock('@google-cloud/storage', () => ({ Storage: jest.fn(() => ({ bucket: jest.fn(() => ({})) })) }));
-jest.mock('openai', () => jest.fn(() => ({ files: {}, responses: {}, chat: { completions: {} } })));
-
-process.env.NODE_ENV = 'test';
-process.env.OPENAI_API_KEY = 'test-key';
-
-const { _test } = require('../server');
-const { calculateLineItem, parseFlexibleNumber } = _test;
+// Pure utility functions — import directly, no server or mocks needed
+const { calculateLineItem, parseFlexibleNumber } = require('../utils/calculations');
 
 // =============================================================================
 // calculateLineItem

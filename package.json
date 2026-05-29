@@ -11,7 +11,8 @@
     "dev": "nodemon server.js",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:e2e": "node tools/e2e-smoke.mjs"
+    "test:e2e": "node tools/e2e-smoke.mjs",
+    "migrate:entity": "node tools/migrate-add-entity.mjs"
   },
   "jest": {
     "testEnvironment": "node",

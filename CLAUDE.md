@@ -11,6 +11,19 @@ npm run dev        # same as npm start
 npm run test:e2e   # end-to-end smoke tests
 ```
 
+## Testing rules
+
+Run only the relevant test file — not the full suite — after each change:
+
+```bash
+jest tests/calculations.test.js   # utils/calculations.js changed
+jest tests/api.test.js            # any route or server.js changed
+jest tests/unit.test.js           # pure helper functions changed
+jest --silent                     # quieter output (add to any command)
+```
+
+Run the full suite (`npm test`) only when the user explicitly asks.
+
 Open `index.html` directly in a browser — it communicates with the running server via fetch.
 
 ## Architecture
@@ -20,7 +33,10 @@ Open `index.html` directly in a browser — it communicates with the running ser
 Full-stack quotation automation tool. Users paste an email or upload a file, AI generates a freight quotation, they approve and save it.
 
 - **Frontend**: `index.html` — single-file SPA (~400KB), all HTML/CSS/JS in one file
-- **Backend**: `server.js` — Express app (~2700 lines), all API routes defined here
+- **Backend**: `server.js` — Express app (~870 lines), setup + generate/chat/gmail routes only
+- **Routes**: `routes/rates.js`, `routes/config.js`, `routes/quotations.js` — one file per feature
+- **Utils**: `utils/calculations.js` — `calculateLineItem`, `parseFlexibleNumber`
+- **Storage**: `storage/index.js` — unified GCS / S3 / local file layer
 - **Vercel entry**: `api/index.js` — thin wrapper that imports `server.js` as a serverless function
 
 ### Vercel vs Local
