@@ -1895,29 +1895,7 @@ Extract all pipe information from the enquiry (including all attached enquiry PD
         }
 
         // Calculate final rates and line totals if not provided
-        quotationData.lineItems = quotationData.lineItems.map(item => {
-            const unitRate = parseFloat(item.unitRate) || 0;
-            const kgPerMeterRaw = parseFlexibleNumber(item.kgPerMeter);
-            const kgPerMeter = Number.isFinite(kgPerMeterRaw) ? kgPerMeterRaw : null;
-            const marginPercentRaw = parseFloat(item.marginPercent);
-            const marginPercent = Number.isFinite(marginPercentRaw) ? marginPercentRaw : 0;
-            const quantity = parseFloat(item.quantity) || 0;
-
-            const finalRate = Math.round(unitRate * (1 + marginPercent / 100));
-            const lineTotal = quantity * finalRate;
-
-            return {
-                lineItemId: item.lineItemId || createLineItemId(),
-                originalDescription: item.originalDescription || '',
-                identifiedPipeType: item.identifiedPipeType || '',
-                quantity: quantity.toString(),
-                unitRate: unitRate.toFixed(2),
-                kgPerMeter: kgPerMeter == null ? '' : kgPerMeter.toFixed(2),
-                marginPercent: marginPercent.toString(),
-                finalRate: String(finalRate),
-                lineTotal: lineTotal.toFixed(2)
-            };
-        });
+        quotationData.lineItems = quotationData.lineItems.map(item => calculateLineItem(item));
 
         // Set quotation date if not provided
         if (!quotationData.quotationDate) {
@@ -1950,374 +1928,6 @@ Extract all pipe information from the enquiry (including all attached enquiry PD
 app.post('/api/generate-quotation', async (req, res) => {
     const { emailContent, fileContent, instructions } = req.body || {};
     return handleGenerateQuotation({ emailContent, fileContent, instructions }, res);
-    try {
-        const { emailContent, fileContent, instructions } = req.body;
-        
-        if (!emailContent && !fileContent) {
-            return res.status(400).json({ error: 'No content provided' });
-        }
-        
-        // Get instructions from request (sent from frontend localStorage)
-        if (!instructions || instructions.trim() === '') {
-            return res.status(400).json({ error: 'No instructions provided. Please enter instructions first.' });
-        }
-        
-        // Prepare content for OpenAI
-        const enquiryText = emailContent || fileContent || '';
-        
-        // Try to use existing OpenAI file IDs from the rate index (fast path - no S3 read, no upload)
-        let uploadedFileIds = [];
-        let uploadedFileNames = [];
-        
-        try {
-            const mappings = await getAllRateMappings();
-            if (mappings && mappings.length > 0) {
-                uploadedFileIds = mappings.map(m => m.openaiFileId);
-                uploadedFileNames = mappings.map(m => m.originalName || m.s3Key.split('/').pop());
-                console.log(`Using ${uploadedFileIds.length} rate file(s) from index (no upload needed)`);
-            }
-        } catch (indexError) {
-            console.warn('Failed to load rate index, will fall back to uploading from storage:', indexError.message);
-        }
-        
-        // Helper: upload rate files from storage to OpenAI and build index
-        async function uploadFromStorageAndBuildIndex() {
-            console.log('Rate index empty or invalid, falling back to reading from storage and uploading to OpenAI...');
-            // Get all rate files (from cloud storage or local storage)
-            let rateFiles = [];
-            if (useGoogleCloud && bucket) {
-                const gcsFiles = await listFilesFromGCS('rates');
-                rateFiles = gcsFiles.map(f => ({ name: f.name, path: f.path, storageType: 'gcs' }));
-            } else if (useAWS && s3Client) {
-                const s3Files = await listFilesFromS3('rates');
-                rateFiles = s3Files.map(f => ({ name: f.name, path: f.path, storageType: 's3' }));
-            } else {
-                const localFiles = getAllFiles(ratesDir);
-                rateFiles = localFiles.map(filePath => ({ name: path.basename(filePath), path: filePath, storageType: 'local' }));
-            }
-
-            if (rateFiles.length === 0) {
-                throw new Error('No rate files uploaded. Please upload rate files first.');
-            }
-
-            // Upload PDF rate files to OpenAI and build index
-            let pdfFilesFound = 0;
-            let pdfFilesUploaded = 0;
-            const uploadErrors = [];
-            const newFileIds = [];
-            const newFileNames = [];
-
-            for (const rateFile of rateFiles) {
-                try {
-                    const fileName = rateFile.name;
-                    const fileExt = path.extname(fileName).toLowerCase();
-
-                    if (fileExt !== '.pdf') {
-                        console.log(`Skipping non-PDF file: ${fileName} (extension: ${fileExt})`);
-                        continue;
-                    }
-
-                    pdfFilesFound++;
-                    console.log(`Processing PDF file: ${fileName}`);
-
-                    // Read file from cloud storage or local storage
-                    let fileBuffer;
-                    if (rateFile.storageType === 'gcs') {
-                        fileBuffer = await readFileFromGCS(rateFile.path);
-                    } else if (rateFile.storageType === 's3') {
-                        fileBuffer = await readFileFromS3(rateFile.path);
-                    } else {
-                        fileBuffer = fs.readFileSync(rateFile.path);
-                    }
-
-                    console.log(`Read file ${fileName} from storage (${fileBuffer.length} bytes)`);
-                    console.log(`Storage type: ${rateFile.storageType}, Path: ${rateFile.path}`);
-
-                    // Log file size for debugging
-                    const fileSizeMB = fileBuffer.length / (1024 * 1024);
-                    const fileSizeBytes = fileBuffer.length;
-                    console.log(`Attempting to upload ${fileName} to OpenAI (${fileSizeMB.toFixed(2)} MB / ${fileSizeBytes} bytes)`);
-                    console.log(`Buffer type: ${fileBuffer.constructor.name}, isBuffer: ${Buffer.isBuffer(fileBuffer)}`);
-                    
-                    // If file is very large, log a warning
-                    if (fileSizeMB > 50) {
-                        console.warn(`⚠️ Large file detected: ${fileSizeMB.toFixed(2)} MB. This may exceed OpenAI's limits.`);
-                    }
-
-                    // Don't block - let OpenAI reject if too large, but log the size for debugging
-                    // OpenAI's limit appears to be around 50-100 MB based on 413 errors
-                    if (fileSizeMB > 100) {
-                        console.warn(`WARNING: File ${fileName} is ${fileSizeMB.toFixed(2)} MB - may exceed OpenAI's limit`);
-                    }
-
-                    // Ensure buffer is completely clean (strip any stream-like properties)
-                    // This is important when reading from S3 - the buffer might have inherited properties
-                    // that confuse the OpenAI SDK, even if the actual size is small
-                    const cleanBuffer = Buffer.concat([fileBuffer]);
-                    console.log(`Clean buffer created: ${cleanBuffer.length} bytes (${(cleanBuffer.length / (1024 * 1024)).toFixed(2)} MB)`);
-
-                    // Upload to OpenAI using a File object to avoid SDK payload issues
-                    const openAiUploadFile = await toFile(cleanBuffer, fileName, { type: 'application/pdf' });
-                    const file = await openai.files.create({
-                        file: openAiUploadFile,
-                        purpose: 'assistants'
-                    });
-
-                    newFileIds.push(file.id);
-                    newFileNames.push(fileName);
-                    pdfFilesUploaded++;
-                    console.log(`Uploaded ${fileName} to OpenAI as file ID: ${file.id}`);
-
-                    // Save mapping to index for future use
-                    const s3Key = rateFile.path; // Already includes 'rates/' prefix for cloud storage
-                    await addRateMapping({
-                        s3Key: s3Key,
-                        openaiFileId: file.id,
-                        originalName: fileName,
-                        createdAt: new Date().toISOString()
-                    });
-                } catch (error) {
-                    console.error(`Error uploading file ${rateFile.name} to OpenAI:`, error);
-                    
-                    // Provide helpful error message for file size issues
-                    let errorMessage = error.message || 'Unknown error';
-                    let fileSizeMB = 'unknown';
-                    
-                    // Safely get file size if fileBuffer exists
-                    try {
-                        if (typeof fileBuffer !== 'undefined' && fileBuffer && fileBuffer.length) {
-                            fileSizeMB = (fileBuffer.length / (1024 * 1024)).toFixed(2);
-                        }
-                    } catch (e) {
-                        // Ignore errors getting file size
-                    }
-                    
-                    if (error.status === 413 || error.message.includes('413') || error.message.includes('capacity limit') || error.message.includes('too large') || error.message.includes('exceeds the capacity')) {
-                        errorMessage = `File too large: ${fileSizeMB} MB. OpenAI's file size limit may be lower than expected. Please compress the PDF to under 50 MB or split it into smaller files.`;
-                    } else {
-                        // Include file size in error for debugging if available
-                        if (fileSizeMB !== 'unknown') {
-                            errorMessage = `${error.message} (File size: ${fileSizeMB} MB)`;
-                        } else {
-                            errorMessage = error.message;
-                        }
-                    }
-                    
-                    uploadErrors.push({ filename: rateFile.name, error: errorMessage });
-                    // Continue with other files even if one fails
-                }
-            }
-
-            if (newFileIds.length === 0) {
-                let errorMessage = 'No PDF rate files found. Please upload PDF rate files.';
-                if (rateFiles.length > 0) {
-                    const nonPdfCount = rateFiles.length - pdfFilesFound;
-                    errorMessage += ` Found ${rateFiles.length} file(s) in storage, but ${pdfFilesFound} PDF file(s) found.`;
-                    if (pdfFilesFound > 0 && pdfFilesUploaded === 0) {
-                        errorMessage += ' All PDF uploads to OpenAI failed.';
-                        if (uploadErrors.length > 0) {
-                            errorMessage += ` Errors: ${uploadErrors.map(e => `${e.filename}: ${e.error}`).join('; ')}`;
-                        }
-                    } else if (pdfFilesFound === 0) {
-                        errorMessage += ' No PDF files found.';
-                    }
-                }
-                throw new Error(errorMessage);
-            }
-            return { uploadedFileIds: newFileIds, uploadedFileNames: newFileNames };
-        }
-
-        // If no mappings found, fall back to reading from storage and uploading to OpenAI
-        // This also builds the index for next time
-        if (uploadedFileIds.length === 0) {
-            try {
-                const result = await uploadFromStorageAndBuildIndex();
-                uploadedFileIds = result.uploadedFileIds;
-                uploadedFileNames = result.uploadedFileNames;
-            } catch (fallbackError) {
-                return res.status(400).json({ error: fallbackError.message });
-            }
-        }
-        
-        // Prepare input for Responses API with file references
-        const promptText = `Please analyze the following enquiry and extract quotation information. Use the PDF rate files provided (${uploadedFileIds.length} file(s)) to match base rates. Read the PDF files directly to find the correct rates. If the PDF rate files include a KG/meter (or kg per meter / weight per meter) value for an item, extract it into "kgPerMeter". Return the data in this exact JSON format:
-
-{
-  "customerName": "",
-  "companyName": "",
-  "projectName": "",
-  "phoneNumber": "",
-  "mobileNumber": "",
-  "quotationDate": "",
-  "lineItems": [
-    {
-      "originalDescription": "",
-      "identifiedPipeType": "",
-      "quantity": "",
-      "unitRate": "",
-      "kgPerMeter": "",
-      "marginPercent": "",
-      "finalRate": "",
-      "lineTotal": ""
-    }
-  ]
-}
-
-=== ENQUIRY CONTENT ===
-${enquiryText}
-
-Extract all pipe information from the enquiry, match with rates from the uploaded PDF rate files, calculate final rates with margins, and return the complete JSON. When KG/meter is not available for a matched item, return an empty string for "kgPerMeter".`;
-
-        const input = [
-            {
-                role: 'system',
-                content: instructions || 'You are a quotation extraction assistant. Extract pipe information from enquiries and match them with rates from the provided PDF rate files. Read the PDF files directly to find the correct rates.'
-            },
-            {
-                role: 'user',
-                content: [
-                    { type: 'input_text', text: promptText },
-                    ...uploadedFileIds.map(fileId => ({
-                        type: 'input_file',
-                        file_id: fileId
-                    }))
-                ]
-            }
-        ];
-
-        // Call OpenAI Responses API (supports input_file)
-        let completion;
-        try {
-            completion = await openai.responses.create({
-                model: 'gpt-5.2',
-                input: input,
-                text: {
-                    format: { type: 'json_object' }
-                },
-                temperature: 0.3
-            });
-        } catch (error) {
-            // If OpenAI file IDs are missing, rebuild from storage and retry once
-            const isMissingFiles = (error.status === 404) || (error.message && error.message.includes('were not found'));
-            if (isMissingFiles) {
-                console.warn('OpenAI file IDs missing. Rebuilding from storage and retrying...');
-                try {
-                    const result = await uploadFromStorageAndBuildIndex();
-                    uploadedFileIds = result.uploadedFileIds;
-                    uploadedFileNames = result.uploadedFileNames;
-
-                    const retryInput = [
-                        {
-                            role: 'system',
-                            content: instructions || 'You are a quotation extraction assistant. Extract pipe information from enquiries and match them with rates from the provided PDF rate files. Read the PDF files directly to find the correct rates.'
-                        },
-                        {
-                            role: 'user',
-                            content: [
-                                { type: 'input_text', text: promptText },
-                                ...uploadedFileIds.map(fileId => ({
-                                    type: 'input_file',
-                                    file_id: fileId
-                                }))
-                            ]
-                        }
-                    ];
-                    completion = await openai.responses.create({
-                        model: 'gpt-5.2',
-                        input: retryInput,
-                        text: {
-                            format: { type: 'json_object' }
-                        },
-                        temperature: 0.3
-                    });
-                } catch (retryError) {
-                    throw retryError;
-                }
-            } else {
-                throw error;
-            }
-        }
-        
-        // NOTE: Do NOT delete OpenAI files here.
-        // We reuse file IDs from the index to avoid re-uploading.
-        // Deletion is handled only when a rate file is deleted via /api/delete-rate-file.
-        
-        // Parse response
-        const responseText =
-            completion.output_text ||
-            completion.output?.[0]?.content?.[0]?.text ||
-            completion.output?.[0]?.content?.[0]?.value ||
-            '';
-        let quotationData;
-        
-        try {
-            quotationData = JSON.parse(responseText);
-        } catch (parseError) {
-            // Try to extract JSON from response if it's wrapped in markdown
-            const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-                quotationData = JSON.parse(jsonMatch[0]);
-            } else {
-                throw new Error('Failed to parse AI response as JSON');
-            }
-        }
-        
-        // Validate and format response
-        if (!quotationData.lineItems || !Array.isArray(quotationData.lineItems)) {
-            quotationData.lineItems = [];
-        }
-        
-        // Calculate final rates and line totals if not provided
-        quotationData.lineItems = quotationData.lineItems.map(item => {
-            const unitRate = parseFloat(item.unitRate) || 0;
-            const kgPerMeterRaw = parseFlexibleNumber(item.kgPerMeter);
-            const kgPerMeter = Number.isFinite(kgPerMeterRaw) ? kgPerMeterRaw : null;
-            const marginPercentRaw = parseFloat(item.marginPercent);
-            const marginPercent = Number.isFinite(marginPercentRaw) ? marginPercentRaw : 0;
-            const quantity = parseFloat(item.quantity) || 0;
-            
-            const finalRate = Math.round(unitRate * (1 + marginPercent / 100));
-            const lineTotal = quantity * finalRate;
-            
-            return {
-                lineItemId: item.lineItemId || createLineItemId(),
-                originalDescription: item.originalDescription || '',
-                identifiedPipeType: item.identifiedPipeType || '',
-                quantity: quantity.toString(),
-                unitRate: unitRate.toFixed(2),
-                kgPerMeter: kgPerMeter == null ? '' : kgPerMeter.toFixed(2),
-                marginPercent: marginPercent.toString(),
-                finalRate: String(finalRate),
-                lineTotal: lineTotal.toFixed(2)
-            };
-        });
-
-        // Set quotation date if not provided
-        if (!quotationData.quotationDate) {
-            const today = new Date();
-            quotationData.quotationDate = today.toLocaleDateString('en-US', { 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
-            });
-        }
-        
-        res.json({
-            ...quotationData,
-            _ai: {
-                raw: responseText,
-                model: 'gpt-5.2',
-                files: uploadedFileNames
-            }
-        });
-        
-    } catch (error) {
-        console.error('Error generating quotation:', error);
-        res.status(500).json({ 
-            error: 'Failed to generate quotation',
-            details: error.message 
-        });
-    }
 });
 
 // Generate quotation using OpenAI with multipart upload
@@ -2517,6 +2127,35 @@ function createLineItemId(prefix = 'line-item') {
     return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+/**
+ * Calculate finalRate and lineTotal for a single line item.
+ * finalRate = round(unitRate × (1 + margin / 100))
+ * lineTotal = quantity × finalRate
+ */
+function calculateLineItem(item) {
+    const unitRate = parseFloat(item.unitRate) || 0;
+    const kgPerMeterRaw = parseFlexibleNumber(item.kgPerMeter);
+    const kgPerMeter = Number.isFinite(kgPerMeterRaw) ? kgPerMeterRaw : null;
+    const marginPercentRaw = parseFloat(item.marginPercent);
+    const marginPercent = Number.isFinite(marginPercentRaw) ? marginPercentRaw : 0;
+    const quantity = parseFloat(item.quantity) || 0;
+
+    const finalRate = Math.round(unitRate * (1 + marginPercent / 100));
+    const lineTotal = quantity * finalRate;
+
+    return {
+        lineItemId: item.lineItemId || createLineItemId(),
+        originalDescription: item.originalDescription || '',
+        identifiedPipeType: item.identifiedPipeType || '',
+        quantity: quantity.toString(),
+        unitRate: unitRate.toFixed(2),
+        kgPerMeter: kgPerMeter == null ? '' : kgPerMeter.toFixed(2),
+        marginPercent: marginPercent.toString(),
+        finalRate: String(finalRate),
+        lineTotal: lineTotal.toFixed(2)
+    };
+}
+
 function parseFlexibleNumber(value) {
     if (value == null) {
         return null;
@@ -2540,11 +2179,11 @@ function parseFlexibleNumber(value) {
             normalized = normalized.replace(/,/g, '');
         }
     } else if (hasComma) {
-        if (/^[+-]?\d{1,3}(,\d{3})+$/.test(normalized)) {
-            normalized = normalized.replace(/,/g, '');
-        } else {
-            normalized = normalized.replace(',', '.');
-        }
+        // Indian (and Western) format: commas are always thousand separators when there is no dot.
+        // Indian: 1,00,000 / 10,00,000 / 1,00,00,000
+        // Western: 1,000 / 1,000,000
+        // In Indian number format the decimal separator is always a dot, never a comma.
+        normalized = normalized.replace(/,/g, '');
     }
 
     const parsed = parseFloat(normalized);
@@ -2673,9 +2312,21 @@ app.use((req, res) => {
 module.exports = app;
 module.exports.ingestFromGmailHandler = ingestFromGmailHandler;
 
+// Export pure utility functions for unit testing
+module.exports._test = {
+    isWordEnquiryFile,
+    isExcelEnquiryFile,
+    isImageEnquiryFile,
+    getImageDataUrl,
+    quotationSummaryFromDdbItem,
+    calculateLineItem,
+    parseFlexibleNumber,
+};
+
 // Start server only when running locally (not on Vercel)
 const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV || process.env.VERCEL_URL;
-if (!isVercel) {
+const isTest = process.env.NODE_ENV === 'test';
+if (!isVercel && !isTest) {
     app.listen(PORT, '0.0.0.0', () => {
         console.log(`Server running on port ${PORT}`);
         if (!process.env.OPENAI_API_KEY) console.log('Set OPENAI_API_KEY in env');
