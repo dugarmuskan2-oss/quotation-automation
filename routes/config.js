@@ -9,6 +9,12 @@
 const express = require('express');
 const router  = express.Router();
 
+const {
+    CONFIG_KEY_INSTRUCTIONS,
+    CONFIG_KEY_DEFAULT_TERMS,
+    CONFIG_KEY_DEFAULT_MARGINS,
+} = require('../utils/constants');
+
 function normalizeMarginValue(value) {
     if (value === '' || value === null || value === undefined) return '';
     const parsed = Number(value);
@@ -32,7 +38,7 @@ module.exports = function createConfigRouter({ storage }) {
         try {
             const { instructions } = req.body;
             if (!instructions) return res.status(400).json({ error: 'Instructions text is required' });
-            await storage.saveText('instructions.txt', instructions);
+            await storage.saveText(CONFIG_KEY_INSTRUCTIONS, instructions);
             res.json({ success: true, message: 'Instructions saved successfully' });
         } catch (error) {
             console.error('Error saving instructions:', error);
@@ -42,7 +48,7 @@ module.exports = function createConfigRouter({ storage }) {
 
     router.get('/get-instructions', async (req, res) => {
         try {
-            const content = await storage.readText('instructions.txt');
+            const content = await storage.readText(CONFIG_KEY_INSTRUCTIONS);
             res.json({ hasFile: content !== null, content: content || '' });
         } catch (error) {
             console.error('Error getting instructions:', error);
@@ -57,7 +63,7 @@ module.exports = function createConfigRouter({ storage }) {
             if (defaultTerms === undefined || defaultTerms === null) {
                 return res.status(400).json({ error: 'Default terms text is required' });
             }
-            await storage.saveText('default-terms.txt', String(defaultTerms));
+            await storage.saveText(CONFIG_KEY_DEFAULT_TERMS, String(defaultTerms));
             res.json({ success: true, message: 'Default terms saved successfully' });
         } catch (error) {
             console.error('Error saving default terms:', error);
@@ -67,7 +73,7 @@ module.exports = function createConfigRouter({ storage }) {
 
     router.get('/get-default-terms', async (req, res) => {
         try {
-            const content = await storage.readText('default-terms.txt');
+            const content = await storage.readText(CONFIG_KEY_DEFAULT_TERMS);
             res.json({ hasFile: content !== null, content: content || '' });
         } catch (error) {
             console.error('Error getting default terms:', error);
@@ -79,7 +85,7 @@ module.exports = function createConfigRouter({ storage }) {
     router.post('/save-default-margins', express.json(), async (req, res) => {
         try {
             const sanitized = sanitizeDefaultMargins(req.body && req.body.defaultMargins);
-            await storage.saveText('default-margins.json', JSON.stringify(sanitized));
+            await storage.saveText(CONFIG_KEY_DEFAULT_MARGINS, JSON.stringify(sanitized));
             res.json({ success: true, defaultMargins: sanitized });
         } catch (error) {
             console.error('Error saving default margins:', error);
@@ -89,7 +95,7 @@ module.exports = function createConfigRouter({ storage }) {
 
     router.get('/get-default-margins', async (req, res) => {
         try {
-            const content  = await storage.readText('default-margins.json');
+            const content  = await storage.readText(CONFIG_KEY_DEFAULT_MARGINS);
             let parsed = {};
             if (content) {
                 try { parsed = JSON.parse(content); } catch { parsed = {}; }

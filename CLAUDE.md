@@ -11,6 +11,33 @@ npm run dev        # same as npm start
 npm run test:e2e   # end-to-end smoke tests
 ```
 
+## Modularity rules
+
+New code must go in the appropriate existing file or a new file in the right folder — never directly in `server.js`:
+
+| What you're building | Where it goes |
+|---|---|
+| Route for rates / file management | `routes/rates.js` |
+| Route for quotations | `routes/quotations.js` |
+| Route for settings / config | `routes/config.js` |
+| Route that doesn't fit above | New file `routes/something.js` |
+| Calculation or number helper | `utils/calculations.js` |
+| Other reusable helper | New file `utils/something.js` |
+| File storage logic | `storage/index.js` |
+
+`server.js` is for setup only (express, middleware, OpenAI, DynamoDB init). No routes or business logic belong there.
+
+## Function design rules
+
+Break everything into small, focused functions. Every distinct piece of logic — no matter how small — gets its own named function:
+
+- A route handler should only orchestrate: call helpers, build the response. No inline logic.
+- If a block of code needs a comment to explain what it does, extract it into a named function instead.
+- Helper functions go at the top of the file or in `utils/`. They must do one thing only.
+- Sub-functions (only used by one parent) can be defined just above the parent function.
+- No function should be longer than ~30 lines. If it is, break it up.
+- Prefer many small functions over one large one, always.
+
 ## Testing rules
 
 Run only the relevant test file — not the full suite — after each change:

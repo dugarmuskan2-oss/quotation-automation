@@ -19,6 +19,15 @@ require('dotenv').config();
 
 const storage = require('./storage');
 const { createLineItemId, parseFlexibleNumber, calculateLineItem } = require('./utils/calculations');
+const {
+    ENTITY_QUOTATION,
+    QUOTE_COUNTER_ID,
+    QUOTE_COUNTER_START,
+    CONFIG_KEY_INSTRUCTIONS,
+    CONFIG_KEY_DEFAULT_TERMS,
+} = require('./utils/constants');
+
+const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 
 // DynamoDB (quotation persistence — not part of file storage)
 let ddbDocClient = null;
@@ -103,7 +112,7 @@ if (storage.isCloudActive()) {
 
 const upload = multer({ 
     storage: multerStorage,
-    limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+    limits: { fileSize: MAX_UPLOAD_SIZE_BYTES }
 });
 
 
@@ -707,10 +716,10 @@ app.post('/api/ai-chat', async (req, res) => {
 
 // ---------- Gmail ingest (new files: gmail-ingest/*.js) ----------
 async function getInstructionsContent() {
-    return (await storage.readText('instructions.txt')) || '';
+    return (await storage.readText(CONFIG_KEY_INSTRUCTIONS)) || '';
 }
 async function getDefaultTermsContent() {
-    return (await storage.readText('default-terms.txt')) || '';
+    return (await storage.readText(CONFIG_KEY_DEFAULT_TERMS)) || '';
 }
 
 // createLineItemId, calculateLineItem, parseFlexibleNumber → utils/calculations.js
@@ -731,10 +740,10 @@ function generateQuotationData(opts) {
 async function getNextQuoteNumberInternal() {
     if (!ddbDocClient || !ddbTableName) return null;
     const { UpdateCommand } = require('@aws-sdk/lib-dynamodb');
-    const startValue = 107;
+    const startValue = QUOTE_COUNTER_START;
     const result = await ddbDocClient.send(new UpdateCommand({
         TableName: ddbTableName,
-        Key: { id: 'QUOTE_NUMBER_COUNTER' },
+        Key: { id: QUOTE_COUNTER_ID },
         UpdateExpression: 'SET #v = if_not_exists(#v, :start) + :inc, #t = :type',
         ExpressionAttributeNames: { '#v': 'value', '#t': 'type' },
         ExpressionAttributeValues: { ':start': startValue, ':inc': 1, ':type': 'counter' },
@@ -771,7 +780,7 @@ async function saveQuotationInternal(quotation) {
         TableName: ddbTableName,
         Item: {
             id: String(updated.id),
-            _entity: 'QUOTATION',
+            _entity: ENTITY_QUOTATION,
             updatedAt: updated.updatedAt,
             createdAt: updated.createdAt,
             payload: updated

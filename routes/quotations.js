@@ -10,6 +10,16 @@
 const express = require('express');
 const router  = express.Router();
 
+const {
+    ENTITY_QUOTATION,
+    QUOTE_COUNTER_ID,
+    QUOTE_COUNTER_START,
+    QUOTATIONS_GSI_INDEX,
+} = require('../utils/constants');
+
+// Local constants
+const MAX_SCAN_PAGES = 200;
+
 // Summary fields projected from DynamoDB — keeps scan/query pages small
 const SUMMARY_NESTED_PATHS = [
     'id', 'quoteNumber', 'companyName', 'projectName',
@@ -62,7 +72,7 @@ function mergePayloadAndData(data, payload) {
 }
 
 function quotationFromItem(item) {
-    if (!item || item.id === 'QUOTE_NUMBER_COUNTER') return null;
+    if (!item || item.id === QUOTE_COUNTER_ID) return null;
     const payload = item.payload && typeof item.payload === 'object' ? item.payload : null;
     const data    = item.data    && typeof item.data    === 'object' ? item.data    : null;
     if (!payload && !data) return null;
@@ -106,10 +116,10 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName })
             const { UpdateCommand } = require('@aws-sdk/lib-dynamodb');
             const result = await ddbDocClient.send(new UpdateCommand({
                 TableName: ddbTableName,
-                Key: { id: 'QUOTE_NUMBER_COUNTER' },
+                Key: { id: QUOTE_COUNTER_ID },
                 UpdateExpression: 'SET #v = if_not_exists(#v, :start) + :inc, #t = :type',
                 ExpressionAttributeNames: { '#v': 'value', '#t': 'type' },
-                ExpressionAttributeValues: { ':start': 107, ':inc': 1, ':type': 'counter' },
+                ExpressionAttributeValues: { ':start': QUOTE_COUNTER_START, ':inc': 1, ':type': 'counter' },
                 ReturnValues: 'UPDATED_NEW',
             }));
             const value = result?.Attributes?.value;
@@ -136,7 +146,7 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName })
                 TableName: ddbTableName,
                 Item: {
                     id:        String(updated.id),
-                    _entity:   'QUOTATION',
+                    _entity:   ENTITY_QUOTATION,
                     updatedAt: updated.updatedAt,
                     createdAt: updated.createdAt,
                     payload:   updated,
@@ -164,10 +174,10 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName })
                 do {
                     const params = {
                         TableName:                 ddbTableName,
-                        IndexName:                 'entity-updatedAt-index',
+                        IndexName:                 QUOTATIONS_GSI_INDEX,
                         KeyConditionExpression:    '#ent = :ent',
                         ExpressionAttributeNames:  { ...SUMMARY_EXPR_NAMES, '#ent': '_entity' },
-                        ExpressionAttributeValues: { ':ent': 'QUOTATION' },
+                        ExpressionAttributeValues: { ':ent': ENTITY_QUOTATION },
                         ScanIndexForward:          false,
                         ProjectionExpression:      SUMMARY_PROJECTION,
                     };
@@ -181,7 +191,7 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName })
                 const missing = gsiError.name === 'ResourceNotFoundException' ||
                     (gsiError.name === 'ValidationException' && gsiError.message?.includes('index'));
                 if (!missing) throw gsiError;
-                console.warn('[quotations] GSI not found, falling back to scan. Create entity-updatedAt-index to speed this up.');
+                console.warn(`[quotations] GSI not found, falling back to scan. Create ${QUOTATIONS_GSI_INDEX} to speed this up.`);
                 mode = 'scan'; items = []; lastKey = null; pages = 0;
                 do {
                     const params = { TableName: ddbTableName, ProjectionExpression: SUMMARY_PROJECTION, ExpressionAttributeNames: SUMMARY_EXPR_NAMES };
@@ -235,7 +245,7 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName })
             let lastKey = null, pages = 0, scanned = 0;
             const t0 = Date.now();
 
-            while (pages < 200) {
+            while (pages < MAX_SCAN_PAGES) {
                 pages++;
                 const params = {
                     TableName: ddbTableName,

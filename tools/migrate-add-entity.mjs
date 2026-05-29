@@ -21,6 +21,8 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 
+const { ENTITY_QUOTATION, QUOTE_COUNTER_ID, QUOTATIONS_GSI_INDEX } = require('../utils/constants');
+
 // Load .env
 const envPath = join(__dirname, '..', '.env');
 if (existsSync(envPath)) {
@@ -81,7 +83,7 @@ async function migrate() {
             scanned++;
 
             // Skip the quote-number counter and any item that already has _entity set
-            if (item.id === 'QUOTE_NUMBER_COUNTER' || item._entity) {
+            if (item.id === QUOTE_COUNTER_ID || item._entity) {
                 skipped++;
                 continue;
             }
@@ -94,7 +96,7 @@ async function migrate() {
                     Key:                       { id: item.id },
                     UpdateExpression:          'SET #ent = :ent',
                     ExpressionAttributeNames:  { '#ent': '_entity' },
-                    ExpressionAttributeValues: { ':ent': 'QUOTATION' },
+                    ExpressionAttributeValues: { ':ent': ENTITY_QUOTATION },
                 }));
             }
             updated++;
@@ -116,7 +118,7 @@ async function migrate() {
         console.log('\nDry-run complete. Re-run without DRY_RUN=1 to apply changes.');
     } else {
         console.log('\nMigration complete. All quotations now have _entity = "QUOTATION".');
-        console.log('The entity-updatedAt-index GSI will start serving queries immediately.');
+        console.log(`The ${QUOTATIONS_GSI_INDEX} GSI will start serving queries immediately.`);
     }
 }
 
