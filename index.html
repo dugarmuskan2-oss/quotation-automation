@@ -1503,7 +1503,7 @@
         const origin = window.location.origin;
         const API_BASE_URL = (origin && origin !== 'null' && origin.startsWith('http'))
             ? origin + '/api'
-            : 'http://localhost:3000/api';
+            : 'http://localhost:3001/api';
         let lastAiRawOutput = '';
         
         /*
@@ -3860,6 +3860,7 @@
                     buttonsHtml: buildCreationFolderPipeHeaderButtonsHtml(entryId)
                 });
                 tableBody.appendChild(headerRow);
+                setupPipeSectionDrag(headerRow);
                 attachCreationFolderCalculationListeners(entryId);
                 recalculateAllTotalsInContainer(folderContent);
                 return;
@@ -4293,10 +4294,34 @@
             if (colRow) rows.push(colRow);
             rows.push(pipeHeaderRow);
             let next = pipeHeaderRow.nextElementSibling;
-            while (next && !next.classList.contains('pipe-type-header') && !next.classList.contains('main-column-header-row')) {
+            // A pipe section is the header (+ paired column row) and the item
+            // rows beneath it, up to the next section boundary. Stop at the next
+            // pipe-type-header / main-column-header-row (start of another
+            // section) AND at freight rows, which are folder-level totals that
+            // belong at the bottom of the table — they are NOT part of any pipe
+            // section and must never be dragged along with one.
+            while (next
+                && !next.classList.contains('pipe-type-header')
+                && !next.classList.contains('main-column-header-row')
+                && !next.classList.contains('freight-row')
+                && next.getAttribute('data-row-type') !== 'freight') {
                 rows.push(next);
                 next = next.nextElementSibling;
             }
+            return rows;
+        }
+
+        // Rows that actually travel when a header is dragged. We move ONLY the
+        // header itself (and, for an M+ section, its paired column-label row),
+        // never the item rows beneath it. This lets a header be dropped between
+        // ANY line items — including the items currently under it — which simply
+        // re-groups those items (splitting the section), exactly as intended.
+        function collectDraggedHeaderRows(pipeHeaderRow) {
+            if (!pipeHeaderRow) return [];
+            const rows = [];
+            const colRow = getPairedColumnHeaderRow(pipeHeaderRow);
+            if (colRow) rows.push(colRow);
+            rows.push(pipeHeaderRow);
             return rows;
         }
 
@@ -4356,7 +4381,12 @@
         }
 
         function setupPipeSectionDrag(pipeHeaderRow) {
-            if (!pipeHeaderRow || pipeHeaderRow._pipeSectionDragSetup) return;
+            if (!pipeHeaderRow) return;
+
+            const tbody = pipeHeaderRow.closest('tbody');
+
+            // Wire the per-section drag *triggers* (the header rows) once per row.
+            if (!pipeHeaderRow._pipeSectionDragSetup) {
             pipeHeaderRow._pipeSectionDragSetup = true;
 
             const colRow = getPairedColumnHeaderRow(pipeHeaderRow);
@@ -4369,7 +4399,7 @@
                         e.preventDefault();
                         return;
                     }
-                    _draggedSectionRows = collectPipeSectionRows(pipeHeaderRow);
+                    _draggedSectionRows = collectDraggedHeaderRows(pipeHeaderRow);
                     e.dataTransfer.effectAllowed = 'move';
                     e.dataTransfer.setData('text/plain', pipeHeaderRow.id || '');
                     setTimeout(function() {
@@ -4384,8 +4414,14 @@
                     _draggedSectionRows = null;
                 });
             });
+            }
 
-            const tbody = pipeHeaderRow.closest('tbody');
+            // Attach the tbody-level drop listeners exactly once *per tbody*,
+            // independent of the per-row guard above. This is critical: rows
+            // created by createPipeTypeHeaderRow get flagged _pipeSectionDragSetup
+            // BEFORE being inserted into the DOM (when closest('tbody') is still
+            // null), so without decoupling the two guards the tbody dragover/drop
+            // listeners would never get attached and dropping would do nothing.
             if (!tbody || tbody._pipeSectionDragSetup) return;
             tbody._pipeSectionDragSetup = true;
 
@@ -4416,31 +4452,54 @@
                 if (!_draggedSectionRows || !_draggedSectionRows.length) return;
                 e.preventDefault();
                 clearPipeSectionDragOverStyles();
-                const target = e.target.closest('tr');
-                if (!target || target.parentNode !== tbody) {
-                    _draggedSectionRows.forEach(function(row) { tbody.appendChild(row); });
-                    updateRowNumbers(tbody);
-                    _draggedSectionRows = null;
-                    return;
-                }
-                const targetHeader = resolvePipeSectionHeaderRow(target);
-                if (!targetHeader) {
-                    _draggedSectionRows = null;
-                    return;
-                }
-                const targetSection = collectPipeSectionRows(targetHeader);
-                if (sectionRowsOverlap(_draggedSectionRows, targetSection)) {
-                    _draggedSectionRows = null;
-                    return;
-                }
-                const insertBefore = getSectionBoundaryInsertBefore(tbody, target, e.clientY);
-                if (insertBefore) {
-                    insertPipeSectionAt(tbody, _draggedSectionRows, insertBefore);
-                } else {
-                    _draggedSectionRows.forEach(function(row) { tbody.appendChild(row); });
-                }
-                updateRowNumbers(tbody);
+
+                // Snapshot the dragged rows, then clear the global state up front
+                // so nothing can re-enter mid-move.
+                var dragged = _draggedSectionRows.slice();
                 _draggedSectionRows = null;
+                function cleanup() {
+                    dragged.forEach(function(r) { r.classList.remove('row-dragging'); });
+                }
+
+                // ── Work out the anchor row to insert BEFORE (null => append). ──
+                // The anchor is ALWAYS a row that is not part of the dragged
+                // section, so we can safely remove the section first and then
+                // re-insert it at a stable location. This removes every
+                // "no-op / won't move" edge case the previous in-place insert had.
+                var insertBefore = null;
+                var target = (e.target && e.target.closest) ? e.target.closest('tr') : null;
+
+                if (target && target.parentNode === tbody) {
+                    var rect = target.getBoundingClientRect();
+                    var before = e.clientY < (rect.top + rect.height / 2);
+                    insertBefore = before ? target : target.nextElementSibling;
+                    // Skip forward over any rows belonging to the dragged section
+                    // so the anchor is a stable, non-dragged node (or null = end).
+                    while (insertBefore && dragged.indexOf(insertBefore) !== -1) {
+                        insertBefore = insertBefore.nextElementSibling;
+                    }
+                } else {
+                    // Dropped in empty space (not on a row): pick the first
+                    // non-dragged row whose midpoint is below the cursor, else end.
+                    var others = Array.prototype.filter.call(tbody.children, function(r) {
+                        return dragged.indexOf(r) === -1;
+                    });
+                    for (var i = 0; i < others.length; i++) {
+                        var orc = others[i].getBoundingClientRect();
+                        if (e.clientY < orc.top + orc.height / 2) { insertBefore = others[i]; break; }
+                    }
+                }
+
+                // Remove first (keeps `insertBefore` valid), then re-insert in order.
+                dragged.forEach(function(r) { if (r.parentNode) r.parentNode.removeChild(r); });
+                if (insertBefore && insertBefore.parentNode === tbody) {
+                    dragged.forEach(function(r) { tbody.insertBefore(r, insertBefore); });
+                } else {
+                    dragged.forEach(function(r) { tbody.appendChild(r); });
+                }
+
+                updateRowNumbers(tbody);
+                cleanup();
             });
 
             tbody.addEventListener('dragleave', function(e) {
@@ -4458,6 +4517,14 @@
         }
 
         function setupRowDrag(pipeHeaderRow, colHeaderRow) {
+            // Re-run setup on the pipe header now that both rows are in the DOM.
+            // The first call (from createPipeTypeHeaderRow) ran before insertion,
+            // so getPairedColumnHeaderRow returned null and the column-label row
+            // wasn't wired as a drag trigger.  Reset the guard and re-run so the
+            // pair is registered correctly.
+            if (pipeHeaderRow) {
+                pipeHeaderRow._pipeSectionDragSetup = false;
+            }
             setupPipeSectionDrag(pipeHeaderRow || colHeaderRow);
         }
 
@@ -4511,7 +4578,10 @@
                 tableBody.appendChild(colHeaderRow);
                 tableBody.appendChild(pipeHeaderRow);
             }
-            setupRowDrag(colHeaderRow, pipeHeaderRow);
+            // Args were previously swapped (colHeaderRow, pipeHeaderRow).
+            // setupRowDrag(pipeHeaderRow, colHeaderRow) is the correct order —
+            // the pipe-type-header row is the drag anchor for the whole section.
+            setupRowDrag(pipeHeaderRow, colHeaderRow);
         }
 
         function buildMPlusButtonsHtmlForMainTable(pipeHeaderId) {
@@ -4557,6 +4627,10 @@
                     buttonsHtml: buildMainTablePipeHeaderButtonsHtml('Default', headerId)
                 });
                 tableBodyToUse.appendChild(headerRow);
+                // Re-run setup now that the header is in the DOM so the tbody
+                // drag/drop listeners get attached (they can't be during
+                // createPipeTypeHeaderRow because the row isn't inserted yet).
+                setupPipeSectionDrag(headerRow);
                 if (container) {
                     const entryId = container.id && container.id.startsWith('folder-content-') ? container.id.replace('folder-content-', '') : '';
                     if (entryId) attachCreationFolderCalculationListeners(entryId);
@@ -4599,6 +4673,7 @@
                         buttonsHtml: buildMainTablePipeHeaderButtonsHtml(pipeType, headerId)
                     });
                     tableBodyToUse.appendChild(headerRow);
+                    setupPipeSectionDrag(headerRow);
                 }
             }
             
@@ -6598,6 +6673,7 @@
                     dragAtEnd: true
                 });
                 tbody.appendChild(newHeaderRow);
+                setupPipeSectionDrag(newHeaderRow);
                 attachApprovalSectionListeners(folderContent);
                 return;
             }
