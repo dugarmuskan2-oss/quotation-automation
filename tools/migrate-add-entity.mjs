@@ -74,8 +74,9 @@ async function migrate() {
 
     do {
         const result = await docClient.send(new ScanCommand({
-            TableName:            tableName,
-            ProjectionExpression: 'id, _entity, updatedAt',
+            TableName:                tableName,
+            ProjectionExpression:     'id, #ent, updatedAt',
+            ExpressionAttributeNames: { '#ent': '_entity' },
             ...(lastKey && { ExclusiveStartKey: lastKey }),
         }));
 
