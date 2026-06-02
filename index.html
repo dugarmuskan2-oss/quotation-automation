@@ -4882,7 +4882,19 @@
                     return;
                 }
 
-                const itemRows = Array.from(folderContent.querySelectorAll('tbody tr.item-row'));
+                // Scope to the quotation table only (not email preview tables in the side panel)
+                const approvalQuotation = folderContent.querySelector('.approval-quotation');
+                const quotationTable = approvalQuotation
+                    ? approvalQuotation.querySelector('table')
+                    : folderContent.querySelector('table');
+                const itemRows = quotationTable
+                    ? Array.from(quotationTable.querySelectorAll('tbody tr')).filter(function(row) {
+                        return !row.classList.contains('pipe-type-header')
+                            && !row.classList.contains('freight-row')
+                            && !row.classList.contains('main-column-header-row')
+                            && row.getAttribute('data-row-type') !== 'freight';
+                      })
+                    : Array.from(folderContent.querySelectorAll('tbody tr.item-row'));
                 const bases = collectFreightDistributionBases(itemRows);
                 if (bases.baseSum <= 0) {
                     alert('Cannot distribute freight: Base total is 0 (missing Qty/Base Rate).');
@@ -5011,7 +5023,8 @@
                 if (!row.id) {
                     row.id = `approval-row-${quotationId}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
                 }
-                const marginInput = row.querySelector('[data-field="marginPercent"]');
+                const marginInput = row.querySelector('[data-field="marginPercent"]')
+                    || row.querySelector('.col-margin input');
                 const finalRateInput = row.querySelector('[data-field="finalRate"]');
                 const lineTotalInput = row.querySelector('[data-field="lineTotal"]');
                 rows.push({
@@ -5108,7 +5121,9 @@
         function applyDeltaMarginToRows(rowBases, deltaMargin) {
             rowBases.forEach(function(rb) {
                 const row = rb.row;
-                const marginInput = row.querySelector('[data-field="marginPercent"]');
+                // Try data-field first, then fall back to the col-margin input
+                const marginInput = row.querySelector('[data-field="marginPercent"]')
+                    || row.querySelector('.col-margin input');
                 if (!marginInput) return;
                 const current = getNumberFromInput(marginInput);
                 const next = current + deltaMargin;
@@ -5789,7 +5804,7 @@
                 <div class="approval-layout">
                     <div class="approval-quotation">
                             ${quotation.headerHTML || ''}
-                            ${quotation.tableHTML}
+                            ${quotation.tableHTML || ''}
                         <div class="freight-summary" style="display:none; margin-top: 6px; font-weight: bold; font-size: 14px;">
                             Freight: ₹<span class="freight-summary-amount">0</span>
                         </div>
@@ -6099,8 +6114,10 @@
                 // Skip folders that haven't been rendered yet (lazy placeholder)
                 if (folderContent.dataset.lazyId) return;
                 
-                // Find the table in this quotation
-                const table = folderContent.querySelector('table');
+                // Find the table in this quotation — scope to .approval-quotation so we
+                // never accidentally pick up a <table> inside the email preview side panel.
+                const _aqDiv = folderContent.querySelector('.approval-quotation');
+                const table = _aqDiv ? _aqDiv.querySelector('table') : folderContent.querySelector('table');
                 if (table) {
                     // Check if table header has Actions column, if not add it
                     const headerRow = table.querySelector('thead tr');
@@ -6649,9 +6666,10 @@
             const folderContent = folder.querySelector('.quotation-folder-content');
             if (!folderContent) return;
             
-            const table = folderContent.querySelector('table');
+            const _aqDiv2 = folderContent.querySelector('.approval-quotation');
+            const table = (_aqDiv2 ? _aqDiv2.querySelector('table') : folderContent.querySelector('table'));
             if (!table) return;
-            
+
             const tbody = table.querySelector('tbody');
             if (!tbody) return;
             
@@ -6923,12 +6941,13 @@
                 quotation.headerHTML = headerElement.outerHTML;
             }
             
-            // Update table HTML
-            const tableElement = updatedContent.querySelector('table');
+            // Update table HTML — scope to .approval-quotation to avoid grabbing email preview tables
+            const _aqDiv3 = updatedContent.querySelector('.approval-quotation');
+            const tableElement = _aqDiv3 ? _aqDiv3.querySelector('table') : updatedContent.querySelector('table');
             if (tableElement) {
                 quotation.tableHTML = tableElement.outerHTML;
             }
-            
+
             if (changedInput) {
             // Update terms text if it's a terms field
             if (changedInput.id === 'termsText' || changedInput.closest('.terms-box')) {
@@ -7356,7 +7375,8 @@
             if (headerElement) {
                 quotation.headerHTML = headerElement.outerHTML;
             }
-            const tableElement = updatedContent.querySelector('table');
+            const _aqDiv4 = updatedContent.querySelector('.approval-quotation');
+            const tableElement = _aqDiv4 ? _aqDiv4.querySelector('table') : updatedContent.querySelector('table');
             if (tableElement) {
                 quotation.tableHTML = tableElement.outerHTML;
             }
@@ -7462,8 +7482,9 @@
                     quotation.headerHTML = headerElement.outerHTML;
                 }
                 
-                // Update table HTML with current values
-                const tableElement = updatedContent.querySelector('table');
+                // Update table HTML with current values — scope to .approval-quotation
+                const _aqDiv5 = updatedContent.querySelector('.approval-quotation');
+                const tableElement = _aqDiv5 ? _aqDiv5.querySelector('table') : updatedContent.querySelector('table');
                 if (tableElement) {
                     quotation.tableHTML = tableElement.outerHTML;
                 }
