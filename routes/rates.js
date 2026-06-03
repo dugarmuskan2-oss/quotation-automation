@@ -215,5 +215,62 @@ module.exports = function createRatesRouter({ openai, upload, storage, ratesDir 
         }
     });
 
+    // ── Re-index: delete all OpenAI file IDs and re-upload with correct filenames ─
+    // Use this once to fix rate files that were previously uploaded without filenames.
+    router.post('/reindex-rates', async (req, res) => {
+        try {
+            const index = await storage.loadRateIndex();
+
+            // Delete old OpenAI files (nameless ones)
+            for (const mapping of index) {
+                if (mapping.openaiFileId) {
+                    try {
+                        await openai.files.del(mapping.openaiFileId);
+                        console.log(`Re-index: deleted old OpenAI file ${mapping.openaiFileId}`);
+                    } catch (e) {
+                        console.warn(`Re-index: could not delete ${mapping.openaiFileId}:`, e.message);
+                    }
+                }
+                await storage.removeRateMappingByS3Key(mapping.s3Key);
+            }
+
+            // Re-upload each stored rate PDF with its correct filename
+            const rateFiles = await storage.list('rates');
+            const results   = [];
+            const errors    = [];
+
+            for (const rateFile of rateFiles) {
+                const fileName = rateFile.name;
+                if (path.extname(fileName).toLowerCase() !== '.pdf') continue;
+                try {
+                    const buffer        = await storage.read(rateFile.path);
+                    const cleanBuffer   = Buffer.isBuffer(buffer) ? Buffer.concat([buffer]) : Buffer.from(buffer);
+                    const openaiFileId  = await uploadToOpenAI(cleanBuffer, fileName);
+                    await storage.addRateMapping({
+                        s3Key:        rateFile.path,
+                        openaiFileId,
+                        originalName: fileName,
+                        createdAt:    new Date().toISOString(),
+                    });
+                    results.push(fileName);
+                    console.log(`Re-index: re-uploaded ${fileName} as ${openaiFileId}`);
+                } catch (e) {
+                    errors.push({ file: fileName, error: e.message });
+                    console.error(`Re-index: failed for ${fileName}:`, e.message);
+                }
+            }
+
+            res.json({
+                success:   true,
+                reindexed: results,
+                errors:    errors.length ? errors : undefined,
+                message:   `${results.length} file(s) re-indexed with correct filenames.`,
+            });
+        } catch (err) {
+            console.error('Re-index error:', err);
+            res.status(500).json({ error: 'Re-index failed', details: err.message });
+        }
+    });
+
     return router;
 };

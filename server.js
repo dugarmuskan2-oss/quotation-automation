@@ -366,9 +366,10 @@ async function handleGenerateQuotation({ emailContent, fileContent, instructions
                     // Ensure buffer is completely clean (strip any stream-like properties)
                     const cleanBuffer = Buffer.from(fileBuffer);
 
-                    // Upload to OpenAI
+                    // Upload to OpenAI — include fileName so GPT can distinguish
+                    // GI / ERW / Seamless rate files by name when picking rates.
                     const file = await openai.files.create({
-                        file: cleanBuffer,
+                        file: await toFile(cleanBuffer, fileName, { type: 'application/pdf' }),
                         purpose: 'assistants'
                     });
 
@@ -417,8 +418,17 @@ async function handleGenerateQuotation({ emailContent, fileContent, instructions
             }
         }
 
+        // Build a per-file rule so GPT knows exactly which file covers which pipe type.
+        // Each filename contains a keyword (GI / ERW / Seamless) that identifies its type.
+        const fileTypeRules = uploadedFileNames.map(name => {
+            if (/\bGI\b/i.test(name))        return `"${name}" → Galvanized Iron (GI) pipes ONLY`;
+            if (/\bERW\b/i.test(name))        return `"${name}" → ERW (Electric Resistance Welded) pipes ONLY`;
+            if (/seamless/i.test(name))       return `"${name}" → Seamless pipes ONLY`;
+            if (/stainless|ss\b/i.test(name)) return `"${name}" → Stainless Steel pipes ONLY`;
+            return `"${name}"`;
+        });
         const rateFileListText = uploadedFileNames.length > 0
-            ? ` The rate files provided are: ${uploadedFileNames.join('; ')}. IMPORTANT: Match each item in the enquiry to the correct rate file based on the file name — for example, GI pipe items must use rates from the GI price list file, ERW pipe items from the ERW price list file, and Seamless pipe items from the Seamless price list file. Do NOT mix rates across files.`
+            ? ` RATE FILE RULES — you MUST follow these exactly:\n${fileTypeRules.map((r, i) => `  File ${i + 1}: ${r}`).join('\n')}\nLook at the filename of each rate file to identify its pipe type, then use ONLY that file for matching items of that type. NEVER use GI rates for ERW pipes, ERW rates for GI pipes, or mix any other types. If an item's pipe type is ambiguous, infer it from keywords in its description (e.g. "GI", "galvanised", "ERW", "seamless").`
             : '';
 
         const promptText = `Please analyze the following enquiry and extract quotation information. Use the PDF rate files provided (${uploadedFileIds.length} file(s)) to match base rates.${rateFileListText} Read the PDF files directly to find the correct rates. If the PDF rate files include a KG/meter (or kg per meter / weight per meter) value for an item, extract it into "kgPerMeter". Return the data in this exact JSON format:

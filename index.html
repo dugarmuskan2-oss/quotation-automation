@@ -963,6 +963,16 @@
                     <div id="uploadedFilesList">
                         <p style="text-align: center; color: #999; padding: 20px;">No files uploaded yet.</p>
                     </div>
+                    <div style="margin-top: 12px;">
+                        <button type="button" id="reindexRatesBtn" onclick="reindexRateFiles()"
+                            style="background:#e67e22; color:#fff; border:none; padding:8px 16px; border-radius:4px; cursor:pointer; font-size:13px;">
+                            🔄 Fix Rate File Index
+                        </button>
+                        <span style="margin-left:10px; font-size:12px; color:#888;">
+                            Run this once if GI/ERW/Seamless rates are mixing. Re-uploads files with correct names.
+                        </span>
+                        <span id="reindexStatus" style="margin-left:10px; font-size:12px;"></span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -2251,6 +2261,32 @@
             ============================================
             Displays all uploaded rate files with delete option
         */
+        async function reindexRateFiles() {
+            const btn    = document.getElementById('reindexRatesBtn');
+            const status = document.getElementById('reindexStatus');
+            btn.disabled = true;
+            btn.textContent = '⏳ Re-indexing...';
+            status.textContent = '';
+            try {
+                const res  = await fetch(`${API_BASE_URL}/reindex-rates`, { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    status.style.color = '#27ae60';
+                    status.textContent = `✅ Done — ${data.reindexed.length} file(s) re-indexed.`;
+                    await loadUploadedFiles();
+                } else {
+                    status.style.color = '#c0392b';
+                    status.textContent = '❌ Re-index failed: ' + (data.error || 'unknown error');
+                }
+            } catch (e) {
+                status.style.color = '#c0392b';
+                status.textContent = '❌ ' + e.message;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '🔄 Fix Rate File Index';
+            }
+        }
+
         async function loadUploadedFiles() {
             try {
                 const response = await fetch(`${API_BASE_URL}/current-rates`);
