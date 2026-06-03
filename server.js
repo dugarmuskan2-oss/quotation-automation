@@ -417,7 +417,11 @@ async function handleGenerateQuotation({ emailContent, fileContent, instructions
             }
         }
 
-        const promptText = `Please analyze the following enquiry and extract quotation information. Use the PDF rate files provided (${uploadedFileIds.length} file(s)) to match base rates. Read the PDF files directly to find the correct rates. If the PDF rate files include a KG/meter (or kg per meter / weight per meter) value for an item, extract it into "kgPerMeter". Return the data in this exact JSON format:
+        const rateFileListText = uploadedFileNames.length > 0
+            ? ` The rate files provided are: ${uploadedFileNames.join('; ')}. IMPORTANT: Match each item in the enquiry to the correct rate file based on the file name — for example, GI pipe items must use rates from the GI price list file, ERW pipe items from the ERW price list file, and Seamless pipe items from the Seamless price list file. Do NOT mix rates across files.`
+            : '';
+
+        const promptText = `Please analyze the following enquiry and extract quotation information. Use the PDF rate files provided (${uploadedFileIds.length} file(s)) to match base rates.${rateFileListText} Read the PDF files directly to find the correct rates. If the PDF rate files include a KG/meter (or kg per meter / weight per meter) value for an item, extract it into "kgPerMeter". Return the data in this exact JSON format:
 
 {
   "customerName": "",

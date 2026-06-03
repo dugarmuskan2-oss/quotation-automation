@@ -5660,6 +5660,7 @@
                 // Show Approve button only if not saved yet
                 const approveButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); saveQuotation(${JSON.stringify(quotation.id)})">✅ Approve</button>`;
                 const saveButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); saveQuotationChanges(${JSON.stringify(quotation.id)})">💾 Save</button>`;
+                const printButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); printQuotationPdf(${JSON.stringify(quotation.id)})">🖨️ Print</button>`;
                 const downloadButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); downloadQuotationPdf(${JSON.stringify(quotation.id)})">⬇️ Download PDF</button>`;
 
                 const gmailLinkUrl = quotation.emailLink || (quotation.gmailMessageId ? 'https://mail.google.com/mail/u/0/#inbox/' + quotation.gmailMessageId : '');
@@ -5797,7 +5798,7 @@
             searchInput.dataset.bound = 'true';
         }
 
-        function buildApprovalSplitLayout({ quotation, termsText, approveButtonHTML, saveButtonHTML, downloadButtonHTML }) {
+        function buildApprovalSplitLayout({ quotation, termsText, approveButtonHTML, saveButtonHTML, printButtonHTML, downloadButtonHTML }) {
             const sidePanelHTML = buildApprovalSidePanelHTML(quotation);
 
             return `
@@ -5815,6 +5816,7 @@
                         <div style="margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
                                 ${approveButtonHTML}
                             ${saveButtonHTML || ''}
+                                ${printButtonHTML || ''}
                                 ${downloadButtonHTML}
                             </div>
                         </div>
@@ -5998,8 +6000,9 @@
                 const termsText = quotation.termsText || defaultTermsText || '';
                 const approveButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); saveQuotation(${JSON.stringify(quotation.id)})">✅ Approve</button>`;
                 const saveButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); saveQuotationChanges(${JSON.stringify(quotation.id)})">💾 Save</button>`;
+                const printButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); printQuotationPdf(${JSON.stringify(quotation.id)})">🖨️ Print</button>`;
                 const downloadButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); downloadQuotationPdf(${JSON.stringify(quotation.id)})">⬇️ Download PDF</button>`;
-                folderContentEl.innerHTML = buildApprovalSplitLayout({ quotation, termsText, approveButtonHTML, saveButtonHTML, downloadButtonHTML });
+                folderContentEl.innerHTML = buildApprovalSplitLayout({ quotation, termsText, approveButtonHTML, saveButtonHTML, printButtonHTML, downloadButtonHTML });
                 syncApprovalHeaderQuoteInputFromQuotationModel(folderContentEl, quotation);
                 attachApprovalSectionListeners(folderContentEl);
             }
@@ -7726,14 +7729,18 @@
             if (currentLine) lines.push(currentLine);
             return lines;
         }
-        async function downloadQuotationPdf(quotationId) {
+        async function printQuotationPdf(quotationId) {
+            await downloadQuotationPdf(quotationId, { print: true });
+        }
+
+        async function downloadQuotationPdf(quotationId, options) {
             const quotation = approvedQuotations.find(q => idsMatch(q.id, quotationId));
             if (!quotation) {
                 alert('Quotation not found');
                 return;
             }
             if (!canDownloadQuotation(quotation)) {
-                alert('Please save changes to Download');
+                alert((options && options.print) ? 'Please save changes to Print' : 'Please save changes to Download');
                 return;
             }
             // Sync all manual edits from the folder DOM so the PDF reflects current content
@@ -8080,7 +8087,13 @@
             }
 
             const filename = `Quotation-${getFolderDisplayName(quotation).replace(/[/\\?%*:|"<>]/g, '-')}.pdf`;
-            doc.save(filename);
+            if (options && options.print) {
+                doc.autoPrint();
+                const blobUrl = doc.output('bloburl');
+                window.open(blobUrl, '_blank');
+            } else {
+                doc.save(filename);
+            }
         }
         
         /*
