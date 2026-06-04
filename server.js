@@ -476,6 +476,25 @@ Extract ALL items and materials from the enquiry — including pipes, plates, fi
             });
         }
 
+        // Interleave a text label immediately BEFORE each rate file so GPT can
+        // associate each file's content with its pipe type. Dumping all files
+        // unlabeled at the end makes GPT read from the first file for every item.
+        const rateFileParts = [];
+        uploadedFileIds.forEach((fileId, i) => {
+            const name = uploadedFileNames[i] || `Rate file ${i + 1}`;
+            let typeLabel;
+            if (/\bGI\b/i.test(name))                 typeLabel = 'GI PRICE LIST — every rate in this file is for GI (Galvanized Iron) pipes ONLY';
+            else if (/\bERW\b/i.test(name))           typeLabel = 'ERW PRICE LIST — every rate in this file is for ERW pipes ONLY';
+            else if (/seamless/i.test(name))          typeLabel = 'SEAMLESS PRICE LIST — every rate in this file is for Seamless pipes ONLY';
+            else if (/stainless|\bss\b/i.test(name))  typeLabel = 'STAINLESS STEEL PRICE LIST — every rate in this file is for Stainless Steel pipes ONLY';
+            else                                       typeLabel = name;
+            rateFileParts.push({
+                type: 'input_text',
+                text: `\n========================================\nRATE FILE ${i + 1} of ${uploadedFileIds.length}: ${typeLabel}.\n(Source filename: "${name}")\nThe PDF immediately following this line IS that price list. Use it ONLY for matching items of that pipe type.\n========================================`
+            });
+            rateFileParts.push({ type: 'input_file', file_id: fileId });
+        });
+
         const completion = await openai.responses.create({
             model: 'gpt-5.2',
             input: [
@@ -487,10 +506,7 @@ Extract ALL items and materials from the enquiry — including pipes, plates, fi
                     role: 'user',
                     content: [
                         ...userContentParts,
-                        ...uploadedFileIds.map(fileId => ({
-                            type: 'input_file',
-                            file_id: fileId
-                        }))
+                        ...rateFileParts
                     ]
                 }
             ]
