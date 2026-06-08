@@ -3467,9 +3467,12 @@
                 return raw;
             }
             const pipeLabel = isGi ? 'GI' : 'ERW';
-            const heavyTokens = ['h', 'hy', 'hv', 'hvy', 'heavy', 'hevy'];
-            const mediumTokens = ['m', 'med', 'medium'];
-            const lightTokens = ['l', 'lgt', 'light'];
+            // Class letters: C Class = Heavy, B Class = Medium, A Class = Light.
+            // Included here so an un-normalized code like "125XC" still formats
+            // (and converts mm → inch) instead of showing raw.
+            const heavyTokens = ['h', 'hy', 'hv', 'hvy', 'heavy', 'hevy', 'c', 'cclass'];
+            const mediumTokens = ['m', 'med', 'medium', 'b', 'bclass'];
+            const lightTokens = ['l', 'lgt', 'light', 'a', 'aclass'];
 
             if (isHeavy || heavyTokens.includes(secondClean)) {
                 return `${displayFirst}" NB X Heavy -- ${pipeLabel}`;

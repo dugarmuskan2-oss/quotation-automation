@@ -67,6 +67,33 @@ describe('class token variants', () => {
 });
 
 // =============================================================================
+// Class LETTERS (A/B/C) — un-normalized codes GPT sometimes emits
+// C Class = Heavy, B Class = Medium, A Class = Light
+// =============================================================================
+describe('class letters A/B/C', () => {
+    test('XC (C class) → Heavy, with mm→inch', () => expect(f('125XC', 'ERW')).toBe('5" NB X Heavy -- ERW'));
+    test('100XC → 4" Heavy', () => expect(f('100XC', 'ERW')).toBe('4" NB X Heavy -- ERW'));
+    test('65XC → 2-1/2" Heavy', () => expect(f('65XC', 'ERW')).toBe('2-1/2" NB X Heavy -- ERW'));
+    test('50XC → 2" Heavy GI', () => expect(f('50XC', 'GI')).toBe('2" NB X Heavy -- GI'));
+    test('XB (B class) → Medium', () => expect(f('50XB', 'GI')).toBe('2" NB X Medium -- GI'));
+    test('XA (A class) → Light', () => expect(f('50XA', 'ERW')).toBe('2" NB X Light -- ERW'));
+    test('inch + C class: 2XC → 2" Heavy', () => expect(f('2XC', 'ERW')).toBe('2" NB X Heavy -- ERW'));
+});
+
+// Convergence: class letter and class word must produce the same output
+describe('convergence: class letter == class word', () => {
+    test('C class == Heavy', () => {
+        expect(f('50XC', 'ERW')).toBe(f('50XH', 'ERW'));
+    });
+    test('B class == Medium', () => {
+        expect(f('50XB', 'ERW')).toBe(f('50XM', 'ERW'));
+    });
+    test('A class == Light', () => {
+        expect(f('50XA', 'ERW')).toBe(f('50XL', 'ERW'));
+    });
+});
+
+// =============================================================================
 // NB millimetre codes must convert to inch
 // =============================================================================
 describe('NB mm → inch conversion', () => {
