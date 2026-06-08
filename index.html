@@ -3372,6 +3372,19 @@
             return /^\d+(\.\d+)?$/.test(token) || /^\d+\/\d+$/.test(token) || /^\d+-\d+\/\d+$/.test(token);
         }
 
+        // NB (nominal bore, mm) → inch string, per IS/ASME standard pipe sizing.
+        // Used to convert rate-file size codes like "25XHY" → "1" NB X Heavy -- GI".
+        // Fraction values use the dashed form (1-1/4, 2-1/2) to match the
+        // output of normalizeFractionText, so a size renders identically
+        // whether the input arrived as an mm NB code or an inch-fraction code.
+        const NB_MM_TO_INCH = {
+            '6':'1/8','8':'1/4','10':'3/8','15':'1/2','20':'3/4',
+            '25':'1','32':'1-1/4','40':'1-1/2','50':'2','65':'2-1/2',
+            '80':'3','90':'3-1/2','100':'4','125':'5','150':'6',
+            '200':'8','250':'10','300':'12','350':'14','400':'16',
+            '450':'18','500':'20','600':'24'
+        };
+
         function formatItemDescriptionByPipeType(item) {
             const raw = (item.originalDescription || '').trim();
             if (!raw) {
@@ -3380,8 +3393,9 @@
             const pipeType = (item.identifiedPipeType || '').toLowerCase();
             const normalized = normalizeFractionText(raw.replace(/["]/g, '').trim());
             const numberToken = '\\d+(?:\\.\\d+)?|\\d+-\\d+\\/\\d+|\\d+\\/\\d+';
-            const nxhMatch = normalized.match(new RegExp(`^(${numberToken})\\s*[xX]\\s*(h|hv|hvy|heavy|hevy)$`, 'i'));
+            const nxhMatch = normalized.match(new RegExp(`^(${numberToken})\\s*[xX]\\s*(h|hy|hv|hvy|heavy|hevy)$`, 'i'));
             const nxmMatch = normalized.match(new RegExp(`^(${numberToken})\\s*[xX]\\s*(m|med|medium)$`, 'i'));
+            const nxlMatch = normalized.match(new RegExp(`^(${numberToken})\\s*[xX]\\s*(l|lgt|light)$`, 'i'));
             const xMatch = normalized.match(new RegExp(`(${numberToken})\\s*[xX]\\s*([A-Za-z0-9\\.\\/-]+)`));
             const hMatch = normalized.match(new RegExp(`^(${numberToken})\\s*(h|hv|hvy|heavy|hevy)$`, 'i'));
             const mMatch = normalized.match(new RegExp(`^(${numberToken})\\s*(m|med|medium)$`, 'i'));
@@ -3391,6 +3405,7 @@
             let secondClean = '';
             let isHeavy = false;
             let isMedium = false;
+            let isLight = false;
             let isSch = false;
             if (nxhMatch) {
                 first = nxhMatch[1];
@@ -3402,6 +3417,11 @@
                 secondDisplay = nxmMatch[2];
                 secondClean = nxmMatch[2].toLowerCase();
                 isMedium = true;
+            } else if (nxlMatch) {
+                first = nxlMatch[1];
+                secondDisplay = nxlMatch[2];
+                secondClean = nxlMatch[2].toLowerCase();
+                isLight = true;
             } else if (xMatch) {
                 first = xMatch[1];
                 secondDisplay = normalizeFractionText((xMatch[2] || '').trim());
@@ -3425,9 +3445,18 @@
                 return normalized;
             }
 
+            // Convert NB mm → inch if `first` is a known NB value (e.g. 25 → 1, 50 → 2).
+            // Computed before the seamless branch so every pipe type uses it.
+            const displayFirst = NB_MM_TO_INCH[String(Math.round(parseFloat(first)))] || first;
+
             if (pipeType.includes('seamless')) {
+                // Named ANSI schedules (XS, XXS, STD, etc.) format like numeric ones.
+                const namedSchedules = ['xs', 'xxs', 'std', 'sxs', 's'];
                 if (isSch || isNumericLikeToken(secondClean)) {
-                    return `${first}" NB X Sch ${secondDisplay || secondClean}`;
+                    return `${displayFirst}" NB X Sch ${secondDisplay || secondClean}`;
+                }
+                if (namedSchedules.includes(secondClean)) {
+                    return `${displayFirst}" NB X Sch ${(secondDisplay || secondClean).toUpperCase()}`;
                 }
                 return normalized;
             }
@@ -3438,17 +3467,21 @@
                 return raw;
             }
             const pipeLabel = isGi ? 'GI' : 'ERW';
-            const heavyTokens = ['h', 'hv', 'hvy', 'heavy', 'hevy'];
+            const heavyTokens = ['h', 'hy', 'hv', 'hvy', 'heavy', 'hevy'];
             const mediumTokens = ['m', 'med', 'medium'];
+            const lightTokens = ['l', 'lgt', 'light'];
 
             if (isHeavy || heavyTokens.includes(secondClean)) {
-                return `${first}" NB X Heavy -- ${pipeLabel}`;
+                return `${displayFirst}" NB X Heavy -- ${pipeLabel}`;
             }
             if (isMedium || mediumTokens.includes(secondClean)) {
-                return `${first}" NB X Medium -- ${pipeLabel}`;
+                return `${displayFirst}" NB X Medium -- ${pipeLabel}`;
+            }
+            if (isLight || lightTokens.includes(secondClean)) {
+                return `${displayFirst}" NB X Light -- ${pipeLabel}`;
             }
             if (isNumericLikeToken(secondClean)) {
-                return `${first}" NB X ${secondDisplay || secondClean}mm thk -- ${pipeLabel}`;
+                return `${displayFirst}" NB X ${secondDisplay || secondClean}mm thk -- ${pipeLabel}`;
             }
             return normalized;
         }
