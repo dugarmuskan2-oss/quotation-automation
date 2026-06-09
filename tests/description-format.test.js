@@ -80,6 +80,29 @@ describe('class letters A/B/C', () => {
     test('inch + C class: 2XC → 2" Heavy', () => expect(f('2XC', 'ERW')).toBe('2" NB X Heavy -- ERW'));
 });
 
+// Exact regression case from the reported screenshot: rows that GPT left
+// un-normalized (raw mm NB + C class letter) showed as raw codes. Every one
+// must now format with mm→inch and C→Heavy. (The rate ₹0 on these rows is a
+// separate, accepted GPT-matching limitation — see note below.)
+describe('regression: screenshot codes (mm + C class) all format', () => {
+    const expected = {
+        '40XC':  '1-1/2" NB X Heavy -- ERW',
+        '50XC':  '2" NB X Heavy -- ERW',
+        '65XC':  '2-1/2" NB X Heavy -- ERW',
+        '100XC': '4" NB X Heavy -- ERW',
+        '125XC': '5" NB X Heavy -- ERW',
+    };
+    Object.entries(expected).forEach(([code, want]) => {
+        test(`${code} → ${want}`, () => expect(f(code, 'ERW')).toBe(want));
+    });
+
+    test('none of the screenshot codes render as raw (must contain " NB X ")', () => {
+        Object.keys(expected).forEach(code => {
+            expect(f(code, 'ERW')).toContain('" NB X ');
+        });
+    });
+});
+
 // Convergence: class letter and class word must produce the same output
 describe('convergence: class letter == class word', () => {
     test('C class == Heavy', () => {
