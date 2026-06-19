@@ -7861,17 +7861,12 @@
             const bodyHtml = `<p>${customerGreeting}</p><p>${messageBody}</p><p>Regards,<br>DSC Pipes</p>`;
 
             try {
-                const threadPromise = isReply
-                    ? fetch(`/api/resolve-thread?messageId=${encodeURIComponent(quotation.gmailMessageId)}`).then(r => r.json()).catch(() => null)
-                    : Promise.resolve(null);
+                // Thread lookup only — PDF is generated server-side, so no base64 crosses Vercel
+                const threadInfo = isReply
+                    ? await fetch(`/api/resolve-thread?messageId=${encodeURIComponent(quotation.gmailMessageId)}`).then(r => r.json()).catch(() => null)
+                    : null;
 
-                const [pdfResult, threadInfo] = await Promise.all([
-                    downloadQuotationPdf(quotationId, { returnBase64: true }),
-                    threadPromise
-                ]);
-                if (!pdfResult) { alert('Could not generate PDF'); return; }
-
-                const payload = { bodyHtml, pdfBase64: pdfResult.base64, pdfFilename: pdfResult.filename };
+                const payload = { quotationId: String(quotation.id), bodyHtml };
                 if (isReply && threadInfo && !threadInfo.error) {
                     if (threadInfo.fromEmail) payload.to = threadInfo.fromEmail;
                     if (threadInfo.subject) payload.subject = `Re: ${threadInfo.subject}`;
@@ -7883,7 +7878,7 @@
                     if (quotation.gmailMessageId) payload.replyToMessageId = quotation.gmailMessageId;
                 }
 
-                const res = await fetch('/api/send-email', {
+                const res = await fetch('/api/send-quotation', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
