@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DSC — Freight &amp; sourcing prototype</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">
+<style>
+:root{
+  --color-background-primary:#ffffff;
+  --color-background-secondary:#f6f5f1;
+  --color-background-tertiary:#efeee8;
+  --color-background-info:#E6F1FB;
+  --color-text-primary:#20201d;
+  --color-text-secondary:#6e6c65;
+  --color-text-tertiary:#9b988e;
+  --color-text-info:#185FA5;
+  --color-border-tertiary:rgba(0,0,0,0.10);
+  --color-border-secondary:rgba(0,0,0,0.18);
+  --color-border-info:#85B7EB;
+  --border-radius-md:8px;
+  --border-radius-lg:12px;
+  --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--color-background-tertiary);font-family:var(--font-sans);color:var(--color-text-primary);-webkit-font-smoothing:antialiased;}
+.page{max-width:760px;margin:0 auto;padding:20px 16px 48px;}
+.proto-label{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#854F0B;background:#FAEEDA;border-radius:var(--border-radius-md);padding:5px 10px;margin-bottom:14px;}
+.proto-sub{font-size:13px;color:var(--color-text-secondary);margin:0 0 16px;line-height:1.6;}
+button{font-family:inherit;background:transparent;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);padding:6px 12px;cursor:pointer;color:var(--color-text-primary);font-size:13px;transition:background .12s,transform .06s;}
+button:hover{background:var(--color-background-secondary);}
+button:active{transform:scale(0.98);}
+button:disabled{opacity:0.45;cursor:not-allowed;}
+input,select,textarea{font-family:inherit;font-size:13px;color:var(--color-text-primary);background:var(--color-background-primary);border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);padding:6px 10px;height:34px;}
+textarea{height:auto;}
+input:focus,select:focus,textarea:focus{outline:none;box-shadow:0 0 0 2px var(--color-border-info);}
+a{color:inherit;}
+.fx-tab{font-size:13px;color:var(--color-text-secondary);padding-bottom:8px;cursor:pointer;border-bottom:2px solid transparent;background:none;border-top:none;border-left:none;border-right:none;border-radius:0;}
+.fx-tab:hover{background:none;}
+.fx-tab.on{color:var(--color-text-primary);font-weight:500;border-bottom:2px solid var(--color-text-primary);}
+.fx-pill{font-size:12px;padding:3px 9px;border-radius:8px;white-space:nowrap;}
+.fx-chip{font-size:12px;padding:4px 8px;border-radius:8px;background:#E6F1FB;color:#0C447C;display:inline-flex;align-items:center;gap:5px;}
+.fx-sugg{font-size:13px;padding:7px 10px;cursor:pointer;border-top:0.5px solid var(--color-border-tertiary);}
+.fx-sugg:hover{background:var(--color-background-secondary);}
+.fx-row{border:0.5px solid var(--color-border-tertiary);border-radius:8px;padding:10px 12px;display:flex;align-items:center;gap:10px;}
+.fx-prim{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info);}
+.fx-prim:hover{background:#d8e9fa;}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="proto-label"><i class="ti ti-flask" aria-hidden="true"></i> Prototype — not live data</div>
+  <p class="proto-sub">A clickable mock of the proposed freight &amp; sourcing flow inside a quote card. The transporter suggestions, the reply, and the detected number are simulated — the real app would pull these from Gmail.</p>
+
+  <div style="background:var(--color-background-secondary);border-radius:var(--border-radius-lg);padding:1.25rem;">
+    <div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:1rem 1.25rem;">
+
+      <div style="display:flex;align-items:center;gap:10px;">
+        <i class="ti ti-folder" style="font-size:20px;color:var(--color-text-secondary);" aria-hidden="true"></i>
+        <div style="flex:1;min-width:0;">
+          <p id="fxTitle" style="margin:0;font-size:15px;font-weight:500;">DSC-108 · Sri Venkateswara Traders</p>
+          <p style="margin:0;font-size:13px;color:var(--color-text-secondary);">Kind attn: Mahesh</p>
+        </div>
+        <span id="fxStatus" class="fx-pill" style="background:#E1F5EE;color:#0F6E56;">Approved</span>
+      </div>
+
+      <div style="display:flex;gap:18px;margin-top:14px;border-bottom:0.5px solid var(--color-border-tertiary);">
+        <button class="fx-tab" id="t-details">Details</button>
+        <button class="fx-tab on" id="t-freight">Freight &amp; sourcing</button>
+        <button class="fx-tab" id="t-rev">Revisions</button>
+      </div>
+
+      <div id="p-details" style="display:none;padding-top:16px;"><div id="detailsBody"></div></div>
+      <div id="p-freight" style="padding-top:16px;"><div id="freightBody"></div></div>
+      <div id="p-rev" style="display:none;padding-top:16px;"><div id="revBody"></div></div>
+
+      <p style="margin:14px 0 0;font-size:12px;color:var(--color-text-tertiary);text-align:center;"><span id="fxReset" style="cursor:pointer;text-decoration:underline;">Reset demo</span></p>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var WEIGHT=1240, BASE=142200;
+  var TRANSPORTERS=["VRL Logistics","TCI Freight","Gati Express","Safexpress","Delhivery Cargo"];
+  var REPLIES={
+    "VRL Logistics":{amount:4340,msg:"For 1,240 kg Chennai to Hyderabad: 3.50/kg = 4,340 all inclusive. Transit 2 days."},
+    "TCI Freight":{amount:4800,msg:"Freight 4,800 lumpsum, door delivery Hyderabad. 3 days."},
+    "Gati Express":{amount:4100,msg:"4,100 all-in for the full consignment, 2-3 days."},
+    "Safexpress":{amount:5200,msg:"5,200 incl. door delivery and unloading."},
+    "Delhivery Cargo":{amount:4836,msg:"3.90/kg, approx 4,836. 2 days."}
+  };
+  var S;
+  function reset(){S={weight:null,composer:false,recipients:[],threads:[],revised:false,freightAmt:"",method:"line",viewing:"current"};}
+  reset();
+  var $=function(id){return document.getElementById(id);};
+  function money(n){return "Rs "+Math.round(parseFloat(n)||0).toLocaleString("en-IN");}
+  function fVal(){return parseFloat(S.freightAmt)||0;}
+
+  function showTab(name){["details","freight","rev"].forEach(function(k){$("p-"+k).style.display=(k===name)?"block":"none";$("t-"+k).classList.toggle("on",k===name);});}
+  $("t-details").onclick=function(){renderDetails();showTab("details");};
+  $("t-freight").onclick=function(){renderFreight();showTab("freight");};
+  $("t-rev").onclick=function(){renderRev();showTab("rev");};
+  $("fxReset").onclick=function(){reset();renderAll();showTab("freight");};
+
+  function setHeader(){
+    $("fxTitle").textContent=S.revised?"DSC-108 (Rev 1) · Sri Venkateswara Traders":"DSC-108 · Sri Venkateswara Traders";
+    var p=$("fxStatus");
+    if(S.revised){p.textContent="Revised";p.style.background="#E6F1FB";p.style.color="#0C447C";}
+    else if(S.weight){p.textContent="Sourcing";p.style.background="#FAEEDA";p.style.color="#854F0B";}
+    else{p.textContent="Approved";p.style.background="#E1F5EE";p.style.color="#0F6E56";}
+  }
+
+  function renderDetails(){
+    var v=S.viewing,f=fVal(),grand=BASE,banner="",extra="";
+    if(S.revised&&v==="current"){
+      banner='<div style="display:flex;align-items:center;gap:8px;padding:9px 11px;border-radius:8px;background:#E6F1FB;color:#0C447C;font-size:12px;margin-bottom:14px;"><i class="ti ti-git-branch" style="font-size:15px;" aria-hidden="true"></i><span style="flex:1;">You are viewing Rev 1 — the current version (freight added).</span><span id="goHist" style="cursor:pointer;text-decoration:underline;">History</span></div>';
+      grand=BASE+f;
+      if(S.method==="line")extra='<tr style="border-top:0.5px solid var(--color-border-tertiary);"><td style="padding:6px 0;">Freight</td><td></td><td></td><td style="text-align:right;">'+money(f)+'</td></tr>';
+      else extra='<tr style="border-top:0.5px solid var(--color-border-tertiary);"><td style="padding:6px 0;color:var(--color-text-tertiary);font-size:12px;" colspan="4">Freight '+money(f)+' included in rates (FOR) — hidden on the PDF</td></tr>';
+    } else if(S.revised&&v==="original"){
+      banner='<div style="display:flex;align-items:center;gap:8px;padding:9px 11px;border-radius:8px;background:#FAEEDA;color:#854F0B;font-size:12px;margin-bottom:14px;"><i class="ti ti-alert-triangle" style="font-size:15px;" aria-hidden="true"></i><span style="flex:1;">This is the original — superseded. A newer Rev 1 is current.</span><button id="goCur" style="font-size:12px;padding:3px 9px;">Go to current</button></div>';
+    }
+    var h=banner
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;font-size:13px;margin-bottom:14px;">'
+      +'<div style="display:flex;justify-content:space-between;"><span style="color:var(--color-text-tertiary);">Quote date</span><span>19 Jun 2026</span></div>'
+      +'<div style="display:flex;justify-content:space-between;"><span style="color:var(--color-text-tertiary);">Prepared by</span><span>Riya</span></div>'
+      +'<div style="display:flex;justify-content:space-between;"><span style="color:var(--color-text-tertiary);">Kind attn</span><span>Mahesh</span></div>'
+      +'<div style="display:flex;justify-content:space-between;"><span style="color:var(--color-text-tertiary);">Checked by</span><span>Anil</span></div></div>'
+      +'<table style="width:100%;font-size:13px;border-collapse:collapse;">'
+      +'<tr style="color:var(--color-text-tertiary);font-size:12px;"><td style="text-align:left;padding:4px 0;">Item</td><td style="text-align:right;">Qty</td><td style="text-align:right;">Rate</td><td style="text-align:right;">Amount</td></tr>'
+      +'<tr style="border-top:0.5px solid var(--color-border-tertiary);"><td style="padding:6px 0;">2" NB Heavy GI</td><td style="text-align:right;">300 m</td><td style="text-align:right;">Rs 390</td><td style="text-align:right;">Rs 1,17,000</td></tr>'
+      +'<tr style="border-top:0.5px solid var(--color-border-tertiary);"><td style="padding:6px 0;">1" NB Medium ERW</td><td style="text-align:right;">120 m</td><td style="text-align:right;">Rs 210</td><td style="text-align:right;">Rs 25,200</td></tr>'
+      +extra
+      +'<tr style="border-top:0.5px solid var(--color-border-secondary);font-weight:500;"><td style="padding:8px 0;">Total</td><td></td><td></td><td style="text-align:right;">'+money(grand)+'</td></tr></table>'
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:0.5px solid var(--color-border-tertiary);">'
+      +'<button style="font-size:13px;padding:6px 12px;">Print</button><button style="font-size:13px;padding:6px 12px;">Download PDF</button>'
+      +'<button class="fx-prim" style="font-size:13px;padding:6px 12px;">Send to customer</button></div>';
+    $("detailsBody").innerHTML=h;
+    if($("goHist"))$("goHist").onclick=function(){renderRev();showTab("rev");};
+    if($("goCur"))$("goCur").onclick=function(){S.viewing="current";renderDetails();};
+    setHeader();
+  }
+
+  function weightBlock(){
+    if(!S.weight)return '<div style="border:0.5px dashed var(--color-border-secondary);border-radius:8px;padding:16px;text-align:center;"><p style="margin:0 0 10px;font-size:13px;color:var(--color-text-secondary);">No weight yet for this quote.</p><button id="bCalc" class="fx-prim" style="font-size:13px;padding:7px 14px;"><i class="ti ti-calculator" style="font-size:15px;vertical-align:-2px;" aria-hidden="true"></i> Calculate weight</button></div>';
+    return '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;"><span style="font-size:13px;font-weight:500;color:var(--color-text-secondary);">Weight</span><span style="font-size:12px;color:var(--color-text-tertiary);"><i class="ti ti-device-floppy" style="font-size:14px;vertical-align:-2px;" aria-hidden="true"></i> saved with quote</span></div>'
+      +'<table style="width:100%;font-size:13px;border-collapse:collapse;"><tr style="color:var(--color-text-tertiary);font-size:12px;"><td style="text-align:left;padding:3px 0;">Item</td><td style="text-align:right;">Qty</td><td style="text-align:right;">kg/m</td><td style="text-align:right;">Weight</td></tr>'
+      +'<tr style="border-top:0.5px solid var(--color-border-tertiary);"><td style="padding:5px 0;">2" NB Heavy GI</td><td style="text-align:right;">300 m</td><td style="text-align:right;">3.61</td><td style="text-align:right;">1,083 kg</td></tr>'
+      +'<tr style="border-top:0.5px solid var(--color-border-tertiary);"><td style="padding:5px 0;">1" NB Medium ERW</td><td style="text-align:right;">120 m</td><td style="text-align:right;">1.31</td><td style="text-align:right;">157 kg</td></tr>'
+      +'<tr style="border-top:0.5px solid var(--color-border-secondary);font-weight:500;"><td style="padding:7px 0;">Total</td><td></td><td></td><td style="text-align:right;">1,240 kg</td></tr></table>';
+  }
+
+  function composerBlock(){
+    return '<div style="border:0.5px solid var(--color-border-secondary);border-radius:8px;padding:12px;margin-top:12px;"><div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;"><i class="ti ti-truck" style="font-size:18px;color:#185FA5;" aria-hidden="true"></i><span style="font-size:14px;font-weight:500;">Request freight</span></div>'
+      +'<label style="font-size:12px;color:var(--color-text-secondary);">To — transporters</label><div id="chips" style="display:flex;flex-wrap:wrap;gap:6px;margin:5px 0;"></div>'
+      +'<input id="toInput" placeholder="Type a name — e.g. v, g" style="width:100%;" autocomplete="off"><div id="sugg" style="display:none;border:0.5px solid var(--color-border-tertiary);border-radius:8px;margin-top:4px;overflow:hidden;"></div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;"><div><label style="font-size:12px;color:var(--color-text-secondary);">Pickup point</label><select style="width:100%;"><option>DSC Warehouse — Chennai</option><option>Customer factory</option></select></div><div><label style="font-size:12px;color:var(--color-text-secondary);">Drop point</label><input value="Hyderabad" style="width:100%;"></div></div>'
+      +'<div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border:0.5px solid var(--color-border-tertiary);border-radius:8px;background:var(--color-background-secondary);margin-top:12px;"><i class="ti ti-weight" style="font-size:18px;color:var(--color-text-secondary);" aria-hidden="true"></i><div style="flex:1;"><p style="margin:0;font-size:13px;font-weight:500;">1,240 kg · 7 items</p><p style="margin:0;font-size:12px;color:var(--color-text-tertiary);">from this quote</p></div></div>'
+      +'<div style="display:flex;gap:8px;margin-top:12px;"><button id="bSend" class="fx-prim" style="font-size:13px;padding:7px 14px;"><i class="ti ti-send" style="font-size:15px;vertical-align:-2px;" aria-hidden="true"></i> Send request</button><button id="bCancel" style="font-size:13px;padding:7px 14px;">Cancel</button></div></div>';
+  }
+
+  function threadRow(t,i){
+    var pill=t.replied?'<span class="fx-pill" style="background:#E1F5EE;color:#0F6E56;">Replied</span>':'<span class="fx-pill" style="background:#FAEEDA;color:#854F0B;">Awaiting reply</span>';
+    var read=t.replied?'<button class="bRead" data-i="'+i+'" style="font-size:12px;padding:4px 9px;">'+(t.open?"Hide":"Read reply")+'</button>':'';
+    var top='<div style="display:flex;align-items:center;gap:10px;width:100%;"><i class="ti ti-truck" style="font-size:18px;color:'+(t.replied?"#0F6E56":"var(--color-text-tertiary)")+';" aria-hidden="true"></i><span style="flex:1;font-size:13px;">'+t.name+' · freight</span>'+pill+read+'<a href="https://mail.google.com" target="_blank" rel="noopener" aria-label="Open in Gmail" style="color:var(--color-text-tertiary);"><i class="ti ti-external-link" style="font-size:17px;" aria-hidden="true"></i></a></div>';
+    var body="";
+    if(t.replied&&t.open){
+      body='<div style="width:100%;margin-top:10px;padding:10px;border-radius:8px;background:var(--color-background-secondary);font-size:13px;color:var(--color-text-secondary);"><i class="ti ti-mail" style="font-size:14px;vertical-align:-2px;" aria-hidden="true"></i> '+t.msg+'<div style="margin-top:8px;"><button class="bUse" data-amt="'+t.amount+'" style="font-size:12px;padding:4px 9px;">Use '+money(t.amount)+' below</button></div></div>';
+    }
+    return '<div class="fx-row" style="flex-wrap:wrap;">'+top+body+'</div>';
+  }
+
+  function threadsHTML(){
+    if(!S.threads.length)return "";
+    var rows=S.threads.map(function(t,i){return threadRow(t,i);}).join("");
+    var anyAwait=S.threads.some(function(t){return !t.replied;});
+    var check=anyAwait?'<button id="bCheckAll" style="font-size:12px;padding:5px 10px;margin-top:8px;"><i class="ti ti-refresh" style="font-size:13px;vertical-align:-1px;" aria-hidden="true"></i> Check for replies</button>':"";
+    return '<p style="margin:14px 0 6px;font-size:12px;color:var(--color-text-tertiary);">Threads on this quote — read, then decide</p><div style="display:flex;flex-direction:column;gap:8px;">'+rows+'</div>'+check;
+  }
+
+  function addFreightBox(){
+    var note=S.revised?'<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#0F6E56;margin-bottom:10px;"><i class="ti ti-check" style="font-size:14px;" aria-hidden="true"></i> '+money(S.freightAmt)+' added as '+(S.method==="for"?"FOR":"line item")+' — Rev 1 is current</div>':"";
+    var lineCls=S.method==="line"?"fx-prim":"",forCls=S.method==="for"?"fx-prim":"";
+    var label=S.revised?"Update Rev 1":"Add &amp; create revision";
+    var dis=(S.freightAmt==="")?" disabled":"";
+    return '<div style="border:0.5px solid var(--color-border-secondary);border-radius:8px;padding:12px;margin-top:14px;"><p style="margin:0 0 10px;font-size:13px;font-weight:500;">Add freight to quote</p>'+note
+      +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span style="font-size:13px;color:var(--color-text-secondary);">Total Rs</span><input id="fAmt" value="'+S.freightAmt+'" placeholder="0" style="width:100px;"><span style="font-size:12px;color:var(--color-text-secondary);">as</span>'
+      +'<button id="bMLine" class="'+lineCls+'" style="font-size:13px;padding:6px 12px;">Line item</button><button id="bMFor" class="'+forCls+'" style="font-size:13px;padding:6px 12px;">FOR · hidden on PDF</button>'
+      +'<button id="bAdd" class="fx-prim" style="font-size:13px;padding:6px 12px;margin-left:auto;"'+dis+'>'+label+' <i class="ti ti-arrow-right" style="font-size:14px;vertical-align:-2px;" aria-hidden="true"></i></button></div>'
+      +'<p style="margin:8px 0 0;font-size:11px;color:var(--color-text-tertiary);">Read the replies above, then type the freight you have decided on.</p></div>';
+  }
+
+  function renderFreight(){
+    var h=weightBlock();
+    if(S.weight&&!S.composer)h+='<div style="display:flex;gap:8px;margin-top:14px;padding-top:14px;border-top:0.5px solid var(--color-border-tertiary);"><button id="bReq" class="fx-prim" style="font-size:13px;padding:7px 14px;"><i class="ti ti-truck" style="font-size:15px;vertical-align:-2px;" aria-hidden="true"></i> Request freight</button><button style="font-size:13px;padding:7px 14px;"><i class="ti ti-package" style="font-size:15px;vertical-align:-2px;" aria-hidden="true"></i> New enquiry</button></div>';
+    if(S.composer)h+=composerBlock();
+    h+=threadsHTML();
+    if(S.weight)h+=addFreightBox();
+    $("freightBody").innerHTML=h;
+    bind();setHeader();
+  }
+
+  function bind(){
+    var b;
+    if(b=$("bCalc"))b.onclick=function(){S.weight=WEIGHT;renderFreight();};
+    if(b=$("bReq"))b.onclick=function(){S.composer=true;renderFreight();};
+    if(b=$("bCancel"))b.onclick=function(){S.composer=false;S.recipients=[];renderFreight();};
+    if(b=$("bSend"))b.onclick=function(){if(S.recipients.length===0)return;S.recipients.forEach(function(n){if(!S.threads.some(function(t){return t.name===n;})){var r=REPLIES[n]||{amount:0,msg:"(reply)"};S.threads.push({name:n,replied:false,amount:r.amount,msg:r.msg,open:false});}});S.recipients=[];S.composer=false;renderFreight();};
+    if(b=$("bCheckAll"))b.onclick=function(){S.threads.forEach(function(t){t.replied=true;});renderFreight();};
+    if(b=$("bAdd"))b.onclick=function(){if(S.freightAmt==="")return;S.revised=true;S.viewing="current";renderFreight();renderDetails();renderRev();};
+    if(b=$("bMLine"))b.onclick=function(){S.method="line";renderFreight();};
+    if(b=$("bMFor"))b.onclick=function(){S.method="for";renderFreight();};
+    var fa=$("fAmt");if(fa)fa.oninput=function(){S.freightAmt=fa.value;var x=$("bAdd");if(x)x.disabled=(S.freightAmt==="");};
+    document.querySelectorAll(".bRead").forEach(function(x){x.onclick=function(){var i=parseInt(x.getAttribute("data-i"),10);S.threads[i].open=!S.threads[i].open;renderFreight();};});
+    document.querySelectorAll(".bUse").forEach(function(x){x.onclick=function(){S.freightAmt=x.getAttribute("data-amt");renderFreight();};});
+    bindComposer();
+  }
+
+  function bindComposer(){
+    var inp=$("toInput"),sugg=$("sugg"),chips=$("chips");if(!inp)return;
+    function drawChips(){chips.innerHTML=S.recipients.map(function(r){return '<span class="fx-chip">'+r+' <i class="ti ti-x" style="font-size:13px;cursor:pointer;" data-x="'+r+'" aria-hidden="true"></i></span>';}).join("");chips.querySelectorAll("[data-x]").forEach(function(x){x.onclick=function(){S.recipients=S.recipients.filter(function(r){return r!==x.getAttribute("data-x");});drawChips();};});}
+    inp.oninput=function(){var q=inp.value.trim().toLowerCase();var list=TRANSPORTERS.filter(function(t){return q&&t.toLowerCase().indexOf(q)>=0&&S.recipients.indexOf(t)<0;});if(!list.length){sugg.style.display="none";sugg.innerHTML="";return;}sugg.style.display="block";sugg.innerHTML=list.map(function(t){return '<div class="fx-sugg" data-t="'+t+'"><i class="ti ti-user" style="font-size:14px;vertical-align:-2px;color:var(--color-text-tertiary);" aria-hidden="true"></i> '+t+'</div>';}).join("");sugg.querySelectorAll(".fx-sugg").forEach(function(d){d.onclick=function(){S.recipients.push(d.getAttribute("data-t"));inp.value="";sugg.style.display="none";sugg.innerHTML="";drawChips();inp.focus();};});};
+    drawChips();
+  }
+
+  function revRow(title,sub,iconcolor,icon,pillbg,pillc,pilltext,viewKey){
+    var border=(pilltext==="Current")?"border-color:var(--color-border-info);border-width:1px;":"";
+    return '<div class="fx-row" style="'+border+'"><i class="ti '+icon+'" style="font-size:18px;color:'+iconcolor+';" aria-hidden="true"></i><div style="flex:1;"><p style="margin:0;font-size:13px;font-weight:500;">'+title+'</p><p style="margin:0;font-size:12px;color:var(--color-text-secondary);">'+sub+'</p></div><span class="fx-pill" style="background:'+pillbg+';color:'+pillc+';">'+pilltext+'</span><button class="bOpen" data-v="'+viewKey+'" style="font-size:12px;padding:4px 10px;">Open</button></div>';
+  }
+  function renderRev(){
+    var h;
+    if(!S.revised){
+      h=revRow("DSC-108 · original","base quote · 19 Jun","#185FA5","ti-file-check","#E6F1FB","#0C447C","Current","current")+'<p style="margin:12px 0 0;font-size:12px;color:var(--color-text-tertiary);">No revisions yet. Adding freight creates Rev 1.</p>';
+    } else {
+      h=revRow("DSC-108 · original","base quote · 19 Jun","var(--color-text-tertiary)","ti-file","var(--color-background-secondary)","var(--color-text-secondary)","Superseded","original")
+        +'<div style="height:8px;"></div>'
+        +revRow("DSC-108 · Rev 1","Freight "+money(S.freightAmt)+" added ("+(S.method==="for"?"FOR":"line item")+")","#185FA5","ti-file-check","#E6F1FB","#0C447C","Current","current")
+        +'<p style="margin:12px 0 0;font-size:12px;color:var(--color-text-tertiary);"><i class="ti ti-info-circle" style="font-size:14px;vertical-align:-2px;" aria-hidden="true"></i> Send to customer always sends the current revision.</p>';
+    }
+    $("revBody").innerHTML=h;
+    $("revBody").querySelectorAll(".bOpen").forEach(function(btn){btn.onclick=function(){S.viewing=btn.getAttribute("data-v");renderDetails();showTab("details");};});
+  }
+
+  function renderAll(){renderFreight();renderDetails();renderRev();}
+  renderAll();
+})();
+</script>
+</body>
+</html>
