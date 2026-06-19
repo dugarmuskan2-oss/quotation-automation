@@ -17,3 +17,11 @@ Features that have been discussed and scoped but are not being built right now.
 **Preferred approach when revisited:** Web Worker, so Download/Print/Email keep using the one jsPDF renderer.
 
 ---
+
+## Ideas to revisit (not yet scoped)
+
+- **Organise the configuration folder/section** — the Configuration area has grown (instructions, default terms, default margins, default email message, default signature). Group/reorder it so it's easier to scan.
+- **Separate signatures per employee** — today there's one shared Default Email Signature. Let each user/employee have their own signature, picked automatically based on who's sending (or who prepared the quote).
+- **Explore autosave** — revisit how/when approval-section edits persist (currently a debounced backend save + a "save before send/download" gate). Decide whether edits should silently autosave, and how that interacts with the unsaved-changes prompt.
+
+---
