@@ -23,9 +23,10 @@ const QUOTATIONS_GSI_INDEX = 'entity-updatedAt-index';
 
 // ── Storage config file keys ───────────────────────────────────────────────────
 
-const CONFIG_KEY_INSTRUCTIONS    = 'instructions.txt';
-const CONFIG_KEY_DEFAULT_TERMS   = 'default-terms.txt';
-const CONFIG_KEY_DEFAULT_MARGINS = 'default-margins.json';
+const CONFIG_KEY_INSTRUCTIONS         = 'instructions.txt';
+const CONFIG_KEY_DEFAULT_TERMS        = 'default-terms.txt';
+const CONFIG_KEY_DEFAULT_MARGINS      = 'default-margins.json';
+const CONFIG_KEY_DEFAULT_EMAIL_MESSAGE = 'default-email-message.txt';
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -37,4 +38,5 @@ module.exports = {
     CONFIG_KEY_INSTRUCTIONS,
     CONFIG_KEY_DEFAULT_TERMS,
     CONFIG_KEY_DEFAULT_MARGINS,
+    CONFIG_KEY_DEFAULT_EMAIL_MESSAGE,
 };

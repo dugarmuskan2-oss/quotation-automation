@@ -219,6 +219,10 @@
             background-color: #1976d2;
         }
 
+        .sent-badge {
+            background-color: #00796b;
+        }
+
         .approval-layout {
             display: flex;
             gap: 16px;
@@ -934,6 +938,17 @@
                     <p id="defaultTermsStatus" style="margin-top: 8px; font-size: 12px; color: #666;"></p>
                 </div>
 
+                <!-- Default Email Message -->
+                <div style="margin-top: 20px;">
+                    <label for="defaultEmailMessageConfig">Default Email Message (sent with every quotation PDF):</label>
+                    <p style="font-size:12px; color:#888; margin: 4px 0 6px;">Type the body of the email. A greeting ("Dear [Name],") and sign-off ("Regards, DSC Pipes") are added automatically.</p>
+                    <textarea id="defaultEmailMessageConfig" placeholder="e.g. Please find attached our quotation as requested. Do not hesitate to contact us for any queries." style="width: 100%; min-height: 100px; padding: 8px; margin-top: 4px; border: 2px solid #ddd; border-radius: 4px; font-family: inherit;"></textarea>
+                    <button type="button" class="upload-btn" onclick="saveDefaultEmailMessage()" style="margin-top: 10px; width: 100%;">
+                        💾 Save Default Message
+                    </button>
+                    <p id="defaultEmailMessageStatus" style="margin-top: 8px; font-size: 12px; color: #666;"></p>
+                </div>
+
                 <!-- Default Margins -->
                 <div style="margin-top: 20px;">
                     <label style="display:block; margin-bottom:8px;">Default Margin % by Pipe Type (auto-applies when margin is empty):</label>
@@ -1441,6 +1456,15 @@
                     onclick="window.enquiryPreparer && window.enquiryPreparer.copyEnquiryAsHtml()"
                 >
                     📋 Copy as HTML
+                </button>
+                <button
+                    id="sendEnquiryBtn"
+                    type="button"
+                    class="approve-btn"
+                    style="background:#2e7d32;"
+                    onclick="sendEnquiryFromApp()"
+                >
+                    ✉️ Send from App
                 </button>
             </div>
             <p id="generatedEnquiryStatus" style="margin-top: 6px; font-size: 12px; color: #666;"></p>
@@ -2047,6 +2071,51 @@
                 console.error('Error loading default terms:', error);
                 defaultTermsText = fallback;
                 if (textarea) textarea.value = fallback;
+            }
+        }
+
+        async function saveDefaultEmailMessage() {
+            const textarea = document.getElementById('defaultEmailMessageConfig');
+            const statusEl = document.getElementById('defaultEmailMessageStatus');
+            if (!textarea || !statusEl) return;
+            try {
+                statusEl.textContent = 'Saving...';
+                statusEl.style.color = '#666';
+                const response = await fetch(`${API_BASE_URL}/save-default-email-message`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ defaultEmailMessage: textarea.value })
+                });
+                const result = await safeJsonParse(response);
+                if (response.ok) {
+                    defaultEmailMessage = textarea.value;
+                    statusEl.textContent = '✓ Default message saved';
+                    statusEl.style.color = '#4CAF50';
+                } else {
+                    throw new Error(result.error || 'Failed to save');
+                }
+            } catch (error) {
+                statusEl.textContent = `Error: ${error.message}`;
+                statusEl.style.color = '#f44336';
+            }
+        }
+
+        async function loadDefaultEmailMessage() {
+            const textarea = document.getElementById('defaultEmailMessageConfig');
+            const statusEl = document.getElementById('defaultEmailMessageStatus');
+            try {
+                const response = await fetch(`${API_BASE_URL}/get-default-email-message`);
+                const result = await safeJsonParse(response);
+                if (response.ok && result.hasFile && result.content !== undefined) {
+                    defaultEmailMessage = result.content;
+                    if (textarea) textarea.value = result.content;
+                    if (statusEl) { statusEl.textContent = '✓ Loaded from server'; statusEl.style.color = '#4CAF50'; }
+                } else {
+                    if (textarea) textarea.value = defaultEmailMessage;
+                }
+            } catch (error) {
+                console.error('Error loading default email message:', error);
+                if (textarea) textarea.value = defaultEmailMessage;
             }
         }
 
@@ -5656,7 +5725,10 @@
                 const assignedBadgeHTML = quotation.assignedTo
                     ? `<span class="saved-badge assigned-badge">ASSIGNED TO${assignedToName}</span>`
                     : '';
-                
+                const sentBadgeHTML = quotation.sent
+                    ? `<span class="saved-badge sent-badge">&#10003; SENT</span>`
+                    : '';
+
                 // Show Approve button only if not saved yet
                 const approveButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); saveQuotation(${JSON.stringify(quotation.id)})">✅ Approve</button>`;
                 const saveButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); saveQuotationChanges(${JSON.stringify(quotation.id)})">💾 Save</button>`;
@@ -5674,6 +5746,7 @@
                                 ${folderName}
                                 ${approvedBadgeHTML}
                                 ${assignedBadgeHTML}
+                                ${sentBadgeHTML}
                                 ${gmailLinkHTML}
                             </span>
                             <span class="folder-toggle-icon">▶</span>
@@ -5798,7 +5871,7 @@
             searchInput.dataset.bound = 'true';
         }
 
-        function buildApprovalSplitLayout({ quotation, termsText, approveButtonHTML, saveButtonHTML, printButtonHTML, downloadButtonHTML }) {
+        function buildApprovalSplitLayout({ quotation, termsText, approveButtonHTML, saveButtonHTML, printButtonHTML, downloadButtonHTML, sendButtonHTML }) {
             const sidePanelHTML = buildApprovalSidePanelHTML(quotation);
 
             return `
@@ -5818,6 +5891,7 @@
                             ${saveButtonHTML || ''}
                                 ${printButtonHTML || ''}
                                 ${downloadButtonHTML}
+                                ${sendButtonHTML || ''}
                             </div>
                         </div>
                     <div class="approval-resize-handle" aria-label="Resize panels" style="height: 100%; background: #c7c7c7; align-self: stretch; min-height: 200px;"></div>
@@ -6002,7 +6076,8 @@
                 const saveButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); saveQuotationChanges(${JSON.stringify(quotation.id)})">💾 Save</button>`;
                 const printButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); printQuotationPdf(${JSON.stringify(quotation.id)})">🖨️ Print</button>`;
                 const downloadButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); downloadQuotationPdf(${JSON.stringify(quotation.id)})">⬇️ Download PDF</button>`;
-                folderContentEl.innerHTML = buildApprovalSplitLayout({ quotation, termsText, approveButtonHTML, saveButtonHTML, printButtonHTML, downloadButtonHTML });
+                const sendButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); sendQuotationToCustomer(${JSON.stringify(quotation.id)})" style="background:#2e7d32;">✉️ Send to Customer</button>`;
+                folderContentEl.innerHTML = buildApprovalSplitLayout({ quotation, termsText, approveButtonHTML, saveButtonHTML, printButtonHTML, downloadButtonHTML, sendButtonHTML });
                 syncApprovalHeaderQuoteInputFromQuotationModel(folderContentEl, quotation);
                 attachApprovalSectionListeners(folderContentEl);
             }
@@ -6878,7 +6953,7 @@
             if (!header) {
                 return;
             }
-            const existingBadge = header.querySelector('.saved-badge:not(.assigned-badge)');
+            const existingBadge = header.querySelector('.saved-badge:not(.assigned-badge):not(.sent-badge)');
             if (quotation.saved) {
                 const checkedByName = quotation.checkedBy ? ` - ${quotation.checkedBy}` : '';
                 if (existingBadge) {
@@ -6891,6 +6966,20 @@
                 }
             } else if (existingBadge) {
                 existingBadge.remove();
+            }
+        }
+
+        function updateSentBadge(quotationId) {
+            const folder = document.getElementById('folder-' + quotationId);
+            if (!folder) return;
+            const header = folder.querySelector('.quotation-folder-header span');
+            if (!header) return;
+            if (!header.querySelector('.sent-badge')) {
+                const badge = document.createElement('span');
+                badge.className = 'saved-badge sent-badge';
+                badge.textContent = '✓ SENT';
+                const gmailLink = header.querySelector('.gmail-link');
+                gmailLink ? header.insertBefore(badge, gmailLink) : header.appendChild(badge);
             }
         }
 
@@ -7733,6 +7822,116 @@
             await downloadQuotationPdf(quotationId, { print: true });
         }
 
+        async function sendQuotationToCustomer(quotationId) {
+            const quotation = approvedQuotations.find(q => idsMatch(q.id, quotationId));
+            if (!quotation) { alert('Quotation not found'); return; }
+            if (!canDownloadQuotation(quotation)) { alert('Please save changes before sending.'); return; }
+            if (!quotation.saved) { alert('Please approve and save the quotation before sending.'); return; }
+
+            const folderContent = document.getElementById('folder-content-' + quotationId);
+            const checkedByInput = folderContent && (folderContent.querySelector('#checkedBy') || folderContent.querySelector('[data-field="checkedBy"]'));
+            const checkedBy = (checkedByInput ? checkedByInput.value : '') || quotation.checkedBy || '';
+            if (!checkedBy.trim()) {
+                alert('Please fill in the "Checked By" field before sending the quotation.');
+                return;
+            }
+
+            const isReply = !!quotation.gmailMessageId;
+            let recipient = null;
+            let subject = null;
+
+            if (!isReply) {
+                recipient = prompt('Send to (customer email address):', '');
+                if (!recipient || !recipient.trim()) return;
+                recipient = recipient.trim();
+                const quoteNum = quotation.quoteNumber || '';
+                subject = prompt('Subject:', `Quotation ${quoteNum} - DSC Pipes`.trim());
+                if (subject === null) return;
+                subject = subject.trim();
+            }
+
+            const confirmName = [quotation.customerName, quotation.companyName].filter(Boolean).join(' – ') || 'this customer';
+            const confirmMsg = isReply
+                ? `Send quotation PDF to ${confirmName} as a reply to their original email?`
+                : `Send quotation PDF to ${recipient}?`;
+            if (!confirm(confirmMsg)) return;
+
+            const customerGreeting = quotation.customerName ? `Dear ${quotation.customerName},` : 'Dear Sir/Madam,';
+            const messageBody = (defaultEmailMessage || 'Please find attached our quotation as requested.').trim().replace(/\n/g, '<br>');
+            const bodyHtml = `<p>${customerGreeting}</p><p>${messageBody}</p><p>Regards,<br>DSC Pipes</p>`;
+
+            try {
+                const threadPromise = isReply
+                    ? fetch(`/api/resolve-thread?messageId=${encodeURIComponent(quotation.gmailMessageId)}`).then(r => r.json()).catch(() => null)
+                    : Promise.resolve(null);
+
+                const [pdfResult, threadInfo] = await Promise.all([
+                    downloadQuotationPdf(quotationId, { returnBase64: true }),
+                    threadPromise
+                ]);
+                if (!pdfResult) { alert('Could not generate PDF'); return; }
+
+                const payload = { bodyHtml, pdfBase64: pdfResult.base64, pdfFilename: pdfResult.filename };
+                if (isReply && threadInfo && !threadInfo.error) {
+                    if (threadInfo.fromEmail) payload.to = threadInfo.fromEmail;
+                    if (threadInfo.subject) payload.subject = `Re: ${threadInfo.subject}`;
+                    if (threadInfo.threadId) payload.threadId = threadInfo.threadId;
+                    if (threadInfo.rfcMessageId) { payload.inReplyTo = threadInfo.rfcMessageId; payload.references = threadInfo.rfcMessageId; }
+                } else {
+                    if (recipient) payload.to = recipient;
+                    if (subject) payload.subject = subject;
+                    if (quotation.gmailMessageId) payload.replyToMessageId = quotation.gmailMessageId;
+                }
+
+                const res = await fetch('/api/send-email', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (data.success) {
+                    if (data.threadId) quotation.threadId = data.threadId;
+                    quotation.sent = true;
+                    quotation.sentAt = new Date().toISOString();
+                    saveQuotationToBackend(quotation);
+                    updateSentBadge(quotationId);
+                    alert('✅ Email sent' + (data.sentTo ? ' to ' + data.sentTo : ''));
+                } else {
+                    alert('Failed to send: ' + (data.error || 'Unknown error'));
+                }
+            } catch (err) {
+                alert('Error sending email: ' + err.message);
+            }
+        }
+
+        async function sendEnquiryFromApp() {
+            if (!window.enquiryPreparer) { alert('Enquiry section not loaded'); return; }
+            const htmlBody = window.enquiryPreparer.getEnquiryHtml();
+            if (!htmlBody) { alert('No enquiry content to send'); return; }
+
+            const recipient = prompt('Send enquiry to (supplier / dealer email address):', '');
+            if (!recipient || !recipient.trim()) return;
+
+            const subject = prompt('Subject:', 'Enquiry - DSC Pipes');
+            if (subject === null) return;
+
+            try {
+                const res = await fetch('/api/send-email', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ to: recipient.trim(), subject: subject.trim(), bodyHtml: htmlBody })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alert('✅ Enquiry sent to ' + recipient.trim());
+                } else {
+                    alert('Failed to send: ' + (data.error || 'Unknown error'));
+                }
+            } catch (err) {
+                alert('Error sending enquiry: ' + err.message);
+            }
+        }
+
         async function downloadQuotationPdf(quotationId, options) {
             const quotation = approvedQuotations.find(q => idsMatch(q.id, quotationId));
             if (!quotation) {
@@ -8087,7 +8286,11 @@
             }
 
             const filename = `Quotation-${getFolderDisplayName(quotation).replace(/[/\\?%*:|"<>]/g, '-')}.pdf`;
-            if (options && options.print) {
+            if (options && options.returnBase64) {
+                const dataUri = doc.output('datauristring');
+                const base64 = dataUri.split(',')[1];
+                return { base64, filename };
+            } else if (options && options.print) {
                 doc.autoPrint();
                 const blobUrl = doc.output('bloburl');
                 window.open(blobUrl, '_blank');
@@ -8216,6 +8419,7 @@
             return el ? el.value : '';
         })();
         let defaultMarginsByPipeType = { erw: '', gi: '', seamless: '' };
+        let defaultEmailMessage = 'Please find attached our quotation as requested. Do not hesitate to contact us for any queries.';
         
         /*
             ============================================
@@ -8236,6 +8440,7 @@
         // Load default terms from server (sets defaultTermsText for new quotations)
         loadDefaultTerms();
         loadDefaultMargins();
+        loadDefaultEmailMessage();
         
         // Load and display uploaded files
         loadUploadedFiles();

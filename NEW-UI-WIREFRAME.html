@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DSC Pipes — New UI Wireframe (matches real app)</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background:#f5f5f5; font-size:13px; color:#333; }
+
+  /* ---- sidebar ---- */
+  .sidebar {
+    position:fixed; left:0; top:0; bottom:0; width:54px;
+    background:#3b3f79; display:flex; flex-direction:column; align-items:center;
+    padding:12px 0; gap:6px; z-index:10;
+  }
+  .sb-btn {
+    width:40px; height:40px; border-radius:8px; background:rgba(255,255,255,0.12);
+    display:flex; align-items:center; justify-content:center; font-size:18px;
+    cursor:pointer; border:none; color:white;
+  }
+  .sb-btn.active { background:rgba(255,255,255,0.35); }
+
+  /* ---- main ---- */
+  .main { margin-left:54px; padding:20px 24px; max-width:960px; }
+
+  h1 { color:#333; font-size:22px; text-align:center; margin-bottom:20px; }
+  h2 { color:#555; font-size:16px; margin-top:24px; margin-bottom:10px; border-bottom:2px solid #3b3f79; padding-bottom:8px; }
+
+  /* ---- legend bar ---- */
+  .legend { display:flex; gap:16px; background:white; border:1px solid #ddd; border-radius:6px; padding:8px 14px; margin-bottom:16px; font-size:12px; flex-wrap:wrap; }
+  .litem { display:flex; align-items:center; gap:5px; }
+  .ldot { width:13px; height:13px; border-radius:3px; }
+  .ldot.built { background:#c8e6c9; border:1px solid #81c784; }
+  .ldot.new { background:#ffe0b2; border:1px solid #ffb74d; }
+
+  /* ---- approval list ---- */
+  .search-bar { width:100%; padding:9px 14px; border:1px solid #ccc; border-radius:4px; font-size:13px; margin-bottom:12px; }
+
+  .quote-card { background:white; border:1px solid #ddd; border-radius:6px; margin-bottom:8px; overflow:hidden; }
+  .quote-card.expanded { border:1.5px solid #e6a020; }
+
+  .card-header { display:flex; align-items:center; gap:10px; padding:10px 14px; cursor:pointer; background:white; }
+  .folder-icon { font-size:20px; }
+  .card-title { font-weight:600; font-size:13px; flex:1; }
+  .badge { font-size:11px; font-weight:700; padding:4px 10px; border-radius:4px; color:white; white-space:nowrap; }
+  .badge.assigned { background:#1976d2; }
+  .badge.approved { background:#2e7d32; }
+  .badge.needs-check { background:#e65100; }
+  .badge.awaiting { background:#6a1b9a; }
+  .badge.reply-in { background:#00695c; }
+  .badge.sent { background:#546e7a; }
+  .gmail-link { font-size:12px; color:#1976d2; text-decoration:none; white-space:nowrap; }
+  .toggle-icon { font-size:14px; color:#777; margin-left:6px; }
+
+  /* ---- expanded quote body ---- */
+  .quote-body { border-top:1px solid #eee; padding:16px; }
+
+  .fields-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px 20px; margin-bottom:14px; font-size:12px; }
+  .field-row { display:flex; gap:8px; align-items:center; }
+  .field-label { color:#777; min-width:110px; text-transform:uppercase; font-size:10px; letter-spacing:.3px; }
+  .field-val { border:1px solid #ccc; border-radius:3px; padding:4px 8px; flex:1; font-size:12px; color:#333; }
+
+  /* items table */
+  .items-table { width:100%; border-collapse:collapse; font-size:12px; margin-bottom:10px; }
+  .items-table th { background:#3b3f79; color:white; padding:7px 8px; text-align:left; font-weight:600; font-size:11px; }
+  .items-table .group-row td { background:#3b3f79; color:white; padding:6px 8px; font-weight:600; font-size:12px; }
+  .items-table td { padding:6px 8px; border-bottom:1px solid #eee; }
+  .items-table input { border:1px solid #ccc; border-radius:3px; padding:3px 6px; width:80px; font-size:12px; }
+  .btn-sm { padding:3px 8px; border:none; border-radius:3px; font-size:11px; font-weight:700; cursor:pointer; color:white; }
+  .btn-green { background:#4caf50; }
+  .btn-blue { background:#1976d2; }
+  .btn-red { background:#e53935; }
+  .btn-purple { background:#7b1fa2; }
+  .icon-btn { background:none; border:1px solid #ccc; border-radius:3px; padding:2px 6px; font-size:12px; cursor:pointer; }
+
+  .add-freight-btn { background:#ff9800; color:white; border:none; padding:7px 18px; border-radius:4px; font-size:13px; font-weight:700; cursor:pointer; float:right; margin-bottom:10px; }
+  .approve-btn-real { background:#2196f3; color:white; border:none; padding:12px; border-radius:4px; font-size:15px; font-weight:700; cursor:pointer; width:100%; margin-top:10px; }
+
+  /* right panel */
+  .split-layout { display:flex; gap:12px; }
+  .split-left { flex:1; min-width:0; }
+  .split-right { width:220px; flex-shrink:0; border:1px solid #ccc; border-radius:4px; padding:10px; font-size:12px; color:#555; }
+  .drag-label { font-size:11px; color:#999; margin-bottom:6px; }
+  .gmail-link-big { display:flex; align-items:center; gap:5px; font-size:12px; color:#1976d2; text-decoration:none; margin-bottom:10px; }
+
+  /* ---- NEW SECTIONS ---- */
+  .new-section { border:1.5px solid #ffb74d; border-radius:6px; margin-top:14px; background:#fffaf4; overflow:hidden; }
+  .new-section-head { display:flex; align-items:center; justify-content:space-between; padding:9px 13px; background:#fff3e0; cursor:pointer; }
+  .new-section-title { font-weight:700; font-size:13px; display:flex; align-items:center; gap:7px; }
+  .new-tag { font-size:10px; font-weight:700; background:#ffb74d; color:#5a3600; border-radius:10px; padding:2px 8px; }
+  .new-section-body { padding:12px 14px; }
+  .expand-link { font-size:12px; color:#e65100; text-decoration:underline; background:none; border:none; cursor:pointer; }
+
+  /* status section */
+  .status-section { border:1.5px solid #ffb74d; border-radius:6px; margin-top:14px; background:#fffaf4; padding:12px 14px; }
+  .status-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#bf360c; margin-bottom:8px; display:flex; align-items:center; gap:8px; }
+  .status-btns { display:flex; gap:6px; flex-wrap:wrap; }
+  .status-btn { padding:5px 12px; border-radius:4px; border:1.5px solid; font-size:12px; font-weight:600; cursor:pointer; background:white; }
+  .status-btn.active { background:#e65100; border-color:#e65100; color:white; }
+  .status-btn:not(.active) { color:#555; border-color:#ccc; }
+  .status-btn.send { border-color:#2e7d32; color:#2e7d32; }
+  .status-note { font-size:11px; color:#888; margin-top:8px; }
+
+  /* talk to AI */
+  .ai-section { margin-top:14px; }
+  .ai-label { font-size:16px; font-weight:600; color:#555; border-bottom:2px solid #3b3f79; padding-bottom:6px; margin-bottom:10px; }
+  .ai-input { width:100%; border:1px solid #ccc; border-radius:4px; padding:8px; font-size:12px; min-height:60px; }
+  .ask-ai-btn { background:#9c27b0; color:white; border:none; padding:10px; border-radius:4px; font-size:14px; font-weight:700; cursor:pointer; width:100%; margin-top:8px; }
+
+  /* weight calc stub */
+  .wc-table { width:100%; border-collapse:collapse; font-size:12px; }
+  .wc-table th { background:#3b3f79; color:white; padding:5px 8px; font-size:11px; }
+  .wc-table td { padding:5px 8px; border-bottom:1px solid #eee; }
+  .wc-table tr.missing td { background:#fff3cd; }
+
+  /* enquiry stub */
+  .enq-table { width:100%; border-collapse:collapse; font-size:12px; margin-bottom:10px; }
+  .enq-table th { background:#3b3f79; color:white; padding:5px 8px; font-size:11px; }
+  .enq-table td { padding:5px 8px; border-bottom:1px solid #eee; }
+  .enq-table td input { border:1px solid #ccc; border-radius:3px; padding:3px 6px; width:100%; font-size:12px; }
+  .copy-btn { background:#7b1fa2; color:white; border:none; padding:8px 16px; border-radius:4px; font-size:13px; font-weight:700; cursor:pointer; }
+  .send-enq-btn { background:#3b3f79; color:white; border:none; padding:8px 16px; border-radius:4px; font-size:13px; font-weight:700; cursor:pointer; margin-left:8px; }
+
+  /* collapsed state */
+  .collapsed { display:none; }
+
+  /* annotation callouts */
+  .callout { display:inline-flex; align-items:center; gap:5px; font-size:11px; color:#bf360c; background:#fff3e0; border:1px solid #ffb74d; border-radius:10px; padding:2px 9px; margin-left:8px; }
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div class="sidebar">
+  <button class="sb-btn active" title="Quotation">📋</button>
+  <button class="sb-btn" title="Weight Calculator (standalone)">⚖️</button>
+  <button class="sb-btn" title="Enquiry Preparer (standalone)">📨</button>
+</div>
+
+<div class="main">
+  <h1>📋 Quotation Generator</h1>
+
+  <div class="legend">
+    <div class="litem"><div class="ldot built"></div> Already exists in the app</div>
+    <div class="litem"><div class="ldot new"></div> New to build</div>
+    <strong style="margin-left:8px;font-size:12px;color:#bf360c;">Orange border / orange tags = new additions inside an existing quote card</strong>
+  </div>
+
+  <!-- Creation section (existing) -->
+  <h2>Creation <span style="font-size:12px;color:#888;font-weight:normal;">(unchanged — same as today)</span></h2>
+  <div style="background:white;border:1px solid #ddd;border-radius:6px;padding:16px;margin-bottom:6px;color:#999;font-style:italic;font-size:13px;">
+    Email paste area + file upload + Generate Quotation button — no changes here.
+  </div>
+
+  <!-- Approval section -->
+  <h2>Approval</h2>
+  <input class="search-bar" placeholder="Search by company, kind attn, or month (e.g., January)" />
+
+  <!-- Card 1: collapsed, with NEW status badge -->
+  <div class="quote-card">
+    <div class="card-header" onclick="expand()">
+      <span class="folder-icon">📁</span>
+      <span class="card-title">MWTS - G.M.Jegadesh - DSC-1877</span>
+      <span class="badge assigned">ASSIGNED TO - PAVI</span>
+      <span class="badge needs-check" style="margin-left:4px;">NEEDS CHECK</span>
+      <span class="callout">NEW — status badge</span>
+      <a class="gmail-link" href="#" style="margin-left:8px;">View in Gmail</a>
+      <span class="toggle-icon">▶</span>
+    </div>
+  </div>
+
+  <!-- Card 2: collapsed -->
+  <div class="quote-card">
+    <div class="card-header">
+      <span class="folder-icon">📁</span>
+      <span class="card-title">UMPESL - S.GANESH - DSC-1876</span>
+      <span class="badge approved">APPROVED - PAVI</span>
+      <span class="badge sent" style="margin-left:4px;">SENT</span>
+      <span class="callout">NEW — status badge</span>
+      <a class="gmail-link" href="#" style="margin-left:8px;">View in Gmail</a>
+      <span class="toggle-icon">▶</span>
+    </div>
+  </div>
+
+  <!-- Card 3: EXPANDED — this is the main wireframe -->
+  <div class="quote-card expanded" id="expanded-card">
+    <div class="card-header" onclick="collapse()">
+      <span class="folder-icon">📁</span>
+      <span class="card-title">METEC DESGIN AND CONSTRUCTION ENGINEERS INDIA PVT LTD - MR KARTHIKEYAN.M - DSC-1881</span>
+      <span class="badge assigned">ASSIGNED TO - PAVI</span>
+      <span class="badge needs-check" style="margin-left:4px;">NEEDS CHECK</span>
+      <span class="callout">NEW — status badge</span>
+      <a class="gmail-link" href="#" style="margin-left:8px;">View in Gmail</a>
+      <span class="toggle-icon">▼</span>
+    </div>
+
+    <div class="quote-body">
+      <div class="split-layout">
+        <div class="split-left">
+
+          <!-- Header fields (existing) -->
+          <div class="fields-grid">
+            <div class="field-row"><span class="field-label">Quotation Date</span><span class="field-val">June 17, 2026</span></div>
+            <div class="field-row"><span class="field-label">Prepared By</span><span class="field-val">RAMYA</span></div>
+            <div class="field-row"><span class="field-label">Kind Attn</span><span class="field-val">MR KARTHIKEYAN.M</span></div>
+            <div class="field-row"><span class="field-label">Assigned To</span><span class="field-val">PAVI</span></div>
+            <div class="field-row"><span class="field-label">Phone Number</span><span class="field-val">9884012345</span></div>
+            <div class="field-row"><span class="field-label">Checked By</span><span class="field-val"></span></div>
+            <div class="field-row"><span class="field-label">Bill To</span><span class="field-val">METEC DESGIN AND CONSTRUCTION ENG...</span></div>
+            <div class="field-row"><span class="field-label">Ship To</span><span class="field-val">Reliance - Mappedu - TN</span></div>
+          </div>
+
+          <!-- Items table (existing) -->
+          <table class="items-table">
+            <thead>
+              <tr>
+                <th>S. NO</th>
+                <th>ITEMS AND DESCRIPTION</th>
+                <th>BASE RATE</th>
+                <th>MARGIN %</th>
+                <th>Rate per Mtr</th>
+                <th>AMOUNT</th>
+                <th>ACTIONS</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="group-row">
+                <td colspan="5">GI Pipe as per IS 1239 / 3589</td>
+                <td colspan="2" style="text-align:right;">
+                  <button class="btn-sm btn-green">+</button>
+                  <button class="btn-sm btn-blue" style="margin-left:3px;">H+</button>
+                  <button class="btn-sm btn-purple" style="margin-left:3px;">M+</button>
+                  <button class="btn-sm btn-red" style="margin-left:3px;">🗑</button>
+                </td>
+              </tr>
+              <tr>
+                <td>1</td>
+                <td>1-1/2" NB :</td>
+                <td><input value="285" /></td>
+                <td><input value="5" /></td>
+                <td>299.25</td>
+                <td>307031</td>
+                <td><button class="btn-sm btn-red">🗑</button></td>
+              </tr>
+              <tr>
+                <td>2</td>
+                <td>2" NB :</td>
+                <td><input value="310" /></td>
+                <td><input value="5" /></td>
+                <td>325.50</td>
+                <td>412000</td>
+                <td><button class="btn-sm btn-red">🗑</button></td>
+              </tr>
+            </tbody>
+          </table>
+
+          <button class="add-freight-btn">Add Freight</button>
+          <div style="clear:both;"></div>
+
+          <button class="approve-btn-real">✅ Create Quotation</button>
+
+          <!-- ═══ NEW: Status section ═══ -->
+          <div class="status-section">
+            <div class="status-label">
+              🔄 Quote Status
+              <span class="new-tag">NEW</span>
+            </div>
+            <div class="status-btns">
+              <button class="status-btn active">Needs check</button>
+              <button class="status-btn">Awaiting freight</button>
+              <button class="status-btn">Awaiting dealer price</button>
+              <button class="status-btn">Supplier reply in</button>
+              <button class="status-btn send" onclick="markSent()">✓ Mark as Sent</button>
+            </div>
+            <div class="status-note">Once marked "Sent", the status badge on the card updates and the quote hands off to Bigin.</div>
+          </div>
+
+          <!-- ═══ NEW: Weight Calculator section (collapsible) ═══ -->
+          <div class="new-section">
+            <div class="new-section-head" onclick="toggleSection('wc')">
+              <div class="new-section-title">⚖️ Weight Calculator <span class="new-tag">NEW — embedded here</span></div>
+              <button class="expand-link" id="wc-toggle">▼ Expand</button>
+            </div>
+            <div id="wc-body" class="collapsed">
+              <div class="new-section-body">
+                <p style="font-size:12px;color:#555;margin-bottom:10px;">Auto-loaded for DSC-1881. Rows in yellow = missing weight.</p>
+                <table class="wc-table">
+                  <tr><th>Description</th><th>Size</th><th>Qty</th><th>Kg/m</th><th>Total MT</th></tr>
+                  <tr><td>GI Pipe IS 1239</td><td>1-1/2" NB</td><td>1025</td><td>2.42</td><td>2.48</td></tr>
+                  <tr class="missing"><td>GI Pipe IS 1239</td><td>2" NB</td><td>1266</td><td>—</td><td style="color:#e65100;">Missing</td></tr>
+                </table>
+                <button class="approve-btn-real" style="margin-top:10px;font-size:13px;padding:8px;">♻️ Recalculate Total Weight</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ═══ NEW: Freight / Dealer Enquiry section (collapsible) ═══ -->
+          <div class="new-section">
+            <div class="new-section-head" onclick="toggleSection('enq')">
+              <div class="new-section-title">📨 Freight / Dealer Enquiry <span class="new-tag">NEW — embedded here</span></div>
+              <button class="expand-link" id="enq-toggle">▼ Expand</button>
+            </div>
+            <div id="enq-body" class="collapsed">
+              <div class="new-section-body">
+                <p style="font-size:12px;color:#555;margin-bottom:10px;">Fill YOUR OFFER column → send enquiry email from app.</p>
+                <table class="enq-table">
+                  <tr><th>Description</th><th>Size</th><th>Qty</th><th>OUR REQUIREMENT</th><th>YOUR OFFER</th></tr>
+                  <tr><td>GI Pipe IS 1239</td><td>1-1/2" NB</td><td>1025</td><td>Ex-godown, Chennai</td><td><input placeholder="Enter rate..." /></td></tr>
+                  <tr><td>GI Pipe IS 1239</td><td>2" NB</td><td>1266</td><td>Ex-godown, Chennai</td><td><input placeholder="Enter rate..." /></td></tr>
+                </table>
+                <button class="copy-btn">📋 Copy as Outlook HTML</button>
+                <button class="send-enq-btn">✉️ Send from App (Phase 2)</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Talk to AI (existing) -->
+          <div class="ai-section">
+            <div class="ai-label">Talk to AI</div>
+            <textarea class="ai-input" placeholder="Type your question about the AI output..."></textarea>
+            <button class="ask-ai-btn">💬 Ask AI</button>
+          </div>
+
+        </div>
+
+        <!-- Right panel (existing) -->
+        <div class="split-right">
+          <div class="drag-label">Drag to move</div>
+          <a class="gmail-link-big" href="#">🔵 View in Gmail</a>
+          <div style="font-size:12px;font-weight:600;margin-bottom:6px;">Email Content</div>
+          <div style="font-size:11px;color:#555;background:#f9f9f9;border:1px solid #eee;border-radius:4px;padding:8px;min-height:80px;">Kindly quote for materials enquiry<br><br><mark style="background:yellow;">Project: Reliance</mark></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- More collapsed cards -->
+  <div class="quote-card">
+    <div class="card-header">
+      <span class="folder-icon">📁</span>
+      <span class="card-title">MANNA DAIRY FARM - Manjula - DSC-1875</span>
+      <span class="badge approved">APPROVED</span>
+      <span class="badge sent" style="margin-left:4px;">SENT</span>
+      <span class="callout">NEW — status badge</span>
+      <a class="gmail-link" href="#" style="margin-left:8px;">View in Gmail</a>
+      <span class="toggle-icon">▶</span>
+    </div>
+  </div>
+
+  <div style="text-align:center;margin-top:14px;">
+    <button class="btn-sm btn-blue" style="padding:8px 20px;font-size:13px;">Load more</button>
+  </div>
+
+  <div style="margin-top:30px;padding:14px;background:#fff3e0;border:1px solid #ffb74d;border-radius:6px;font-size:12px;color:#bf360c;">
+    <strong>What's new vs today:</strong><br>
+    1. Status badge on every card header (Needs check / Awaiting freight / Awaiting dealer price / Supplier reply in / Sent)<br>
+    2. Status selector inside the expanded card — clicking sets the badge<br>
+    3. Weight Calculator collapses into the quote — no more switching tabs and retyping DSC-###<br>
+    4. Freight/Dealer Enquiry collapses into the quote — same deal<br>
+    <strong>Everything else is unchanged.</strong>
+  </div>
+
+</div>
+
+<script>
+  function expand() {
+    document.getElementById('expanded-card').scrollIntoView({ behavior:'smooth', block:'start' });
+  }
+  function collapse() { /* just visual */ }
+  function toggleSection(id) {
+    const body = document.getElementById(id + '-body');
+    const tog = document.getElementById(id + '-toggle');
+    const hidden = body.classList.contains('collapsed');
+    body.classList.toggle('collapsed', !hidden);
+    tog.textContent = hidden ? '▲ Collapse' : '▼ Expand';
+  }
+  function markSent() {
+    alert('DSC-1881 marked as Sent.\n\nThe card badge updates to "SENT".\nThe quote hands off to Bigin from here.\nThe app\'s job is done.');
+  }
+</script>
+</body>
+</html>

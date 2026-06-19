@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DSC Pipes — Full Workflow Flowchart</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Tahoma, sans-serif; background:#eef0f3; color:#1a1a1a; }
+
+  header { background:#3b3f79; color:white; padding:14px 22px; position:sticky; top:0; z-index:20; box-shadow:0 2px 8px rgba(0,0,0,.15); }
+  header h1 { font-size:18px; font-weight:700; }
+  header p { font-size:12px; opacity:.85; margin-top:2px; }
+
+  .layout { display:flex; max-width:1100px; margin:0 auto; padding:20px 16px 60px; gap:20px; }
+
+  /* Legend rail */
+  .legend { position:sticky; top:80px; align-self:flex-start; width:210px; min-width:210px; background:white; border-radius:10px; padding:14px; box-shadow:0 1px 4px rgba(0,0,0,.08); font-size:12px; }
+  .legend h3 { font-size:12px; text-transform:uppercase; letter-spacing:.5px; color:#888; margin-bottom:10px; }
+  .legend-item { display:flex; align-items:center; gap:8px; margin-bottom:9px; line-height:1.3; }
+  .chip { width:16px; height:16px; border-radius:4px; flex-shrink:0; border:1px solid rgba(0,0,0,.15); }
+  .chip.p0 { background:#dfe3e8; }
+  .chip.p1 { background:#cfe0ff; }
+  .chip.p2 { background:#d4f0d8; }
+  .chip.p3 { background:#ffe6c2; }
+  .chip.p4 { background:#e6d4f5; }
+  .chip.bigin { background:#cfe3ff; border-style:dashed; }
+  .legend hr { border:none; border-top:1px solid #eee; margin:12px 0; }
+  .legend .note { font-size:11px; color:#777; line-height:1.45; }
+
+  /* Flow column */
+  .flow { flex:1; display:flex; flex-direction:column; align-items:center; }
+
+  .node { width:100%; max-width:520px; border-radius:10px; padding:12px 16px; position:relative; box-shadow:0 1px 4px rgba(0,0,0,.08); border:1.5px solid; background:white; }
+  .node .actor { font-size:10px; text-transform:uppercase; letter-spacing:.5px; font-weight:700; opacity:.7; margin-bottom:3px; display:flex; align-items:center; gap:5px; }
+  .node .title { font-size:14px; font-weight:600; line-height:1.35; }
+  .node .desc { font-size:12px; color:#555; margin-top:3px; line-height:1.4; }
+  .node .ptag { position:absolute; top:-9px; right:12px; font-size:10px; font-weight:700; padding:2px 9px; border-radius:10px; border:1px solid; }
+
+  /* phase colors */
+  .p0 { border-color:#b9c0c9; }
+  .p0 .ptag { background:#dfe3e8; color:#4a525c; border-color:#b9c0c9; }
+  .p1 { border-color:#7da6f0; }
+  .p1 .ptag { background:#cfe0ff; color:#1c4fa3; border-color:#7da6f0; }
+  .p2 { border-color:#73c684; }
+  .p2 .ptag { background:#d4f0d8; color:#1e7a32; border-color:#73c684; }
+  .p3 { border-color:#e6a44d; }
+  .p3 .ptag { background:#ffe6c2; color:#9a5a05; border-color:#e6a44d; }
+  .p4 { border-color:#b385d6; }
+  .p4 .ptag { background:#e6d4f5; color:#6a2da0; border-color:#b385d6; }
+  .bigin { border-color:#6a9be6; border-style:dashed; background:#f5f9ff; }
+  .bigin .ptag { background:#cfe3ff; color:#1c4fa3; border-color:#6a9be6; }
+
+  /* connector */
+  .conn { width:2px; height:26px; background:#aab2bd; position:relative; }
+  .conn::after { content:''; position:absolute; bottom:0; left:50%; transform:translateX(-50%); border-left:5px solid transparent; border-right:5px solid transparent; border-top:7px solid #aab2bd; }
+
+  /* decision diamond */
+  .decision { width:230px; min-height:64px; background:#fff8e8; border:1.5px solid #e6c14d; transform:rotate(0deg); border-radius:10px; padding:10px 14px; text-align:center; position:relative; box-shadow:0 1px 4px rgba(0,0,0,.08); }
+  .decision .q { font-size:13px; font-weight:600; color:#7a5a00; }
+  .decision .dlabel { position:absolute; top:-9px; left:12px; font-size:10px; font-weight:700; background:#fff8e8; color:#9a7a10; padding:1px 8px; border:1px solid #e6c14d; border-radius:10px; }
+
+  /* branch row */
+  .branch { display:flex; gap:30px; align-items:flex-start; justify-content:center; width:100%; max-width:760px; }
+  .branch-col { flex:1; display:flex; flex-direction:column; align-items:center; max-width:340px; }
+  .branch-tag { font-size:11px; font-weight:700; padding:2px 12px; border-radius:12px; margin-bottom:4px; }
+  .branch-tag.yes { background:#d4f0d8; color:#1e7a32; }
+  .branch-tag.no { background:#f0d4d4; color:#a33; }
+
+  /* sent divider */
+  .sent-divider { width:100%; max-width:620px; margin:8px 0; border-top:2px dashed #e0904d; position:relative; height:0; }
+  .sent-divider span { position:absolute; top:-13px; left:50%; transform:translateX(-50%); background:#fff3e6; color:#b3641a; border:1.5px dashed #e0904d; font-size:11px; font-weight:700; padding:3px 14px; border-radius:14px; white-space:nowrap; }
+
+  .start-pill { background:#3b3f79; color:white; padding:10px 26px; border-radius:24px; font-size:14px; font-weight:700; box-shadow:0 2px 6px rgba(0,0,0,.2); }
+  .end-pill { padding:10px 26px; border-radius:24px; font-size:14px; font-weight:700; box-shadow:0 2px 6px rgba(0,0,0,.15); }
+  .end-pill.won { background:#2e7d32; color:white; }
+  .end-pill.lost { background:#b3463c; color:white; }
+
+  .section-band { width:100%; max-width:520px; text-align:center; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:#9aa0aa; margin:6px 0; }
+
+  @media (max-width:720px) {
+    .layout { flex-direction:column; }
+    .legend { position:static; width:100%; }
+    .branch { flex-direction:column; gap:14px; align-items:center; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>DSC Pipes — Full Workflow (all phases)</h1>
+  <p>From enquiry received to order won/lost. Each box is tagged with the BUILD PHASE that delivers it.</p>
+</header>
+
+<div class="layout">
+
+  <!-- LEGEND -->
+  <aside class="legend">
+    <h3>Build phases</h3>
+    <div class="legend-item"><span class="chip p0"></span><span><b>Already built</b><br>works today</span></div>
+    <div class="legend-item"><span class="chip p1"></span><span><b>Phase 1</b><br>status + unify + queue</span></div>
+    <div class="legend-item"><span class="chip p2"></span><span><b>Phase 2</b><br>send email from app</span></div>
+    <div class="legend-item"><span class="chip p3"></span><span><b>Phase 3</b><br>capture replies</span></div>
+    <div class="legend-item"><span class="chip p4"></span><span><b>Phase 4</b><br>Bigin PDF attach</span></div>
+    <div class="legend-item"><span class="chip bigin"></span><span><b>Bigin only</b><br>after handoff</span></div>
+    <hr>
+    <div class="note"><b>The one rule:</b> everything below the orange dashed line lives in Bigin. The app stops tracking once a quote is sent.</div>
+  </aside>
+
+  <!-- FLOW -->
+  <main class="flow">
+
+    <div class="section-band">Enquiry arrives</div>
+
+    <div class="start-pill">📩 Customer emails an enquiry</div>
+    <div class="conn"></div>
+
+    <div class="node p0">
+      <div class="ptag">Built</div>
+      <div class="actor">📧 Gmail → App</div>
+      <div class="title">Email auto-labelled, quote auto-created</div>
+      <div class="desc">Apps Script picks up the labelled email and creates DSC-### in the app automatically.</div>
+    </div>
+    <div class="conn"></div>
+
+    <div class="node p1">
+      <div class="ptag">Phase 1</div>
+      <div class="actor">🏠 App — Home</div>
+      <div class="title">Shows up in "New to check" queue</div>
+      <div class="desc">The work queue tells you a fresh quote is waiting. (New)</div>
+    </div>
+    <div class="conn"></div>
+
+    <div class="node bigin">
+      <div class="ptag">Bigin · manual</div>
+      <div class="actor">💼 Bigin</div>
+      <div class="title">You create the Deal</div>
+      <div class="desc">Add company + contact in Bigin yourself (keeps records clean, no duplicates). Set stage "Quote being prepared".</div>
+    </div>
+    <div class="conn"></div>
+
+    <div class="section-band">Review &amp; build the quote</div>
+
+    <div class="node p1">
+      <div class="ptag">Phase 1</div>
+      <div class="actor">📋 App — One quote screen</div>
+      <div class="title">Open DSC-### → everything on one screen</div>
+      <div class="desc">Quotation, Weight Calc and Enquiry all share this quote number — no retyping. (New: unified)</div>
+    </div>
+    <div class="conn"></div>
+
+    <div class="node p0">
+      <div class="ptag">Built</div>
+      <div class="actor">📋 App</div>
+      <div class="title">Review the AI-drafted quotation</div>
+      <div class="desc">Edit prices, quantities, margins, terms.</div>
+    </div>
+    <div class="conn"></div>
+
+    <!-- DECISION: weights -->
+    <div class="decision">
+      <div class="dlabel">Decision</div>
+      <div class="q">Need pipe weights?</div>
+    </div>
+    <div class="conn"></div>
+    <div class="branch">
+      <div class="branch-col">
+        <div class="branch-tag yes">YES</div>
+        <div class="node p0" style="border-style:solid;">
+          <div class="ptag">Built · Phase 1 unified</div>
+          <div class="actor">⚖️ App</div>
+          <div class="title">Weight Calculator section</div>
+          <div class="desc">Auto-loads weights for this quote. Red rows = missing.</div>
+        </div>
+      </div>
+      <div class="branch-col">
+        <div class="branch-tag no">NO — skip</div>
+        <div class="node p0" style="opacity:.5; border-style:dashed;">
+          <div class="actor">—</div>
+          <div class="title">Continue</div>
+        </div>
+      </div>
+    </div>
+    <div class="conn"></div>
+
+    <div class="section-band">Freight / dealer rate (only if needed)</div>
+
+    <!-- DECISION: freight -->
+    <div class="decision">
+      <div class="dlabel">Decision</div>
+      <div class="q">Need a freight or dealer/factory rate?</div>
+    </div>
+    <div class="conn"></div>
+
+    <div class="branch">
+      <!-- YES branch: long vertical chain -->
+      <div class="branch-col">
+        <div class="branch-tag yes">YES</div>
+
+        <div class="node p0" style="border-style:solid;">
+          <div class="ptag">Built</div>
+          <div class="actor">📨 App</div>
+          <div class="title">Fill the enquiry table</div>
+          <div class="desc">OUR REQUIREMENT / YOUR OFFER, on the same screen.</div>
+        </div>
+        <div class="conn"></div>
+
+        <div class="node p2">
+          <div class="ptag">Phase 2</div>
+          <div class="actor">📨 App → email</div>
+          <div class="title">Send enquiry email <b>from the app</b></div>
+          <div class="desc">One click sends it to the transporter / dealer. Also lands in your Gmail Sent. (New — replaces copy-paste)</div>
+        </div>
+        <div class="conn"></div>
+
+        <div class="node p1">
+          <div class="ptag">Phase 1</div>
+          <div class="actor">🔄 App — Status</div>
+          <div class="title">Status → "Awaiting freight / dealer price"</div>
+        </div>
+        <div class="conn"></div>
+
+        <div class="node p3">
+          <div class="ptag">Phase 3</div>
+          <div class="actor">📥 Supplier → App</div>
+          <div class="title">Reply captured in the app</div>
+          <div class="desc">Hit Refresh → the reply is pulled in → AI reads the rate → you confirm. (New)</div>
+        </div>
+        <div class="conn"></div>
+
+        <div class="node p1">
+          <div class="ptag">Phase 1</div>
+          <div class="actor">🏠 App — Home</div>
+          <div class="title">Moves to "Replies in" queue</div>
+        </div>
+        <div class="conn"></div>
+
+        <div class="node p0" style="border-style:solid;">
+          <div class="ptag">Built</div>
+          <div class="actor">📋 App</div>
+          <div class="title">Apply freight as a line item + FOR</div>
+          <div class="desc">FOR distributes freight into margins (hidden in PDF, with undo).</div>
+        </div>
+      </div>
+
+      <!-- NO branch -->
+      <div class="branch-col">
+        <div class="branch-tag no">NO — skip</div>
+        <div class="node p0" style="opacity:.5; border-style:dashed;">
+          <div class="actor">—</div>
+          <div class="title">Straight to sending</div>
+        </div>
+      </div>
+    </div>
+    <div class="conn"></div>
+
+    <div class="section-band">Send the quote</div>
+
+    <div class="node p0">
+      <div class="ptag">Built</div>
+      <div class="actor">📋 App</div>
+      <div class="title">Approve → generate the PDF</div>
+    </div>
+    <div class="conn"></div>
+
+    <div class="node p2">
+      <div class="ptag">Phase 2</div>
+      <div class="actor">📤 App → email</div>
+      <div class="title">Send the quote to the customer <b>from the app</b></div>
+      <div class="desc">PDF goes out via the app; copy lands in Gmail Sent. (New)</div>
+    </div>
+    <div class="conn"></div>
+
+    <div class="node p1">
+      <div class="ptag">Phase 1</div>
+      <div class="actor">🔄 App — Status</div>
+      <div class="title">Mark "Sent" → leaves the app's queue</div>
+      <div class="desc">A "View in Bigin" link appears. The app's job is done. (New)</div>
+    </div>
+    <div class="conn"></div>
+
+    <div class="node p4">
+      <div class="ptag">Phase 4</div>
+      <div class="actor">💼 App → Bigin</div>
+      <div class="title">PDF auto-attaches to the Bigin deal</div>
+      <div class="desc">Optional convenience so you stop uploading manually. (New)</div>
+    </div>
+    <div class="conn"></div>
+
+    <!-- HANDOFF -->
+    <div class="sent-divider"><span>⬇ HANDOFF — Bigin owns everything below ⬇</span></div>
+    <div class="conn"></div>
+
+    <div class="section-band">Post-send pipeline — Bigin only</div>
+
+    <div class="node bigin">
+      <div class="ptag">Bigin</div>
+      <div class="actor">💼 Bigin</div>
+      <div class="title">Stage → "Quote sent / Awaiting response"</div>
+    </div>
+    <div class="conn"></div>
+
+    <div class="node bigin">
+      <div class="ptag">Bigin</div>
+      <div class="actor">💼 Bigin</div>
+      <div class="title">Customer responds → negotiate / follow up</div>
+      <div class="desc">Stalled, going cold, revised round — all tracked here, in one place.</div>
+    </div>
+    <div class="conn"></div>
+
+    <!-- final decision -->
+    <div class="decision" style="background:#eef3ff; border-color:#7da6f0;">
+      <div class="dlabel" style="background:#eef3ff; color:#1c4fa3; border-color:#7da6f0;">Outcome</div>
+      <div class="q" style="color:#1c4fa3;">Did we win the order?</div>
+    </div>
+    <div class="conn"></div>
+
+    <div class="branch">
+      <div class="branch-col">
+        <div class="branch-tag yes">WON</div>
+        <div class="end-pill won">✅ Close deal — Won</div>
+      </div>
+      <div class="branch-col">
+        <div class="branch-tag no">LOST</div>
+        <div class="end-pill lost">❌ Mark deal — Lost</div>
+      </div>
+    </div>
+
+    <div style="margin-top:24px; font-size:11px; color:#9aa0aa; text-align:center;">DSC Pipes — Split-at-Send Workflow · revise prices any time before "Sent"</div>
+
+  </main>
+</div>
+
+</body>
+</html>

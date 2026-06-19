@@ -120,10 +120,12 @@ const upload = multer({
 const createRatesRouter      = require('./routes/rates');
 const createConfigRouter     = require('./routes/config');
 const createQuotationsRouter = require('./routes/quotations');
+const createGmailRouter      = require('./routes/gmail');
 
 app.use('/api', createRatesRouter({ openai, upload, storage, ratesDir }));
 app.use('/api', createConfigRouter({ storage }));
 app.use('/api', createQuotationsRouter({ ddbDocClient, ddbTableName }));
+app.use('/api', createGmailRouter());
 
 // API Routes
 

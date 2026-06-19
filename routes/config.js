@@ -13,6 +13,7 @@ const {
     CONFIG_KEY_INSTRUCTIONS,
     CONFIG_KEY_DEFAULT_TERMS,
     CONFIG_KEY_DEFAULT_MARGINS,
+    CONFIG_KEY_DEFAULT_EMAIL_MESSAGE,
 } = require('../utils/constants');
 
 function normalizeMarginValue(value) {
@@ -105,6 +106,31 @@ module.exports = function createConfigRouter({ storage }) {
         } catch (error) {
             console.error('Error getting default margins:', error);
             res.status(500).json({ error: 'Failed to get default margins', details: error.message });
+        }
+    });
+
+    // ── Default email message ─────────────────────────────────────────────────
+    router.post('/save-default-email-message', express.json(), async (req, res) => {
+        try {
+            const { defaultEmailMessage } = req.body;
+            if (defaultEmailMessage === undefined || defaultEmailMessage === null) {
+                return res.status(400).json({ error: 'defaultEmailMessage is required' });
+            }
+            await storage.saveText(CONFIG_KEY_DEFAULT_EMAIL_MESSAGE, String(defaultEmailMessage));
+            res.json({ success: true });
+        } catch (error) {
+            console.error('Error saving default email message:', error);
+            res.status(500).json({ error: 'Failed to save default email message', details: error.message });
+        }
+    });
+
+    router.get('/get-default-email-message', async (req, res) => {
+        try {
+            const content = await storage.readText(CONFIG_KEY_DEFAULT_EMAIL_MESSAGE);
+            res.json({ hasFile: content !== null, content: content || '' });
+        } catch (error) {
+            console.error('Error getting default email message:', error);
+            res.status(500).json({ error: 'Failed to get default email message', details: error.message });
         }
     });
 

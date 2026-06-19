@@ -881,7 +881,8 @@
             createEnquiryFromQuotationNumber: createEnquiryFromQuotationNumber,
             createEnquiryFromAiInput: createEnquiryFromAiInput,
             copyEnquiryAsHtml: copyEnquiryAsHtml,
-            addManualRow: addManualRow
+            addManualRow: addManualRow,
+            getEnquiryHtml: function() { ensureEnquiryTableHasRow(); return buildEnquiryHtmlForCopy(); }
         };
     }
 
