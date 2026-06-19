@@ -27,6 +27,7 @@ const CONFIG_KEY_INSTRUCTIONS         = 'instructions.txt';
 const CONFIG_KEY_DEFAULT_TERMS        = 'default-terms.txt';
 const CONFIG_KEY_DEFAULT_MARGINS      = 'default-margins.json';
 const CONFIG_KEY_DEFAULT_EMAIL_MESSAGE = 'default-email-message.txt';
+const CONFIG_KEY_DEFAULT_SIGNATURE    = 'default-signature.txt';
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -39,4 +40,5 @@ module.exports = {
     CONFIG_KEY_DEFAULT_TERMS,
     CONFIG_KEY_DEFAULT_MARGINS,
     CONFIG_KEY_DEFAULT_EMAIL_MESSAGE,
+    CONFIG_KEY_DEFAULT_SIGNATURE,
 };

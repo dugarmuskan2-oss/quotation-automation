@@ -14,6 +14,7 @@ const {
     CONFIG_KEY_DEFAULT_TERMS,
     CONFIG_KEY_DEFAULT_MARGINS,
     CONFIG_KEY_DEFAULT_EMAIL_MESSAGE,
+    CONFIG_KEY_DEFAULT_SIGNATURE,
 } = require('../utils/constants');
 
 function normalizeMarginValue(value) {
@@ -131,6 +132,31 @@ module.exports = function createConfigRouter({ storage }) {
         } catch (error) {
             console.error('Error getting default email message:', error);
             res.status(500).json({ error: 'Failed to get default email message', details: error.message });
+        }
+    });
+
+    // ── Default signature ─────────────────────────────────────────────────────
+    router.post('/save-default-signature', express.json(), async (req, res) => {
+        try {
+            const { defaultSignature } = req.body;
+            if (defaultSignature === undefined || defaultSignature === null) {
+                return res.status(400).json({ error: 'defaultSignature is required' });
+            }
+            await storage.saveText(CONFIG_KEY_DEFAULT_SIGNATURE, String(defaultSignature));
+            res.json({ success: true });
+        } catch (error) {
+            console.error('Error saving default signature:', error);
+            res.status(500).json({ error: 'Failed to save default signature', details: error.message });
+        }
+    });
+
+    router.get('/get-default-signature', async (req, res) => {
+        try {
+            const content = await storage.readText(CONFIG_KEY_DEFAULT_SIGNATURE);
+            res.json({ hasFile: content !== null, content: content || '' });
+        } catch (error) {
+            console.error('Error getting default signature:', error);
+            res.status(500).json({ error: 'Failed to get default signature', details: error.message });
         }
     });
 

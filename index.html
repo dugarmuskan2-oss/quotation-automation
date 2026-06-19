@@ -949,6 +949,17 @@
                     <p id="defaultEmailMessageStatus" style="margin-top: 8px; font-size: 12px; color: #666;"></p>
                 </div>
 
+                <!-- Default Email Signature -->
+                <div style="margin-top: 20px;">
+                    <label for="defaultSignatureConfig">Default Email Signature (sign-off at the end of every quotation email):</label>
+                    <p style="font-size:12px; color:#888; margin: 4px 0 6px;">Replaces the default "Regards, DSC Pipes". One line per row — e.g. name, company, phone, website.</p>
+                    <textarea id="defaultSignatureConfig" placeholder="Regards,&#10;DSC Pipes&#10;info@dscpipes.com" style="width: 100%; min-height: 90px; padding: 8px; margin-top: 4px; border: 2px solid #ddd; border-radius: 4px; font-family: inherit;"></textarea>
+                    <button type="button" class="upload-btn" onclick="saveDefaultSignature()" style="margin-top: 10px; width: 100%;">
+                        💾 Save Default Signature
+                    </button>
+                    <p id="defaultSignatureStatus" style="margin-top: 8px; font-size: 12px; color: #666;"></p>
+                </div>
+
                 <!-- Default Margins -->
                 <div style="margin-top: 20px;">
                     <label style="display:block; margin-bottom:8px;">Default Margin % by Pipe Type (auto-applies when margin is empty):</label>
@@ -2130,6 +2141,53 @@
             } catch (error) {
                 console.error('Error loading default email message:', error);
                 if (textarea) textarea.value = defaultEmailMessage;
+            }
+        }
+
+        async function saveDefaultSignature() {
+            const textarea = document.getElementById('defaultSignatureConfig');
+            const statusEl = document.getElementById('defaultSignatureStatus');
+            if (!textarea || !statusEl) return;
+            try {
+                statusEl.textContent = 'Saving...';
+                statusEl.style.color = '#666';
+                const response = await fetch(`${API_BASE_URL}/save-default-signature`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ defaultSignature: textarea.value })
+                });
+                await safeJsonParse(response);
+                if (response.ok) {
+                    defaultSignature = textarea.value;
+                    statusEl.textContent = '✓ Default signature saved';
+                    statusEl.style.color = '#4CAF50';
+                } else {
+                    statusEl.textContent = 'Failed to save signature';
+                    statusEl.style.color = '#f44336';
+                }
+            } catch (error) {
+                console.error('Error saving default signature:', error);
+                statusEl.textContent = 'Error saving signature';
+                statusEl.style.color = '#f44336';
+            }
+        }
+
+        async function loadDefaultSignature() {
+            const textarea = document.getElementById('defaultSignatureConfig');
+            const statusEl = document.getElementById('defaultSignatureStatus');
+            try {
+                const response = await fetch(`${API_BASE_URL}/get-default-signature`);
+                const result = await safeJsonParse(response);
+                if (response.ok && result.hasFile && result.content !== undefined) {
+                    defaultSignature = result.content;
+                    if (textarea) textarea.value = result.content;
+                    if (statusEl) { statusEl.textContent = '✓ Loaded from server'; statusEl.style.color = '#4CAF50'; }
+                } else {
+                    if (textarea) textarea.value = defaultSignature;
+                }
+            } catch (error) {
+                console.error('Error loading default signature:', error);
+                if (textarea) textarea.value = defaultSignature;
             }
         }
 
@@ -7979,7 +8037,9 @@
             msg = msg.replace(/^\s*dear\b[^,\n]*,\s*/i, '');   // drop a duplicate leading greeting
             msg = fillEmailPlaceholders(msg, quotation);
             const safeMsg = escapeHtml(msg).replace(/\n/g, '<br>');
-            return `<p>${escapeHtml(greeting)}</p><p>${safeMsg}</p><p>Regards,<br>DSC Pipes</p>`;
+            const signature = fillEmailPlaceholders((defaultSignature || 'Regards,\nDSC Pipes').trim(), quotation);
+            const safeSignature = escapeHtml(signature).replace(/\n/g, '<br>');
+            return `<p>${escapeHtml(greeting)}</p><p>${safeMsg}</p><p>${safeSignature}</p>`;
         }
 
         async function sendQuotationToCustomer(quotationId) {
@@ -8606,6 +8666,7 @@
         })();
         let defaultMarginsByPipeType = { erw: '', gi: '', seamless: '' };
         let defaultEmailMessage = 'Please find attached our quotation as requested. Do not hesitate to contact us for any queries.';
+        let defaultSignature = 'Regards,\nDSC Pipes';
         
         /*
             ============================================
@@ -8627,6 +8688,7 @@
         loadDefaultTerms();
         loadDefaultMargins();
         loadDefaultEmailMessage();
+        loadDefaultSignature();
         
         // Load and display uploaded files
         loadUploadedFiles();
