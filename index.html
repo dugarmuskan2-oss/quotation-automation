@@ -7958,11 +7958,17 @@
                 img.crossOrigin = 'anonymous';
                 img.onload = () => {
                     try {
+                        // Downscale before embedding. The logo prints at ~56pt, but the source
+                        // is ~1024px; embedding it full-res bloats the PDF to several MB (and
+                        // pushes the email request past Vercel's 4.5MB limit). 240px keeps it
+                        // crisp (~300dpi at print size) while shrinking the PDF dramatically.
+                        const MAX_DIM = 240;
+                        const scale = Math.min(1, MAX_DIM / Math.max(img.width || 1, img.height || 1));
                         const canvas = document.createElement('canvas');
-                        canvas.width = img.width;
-                        canvas.height = img.height;
+                        canvas.width = Math.max(1, Math.round((img.width || 1) * scale));
+                        canvas.height = Math.max(1, Math.round((img.height || 1) * scale));
                         const ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0);
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                         resolve(canvas.toDataURL('image/png'));
                     } catch (e) {
                         resolve(null);
@@ -8079,15 +8085,12 @@
             let recipient = null;
             let subject = null;
 
-            // For non-reply quotes, prompt for email/subject upfront
+            // For non-reply quotes, prompt for the email address; subject is auto-generated
             if (!isReply) {
                 recipient = prompt('Send to (customer email address):', '');
                 if (!recipient || !recipient.trim()) return;
                 recipient = recipient.trim();
-                const quoteNum = quotation.quoteNumber || '';
-                subject = prompt('Subject:', `Quotation ${quoteNum} - DSC Pipes`.trim());
-                if (subject === null) return;
-                subject = subject.trim();
+                subject = `Quotation ${quotation.quoteNumber || ''} - DSC Pipes`.trim();
             }
 
             const bodyHtml = buildQuotationEmailBodyHtml(quotation);
@@ -8105,10 +8108,7 @@
                     recipient = prompt('Could not auto-detect recipient. Enter customer email:', '');
                     if (!recipient || !recipient.trim()) return;
                     recipient = recipient.trim();
-                    const quoteNum = quotation.quoteNumber || '';
-                    subject = prompt('Subject:', `Quotation ${quoteNum} - DSC Pipes`.trim());
-                    if (subject === null) return;
-                    subject = subject.trim();
+                    subject = `Quotation ${quotation.quoteNumber || ''} - DSC Pipes`.trim();
                 }
 
                 // Confirm — now we always know the actual recipient
