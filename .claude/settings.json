@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__Claude_Preview__preview_console_logs",
+      "mcp__df206604-0240-4e06-bd32-ed228280dd34__search_threads",
+      "mcp__df206604-0240-4e06-bd32-ed228280dd34__get_thread",
+      "mcp__ccd_session_mgmt__search_session_transcripts",
+      "mcp__Claude_Preview__preview_screenshot",
+      "mcp__Claude_Preview__preview_list"
+    ]
+  }
+}

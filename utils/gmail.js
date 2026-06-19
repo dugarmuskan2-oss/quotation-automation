@@ -14,53 +14,98 @@ function createGmailClient() {
   return _gmailClient;
 }
 
-/**
- * Build a raw RFC 2822 email message encoded as base64url.
- * Supports an optional PDF attachment (base64-encoded string).
- */
 // Wrap a base64 string into 76-character lines (RFC 2045 §6.8).
 function wrapBase64(str) {
   return String(str || '').replace(/(.{76})/g, '$1\r\n');
 }
 
+// Pull "data:" image URIs out of the HTML and replace them with cid: references.
+// Email clients (Gmail) block data: images in received mail, so embedded images
+// must be sent as inline (CID) attachments to render. Returns rewritten HTML and
+// the list of inline images to attach. Remote http(s) image URLs are left as-is.
+function extractInlineImages(html) {
+  const inlineImages = [];
+  let idx = 0;
+  const rewritten = String(html || '').replace(
+    /src\s*=\s*(['"])data:(image\/[a-zA-Z0-9.+-]+);base64,([^'"]+)\1/gi,
+    (match, quote, contentType, data) => {
+      idx += 1;
+      const cid = `img${idx}@dscpipes`;
+      inlineImages.push({ cid, contentType, base64: data.replace(/\s+/g, '') });
+      return `src="cid:${cid}"`;
+    }
+  );
+  return { html: rewritten, inlineImages };
+}
+
+// A MIME entity is { headers: string[], body: string }.
+function serializeEntity(entity) {
+  return entity.headers.join('\r\n') + '\r\n\r\n' + entity.body;
+}
+
+function htmlEntity(html) {
+  return {
+    headers: ['Content-Type: text/html; charset=UTF-8', 'Content-Transfer-Encoding: base64'],
+    body: wrapBase64(Buffer.from(html || '', 'utf8').toString('base64')),
+  };
+}
+
+function imageEntity(img) {
+  return {
+    headers: [
+      `Content-Type: ${img.contentType}`,
+      'Content-Transfer-Encoding: base64',
+      `Content-ID: <${img.cid}>`,
+      `Content-Disposition: inline; filename="${img.cid}"`,
+    ],
+    body: wrapBase64(img.base64),
+  };
+}
+
+function pdfEntity(pdfBase64, pdfFilename) {
+  const name = pdfFilename || 'quotation.pdf';
+  return {
+    headers: [
+      `Content-Type: application/pdf; name="${name}"`,
+      'Content-Transfer-Encoding: base64',
+      `Content-Disposition: attachment; filename="${name}"`,
+    ],
+    body: wrapBase64(pdfBase64),
+  };
+}
+
+function multipartEntity(subtype, children) {
+  const boundary = `dsc_${subtype}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const body = children.map(c => `--${boundary}\r\n${serializeEntity(c)}`).join('\r\n') + `\r\n--${boundary}--`;
+  return { headers: [`Content-Type: multipart/${subtype}; boundary="${boundary}"`], body };
+}
+
+/**
+ * Build a raw RFC 2822 email message encoded as base64url.
+ * Nests as needed: HTML, optionally multipart/related (HTML + inline images),
+ * optionally multipart/mixed (body + PDF attachment).
+ */
 function buildRawMessage({ to, subject, bodyHtml, pdfBase64, pdfFilename, inReplyTo, references }) {
-  const boundary = 'dsc_boundary_' + Date.now();
-  // Base64-encode the HTML body so any '=', non-ASCII, or long lines survive intact.
-  const htmlBase64 = wrapBase64(Buffer.from(bodyHtml || '', 'utf8').toString('base64'));
-  const lines = [];
+  const { html, inlineImages } = extractInlineImages(bodyHtml || '');
 
-  lines.push(`To: ${to}`);
-  lines.push(`Subject: =?UTF-8?B?${Buffer.from(subject || '', 'utf8').toString('base64')}?=`);
-  lines.push('MIME-Version: 1.0');
-  if (inReplyTo) lines.push(`In-Reply-To: ${inReplyTo}`);
-  if (references) lines.push(`References: ${references}`);
-
+  let content = htmlEntity(html);
+  if (inlineImages.length) {
+    content = multipartEntity('related', [content, ...inlineImages.map(imageEntity)]);
+  }
   if (pdfBase64) {
-    lines.push(`Content-Type: multipart/mixed; boundary="${boundary}"`);
-    lines.push('');
-    lines.push(`--${boundary}`);
-    lines.push('Content-Type: text/html; charset=UTF-8');
-    lines.push('Content-Transfer-Encoding: base64');
-    lines.push('');
-    lines.push(htmlBase64);
-    lines.push('');
-    lines.push(`--${boundary}`);
-    lines.push(`Content-Type: application/pdf; name="${pdfFilename || 'quotation.pdf'}"`);
-    lines.push('Content-Transfer-Encoding: base64');
-    lines.push(`Content-Disposition: attachment; filename="${pdfFilename || 'quotation.pdf'}"`);
-    lines.push('');
-    lines.push(wrapBase64(pdfBase64));
-    lines.push('');
-    lines.push(`--${boundary}--`);
-  } else {
-    lines.push('Content-Type: text/html; charset=UTF-8');
-    lines.push('Content-Transfer-Encoding: base64');
-    lines.push('');
-    lines.push(htmlBase64);
+    content = multipartEntity('mixed', [content, pdfEntity(pdfBase64, pdfFilename)]);
   }
 
-  const raw = Buffer.from(lines.join('\r\n')).toString('base64url');
-  return raw;
+  const headers = [
+    `To: ${to}`,
+    `Subject: =?UTF-8?B?${Buffer.from(subject || '', 'utf8').toString('base64')}?=`,
+    'MIME-Version: 1.0',
+  ];
+  if (inReplyTo) headers.push(`In-Reply-To: ${inReplyTo}`);
+  if (references) headers.push(`References: ${references}`);
+
+  const raw = headers.concat(content.headers).join('\r\n') + '\r\n\r\n' + content.body;
+  return Buffer.from(raw).toString('base64url');
 }
 
 /**
