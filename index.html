@@ -7163,6 +7163,7 @@
 
             if (quotation.saved) {
                 quotation.saved = false;
+                quotation.everApproved = true;   // remember it was approved — don't force re-approval to send
                 updateApprovalBadge(quotationId, quotation);
             }
             quotation.hasUnsavedEdits = true;
@@ -7583,7 +7584,59 @@
                 console.error('saveQuotationChanges async error:', e);
             });
         }
-        
+
+        /*
+            Captures current Approval-section edits into the quotation object
+            (header fields, line items, totals, rendered HTML) WITHOUT changing
+            approval state or showing any UI. Used to flush pending edits to the
+            backend before sending so the server-generated PDF is up to date.
+        */
+        function captureApprovalEditsIntoQuotation(quotation, quotationId) {
+            const folderContent = document.getElementById('folder-content-' + String(quotationId));
+            if (!folderContent) return;
+            const allInputs = folderContent.querySelectorAll('input, textarea');
+            allInputs.forEach(function(input) {
+                const inFreightRow = input.closest('.freight-row');
+                if (input.type === 'number' && !inFreightRow) {
+                    const normalizedValue = normalizeNumberValue(input.value);
+                    input.value = normalizedValue;
+                    input.setAttribute('value', normalizedValue);
+                } else {
+                    input.setAttribute('value', input.value);
+                }
+                if (input.tagName === 'TEXTAREA') input.textContent = input.value;
+            });
+            recalculateApprovalQuotationTotals(quotation.id, false);
+            syncQuotationLineItemsFromApprovalContent(quotation, folderContent);
+            const updatedContent = folderContent.cloneNode(true);
+            const headerElement = updatedContent.querySelector('.quotation-header');
+            if (headerElement) quotation.headerHTML = headerElement.outerHTML;
+            const _aqDiv = updatedContent.querySelector('.approval-quotation');
+            const tableElement = _aqDiv ? _aqDiv.querySelector('table') : updatedContent.querySelector('table');
+            if (tableElement) quotation.tableHTML = tableElement.outerHTML;
+            const headerValues = getQuotationHeaderValuesFromContainer(folderContent);
+            function applyOrKeep(field, domVal) {
+                var v = (domVal || '').toString().trim();
+                if (v) quotation[field] = domVal;
+            }
+            applyOrKeep('quotationDate', headerValues.quotationDate);
+            applyOrKeep('preparedBy', headerValues.preparedBy);
+            applyOrKeep('assignedTo', headerValues.assignedTo);
+            applyOrKeep('checkedBy', headerValues.checkedBy);
+            applyOrKeep('quoteNumber', headerValues.quoteNumber);
+            applyOrKeep('customerName', headerValues.customerName);
+            applyOrKeep('phoneNumber', headerValues.phoneNumber);
+            applyOrKeep('mobileNumber', headerValues.mobileNumber);
+            applyOrKeep('projectName', headerValues.projectName);
+            applyOrKeep('shipTo', headerValues.shipTo);
+            if ((headerValues.contactDetails || '').toString().trim()) quotation.contactDetails = headerValues.contactDetails;
+            else quotation.contactDetails = quotation.mobileNumber || quotation.phoneNumber || '';
+            if ((headerValues.grandTotal || '').toString().trim()) quotation.grandTotal = headerValues.grandTotal;
+            if ((headerValues.termsText || '').toString().trim()) quotation.termsText = headerValues.termsText;
+            quotation.updatedAt = new Date().toISOString();
+            quotation.hasUnsavedEdits = false;
+        }
+
         /*
             ============================================
             SAVE QUOTATION FUNCTION
@@ -7695,6 +7748,7 @@
             
             // Mark quotation as saved (now it's approved)
             quotation.saved = true;
+            quotation.everApproved = true;   // sticky: approved at least once
             quotation.hasUnsavedEdits = false;
             if (typeof window._cancelApprovalAutosave === 'function') {
                 window._cancelApprovalAutosave(quotationId);
@@ -7901,8 +7955,12 @@
         async function sendQuotationToCustomer(quotationId) {
             const quotation = approvedQuotations.find(q => idsMatch(q.id, quotationId));
             if (!quotation) { alert('Quotation not found'); return; }
-            if (!canDownloadQuotation(quotation)) { alert('Please save changes before sending.'); return; }
-            if (!quotation.saved) { alert('Please approve and save the quotation before sending.'); return; }
+
+            // A quote must be approved at least once before it can be sent. Editing a
+            // field (e.g. Checked By) clears `saved`, but `everApproved` stays true so
+            // we never force the user to re-approve a quote they've already approved.
+            const approvedAtLeastOnce = quotation.saved === true || quotation.everApproved === true;
+            if (!approvedAtLeastOnce) { alert('Please approve and save the quotation before sending.'); return; }
 
             const folderContent = document.getElementById('folder-content-' + quotationId);
             const checkedByInput = folderContent && (folderContent.querySelector('#checkedBy') || folderContent.querySelector('[data-field="checkedBy"]'));
@@ -7910,6 +7968,15 @@
             if (!checkedBy.trim()) {
                 alert('Please fill in the "Checked By" field before sending the quotation.');
                 return;
+            }
+
+            // Flush any pending edits so the server-generated PDF reflects the latest values
+            if (quotation.hasUnsavedEdits) {
+                captureApprovalEditsIntoQuotation(quotation, quotationId);
+                if (typeof window._cancelApprovalAutosave === 'function') window._cancelApprovalAutosave(quotationId);
+                saveToLocalStorage();
+                const flushed = await saveQuotationToBackend(quotation);
+                if (!flushed) { alert('Could not save your latest changes before sending. Please try again.'); return; }
             }
 
             const isReply = !!quotation.gmailMessageId;
@@ -7979,7 +8046,12 @@
                     if (data.threadId) quotation.threadId = data.threadId;
                     quotation.sent = true;
                     quotation.sentAt = new Date().toISOString();
+                    // Sending finalises the quote — keep it approved/saved and consistent
+                    quotation.saved = true;
+                    quotation.everApproved = true;
+                    quotation.hasUnsavedEdits = false;
                     saveQuotationToBackend(quotation);
+                    updateApprovalBadge(quotationId, quotation);
                     updateSentBadge(quotationId);
                     alert('✅ Email sent' + (data.sentTo ? ' to ' + data.sentTo : ''));
                 } else {
