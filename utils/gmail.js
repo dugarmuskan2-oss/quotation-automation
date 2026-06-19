@@ -85,7 +85,7 @@ function multipartEntity(subtype, children) {
  * Nests as needed: HTML, optionally multipart/related (HTML + inline images),
  * optionally multipart/mixed (body + PDF attachment).
  */
-function buildRawMessage({ to, subject, bodyHtml, pdfBase64, pdfFilename, inReplyTo, references }) {
+function buildRawMessage({ to, subject, bodyHtml, pdfBase64, pdfFilename, inReplyTo, references, cc, bcc }) {
   const { html, inlineImages } = extractInlineImages(bodyHtml || '');
 
   let content = htmlEntity(html);
@@ -96,11 +96,11 @@ function buildRawMessage({ to, subject, bodyHtml, pdfBase64, pdfFilename, inRepl
     content = multipartEntity('mixed', [content, pdfEntity(pdfBase64, pdfFilename)]);
   }
 
-  const headers = [
-    `To: ${to}`,
-    `Subject: =?UTF-8?B?${Buffer.from(subject || '', 'utf8').toString('base64')}?=`,
-    'MIME-Version: 1.0',
-  ];
+  const headers = [`To: ${to}`];
+  if (cc) headers.push(`Cc: ${cc}`);
+  if (bcc) headers.push(`Bcc: ${bcc}`);
+  headers.push(`Subject: =?UTF-8?B?${Buffer.from(subject || '', 'utf8').toString('base64')}?=`);
+  headers.push('MIME-Version: 1.0');
   if (inReplyTo) headers.push(`In-Reply-To: ${inReplyTo}`);
   if (references) headers.push(`References: ${references}`);
 
@@ -112,9 +112,9 @@ function buildRawMessage({ to, subject, bodyHtml, pdfBase64, pdfFilename, inRepl
  * Send an email via Gmail API.
  * Returns { messageId, threadId } on success.
  */
-async function sendEmail({ to, subject, bodyHtml, pdfBase64, pdfFilename, threadId, inReplyTo, references }) {
+async function sendEmail({ to, subject, bodyHtml, pdfBase64, pdfFilename, threadId, inReplyTo, references, cc, bcc }) {
   const gmail = createGmailClient();
-  const raw = buildRawMessage({ to, subject, bodyHtml, pdfBase64, pdfFilename, inReplyTo, references });
+  const raw = buildRawMessage({ to, subject, bodyHtml, pdfBase64, pdfFilename, inReplyTo, references, cc, bcc });
   const requestBody = { raw };
   if (threadId) requestBody.threadId = threadId;
   const res = await gmail.users.messages.send({ userId: 'me', requestBody });

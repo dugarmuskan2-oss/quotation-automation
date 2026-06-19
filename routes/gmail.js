@@ -28,7 +28,7 @@ function createGmailRouter() {
   // (same jsPDF used for Download/Print) and sends its base64 here. If
   // replyToMessageId is provided, the original sender/subject/thread are auto-filled.
   router.post('/send-email', async (req, res) => {
-    let { to, subject, bodyHtml, pdfBase64, pdfFilename, replyToMessageId, threadId, inReplyTo, references } = req.body;
+    let { to, subject, bodyHtml, pdfBase64, pdfFilename, replyToMessageId, threadId, inReplyTo, references, cc, bcc } = req.body;
 
     if (!bodyHtml) return res.status(400).json({ error: 'bodyHtml is required' });
     if (!to && !replyToMessageId) return res.status(400).json({ error: 'to or replyToMessageId is required' });
@@ -50,7 +50,7 @@ function createGmailRouter() {
     if (!subject) return res.status(400).json({ error: 'subject is required' });
 
     try {
-      const result = await sendEmail({ to, subject, bodyHtml, pdfBase64, pdfFilename, threadId, inReplyTo, references });
+      const result = await sendEmail({ to, subject, bodyHtml, pdfBase64, pdfFilename, threadId, inReplyTo, references, cc, bcc });
       res.json({ success: true, messageId: result.messageId, threadId: result.threadId, sentTo: to });
     } catch (err) {
       console.error('Gmail send error:', err.message);

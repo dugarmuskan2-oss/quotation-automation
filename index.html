@@ -8054,6 +8054,18 @@
             return `<p>${escapeHtml(greeting)}</p><p>${safeMsg}</p><div>${signatureHtml}</div>`;
         }
 
+        // Prompt for To / CC / BCC. Each field accepts multiple comma-separated addresses.
+        // Returns { to, cc, bcc } or null if cancelled or no recipient was given.
+        function promptForEmailRecipients() {
+            const to = prompt('Send to (email address — separate multiple with commas):', '');
+            if (to === null || !to.trim()) return null;
+            const cc = prompt('CC (optional — separate multiple with commas):', '');
+            if (cc === null) return null;
+            const bcc = prompt('BCC (optional — separate multiple with commas):', '');
+            if (bcc === null) return null;
+            return { to: to.trim(), cc: cc.trim(), bcc: bcc.trim() };
+        }
+
         async function sendQuotationToCustomer(quotationId) {
             const quotation = approvedQuotations.find(q => idsMatch(q.id, quotationId));
             if (!quotation) { alert('Quotation not found'); return; }
@@ -8084,12 +8096,16 @@
             const isReply = !!quotation.gmailMessageId;
             let recipient = null;
             let subject = null;
+            let ccList = '';
+            let bccList = '';
 
-            // For non-reply quotes, prompt for the email address; subject is auto-generated
+            // For non-reply quotes, prompt for To / CC / BCC; subject is auto-generated
             if (!isReply) {
-                recipient = prompt('Send to (customer email address):', '');
-                if (!recipient || !recipient.trim()) return;
-                recipient = recipient.trim();
+                const entered = promptForEmailRecipients();
+                if (!entered) return;
+                recipient = entered.to;
+                ccList = entered.cc;
+                bccList = entered.bcc;
                 subject = `Quotation ${quotation.quoteNumber || ''} - DSC Pipes`.trim();
             }
 
@@ -8105,9 +8121,12 @@
 
                 // If thread lookup failed, fall back to manual entry rather than re-trying on server
                 if (isReply && !threadResolved) {
-                    recipient = prompt('Could not auto-detect recipient. Enter customer email:', '');
-                    if (!recipient || !recipient.trim()) return;
-                    recipient = recipient.trim();
+                    alert('Could not auto-detect the recipient from the original email. Please enter the address(es).');
+                    const entered = promptForEmailRecipients();
+                    if (!entered) return;
+                    recipient = entered.to;
+                    ccList = entered.cc;
+                    bccList = entered.bcc;
                     subject = `Quotation ${quotation.quoteNumber || ''} - DSC Pipes`.trim();
                 }
 
@@ -8132,6 +8151,8 @@
                 } else {
                     payload.to = recipient;
                     payload.subject = subject;
+                    if (ccList) payload.cc = ccList;
+                    if (bccList) payload.bcc = bccList;
                     // Do NOT pass replyToMessageId — the lookup already failed, sending it causes a second failure
                 }
 
