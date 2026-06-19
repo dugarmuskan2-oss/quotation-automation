@@ -229,6 +229,39 @@
             background-color: #00796b;
         }
 
+        .email-modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+            display: flex; align-items: center; justify-content: center; z-index: 100000;
+        }
+        .email-modal {
+            background: #fff; border-radius: 10px; padding: 20px 22px;
+            width: 440px; max-width: 92vw; box-shadow: 0 10px 34px rgba(0,0,0,0.25);
+            font-family: inherit; color: #222;
+        }
+        .email-modal-title { margin: 0 0 4px; font-size: 18px; font-weight: 600; }
+        .email-modal-sub { margin: 0 0 14px; font-size: 13px; color: #777; }
+        .email-modal-label { display: block; font-size: 13px; color: #555; margin: 12px 0 4px; }
+        .email-modal-opt { color: #999; }
+        .chips-field {
+            display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+            border: 2px solid #ddd; border-radius: 6px; padding: 6px 8px; min-height: 42px; cursor: text;
+        }
+        .chips-field:focus-within { border-color: #2e7d32; }
+        .chips-field input {
+            border: none; outline: none; flex: 1; min-width: 120px;
+            font-size: 14px; font-family: inherit; padding: 4px; background: transparent;
+        }
+        .email-chip {
+            display: inline-flex; align-items: center; gap: 6px;
+            background: #e6f1fb; color: #0c447c; border-radius: 14px; padding: 4px 10px; font-size: 13px;
+        }
+        .email-chip.chip-bad { background: #fcebeb; color: #a32d2d; }
+        .email-chip .chip-x { cursor: pointer; font-weight: bold; line-height: 1; }
+        .email-modal-hint { font-size: 12px; color: #999; margin: 10px 0 0; }
+        .email-modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+        .email-modal-actions button { padding: 8px 18px; border-radius: 6px; border: 1px solid #ccc; background: #f5f5f5; cursor: pointer; font-size: 14px; font-family: inherit; }
+        .email-modal-actions .email-modal-send { background: #2e7d32; color: #fff; border-color: #2e7d32; }
+
         .approval-layout {
             display: flex;
             gap: 16px;
@@ -8054,16 +8087,82 @@
             return `<p>${escapeHtml(greeting)}</p><p>${safeMsg}</p><div>${signatureHtml}</div>`;
         }
 
-        // Prompt for To / CC / BCC. Each field accepts multiple comma-separated addresses.
-        // Returns { to, cc, bcc } or null if cancelled or no recipient was given.
-        function promptForEmailRecipients() {
-            const to = prompt('Send to (email address — separate multiple with commas):', '');
-            if (to === null || !to.trim()) return null;
-            const cc = prompt('CC (optional — separate multiple with commas):', '');
-            if (cc === null) return null;
-            const bcc = prompt('BCC (optional — separate multiple with commas):', '');
-            if (bcc === null) return null;
-            return { to: to.trim(), cc: cc.trim(), bcc: bcc.trim() };
+        function isValidEmailAddress(addr) {
+            return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(addr);
+        }
+
+        // Show a single dialog with To / CC / BCC fields. Each turns typed addresses
+        // into pill chips (comma, space or Enter commits one; invalid ones show red).
+        // Returns a Promise of { to, cc, bcc } (comma-joined) or null if cancelled.
+        function promptForEmailRecipients(note) {
+            return new Promise(function(resolve) {
+                const overlay = document.createElement('div');
+                overlay.className = 'email-modal-overlay';
+                overlay.innerHTML = `
+                    <div class="email-modal">
+                        <h3 class="email-modal-title">Send quotation</h3>
+                        <p class="email-modal-sub">${note ? escapeHtml(note) : 'Add recipients — type an address, then comma, space or Enter.'}</p>
+                        <label class="email-modal-label">To</label>
+                        <div class="chips-field" data-field="to"><input type="text" placeholder="name@email.com"></div>
+                        <label class="email-modal-label">CC <span class="email-modal-opt">(optional)</span></label>
+                        <div class="chips-field" data-field="cc"><input type="text" placeholder="Add CC"></div>
+                        <label class="email-modal-label">BCC <span class="email-modal-opt">(optional)</span></label>
+                        <div class="chips-field" data-field="bcc"><input type="text" placeholder="Add BCC"></div>
+                        <p class="email-modal-hint">Tip: paste a list — addresses split automatically.</p>
+                        <div class="email-modal-actions">
+                            <button type="button" class="email-modal-cancel">Cancel</button>
+                            <button type="button" class="email-modal-send">Send</button>
+                        </div>
+                    </div>`;
+                document.body.appendChild(overlay);
+
+                const data = { to: [], cc: [], bcc: [] };
+                overlay.querySelectorAll('.chips-field').forEach(function(field) {
+                    const key = field.getAttribute('data-field');
+                    const input = field.querySelector('input');
+                    function render() {
+                        field.querySelectorAll('.email-chip').forEach(function(c) { c.remove(); });
+                        data[key].forEach(function(addr, idx) {
+                            const chip = document.createElement('span');
+                            chip.className = 'email-chip' + (isValidEmailAddress(addr) ? '' : ' chip-bad');
+                            chip.innerHTML = escapeHtml(addr) + ' <span class="chip-x">&times;</span>';
+                            chip.querySelector('.chip-x').onclick = function() { data[key].splice(idx, 1); render(); };
+                            field.insertBefore(chip, input);
+                        });
+                    }
+                    function add(raw) {
+                        (raw || '').split(/[,;\s]+/).forEach(function(tok) {
+                            const v = tok.trim();
+                            if (v && data[key].indexOf(v) === -1) data[key].push(v);
+                        });
+                        render();
+                    }
+                    field._flush = function() { if (input.value.trim()) { add(input.value); input.value = ''; } };
+                    field.onclick = function() { input.focus(); };
+                    input.addEventListener('keydown', function(e) {
+                        if (e.key === ',' || e.key === ';' || e.key === ' ' || e.key === 'Enter') {
+                            e.preventDefault(); add(input.value); input.value = '';
+                        } else if (e.key === 'Backspace' && input.value === '' && data[key].length) {
+                            data[key].pop(); render();
+                        }
+                    });
+                    input.addEventListener('blur', function() { field._flush(); });
+                    input.addEventListener('paste', function(e) {
+                        const text = (e.clipboardData || window.clipboardData).getData('text');
+                        if (/[,;\s]/.test(text)) { e.preventDefault(); add(text); input.value = ''; }
+                    });
+                });
+
+                function close(result) { overlay.remove(); resolve(result); }
+                overlay.querySelector('.email-modal-cancel').onclick = function() { close(null); };
+                overlay.addEventListener('click', function(e) { if (e.target === overlay) close(null); });
+                overlay.querySelector('.email-modal-send').onclick = function() {
+                    overlay.querySelectorAll('.chips-field').forEach(function(f) { f._flush(); });
+                    if (data.to.length === 0) { alert('Please add at least one recipient in the To field.'); return; }
+                    close({ to: data.to.join(', '), cc: data.cc.join(', '), bcc: data.bcc.join(', ') });
+                };
+                setTimeout(function() { overlay.querySelector('.chips-field[data-field="to"] input').focus(); }, 0);
+            });
         }
 
         async function sendQuotationToCustomer(quotationId) {
@@ -8101,7 +8200,7 @@
 
             // For non-reply quotes, prompt for To / CC / BCC; subject is auto-generated
             if (!isReply) {
-                const entered = promptForEmailRecipients();
+                const entered = await promptForEmailRecipients();
                 if (!entered) return;
                 recipient = entered.to;
                 ccList = entered.cc;
@@ -8121,8 +8220,7 @@
 
                 // If thread lookup failed, fall back to manual entry rather than re-trying on server
                 if (isReply && !threadResolved) {
-                    alert('Could not auto-detect the recipient from the original email. Please enter the address(es).');
-                    const entered = promptForEmailRecipients();
+                    const entered = await promptForEmailRecipients('Could not auto-detect the recipient from the original email — please enter it.');
                     if (!entered) return;
                     recipient = entered.to;
                     ccList = entered.cc;
