@@ -7916,6 +7916,7 @@
             let recipient = null;
             let subject = null;
 
+            // For non-reply quotes, prompt for email/subject upfront
             if (!isReply) {
                 recipient = prompt('Send to (customer email address):', '');
                 if (!recipient || !recipient.trim()) return;
@@ -7926,32 +7927,46 @@
                 subject = subject.trim();
             }
 
-            const confirmName = [quotation.customerName, quotation.companyName].filter(Boolean).join(' – ') || 'this customer';
-            const confirmMsg = isReply
-                ? `Send quotation PDF to ${confirmName} as a reply to their original email?`
-                : `Send quotation PDF to ${recipient}?`;
-            if (!confirm(confirmMsg)) return;
-
             const customerGreeting = quotation.customerName ? `Dear ${quotation.customerName},` : 'Dear Sir/Madam,';
             const messageBody = (defaultEmailMessage || 'Please find attached our quotation as requested.').trim().replace(/\n/g, '<br>');
             const bodyHtml = `<p>${customerGreeting}</p><p>${messageBody}</p><p>Regards,<br>DSC Pipes</p>`;
 
             try {
-                // Thread lookup only — PDF is generated server-side, so no base64 crosses Vercel
+                // Attempt thread lookup for reply quotes (PDF generated server-side — no base64 crosses Vercel)
                 const threadInfo = isReply
                     ? await fetch(`/api/resolve-thread?messageId=${encodeURIComponent(quotation.gmailMessageId)}`).then(r => r.json()).catch(() => null)
                     : null;
 
+                const threadResolved = isReply && threadInfo && !threadInfo.error && threadInfo.fromEmail;
+
+                // If thread lookup failed, fall back to manual entry rather than re-trying on server
+                if (isReply && !threadResolved) {
+                    recipient = prompt('Could not auto-detect recipient. Enter customer email:', '');
+                    if (!recipient || !recipient.trim()) return;
+                    recipient = recipient.trim();
+                    const quoteNum = quotation.quoteNumber || '';
+                    subject = prompt('Subject:', `Quotation ${quoteNum} - DSC Pipes`.trim());
+                    if (subject === null) return;
+                    subject = subject.trim();
+                }
+
+                // Confirm — now we always know the actual recipient
+                const confirmName = [quotation.customerName, quotation.companyName].filter(Boolean).join(' – ') || 'this customer';
+                const confirmMsg = threadResolved
+                    ? `Send quotation PDF to ${confirmName} as a reply to their original email?`
+                    : `Send quotation PDF to ${recipient}?`;
+                if (!confirm(confirmMsg)) return;
+
                 const payload = { quotationId: String(quotation.id), bodyHtml };
-                if (isReply && threadInfo && !threadInfo.error) {
+                if (threadResolved) {
                     if (threadInfo.fromEmail) payload.to = threadInfo.fromEmail;
                     if (threadInfo.subject) payload.subject = `Re: ${threadInfo.subject}`;
                     if (threadInfo.threadId) payload.threadId = threadInfo.threadId;
                     if (threadInfo.rfcMessageId) { payload.inReplyTo = threadInfo.rfcMessageId; payload.references = threadInfo.rfcMessageId; }
                 } else {
-                    if (recipient) payload.to = recipient;
-                    if (subject) payload.subject = subject;
-                    if (quotation.gmailMessageId) payload.replyToMessageId = quotation.gmailMessageId;
+                    payload.to = recipient;
+                    payload.subject = subject;
+                    // Do NOT pass replyToMessageId — the lookup already failed, sending it causes a second failure
                 }
 
                 const res = await fetch('/api/send-quotation', {
