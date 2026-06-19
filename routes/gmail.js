@@ -62,3 +62,4 @@ function createGmailRouter() {
 }
 
 module.exports = createGmailRouter;
+module.exports.replySubject = replySubject;

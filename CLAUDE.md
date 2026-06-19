@@ -56,6 +56,8 @@ jest tests/rate-file-interleaving.test.js  # OpenAI input array structure
 jest tests/description-format.test.js    # formatItemDescriptionByPipeType in index.html
 jest tests/enquiry-weight.test.js        # weight calculation helpers
 jest tests/print-button.test.js          # print button logic
+jest tests/gmail-send.test.js            # POST /api/send-email route + send-button frontend logic
+jest tests/email-compose.test.js         # MIME builder (CID inline images), email body/placeholders, reply subject
 jest --silent                            # quieter output (add to any command)
 ```
 
@@ -65,6 +67,7 @@ Run the full suite (`npm test`) only when explicitly asked.
 - `tests/unit.test.js` accesses server internals via `require('../server')._test` — functions that need testing but aren't exported normally are added to that `_test` object at the bottom of `server.js`.
 - `tests/description-format.test.js` extracts `formatItemDescriptionByPipeType` (and its helpers) from `index.html` via `fs.readFile` + `eval` because that function lives in the browser-only SPA. If marker comments in `index.html` change, update the extractor in that test file.
 - `tests/api.test.js` mocks all external services (DynamoDB, S3, GCS, OpenAI) before loading the app — never needs real credentials.
+- `tests/email-compose.test.js` tests the real MIME builder via the `_test` export on `utils/gmail.js` (`buildRawMessage`, `extractInlineImages`) and `replySubject` exported from `routes/gmail.js`; the email body/placeholder helpers are inline copies of `index.html` logic (kept in sync with `buildQuotationEmailBodyHtml` / `fillEmailPlaceholders`).
 
 Open `index.html` directly in a browser — it communicates with the running server via fetch.
 
@@ -107,7 +110,9 @@ If neither S3 nor GCS is configured, files are stored locally.
 - `GET /api/quotations` — List quotations via DynamoDB GSI (`entity-updatedAt-index`), cursor-paginated
 - `POST /api/ingest-from-gmail` — Receive emails from Google Apps Script
 - `POST /api/ai-chat` — Chat with AI about a quotation
-- `POST /api/send-email` — Send email via Gmail API; accepts `{ to, subject, bodyHtml, pdfBase64?, pdfFilename?, replyToMessageId? }`. If `replyToMessageId` is provided, server looks up the original Gmail message to auto-fill `to` (original sender) and `subject` (`Re: {original subject}`), and sends as a reply in that thread. Requires `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` in env. Route in `routes/gmail.js`, helpers in `utils/gmail.js`. One-time OAuth setup: `node tools/gmail-auth.js` (scopes: `gmail.send` + `gmail.metadata`).
+- `POST /api/send-email` — Send email via Gmail API; accepts `{ to, subject, bodyHtml, pdfBase64?, pdfFilename?, replyToMessageId?, threadId?, inReplyTo?, references? }`. This is the single send route for both quotation PDFs and enquiry tables — the **client** generates the PDF (the same jsPDF used for Download/Print) and posts its base64; there is no server-side PDF rendering. If `replyToMessageId` is provided, the server looks up the original Gmail message to auto-fill `to` (original sender) and `subject` (`Re: {original subject}`, de-duplicated via `replySubject`) and sends as a reply in that thread. Requires `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` in env. Route in `routes/gmail.js`, helpers in `utils/gmail.js`. One-time OAuth setup: `node tools/gmail-auth.js` (scopes: `gmail.send` + `gmail.metadata`).
+- `GET /api/resolve-thread?messageId=…` — returns `{ threadId, rfcMessageId, fromEmail, subject }` for an original Gmail message; the client calls this to resolve reply recipient/threading before sending.
+- `POST/GET /api/save-default-email-message` · `/api/get-default-email-message` and `/api/save-default-signature` · `/api/get-default-signature` — persist the configurable email body and signature (see Email composition below). Routes in `routes/config.js`.
 
 Quotation generation uses `openai.responses.create` (the Responses API), not `chat.completions.create`.
 
@@ -151,7 +156,7 @@ Two sections, always both visible on the page:
 
 **Approval section** — searchable, paginated list of all saved/ingested quotes. Each quote is a collapsible card:
 - **Collapsed:** folder icon + `"COMPANY - CONTACT - DSC-####"` title + status badges + "View in Gmail" link + ▶ expand arrow
-- **Expanded:** orange border, header fields grid (date, kind attn, phone, bill to, ship to, prepared by, assigned to, checked by), items table, terms, right-side panel (email content + View in Gmail), AI chat ("Talk to AI"), action buttons: ✅ Approve, 💾 Save, 🖨️ Print, ⬇️ Download PDF, ✉️ Send to Customer
+- **Expanded:** orange border, header fields grid (date, kind attn, phone, bill to, ship to, prepared by, assigned to, checked by), items table, terms, right-side panel (email content + View in Gmail), AI chat ("Talk to AI"), action buttons: ✅ Approve, 💾 Save, 🖨️ Print, ⬇️ Download PDF, ✉️ Send to Customer. **Send gates** (in order): approved at least once (`everApproved`/`saved`) → "Checked By" filled. See "Sending a quotation by email" below.
 
 **Status badges on cards:**
 - `ASSIGNED TO - [NAME]` (blue) — set via the Assigned To field
@@ -179,7 +184,7 @@ Key fields on every quotation object (stored in DynamoDB and held in the fronten
 | `companyName` | Customer company |
 | `customerName` | Contact person (Kind Attn) |
 | `projectName` | Project name if given |
-| `lineItems` | Array of line items — each has `id`, `description`, `baseRate`, `marginPercent`, `finalRate`, `quantity`, `total`, `kgPerMeter` |
+| `lineItems` | Array of line items. As persisted from the approval table (`extractStructuredLineItemsFromTable` / `syncQuotationLineItemsFromApprovalContent`) each has `lineItemId`, `originalDescription`, `identifiedPipeType`, `quantity`, `unitRate`, `marginPercent`, `finalRate`, `lineTotal`, `kgPerMeter`. ⚠️ Note the field names: it's `originalDescription`/`unitRate`/`lineTotal`, **not** `description`/`baseRate`/`total`. |
 | `grandTotal` | Sum of all line item totals |
 | `termsText` | Terms and conditions text |
 | `emailContent` | Original enquiry email text |
@@ -187,7 +192,9 @@ Key fields on every quotation object (stored in DynamoDB and held in the fronten
 | `emailLink` | Gmail URL for the original email |
 | `gmailMessageId` | Used for deduplication on ingest |
 | `tableHTML` / `headerHTML` | Pre-rendered HTML blobs for PDF generation |
-| `saved` | `false` = AI-drafted, not yet in DynamoDB. `true` = saved/approved. |
+| `saved` | `false` = AI-drafted or has unsaved edits. `true` = currently saved/approved. Editing any field flips this back to `false`. |
+| `everApproved` | `true` once the quote has been approved at least once; never cleared by editing. The send gate checks this (not `saved`) so editing the required "Checked By" field doesn't force re-approval. |
+| `hasUnsavedEdits` | `true` when the approval form has edits not yet persisted. The send flow flushes these (`captureApprovalEditsIntoQuotation` → backend) before generating the PDF. |
 | `sent` | `true` once the quotation PDF has been emailed to the customer via "Send to Customer" |
 | `sentAt` | ISO timestamp of when the quote was sent |
 | `threadId` | Gmail thread ID returned after sending; stored for future Phase 3 reply capture |
@@ -223,3 +230,18 @@ The DynamoDB table holds an atomic counter item. `POST /api/save-quotation` incr
 
 ### Gmail ingest flow
 For each labelled email: (1) deduplicate by `gmailMessageId`, (2) extract text from PDF/Excel/Word attachments, (3) upload PDFs to OpenAI, (4) capture first image, (5) call `handleGenerateQuotation` with combined content, (6) save with `saved: false`. The saved quote links back to the Gmail thread via `emailLink` and `gmailMessageId`.
+
+### Sending a quotation by email — `sendQuotationToCustomer` (index.html)
+
+1. **Gates:** the quote must have been approved at least once (`everApproved || saved`) and "Checked By" must be filled. Approval is *sticky* — editing a field clears `saved` but not `everApproved`, so filling the required Checked By field doesn't force re-approval.
+2. **Flush:** if there are unsaved edits, `captureApprovalEditsIntoQuotation` writes the current form state to the quotation object and persists it, so the PDF reflects the latest values.
+3. **Recipient/subject:** for a quote ingested from Gmail (`gmailMessageId` present), the client calls `/api/resolve-thread` to auto-fill the recipient and reply in-thread. If that lookup fails it falls back to prompting for the email. The subject is auto-generated (`Quotation DSC-#### - DSC Pipes`) — no subject prompt. (The Enquiry "Send from App" flow still prompts for both recipient and subject.)
+4. **PDF:** the client generates the **same jsPDF** used for Download/Print (`downloadQuotationPdf(id, { returnBase64: true })`) and posts the base64 to `/api/send-email`. There is no server-side PDF renderer — a previous pdfkit attempt was removed because it couldn't match the jsPDF layout.
+5. **PDF size:** `loadLogoDataUrl` downscales the logo to 240px before embedding. The source `logo.png` is ~1024px; embedding it full-res bloats the PDF past Vercel's 4.5 MB request limit (`FUNCTION_PAYLOAD_TOO_LARGE`). Keep PDF payloads small — large embedded images are the usual culprit.
+6. **On success:** sets `sent`/`sentAt`/`threadId`, re-asserts `saved`/`everApproved`, persists, and shows the ✓ SENT badge.
+
+### Email composition + MIME (`buildQuotationEmailBodyHtml`, `utils/gmail.js`)
+
+- **Body** = auto greeting (`Dear {customerName},` or `Dear Sir/Madam,`) + the configured **Default Email Message** + the configured **Default Email Signature**. A leading `Dear …,` typed into the default message is stripped to avoid a duplicate greeting. Placeholders `[Name]`, `[Company]`, `[Quote Number]` are filled (`fillEmailPlaceholders`).
+- **Default Email Message** is plain text (config storage key `default-email-message.txt`). **Default Email Signature** is rich HTML from a `contenteditable` box (key `default-signature.txt`) so a pasted Gmail signature keeps its formatting and logo; it's injected unescaped (trusted user content).
+- **MIME** (`buildRawMessage`): the HTML body is base64-encoded (so `=`/UTF-8/long lines survive). Embedded `data:` images (e.g. a signature logo) are rewritten to `cid:` and attached as inline parts (`extractInlineImages`), because Gmail blocks `data:` images in received mail. Structure nests as needed: `multipart/related` (HTML + inline images) inside `multipart/mixed` (body + PDF). Remote `http(s)` image URLs are left as-is.

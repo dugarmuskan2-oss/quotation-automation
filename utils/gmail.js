@@ -141,3 +141,5 @@ async function lookupMessageThread(messageId) {
 }
 
 module.exports = { sendEmail, lookupMessageThread };
+// Pure helpers exposed for unit testing (MIME structure, inline-image CID rewrite).
+module.exports._test = { buildRawMessage, extractInlineImages, wrapBase64 };
