@@ -125,7 +125,7 @@ const createGmailRouter      = require('./routes/gmail');
 app.use('/api', createRatesRouter({ openai, upload, storage, ratesDir }));
 app.use('/api', createConfigRouter({ storage }));
 app.use('/api', createQuotationsRouter({ ddbDocClient, ddbTableName }));
-app.use('/api', createGmailRouter({ ddbDocClient, ddbTableName }));
+app.use('/api', createGmailRouter());
 
 // API Routes
 

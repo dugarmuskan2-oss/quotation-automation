@@ -8066,7 +8066,7 @@
                 return;
             }
 
-            // Flush any pending edits so the server-generated PDF reflects the latest values
+            // Flush any pending edits so the generated PDF reflects the latest values
             if (quotation.hasUnsavedEdits) {
                 captureApprovalEditsIntoQuotation(quotation, quotationId);
                 if (typeof window._cancelApprovalAutosave === 'function') window._cancelApprovalAutosave(quotationId);
@@ -8093,7 +8093,7 @@
             const bodyHtml = buildQuotationEmailBodyHtml(quotation);
 
             try {
-                // Attempt thread lookup for reply quotes (PDF generated server-side — no base64 crosses Vercel)
+                // Attempt thread lookup for reply quotes
                 const threadInfo = isReply
                     ? await fetch(`/api/resolve-thread?messageId=${encodeURIComponent(quotation.gmailMessageId)}`).then(r => r.json()).catch(() => null)
                     : null;
@@ -8118,7 +8118,12 @@
                     : `Send quotation PDF to ${recipient}?`;
                 if (!confirm(confirmMsg)) return;
 
-                const payload = { quotationId: String(quotation.id), bodyHtml };
+                // Generate the exact same PDF the app uses for Download/Print, and send its bytes
+                // (the PDF is well under Vercel's request limit, so no server-side rendering is needed).
+                const pdfResult = await downloadQuotationPdf(quotationId, { returnBase64: true });
+                if (!pdfResult || !pdfResult.base64) { alert('Could not generate the quotation PDF.'); return; }
+
+                const payload = { bodyHtml, pdfBase64: pdfResult.base64, pdfFilename: pdfResult.filename };
                 if (threadResolved) {
                     if (threadInfo.fromEmail) payload.to = threadInfo.fromEmail;
                     if (threadInfo.subject) payload.subject = /^re:/i.test(threadInfo.subject.trim()) ? threadInfo.subject : `Re: ${threadInfo.subject}`;
@@ -8130,12 +8135,12 @@
                     // Do NOT pass replyToMessageId — the lookup already failed, sending it causes a second failure
                 }
 
-                const res = await fetch('/api/send-quotation', {
+                const res = await fetch('/api/send-email', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
-                const data = await res.json();
+                const data = await safeJsonParse(res);
                 if (data.success) {
                     if (data.threadId) quotation.threadId = data.threadId;
                     quotation.sent = true;
