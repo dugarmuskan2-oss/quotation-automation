@@ -26,14 +26,14 @@ const SUMMARY_NESTED_PATHS = [
     'id', 'quoteNumber', 'companyName', 'projectName',
     'customerName', 'quotationDate', '#sv',
     'assignedTo', 'checkedBy', 'emailLink',
-    'gmailMessageId', 'billTo', 'shipTo', 'grandTotal',
+    'gmailMessageId', 'billTo', 'shipTo', 'grandTotal', '#snt',
 ];
 const SUMMARY_PROJECTION = [
     'id', 'updatedAt', 'createdAt',
-    ...SUMMARY_NESTED_PATHS.map(seg => (seg === '#sv' ? '#p.#sv' : '#p.' + seg)),
-    ...SUMMARY_NESTED_PATHS.map(seg => (seg === '#sv' ? '#d.#sv' : '#d.' + seg)),
+    ...SUMMARY_NESTED_PATHS.map(seg => '#p.' + seg),
+    ...SUMMARY_NESTED_PATHS.map(seg => '#d.' + seg),
 ].join(', ');
-const SUMMARY_EXPR_NAMES = { '#p': 'payload', '#d': 'data', '#sv': 'saved' };
+const SUMMARY_EXPR_NAMES = { '#p': 'payload', '#d': 'data', '#sv': 'saved', '#snt': 'sent' };
 
 const QUOTATIONS_LIST_LIMIT = 600;   // hard cap — never return more than this per page
 
