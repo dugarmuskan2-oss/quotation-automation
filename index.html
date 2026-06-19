@@ -941,7 +941,7 @@
                 <!-- Default Email Message -->
                 <div style="margin-top: 20px;">
                     <label for="defaultEmailMessageConfig">Default Email Message (sent with every quotation PDF):</label>
-                    <p style="font-size:12px; color:#888; margin: 4px 0 6px;">Type the body of the email. A greeting ("Dear [Name],") and sign-off ("Regards, DSC Pipes") are added automatically.</p>
+                    <p style="font-size:12px; color:#888; margin: 4px 0 6px;">Type the body of the email only — a greeting ("Dear …,") and sign-off ("Regards, DSC Pipes") are added automatically. You can use [Name], [Company] or [Quote Number] as placeholders.</p>
                     <textarea id="defaultEmailMessageConfig" placeholder="e.g. Please find attached our quotation as requested. Do not hesitate to contact us for any queries." style="width: 100%; min-height: 100px; padding: 8px; margin-top: 4px; border: 2px solid #ddd; border-radius: 4px; font-family: inherit;"></textarea>
                     <button type="button" class="upload-btn" onclick="saveDefaultEmailMessage()" style="margin-top: 10px; width: 100%;">
                         💾 Save Default Message
@@ -7952,6 +7952,36 @@
             await downloadQuotationPdf(quotationId, { print: true });
         }
 
+        /*
+            Fills [Name], [Company], [Quote Number] placeholders in an email message.
+            An empty customer name becomes "Sir/Madam".
+        */
+        function fillEmailPlaceholders(text, quotation) {
+            const name = (quotation.customerName || '').trim() || 'Sir/Madam';
+            const company = (quotation.companyName || '').trim();
+            const quoteNo = (quotation.quoteNumber || '').trim();
+            return String(text || '')
+                .replace(/\[\s*name\s*\]/gi, name)
+                .replace(/\[\s*company\s*\]/gi, company)
+                .replace(/\[\s*quote\s*(?:number|no\.?)?\s*\]/gi, quoteNo);
+        }
+
+        /*
+            Builds the quotation email body. The configured default message is the
+            body only — the greeting and "Regards, DSC Pipes" sign-off are added here.
+            A leading "Dear ...," the user may have typed is stripped to avoid a
+            duplicate greeting, and placeholders are filled.
+        */
+        function buildQuotationEmailBodyHtml(quotation) {
+            const name = (quotation.customerName || '').trim();
+            const greeting = name ? `Dear ${name},` : 'Dear Sir/Madam,';
+            let msg = (defaultEmailMessage || 'Please find attached our quotation as requested.').trim();
+            msg = msg.replace(/^\s*dear\b[^,\n]*,\s*/i, '');   // drop a duplicate leading greeting
+            msg = fillEmailPlaceholders(msg, quotation);
+            const safeMsg = escapeHtml(msg).replace(/\n/g, '<br>');
+            return `<p>${escapeHtml(greeting)}</p><p>${safeMsg}</p><p>Regards,<br>DSC Pipes</p>`;
+        }
+
         async function sendQuotationToCustomer(quotationId) {
             const quotation = approvedQuotations.find(q => idsMatch(q.id, quotationId));
             if (!quotation) { alert('Quotation not found'); return; }
@@ -7994,9 +8024,7 @@
                 subject = subject.trim();
             }
 
-            const customerGreeting = quotation.customerName ? `Dear ${quotation.customerName},` : 'Dear Sir/Madam,';
-            const messageBody = (defaultEmailMessage || 'Please find attached our quotation as requested.').trim().replace(/\n/g, '<br>');
-            const bodyHtml = `<p>${customerGreeting}</p><p>${messageBody}</p><p>Regards,<br>DSC Pipes</p>`;
+            const bodyHtml = buildQuotationEmailBodyHtml(quotation);
 
             try {
                 // Attempt thread lookup for reply quotes (PDF generated server-side — no base64 crosses Vercel)
@@ -8027,7 +8055,7 @@
                 const payload = { quotationId: String(quotation.id), bodyHtml };
                 if (threadResolved) {
                     if (threadInfo.fromEmail) payload.to = threadInfo.fromEmail;
-                    if (threadInfo.subject) payload.subject = `Re: ${threadInfo.subject}`;
+                    if (threadInfo.subject) payload.subject = /^re:/i.test(threadInfo.subject.trim()) ? threadInfo.subject : `Re: ${threadInfo.subject}`;
                     if (threadInfo.threadId) payload.threadId = threadInfo.threadId;
                     if (threadInfo.rfcMessageId) { payload.inReplyTo = threadInfo.rfcMessageId; payload.references = threadInfo.rfcMessageId; }
                 } else {

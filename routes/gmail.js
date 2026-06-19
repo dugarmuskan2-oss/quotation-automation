@@ -5,6 +5,12 @@ const { sendEmail, lookupMessageThread } = require('../utils/gmail');
 const { generateQuotationPdf } = require('../utils/pdf-generator');
 const { quotationFromItem } = require('./quotations');
 
+// Prefix a subject with "Re:" unless it already has one (avoids "Re: Re: ...").
+function replySubject(original) {
+  const s = String(original || '').trim();
+  return /^re:/i.test(s) ? s : `Re: ${s}`;
+}
+
 function createGmailRouter({ ddbDocClient, ddbTableName } = {}) {
   const router = express.Router();
 
@@ -36,6 +42,7 @@ function createGmailRouter({ ddbDocClient, ddbTableName } = {}) {
       const result = await ddbDocClient.send(new GetCommand({
         TableName: ddbTableName,
         Key: { id: String(quotationId) },
+        ConsistentRead: true,   // ensure we read edits the client just flushed before sending
       }));
       if (!result.Item) return res.status(404).json({ error: 'Quotation not found' });
       quotation = quotationFromItem(result.Item);
@@ -58,7 +65,7 @@ function createGmailRouter({ ddbDocClient, ddbTableName } = {}) {
         if (!threadId && info.threadId) threadId = info.threadId;
         if (!inReplyTo && info.rfcMessageId) { inReplyTo = info.rfcMessageId; references = info.rfcMessageId; }
         if (!to && info.fromEmail) to = info.fromEmail;
-        if (!subject && info.subject) subject = `Re: ${info.subject}`;
+        if (!subject && info.subject) subject = replySubject(info.subject);
       } catch (err) {
         console.error('Thread lookup failed:', err.message);
         return res.status(500).json({ error: 'Could not read original email thread: ' + err.message });
@@ -102,7 +109,7 @@ function createGmailRouter({ ddbDocClient, ddbTableName } = {}) {
         if (!threadId) threadId = info.threadId;
         if (!inReplyTo && info.rfcMessageId) { inReplyTo = info.rfcMessageId; references = info.rfcMessageId; }
         if (!to && info.fromEmail) to = info.fromEmail;
-        if (!subject && info.subject) subject = `Re: ${info.subject}`;
+        if (!subject && info.subject) subject = replySubject(info.subject);
       } catch (err) {
         console.error('Thread lookup failed:', err.message);
         return res.status(500).json({ error: 'Could not read original email thread: ' + err.message });

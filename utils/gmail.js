@@ -18,12 +18,19 @@ function createGmailClient() {
  * Build a raw RFC 2822 email message encoded as base64url.
  * Supports an optional PDF attachment (base64-encoded string).
  */
+// Wrap a base64 string into 76-character lines (RFC 2045 §6.8).
+function wrapBase64(str) {
+  return String(str || '').replace(/(.{76})/g, '$1\r\n');
+}
+
 function buildRawMessage({ to, subject, bodyHtml, pdfBase64, pdfFilename, inReplyTo, references }) {
   const boundary = 'dsc_boundary_' + Date.now();
+  // Base64-encode the HTML body so any '=', non-ASCII, or long lines survive intact.
+  const htmlBase64 = wrapBase64(Buffer.from(bodyHtml || '', 'utf8').toString('base64'));
   const lines = [];
 
   lines.push(`To: ${to}`);
-  lines.push(`Subject: =?UTF-8?B?${Buffer.from(subject).toString('base64')}?=`);
+  lines.push(`Subject: =?UTF-8?B?${Buffer.from(subject || '', 'utf8').toString('base64')}?=`);
   lines.push('MIME-Version: 1.0');
   if (inReplyTo) lines.push(`In-Reply-To: ${inReplyTo}`);
   if (references) lines.push(`References: ${references}`);
@@ -33,22 +40,23 @@ function buildRawMessage({ to, subject, bodyHtml, pdfBase64, pdfFilename, inRepl
     lines.push('');
     lines.push(`--${boundary}`);
     lines.push('Content-Type: text/html; charset=UTF-8');
-    lines.push('Content-Transfer-Encoding: quoted-printable');
+    lines.push('Content-Transfer-Encoding: base64');
     lines.push('');
-    lines.push(bodyHtml);
+    lines.push(htmlBase64);
     lines.push('');
     lines.push(`--${boundary}`);
     lines.push(`Content-Type: application/pdf; name="${pdfFilename || 'quotation.pdf'}"`);
     lines.push('Content-Transfer-Encoding: base64');
     lines.push(`Content-Disposition: attachment; filename="${pdfFilename || 'quotation.pdf'}"`);
     lines.push('');
-    lines.push(pdfBase64);
+    lines.push(wrapBase64(pdfBase64));
     lines.push('');
     lines.push(`--${boundary}--`);
   } else {
     lines.push('Content-Type: text/html; charset=UTF-8');
+    lines.push('Content-Transfer-Encoding: base64');
     lines.push('');
-    lines.push(bodyHtml);
+    lines.push(htmlBase64);
   }
 
   const raw = Buffer.from(lines.join('\r\n')).toString('base64url');
