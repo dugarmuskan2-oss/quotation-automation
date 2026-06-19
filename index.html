@@ -7227,9 +7227,11 @@
                 }
             }
             
-            // Update specific fields based on input
-            const inputId = changedInput.id;
-            
+            // Update specific fields based on input. Approval cards identify header
+            // inputs by data-field (no id), so fall back to data-field — otherwise live
+            // edits (e.g. Kind Attn) never reach the quotation object's fields.
+            const inputId = changedInput.id || changedInput.getAttribute('data-field') || '';
+
                 if (inputId === 'quotationDate') {
                 quotation.quotationDate = changedInput.value;
             } else if (inputId === 'preparedBy') {
@@ -7682,57 +7684,6 @@
             });
         }
 
-        /*
-            Captures current Approval-section edits into the quotation object
-            (header fields, line items, totals, rendered HTML) WITHOUT changing
-            approval state or showing any UI. Used to flush pending edits to the
-            backend before sending so the server-generated PDF is up to date.
-        */
-        function captureApprovalEditsIntoQuotation(quotation, quotationId) {
-            const folderContent = document.getElementById('folder-content-' + String(quotationId));
-            if (!folderContent) return;
-            const allInputs = folderContent.querySelectorAll('input, textarea');
-            allInputs.forEach(function(input) {
-                const inFreightRow = input.closest('.freight-row');
-                if (input.type === 'number' && !inFreightRow) {
-                    const normalizedValue = normalizeNumberValue(input.value);
-                    input.value = normalizedValue;
-                    input.setAttribute('value', normalizedValue);
-                } else {
-                    input.setAttribute('value', input.value);
-                }
-                if (input.tagName === 'TEXTAREA') input.textContent = input.value;
-            });
-            recalculateApprovalQuotationTotals(quotation.id, false);
-            syncQuotationLineItemsFromApprovalContent(quotation, folderContent);
-            const updatedContent = folderContent.cloneNode(true);
-            const headerElement = updatedContent.querySelector('.quotation-header');
-            if (headerElement) quotation.headerHTML = headerElement.outerHTML;
-            const _aqDiv = updatedContent.querySelector('.approval-quotation');
-            const tableElement = _aqDiv ? _aqDiv.querySelector('table') : updatedContent.querySelector('table');
-            if (tableElement) quotation.tableHTML = tableElement.outerHTML;
-            const headerValues = getQuotationHeaderValuesFromContainer(folderContent);
-            function applyOrKeep(field, domVal) {
-                var v = (domVal || '').toString().trim();
-                if (v) quotation[field] = domVal;
-            }
-            applyOrKeep('quotationDate', headerValues.quotationDate);
-            applyOrKeep('preparedBy', headerValues.preparedBy);
-            applyOrKeep('assignedTo', headerValues.assignedTo);
-            applyOrKeep('checkedBy', headerValues.checkedBy);
-            applyOrKeep('quoteNumber', headerValues.quoteNumber);
-            applyOrKeep('customerName', headerValues.customerName);
-            applyOrKeep('phoneNumber', headerValues.phoneNumber);
-            applyOrKeep('mobileNumber', headerValues.mobileNumber);
-            applyOrKeep('projectName', headerValues.projectName);
-            applyOrKeep('shipTo', headerValues.shipTo);
-            if ((headerValues.contactDetails || '').toString().trim()) quotation.contactDetails = headerValues.contactDetails;
-            else quotation.contactDetails = quotation.mobileNumber || quotation.phoneNumber || '';
-            if ((headerValues.grandTotal || '').toString().trim()) quotation.grandTotal = headerValues.grandTotal;
-            if ((headerValues.termsText || '').toString().trim()) quotation.termsText = headerValues.termsText;
-            quotation.updatedAt = new Date().toISOString();
-            quotation.hasUnsavedEdits = false;
-        }
 
         /*
             ============================================
@@ -8183,13 +8134,11 @@
                 return;
             }
 
-            // Flush any pending edits so the generated PDF reflects the latest values
+            // Require the quote to be saved first if there are pending edits, so the
+            // emailed PDF and greeting reflect what's on screen.
             if (quotation.hasUnsavedEdits) {
-                captureApprovalEditsIntoQuotation(quotation, quotationId);
-                if (typeof window._cancelApprovalAutosave === 'function') window._cancelApprovalAutosave(quotationId);
-                saveToLocalStorage();
-                const flushed = await saveQuotationToBackend(quotation);
-                if (!flushed) { alert('Could not save your latest changes before sending. Please try again.'); return; }
+                alert('You have unsaved changes. Please save the quotation (💾 Save) before sending.');
+                return;
             }
 
             const isReply = !!quotation.gmailMessageId;
