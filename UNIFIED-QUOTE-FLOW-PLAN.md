@@ -6,10 +6,17 @@
 
 ## TL;DR — where we are (as of this writing)
 
-- ✅ **Prototype is complete and signed off** by the owner: `prototypes/freight-sourcing-demo.html`
-  (a clickable, standalone mock — no live data, no app code touched).
-- ✅ **Implementation plan is done** (this file).
-- ⏭️ **Next step: build Phase 1** (status-led list) into `index.html`. Not started yet.
+- ✅ **Prototype** signed off: `prototypes/freight-sourcing-demo.html`.
+- ✅ **Phases 1–5 built** into the real app (`index.html` + `freight-tab-weight-editor.js` + routes/utils),
+  each verified and committed on `Testing-other-features` (11 commits, not yet pushed at last update).
+  - Phase 1 status-led list · Phase 2 tabbed card · Phase 3 freight tab (weight + add-freight) ·
+    Phase 4 revisions + History · Phase 5 conversation panel (reply + read thread).
+- ⚠️ **Phase 5 needs a one-time re-auth to function:** the scope is now `gmail.readonly`, so the owner must
+  run `node tools/gmail-auth.js` and approve the new consent (regenerates `GMAIL_REFRESH_TOKEN`). Reply-send
+  works without it; thread *reading* ("Check for replies") needs it.
+- ⏭️ **Phase 6 (transporter sourcing) is the only phase left** — blocked on a decision (see Phase 6 / Phase 0 #6:
+  where transporter emails come from).
+- 📋 **Backlog of refinements** to the built phases is at the bottom of this file ("Backlog — to do next").
 - The owner is non-technical — explain in plain language, keep each phase shippable on its own.
 
 ---
@@ -126,6 +133,41 @@ Pure frontend, no backend, no Gmail.
 
 **Recommended first build: Phase 1** — most visible win (triage list), no permissions/schema, and it
 forces the status helpers everything else reuses.
+
+---
+
+## Backlog — to do next (refinements on top of the built phases)
+
+Captured 24 Jun 2026 from the owner, after Phases 1–5 landed. Not yet built.
+
+1. **Weight section: soft-delete instead of hard-delete.** In the Freight-tab weight panel
+   (`freight-tab-weight-editor.js`), deleting a line should make the row **transparent / struck-through but
+   still visible** (so you remember what you removed) with an **"Add back"** option — not remove it outright.
+   Implementation: give each row a `removed` flag (toggle instead of filtering it out of `st.rows`); render
+   removed rows greyed with an Add-back button; exclude `removed` rows from the section total / weight.
+2. **"Complete" button in Needs attention.** Each Needs-attention row needs a way to mark the action done and
+   drop it from the spotlight. Define per trigger what "Complete" clears (New → mark reviewed/approved;
+   Customer-replied → cleared by replying; Revised → cleared by resending — so "Complete" may just be an
+   explicit acknowledge/dismiss). Touches `buildNeedsAttentionRowHTML` + a handler in `index.html`.
+3. **Say *why* it needs attention.** Each Needs-attention row should spell out the reason, not just the pill —
+   e.g. "New — needs review", "Customer replied — awaiting your reply", "Revised — resend". Add a
+   `needsAttentionReason(q)` helper and show it on the row.
+4. **Open the quote inline *in* Needs attention.** Today a Needs-attention row is a shortcut that scrolls to
+   the real folder in All quotes. It should expand the quote card **directly in the spotlight**. Watch the
+   duplicate DOM-id problem (a quote can't render `folder-{id}` twice) — either give the spotlight card
+   distinct ids, or use an `openIn` pointer (like the prototype) so the single card renders under whichever
+   copy is open. Touches `displayAllApprovedQuotations` / `buildNeedsAttentionRowHTML` / `openQuotationFromQueue`.
+5. **"Send to customer" from the conversation/Gmail panel.** The thread/conversation screen should offer the
+   Send-to-customer action (and ideally the sent quote then appears as a message in the thread). Touches
+   `buildApprovalSidePanelHTML` (add the Send button into the conversation block) + reflect the send in the
+   thread after success.
+6. **Verify a Gmail-side reply clears the flag (after re-auth).** When the owner replies *from Gmail* (not the
+   app), the next **Check for replies** should see "you" have the last word and drop the quote out of
+   Needs attention. `loadThreadIntoPanel` already sets `custReplyPending` from the last message's direction —
+   but it currently updates **in memory only**, so the *list* status / Needs-attention spotlight won't refresh
+   until the quote is saved (the list reads `custReplyPending` from the projection). Confirm the full path
+   works end-to-end against real Gmail, and decide whether Check-for-replies should **persist** the synced
+   `custReplyPending` (a small background save) so the list updates without a manual Save.
 
 ---
 
