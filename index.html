@@ -6438,6 +6438,10 @@
                 syncApprovalHeaderQuoteInputFromQuotationModel(folderContentEl, quotation);
                 attachApprovalSectionListeners(folderContentEl);
                 activateApprovalTabs(folderContentEl);
+                const freightTabEl = folderContentEl.querySelector('.qtab-content[data-tab="freight"]');
+                if (freightTabEl && window.renderFreightWeightEditor) {
+                    window.renderFreightWeightEditor(quotation, freightTabEl);
+                }
             }
 
             // Heavy fields are stripped from the list response; fetch them on first open
@@ -8988,6 +8992,7 @@
     </script>
     <script src="weight-calculator.js?v=20260529-1"></script>
     <script src="enquiry-preparer.js?v=20260529-1"></script>
+    <script src="freight-tab-weight-editor.js?v=20260624-1"></script>
 </body>
 </html>
 
