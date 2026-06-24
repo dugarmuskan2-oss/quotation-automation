@@ -18,10 +18,30 @@ Features that have been discussed and scoped but are not being built right now.
 
 ---
 
+## Investigate quotation-list loading speed
+
+**Symptom:** the saved-quotations list (Approval section) was reported to feel slower to load, noticed around the 19 Jun merge of `main` into `Testing-other-features`.
+
+**What the code already confirms (read-only investigation, nothing changed):**
+- The list load is **lazy** — the first load only fetches lightweight summary cards (no `tableHTML`/terms). The full quotation is fetched per-folder on first open (`/quotations/{id}`, `index.html` ~line 6258). So big payloads are *not* the cause.
+- Commit `6aee2bd` ("100 items load first") raised the first-page size from **40 → 100** (`APPROVED_QUOTATIONS_PAGE_SIZE`, `index.html:1631`); it reached this branch via the 19 Jun `c50b4ac` merge. This is 2.5× more *summary* cards, but each is tiny — likely a minor factor unless there are hundreds of quotes.
+- The backend list route (`routes/quotations.js`) uses a fast DynamoDB index (`entity-updatedAt-index`) and **falls back to a full-table scan if that index is missing**. Code cannot prove whether the index actually exists in the AWS account — only the runtime can.
+
+**The one fact that settles it (not yet checked):** the route already records, on every load, whether it used the fast path or the slow path — response headers `X-Query-Mode` (`gsi` = fast, `scan` = slow/grows with quote count) and `X-Query-Ms`, plus a matching server console log line. Read that first.
+- Browser: F12 → Network → the `quotations` request → Response Headers.
+- Or run `tools/measure-api-timing.mjs` against a running local server.
+
+**Likely fixes depending on what's found:**
+- If `mode=scan` → create the `entity-updatedAt-index` GSI (the real fix; scan gets slower as quotes accumulate).
+- If `mode=gsi` but still slow → consider dialing `APPROVED_QUOTATIONS_PAGE_SIZE` back to 40, or rendering the 100 cards more cheaply.
+
+---
+
 ## Ideas to revisit (not yet scoped)
 
 - **Organise the configuration folder/section** — the Configuration area has grown (instructions, default terms, default margins, default email message, default signature). Group/reorder it so it's easier to scan.
 - **Separate signatures per employee** — today there's one shared Default Email Signature. Let each user/employee have their own signature, picked automatically based on who's sending (or who prepared the quote).
-- **Explore autosave** — revisit how/when approval-section edits persist (currently a debounced backend save + a "save before send/download" gate). Decide whether edits should silently autosave, and how that interacts with the unsaved-changes prompt.
+
+> **Resolved (no longer on hold):** ~~Explore autosave~~ — decided **against** autosave. Approval-section edits now stay in-memory and only persist on explicit Save/Approve; the Download/Send gate blocks while there are unsaved edits. The debounced backend autosave (`scheduleQuotationBackendSave`) was removed.
 
 ---

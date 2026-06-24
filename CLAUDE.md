@@ -59,6 +59,8 @@ jest tests/print-button.test.js          # print button logic
 jest tests/gmail-send.test.js            # POST /api/send-email route + send-button frontend logic
 jest tests/approval-edit.test.js         # approval header-field edits (data-field mapping) + send save-gate
 jest tests/email-compose.test.js         # MIME builder (CID inline images), email body/placeholders, reply subject
+jest tests/margin-fill-down.test.js      # margin % "fill down" button (copy margin to items below in the pipe-type group)
+jest tests/approval-no-autosave.test.js  # approval edits don't auto-save; only explicit Save/Approve persists
 jest --silent                            # quieter output (add to any command)
 ```
 
@@ -69,6 +71,7 @@ Run the full suite (`npm test`) only when explicitly asked.
 - `tests/description-format.test.js` extracts `formatItemDescriptionByPipeType` (and its helpers) from `index.html` via `fs.readFile` + `eval` because that function lives in the browser-only SPA. If marker comments in `index.html` change, update the extractor in that test file.
 - `tests/api.test.js` mocks all external services (DynamoDB, S3, GCS, OpenAI) before loading the app — never needs real credentials.
 - `tests/email-compose.test.js` tests the real MIME builder via the `_test` export on `utils/gmail.js` (`buildRawMessage`, `extractInlineImages`) and `replySubject` exported from `routes/gmail.js`; the email body/placeholder helpers are inline copies of `index.html` logic (kept in sync with `buildQuotationEmailBodyHtml` / `fillEmailPlaceholders`).
+- `tests/margin-fill-down.test.js` and `tests/approval-no-autosave.test.js` follow the `approval-edit.test.js` pattern: **source guards** that read `index.html` as text and assert key markers still exist (e.g. `function fillMarginDownBelow`, the `margin-fill-down-btn` markup, the absence of `scheduleQuotationBackendSave`), plus **behavioral** tests against inline copies of the pure logic. If you rename those functions/markers, update the guards.
 
 Open `index.html` directly in a browser — it communicates with the running server via fetch.
 
@@ -193,9 +196,9 @@ Key fields on every quotation object (stored in DynamoDB and held in the fronten
 | `emailLink` | Gmail URL for the original email |
 | `gmailMessageId` | Used for deduplication on ingest |
 | `tableHTML` / `headerHTML` | Pre-rendered HTML blobs for PDF generation |
-| `saved` | `false` = AI-drafted or has unsaved edits. `true` = currently saved/approved. Editing any field flips this back to `false`. |
+| `saved` | `false` = AI-drafted or has unsaved edits. `true` = currently saved/approved. Editing any field flips this back to `false`. Edits are **not** auto-saved — only explicit Save (`saveQuotationChanges`) or Approve (`saveQuotation`) persists to the backend. |
 | `everApproved` | `true` once the quote has been approved at least once; never cleared by editing. The send gate checks this (not `saved`) so editing the required "Checked By" field doesn't force re-approval. |
-| `hasUnsavedEdits` | `true` when the approval form has edits not yet persisted. The send flow flushes these (`captureApprovalEditsIntoQuotation` → backend) before generating the PDF. |
+| `hasUnsavedEdits` | `true` when the approval form has edits not yet persisted. Set on every edit and cleared only by explicit Save. There is **no autosave** — the Download/Send gate blocks while this is `true` so the user must Save first. |
 | `sent` | `true` once the quotation PDF has been emailed to the customer via "Send to Customer" |
 | `sentAt` | ISO timestamp of when the quote was sent |
 | `threadId` | Gmail thread ID returned after sending; stored for future Phase 3 reply capture |
@@ -213,6 +216,9 @@ Three types: **GI** (galvanised iron), **ERW** (electric resistance welded), **S
 
 ### formatItemDescriptionByPipeType
 Lives in `index.html`. Parses raw AI-generated description strings to extract pipe size (e.g. `2"`, `1-1/2"`) and weight class (heavy/medium/schedule), then reformats as standardised strings like `2" NB X Heavy -- GI` or `2" NB X Sch 40`. Used when rendering the items table.
+
+### Margin % "fill down" — `fillMarginDownBelow`
+Each line item's Margin % cell has a ↓ button (`.margin-fill-down-btn`). Clicking it copies that row's margin into every **item row below it within the same pipe-type group**, stopping at the next pipe-type header and skipping freight rows. It sets the target inputs' values and dispatches `input`/`change`, so the existing recalc + unsaved-edit tracking runs (it does not auto-save — see save behaviour above). Rendered into the creation table and both add-row templates; the approval table retrofits the button at render time for older saved quotes whose stored `tableHTML` predates the feature (guarded against duplicates). Guarded by `tests/margin-fill-down.test.js`.
 
 ### Freight FOR (Freight on Road) logic — `applyFreightForApproval`
 When customer wants a **FOR price** (freight included, but it must not appear as a separate line in the PDF):
@@ -249,4 +255,4 @@ For each labelled email: (1) deduplicate by `gmailMessageId`, (2) extract text f
 
 ### Editing header fields in the Approval section — `data-field`, not `id`
 
-Approval-card header inputs carry their field name in **`data-field`** (e.g. `data-field="kindAttn"`), with no `id`. (The creation-section template at the top of `index.html` uses `id="kindAttn"`; saved/ingested cards use `data-field`.) Any code that reads "which field changed" must use `changedInput.id || changedInput.getAttribute('data-field')`. `updateQuotationFromApprovalSection` (the live autosave handler) maps the changed field to its quotation property — `kindAttn` → `customerName`, `billTo` → `projectName`, `shipTo` → `shipTo`, etc. — and sets `hasUnsavedEdits`. A past bug keyed off `id` only, so edits to Kind Attn updated the PDF's `headerHTML` but never `customerName`, leaving the emailed greeting as "Dear Sir/Madam". Guarded by `tests/approval-edit.test.js`.
+Approval-card header inputs carry their field name in **`data-field`** (e.g. `data-field="kindAttn"`), with no `id`. (The creation-section template at the top of `index.html` uses `id="kindAttn"`; saved/ingested cards use `data-field`.) Any code that reads "which field changed" must use `changedInput.id || changedInput.getAttribute('data-field')`. `updateQuotationFromApprovalSection` (the live edit handler) maps the changed field to its quotation property — `kindAttn` → `customerName`, `billTo` → `projectName`, `shipTo` → `shipTo`, etc. — updates the in-memory model, and sets `hasUnsavedEdits`. It does **not** write to the backend (autosave was removed — see `saved`/`hasUnsavedEdits` above); persistence happens only on explicit Save/Approve. A past bug keyed off `id` only, so edits to Kind Attn updated the PDF's `headerHTML` but never `customerName`, leaving the emailed greeting as "Dear Sir/Madam". Guarded by `tests/approval-edit.test.js` and `tests/approval-no-autosave.test.js`.
