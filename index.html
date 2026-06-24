@@ -254,6 +254,19 @@
         }
         .queue-action:hover { background: #d8e9fa; }
 
+        /* Tabbed card shell (Phase 2) */
+        .qtab-bar { display: flex; gap: 18px; border-bottom: 1px solid #e5e5e5; margin-bottom: 14px; }
+        .qtab {
+            font-size: 14px; color: #6b7280; background: none; border: none;
+            border-bottom: 2px solid transparent; padding: 8px 2px; cursor: pointer;
+        }
+        .qtab:hover { color: #20201d; background: none; }
+        .qtab.on { color: #20201d; font-weight: 600; border-bottom: 2px solid #20201d; }
+        .qtab-placeholder {
+            padding: 28px; text-align: center; color: #9b988e; font-size: 13px;
+            border: 1px dashed #ddd; border-radius: 8px;
+        }
+
         .email-modal-overlay {
             position: fixed; inset: 0; background: rgba(0,0,0,0.45);
             display: flex; align-items: center; justify-content: center; z-index: 100000;
@@ -6117,6 +6130,12 @@
             const sidePanelHTML = buildApprovalSidePanelHTML(quotation);
 
             return `
+                <div class="qtab-bar">
+                    <button class="qtab" type="button" data-tab="quote">Quote</button>
+                    <button class="qtab" type="button" data-tab="freight">Freight</button>
+                    <button class="qtab" type="button" data-tab="history">History</button>
+                </div>
+                <div class="qtab-content" data-tab="quote">
                 <div class="approval-layout">
                     <div class="approval-quotation">
                             ${quotation.headerHTML || ''}
@@ -6139,6 +6158,13 @@
                     <div class="approval-resize-handle" aria-label="Resize panels" style="height: 100%; background: #c7c7c7; align-self: stretch; min-height: 200px;"></div>
                     ${sidePanelHTML}
                     </div>
+                </div>
+                <div class="qtab-content" data-tab="freight" style="display:none;">
+                    <div class="qtab-placeholder">Freight tools — weight, transporter enquiry &amp; add-freight — will live here (Phase 3).</div>
+                </div>
+                <div class="qtab-content" data-tab="history" style="display:none;">
+                    <div class="qtab-placeholder">Revision history will live here (Phase 4).</div>
+                </div>
                 `;
         }
 
@@ -6375,6 +6401,27 @@
         // resets folder content back to the lazy placeholder.
         // If the quotation's heavy fields (tableHTML etc.) haven't been fetched yet,
         // shows a loading spinner, fetches them, then renders.
+        // Phase 2: show/hide the Quote/Freight/History tabs. Active tab is stored on the
+        // content element's dataset so it survives the re-render that Save/Approve triggers
+        // (the element persists; only its innerHTML is replaced).
+        function activateApprovalTabs(folderContentEl) {
+            const buttons = folderContentEl.querySelectorAll('.qtab');
+            if (!buttons.length) return;
+            function show(tab) {
+                folderContentEl.dataset.activeTab = tab;
+                folderContentEl.querySelectorAll('.qtab').forEach(function(b) {
+                    b.classList.toggle('on', b.getAttribute('data-tab') === tab);
+                });
+                folderContentEl.querySelectorAll('.qtab-content').forEach(function(c) {
+                    c.style.display = (c.getAttribute('data-tab') === tab) ? '' : 'none';
+                });
+            }
+            buttons.forEach(function(b) {
+                b.onclick = function(e) { e.stopPropagation(); show(b.getAttribute('data-tab')); };
+            });
+            show(folderContentEl.dataset.activeTab || 'quote');
+        }
+
         function renderApprovalFolderContent(quotationId, folderContentEl) {
             const quotation = approvedQuotations.find(function(q) { return idsMatch(q.id, quotationId); });
             if (!quotation || !folderContentEl) return;
@@ -6390,6 +6437,7 @@
                 folderContentEl.innerHTML = buildApprovalSplitLayout({ quotation, termsText, approveButtonHTML, saveButtonHTML, printButtonHTML, downloadButtonHTML, sendButtonHTML });
                 syncApprovalHeaderQuoteInputFromQuotationModel(folderContentEl, quotation);
                 attachApprovalSectionListeners(folderContentEl);
+                activateApprovalTabs(folderContentEl);
             }
 
             // Heavy fields are stripped from the list response; fetch them on first open
