@@ -27,13 +27,14 @@ const SUMMARY_NESTED_PATHS = [
     'customerName', 'quotationDate', '#sv',
     'assignedTo', 'checkedBy', 'emailLink',
     'gmailMessageId', 'billTo', 'shipTo', 'grandTotal', '#snt',
+    '#eva', '#rev',
 ];
 const SUMMARY_PROJECTION = [
     'id', 'updatedAt', 'createdAt',
     ...SUMMARY_NESTED_PATHS.map(seg => '#p.' + seg),
     ...SUMMARY_NESTED_PATHS.map(seg => '#d.' + seg),
 ].join(', ');
-const SUMMARY_EXPR_NAMES = { '#p': 'payload', '#d': 'data', '#sv': 'saved', '#snt': 'sent' };
+const SUMMARY_EXPR_NAMES = { '#p': 'payload', '#d': 'data', '#sv': 'saved', '#snt': 'sent', '#eva': 'everApproved', '#rev': 'revised' };
 
 const QUOTATIONS_LIST_LIMIT = 600;   // hard cap — never return more than this per page
 
