@@ -35,7 +35,8 @@
     }
     function getState(q) {
         var id = String(q.id);
-        if (!stateById[id]) stateById[id] = { rows: seedRows(q), split: false };
+        if (!stateById[id]) stateById[id] = { rows: seedRows(q), split: false, freight: { amount: '', method: 'line', applied: '' } };
+        if (!stateById[id].freight) stateById[id].freight = { amount: '', method: 'line', applied: '' };
         return stateById[id];
     }
     function weightOf(r) { return r.qty * (r.kgm || 0); }
@@ -62,7 +63,11 @@
             + '.fwe-link{background:none;border:none;color:#185FA5;text-decoration:underline;cursor:pointer;font-size:13px;padding:0;}'
             + '.fwe-del{background:#FCEBEB;color:#A32D2D;border:1px solid #F09595;border-radius:6px;width:24px;height:24px;padding:0;cursor:pointer;display:flex;align-items:center;justify-content:center;}'
             + '.fwe-total{font-weight:600;font-size:13px;border-top:1px solid rgba(0,0,0,.18);margin-top:3px;padding-top:7px;}'
-            + '.fwe-addfreight{border:1px solid #85B7EB;background:#E6F1FB;border-radius:8px;padding:12px;margin-top:14px;color:#0C447C;font-size:13px;}';
+            + '.fwe-addfreight{border:1px solid #85B7EB;background:#E6F1FB;border-radius:8px;padding:12px;margin-top:14px;color:#0C447C;font-size:13px;}'
+            + '.fwe-famt{height:32px;padding:4px 8px;border:1px solid rgba(0,0,0,.25);border-radius:6px;}'
+            + '.fwe-fmethod{font-size:13px;padding:6px 11px;border:1px solid rgba(0,0,0,.18);border-radius:8px;background:#fff;color:#20201d;cursor:pointer;}'
+            + '.fwe-fmethod.on{background:#185FA5;color:#fff;border-color:#185FA5;}'
+            + '.fwe-fapply{font-size:13px;padding:7px 13px;border:none;border-radius:8px;background:#185FA5;color:#fff;cursor:pointer;}';
         var st = document.createElement('style');
         st.id = 'fwe-styles';
         st.textContent = css;
@@ -84,7 +89,7 @@
         return '<div class="fwe-row fwe-grid' + (miss ? ' miss' : '') + '" data-id="' + r.id + '">'
             + handle
             + '<input type="text" class="fwe-ed" data-id="' + r.id + '" data-f="d" value="' + esc(r.d) + '">'
-            + '<input type="number" class="fwe-ed" data-id="' + r.id + '" data-f="qty" value="' + r.qty + '" style="text-align:right;">'
+            + '<input type="number" class="fwe-ed" data-id="' + r.id + '" data-f="qty" value="' + r.qty + '" style="text-align:right;background:#f6f5f1;" title="Quantity comes from the quote" readonly>'
             + '<input type="number" class="fwe-ed" data-id="' + r.id + '" data-f="kgm" value="' + (r.kgm || '') + '" placeholder="&mdash;" style="text-align:right;">'
             + '<div style="text-align:right;font-size:13px;">' + w + '</div>'
             + '<button class="fwe-del" data-id="' + r.id + '" title="Delete line" aria-label="Delete line">&times;</button>'
@@ -110,10 +115,10 @@
     function render(q, mountEl) {
         injectStylesOnce();
         var st = getState(q);
-        var html = '<div class="fwe-note">Calculation aid — adjust qty / kg-m to size freight. Not saved to the quote yet (coming in the next slice).</div>';
+        var html = '<div class="fwe-note">Adjust kg/m to size freight — kg/m changes save with the quote. Splitting and added rows are for sizing only; qty comes from the quote.</div>';
         html += sectionHtml(st, 1);
         if (st.split) html += sectionHtml(st, 2);
-        html += '<div class="fwe-addfreight"><strong>Add freight to quote</strong> — wiring to the quote total (Line item / FOR) lands in the next slice.</div>';
+        html += addFreightBoxHtml(q);
         mountEl.innerHTML = html;
         bind(q, mountEl);
     }
@@ -121,6 +126,64 @@
     function findRow(st, id) {
         for (var i = 0; i < st.rows.length; i++) if (st.rows[i].id === id) return st.rows[i];
         return null;
+    }
+
+    // Persist an edited kg/m back to the matching quote line item, and mark the quote
+    // unsaved via the app's own handler (kgPerMeter survives Save because
+    // extractStructuredLineItemsFromTable preserves it from sourceLineItems).
+    function persistKgm(q, r) {
+        var items = Array.isArray(q.lineItems) ? q.lineItems : [];
+        for (var i = 0; i < items.length; i++) {
+            if (String(items[i].lineItemId) === String(r.id)) { items[i].kgPerMeter = r.kgm; break; }
+        }
+        if (typeof updateQuotationFromApprovalSection === 'function') {
+            try { updateQuotationFromApprovalSection(q.id, null); } catch (e) { }
+        }
+    }
+
+    function addFreightBoxHtml(q) {
+        var f = getState(q).freight;
+        var forOn = f.method === 'for';
+        var status = f.applied
+            ? '<div style="margin-top:8px;color:#0F6E56;font-size:13px;">&#10003; ' + f.applied + '</div>'
+            : '<div style="margin-top:8px;font-size:11px;color:#0C447C;">Adds freight to the quote total (see the Quote tab). FOR folds it into the rates so it is hidden on the PDF.</div>';
+        return '<div class="fwe-addfreight">'
+            + '<div style="font-weight:600;margin-bottom:8px;">Add freight to quote</div>'
+            + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
+            + '<span>Total Rs</span><input type="number" class="fwe-famt" value="' + (f.amount || '') + '" style="width:110px;">'
+            + '<span style="font-size:12px;">as</span>'
+            + '<button class="fwe-fmethod ' + (forOn ? '' : 'on') + '" data-m="line">Line item</button>'
+            + '<button class="fwe-fmethod ' + (forOn ? 'on' : '') + '" data-m="for">FOR &middot; hidden on PDF</button>'
+            + '<button class="fwe-fapply" style="margin-left:auto;">Add freight</button>'
+            + '</div>' + status + '</div>';
+    }
+
+    // Drive the live freight engine on the Quote tab from the Freight tab box.
+    function applyAddFreightToQuote(q, amount, method) {
+        var fc = document.getElementById('folder-content-' + q.id);
+        if (!fc) return { ok: false, msg: 'Open the quote card first.' };
+        var freightRow = fc.querySelector('.freight-row');
+        if (freightRow && freightRow.classList.contains('freight-distributed')) {
+            return { ok: false, msg: 'Freight already applied as FOR — undo it on the Quote tab first.' };
+        }
+        if (!freightRow && typeof addFreightRowApproval === 'function') {
+            addFreightRowApproval(q.id);
+            freightRow = fc.querySelector('.freight-row');
+        }
+        if (!freightRow) return { ok: false, msg: 'Could not add a freight row.' };
+        var input = freightRow.querySelector('.freight-amount-input[data-field="lineTotal"]');
+        if (input) {
+            input.value = String(amount);
+            input.setAttribute('value', String(amount));
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        if (typeof recalculateApprovalQuotationTotals === 'function') recalculateApprovalQuotationTotals(q.id, false);
+        if (method === 'for' && typeof applyFreightForApproval === 'function') applyFreightForApproval(q.id, freightRow.id);
+        if (typeof updateQuotationFromApprovalSection === 'function') {
+            try { updateQuotationFromApprovalSection(q.id, null); } catch (e) { }
+        }
+        return { ok: true };
     }
 
     function bind(q, mountEl) {
@@ -132,6 +195,7 @@
                 var f = inp.getAttribute('data-f');
                 if (f === 'd') r.d = inp.value;
                 else r[f] = num(inp.value);
+                if (f === 'kgm') persistKgm(q, r);
                 render(q, mountEl);
             };
         });
@@ -175,6 +239,26 @@
                 render(q, mountEl);
             });
         });
+
+        // Add-freight box
+        var f = st.freight;
+        var amt = mountEl.querySelector('.fwe-famt');
+        if (amt) amt.onchange = function () { f.amount = num(amt.value); };
+        mountEl.querySelectorAll('.fwe-fmethod').forEach(function (b) {
+            b.onclick = function () { f.method = b.getAttribute('data-m'); render(q, mountEl); };
+        });
+        var applyBtn = mountEl.querySelector('.fwe-fapply');
+        if (applyBtn) applyBtn.onclick = function () {
+            var box = mountEl.querySelector('.fwe-famt');
+            var value = num(box ? box.value : f.amount);
+            if (!value || value <= 0) { f.applied = ''; applyBtn.textContent = 'Enter an amount'; return; }
+            f.amount = value;
+            var res = applyAddFreightToQuote(q, value, f.method);
+            f.applied = res.ok
+                ? ('Added Rs ' + fmt(value) + ' as ' + (f.method === 'for' ? 'FOR' : 'line item') + ' — see the Quote tab total.')
+                : res.msg;
+            render(q, mountEl);
+        };
     }
 
     function printWeights(q, st, sec) {
