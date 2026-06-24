@@ -166,6 +166,10 @@
         if (freightRow && freightRow.classList.contains('freight-distributed')) {
             return { ok: false, msg: 'Freight already applied as FOR — undo it on the Quote tab first.' };
         }
+        // Adding freight to an already-sent quote creates a revision (keeps the sent original).
+        if (q.sent && !q.revised && typeof captureRevisionSnapshot === 'function') {
+            captureRevisionSnapshot(q, 'Freight added');
+        }
         if (!freightRow && typeof addFreightRowApproval === 'function') {
             addFreightRowApproval(q.id);
             freightRow = fc.querySelector('.freight-row');
@@ -183,6 +187,8 @@
         if (typeof updateQuotationFromApprovalSection === 'function') {
             try { updateQuotationFromApprovalSection(q.id, null); } catch (e) { }
         }
+        var hist = fc.querySelector('.qtab-content[data-tab="history"]');
+        if (hist && typeof buildHistoryTabContent === 'function') hist.innerHTML = buildHistoryTabContent(q);
         return { ok: true };
     }
 

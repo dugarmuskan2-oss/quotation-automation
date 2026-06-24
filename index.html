@@ -248,6 +248,7 @@
         .q-pill.q-new { background: #FBEAF0; color: #993556; }
         .q-pill.q-approved { background: #E1F5EE; color: #0F6E56; }
         .q-pill.q-sent { background: #E6F1FB; color: #0C447C; }
+        .q-pill.q-revised { background: #EEEDFE; color: #26215C; }
         .queue-action {
             font-size: 12px; padding: 5px 12px; border-radius: 8px;
             background: #E6F1FB; color: #0C447C; border: 0.5px solid #85B7EB; cursor: pointer;
@@ -266,6 +267,16 @@
             padding: 28px; text-align: center; color: #9b988e; font-size: 13px;
             border: 1px dashed #ddd; border-radius: 8px;
         }
+        /* Revisions / History tab (Phase 4) */
+        .qhist-note { font-size: 12px; color: #6b7280; margin-bottom: 12px; }
+        .qhist-empty { padding: 24px; text-align: center; color: #9b988e; font-size: 13px; border: 1px dashed #ddd; border-radius: 8px; }
+        .qhist-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid #ececec; border-radius: 8px; margin-bottom: 8px; }
+        .qhist-row.qhist-current { border-color: #85B7EB; }
+        .qhist-name { flex: 1; min-width: 0; font-size: 13px; }
+        .qhist-meta { font-size: 12px; color: #9b988e; white-space: nowrap; }
+        .qhist-pill { font-size: 12px; padding: 3px 9px; border-radius: 8px; white-space: nowrap; }
+        .qhist-pill.qhist-super { background: #f1efe8; color: #5f5e5a; }
+        .qhist-pill.qhist-cur { background: #E6F1FB; color: #0C447C; }
 
         .email-modal-overlay {
             position: fixed; inset: 0; background: rgba(0,0,0,0.45);
@@ -6279,6 +6290,7 @@
         }
         function statusPill(q) {
             if (!quotationReviewed(q)) return '<span class="q-pill q-new">New</span>';
+            if (q.revised) return '<span class="q-pill q-revised">Revised</span>';
             if (q.sent) return '<span class="q-pill q-sent">&#10003; Sent</span>';
             return '<span class="q-pill q-approved">Approved</span>';
         }
@@ -6401,6 +6413,48 @@
         // resets folder content back to the lazy placeholder.
         // If the quotation's heavy fields (tableHTML etc.) haven't been fetched yet,
         // shows a loading spinner, fetches them, then renders.
+        // ── Revisions (Phase 4) ───────────────────────────────────────────────────
+        // Snapshot the current (pre-change) state of a SENT quote into revisions[] so the
+        // version the customer already has is preserved when the quote is edited/resent.
+        // Lightweight snapshot (no tableHTML) to keep the DynamoDB item small.
+        function captureRevisionSnapshot(quotation, changeLabel) {
+            if (!quotation) return;
+            if (!Array.isArray(quotation.revisions)) quotation.revisions = [];
+            quotation.revisions.push({
+                revisionId: 'rev-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6),
+                createdAt: new Date().toISOString(),
+                change: changeLabel || 'Edited after sending',
+                quoteNumber: quotation.quoteNumber,
+                grandTotal: quotation.grandTotal,
+                lineItems: Array.isArray(quotation.lineItems) ? JSON.parse(JSON.stringify(quotation.lineItems)) : []
+            });
+            if (quotation.revisions.length > 10) quotation.revisions = quotation.revisions.slice(-10);
+            quotation.revised = true;
+        }
+        function formatRevisionDate(iso) {
+            if (!iso) return '';
+            var d = new Date(iso);
+            return isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
+        }
+        function buildHistoryTabContent(quotation) {
+            var revs = Array.isArray(quotation.revisions) ? quotation.revisions : [];
+            if (!revs.length) {
+                return '<div class="qhist-empty">No revisions yet. Editing a sent quote (for example, adding freight) creates one — the version the customer already has is kept here, read-only.</div>';
+            }
+            var rows = revs.map(function (r) {
+                var total = (r.grandTotal != null && r.grandTotal !== '') ? ('&#8377;' + r.grandTotal) : '';
+                return '<div class="qhist-row"><span class="qhist-pill qhist-super">Superseded</span>'
+                    + '<span class="qhist-name">' + escapeHtml(r.change || 'Edited') + '</span>'
+                    + '<span class="qhist-meta">' + formatRevisionDate(r.createdAt) + (total ? ' &middot; ' + total : '') + '</span></div>';
+            }).join('');
+            var curTotal = (quotation.grandTotal != null && quotation.grandTotal !== '') ? ('&#8377;' + quotation.grandTotal) : '';
+            var current = '<div class="qhist-row qhist-current"><span class="qhist-pill qhist-cur">Current</span>'
+                + '<span class="qhist-name">Current version</span>'
+                + '<span class="qhist-meta">' + curTotal + '</span></div>';
+            return '<div class="qhist-note">Opening the quote always shows the current version, and that is what gets sent. Older versions below are read-only.</div>'
+                + rows + current;
+        }
+
         // Phase 2: show/hide the Quote/Freight/History tabs. Active tab is stored on the
         // content element's dataset so it survives the re-render that Save/Approve triggers
         // (the element persists; only its innerHTML is replaced).
@@ -6442,6 +6496,8 @@
                 if (freightTabEl && window.renderFreightWeightEditor) {
                     window.renderFreightWeightEditor(quotation, freightTabEl);
                 }
+                const historyTabEl = folderContentEl.querySelector('.qtab-content[data-tab="history"]');
+                if (historyTabEl) historyTabEl.innerHTML = buildHistoryTabContent(quotation);
             }
 
             // Heavy fields are stripped from the list response; fetch them on first open
@@ -8432,6 +8488,7 @@
                     quotation.saved = true;
                     quotation.everApproved = true;
                     quotation.hasUnsavedEdits = false;
+                    quotation.revised = false; // resending sends the current version — clears the needs-resend flag
                     saveQuotationToBackend(quotation);
                     updateApprovalBadge(quotationId, quotation);
                     updateSentBadge(quotationId);
@@ -8992,7 +9049,7 @@
     </script>
     <script src="weight-calculator.js?v=20260529-1"></script>
     <script src="enquiry-preparer.js?v=20260529-1"></script>
-    <script src="freight-tab-weight-editor.js?v=20260624-2"></script>
+    <script src="freight-tab-weight-editor.js?v=20260624-3"></script>
 </body>
 </html>
 
