@@ -6188,9 +6188,19 @@
             const fileBlock = quotation.fileContent
                 ? `<div style="margin-top:10px;"><strong>File Content</strong><div style="white-space: pre-wrap; font-size: 12px; background:#fafafa; border:1px solid #eee; padding:8px; border-radius:4px;">${escapeHtml(quotation.fileContent)}</div></div>`
                 : '';
-            const panelContent = emailBlock || fileBlock
+            const baseContent = emailBlock || fileBlock
                 ? `${emailBlock}${fileBlock}`
                 : `<div style="margin-top:10px; font-size: 12px; color:#777; background:#fafafa; border:1px dashed #ddd; padding:8px; border-radius:4px;">No email or file content available.</div>`;
+            // Phase 5 (slice 1): reply to the customer in-thread, reusing /api/send-email.
+            // Only shown when the quote is linked to an email thread.
+            const hasThread = !!(quotation.gmailMessageId || quotation.threadId);
+            const replyComposer = hasThread ? `
+                <div style="margin-top:12px; border-top:1px solid #eee; padding-top:10px;">
+                    <div style="font-weight:600; font-size:13px; margin-bottom:6px;">Reply to customer</div>
+                    <textarea id="reply-box-${quotation.id}" rows="3" placeholder="Type your reply…" style="width:100%; box-sizing:border-box;"></textarea>
+                    <button type="button" class="save-btn" onclick="event.stopPropagation(); sendQuoteReply(${JSON.stringify(quotation.id)})" style="margin-top:6px;">✉️ Send reply</button>
+                </div>` : '';
+            const panelContent = baseContent + replyComposer;
 
             return `
                 <div class="approval-side">
@@ -8385,6 +8395,40 @@
                 };
                 setTimeout(function() { overlay.querySelector('.chips-field[data-field="to"] input').focus(); }, 0);
             });
+        }
+
+        // Phase 5 (slice 1): send a plain reply to the customer in the existing Gmail thread.
+        // Reuses POST /api/send-email reply support (replyToMessageId/threadId auto-fills
+        // recipient + subject). Needs only gmail.send (already configured) — no re-auth.
+        async function sendQuoteReply(quotationId) {
+            const quotation = approvedQuotations.find(q => idsMatch(q.id, quotationId));
+            if (!quotation) { alert('Quotation not found'); return; }
+            const box = document.getElementById('reply-box-' + quotationId);
+            const text = box ? (box.value || '').trim() : '';
+            if (!text) { alert('Type a reply first.'); return; }
+            if (!quotation.gmailMessageId && !quotation.threadId) {
+                alert('This quote has no linked email thread to reply to.');
+                return;
+            }
+            const payload = { bodyHtml: escapeHtml(text).replace(/\n/g, '<br>') };
+            if (quotation.gmailMessageId) payload.replyToMessageId = quotation.gmailMessageId;
+            if (quotation.threadId) payload.threadId = quotation.threadId;
+            try {
+                const res = await fetch(`${API_BASE_URL}/send-email`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await safeJsonParse(res);
+                if (data && data.success) {
+                    if (box) box.value = '';
+                    alert('✅ Reply sent' + (data.sentTo ? ' to ' + data.sentTo : ''));
+                } else {
+                    alert('Failed to send reply: ' + ((data && data.error) || 'Unknown error'));
+                }
+            } catch (err) {
+                alert('Error sending reply: ' + err.message);
+            }
         }
 
         async function sendQuotationToCustomer(quotationId) {
