@@ -228,6 +228,8 @@
         .sent-badge {
             background-color: #00796b;
         }
+        .needs-attention-badge { background-color: #c62828; }
+        .quotation-folder.needs-attention .quotation-folder-header { background-color: #FCEBEB; }
 
         /* Status-led queue (Phase 1) */
         .queue-head {
@@ -5996,6 +5998,11 @@
                 const sentBadgeHTML = quotation.sent
                     ? `<span class="saved-badge sent-badge">&#10003; SENT</span>`
                     : '';
+                // Highlight quotes that need the user's action (new / revised / customer-replied).
+                const needsAttn = (typeof needsAttention === 'function') && needsAttention(quotation);
+                const needsBadgeHTML = needsAttn
+                    ? `<span class="saved-badge needs-attention-badge">Needs attention: ${needsAttentionReason(quotation)}</span>`
+                    : '';
 
                 // Show Approve button only if not saved yet
                 const approveButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); saveQuotation(${JSON.stringify(quotation.id)})">✅ Approve</button>`;
@@ -6007,11 +6014,12 @@
                 const gmailLinkHTML = gmailLinkUrl ? `<a href="${escapeHtml(gmailLinkUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation();" class="gmail-link" style="margin-left:8px;font-size:12px;">View in Gmail</a>` : '';
 
                 allQuotationsHTML += `
-                    <div class="quotation-folder" id="folder-${quotation.id}">
+                    <div class="quotation-folder${needsAttn ? ' needs-attention' : ''}" id="folder-${quotation.id}">
                         <div class="quotation-folder-header" onclick="toggleQuotationFolder(${JSON.stringify(quotation.id)})">
                             <span>
                                 <span class="folder-icon">📁</span>
                                 ${folderName}
+                                ${needsBadgeHTML}
                                 ${approvedBadgeHTML}
                                 ${assignedBadgeHTML}
                                 ${sentBadgeHTML}
@@ -6298,11 +6306,19 @@
         }
         function needsAttention(q) {
             if (!q) return false;
-            if (!quotationReviewed(q)) return true;       // new — needs review
-            if (q.revised && !q.resent) return true;      // revised, not resent (later phase)
-            if (q.custReplyPending) return true;          // customer replied (later phase)
+            // New / unreviewed quotes are intentionally NOT flagged (can be ignored).
+            if (q.custReplyPending) return true;          // customer replied
+            if (q.revised && !q.resent) return true;      // revised, not resent
             if (q.transporterReplyIn) return true;        // transporter reply in (later phase)
             return false;
+        }
+        // Short, action-oriented reason a quote needs attention (shown on the badge).
+        function needsAttentionReason(q) {
+            if (!q) return '';
+            if (q.custReplyPending) return 'customer replied';
+            if (q.revised && !q.resent) return 'resend';
+            if (q.transporterReplyIn) return 'transporter reply';
+            return '';
         }
         function determineLiveAction(q) {
             if (!quotationReviewed(q)) return { label: 'Review', key: 'review' };
@@ -6346,9 +6362,28 @@
                 </div>
             `;
         }
+        // PARKED (not currently wired): the two-group "Needs attention" spotlight builders below
+        // (buildNeedsAttentionSection / buildNeedsAttentionRowHTML / buildAllQuotesLinkRow /
+        // openQuotationFromQueue). The active UI highlights needs-attention quotes inline in the
+        // single list instead. Kept here for possible reuse; also in the Phase 1 commit.
         function buildNeedsAttentionSection(list) {
             const rows = list.map(buildNeedsAttentionRowHTML).join('');
             return `<div class="queue-head queue-attn">&#9888; Needs attention &middot; ${list.length}</div>${rows}`;
+        }
+        // All-quotes row for a quote whose openable folder lives in the Needs-attention spotlight.
+        // Clicking jumps up to that folder (expands + scrolls) rather than duplicating it here.
+        function buildAllQuotesLinkRow(quotation) {
+            const company = (quotation.companyName || quotation.projectName || '').trim();
+            const kindAttn = (quotation.customerName || '').trim();
+            const quoteNumber = (quotation.quoteNumber || '').trim();
+            const name = [company, kindAttn, quoteNumber].filter(Boolean).join(' - ') || 'Quotation';
+            return `
+                <div class="attn-row" style="opacity:0.9;" onclick="openQuotationFromQueue(${JSON.stringify(quotation.id)})">
+                    <span class="folder-icon">📁</span>
+                    ${statusPill(quotation)}
+                    <span class="attn-name">${escapeHtml(name)}</span>
+                    <span style="font-size:12px;color:#185FA5;white-space:nowrap;">open in Needs attention &#8593;</span>
+                </div>`;
         }
 
         function displayAllApprovedQuotations() {
@@ -6393,15 +6428,12 @@
                 const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
                 return bTime - aTime;
             });
-            const allListHTML = buildAllApprovedQuotationsHTMLForList(sortedByQuotationDate);
-            // Status-led layout: a "Needs attention" spotlight on top (shortcut rows that
-            // expand the real folder below), then the full "All quotes" list unchanged.
-            const needsList = sortedByQuotationDate.filter(needsAttention);
-            const allQuotationsHTML = needsList.length
-                ? buildNeedsAttentionSection(needsList)
-                  + `<div class="queue-head">All quotes &middot; ${sortedByQuotationDate.length}</div>`
-                  + allListHTML
-                : allListHTML;
+            // Single unified list. Quotes that need the user's action are highlighted light red with
+            // a "Needs attention" badge (see buildAllApprovedQuotationsHTMLForList). The earlier
+            // two-group "Needs attention" spotlight was removed; its builders are parked below
+            // (buildNeedsAttentionSection / buildNeedsAttentionRowHTML / buildAllQuotesLinkRow /
+            // openQuotationFromQueue) for possible reuse — also recoverable from the Phase 1 commit.
+            const allQuotationsHTML = buildAllApprovedQuotationsHTMLForList(sortedByQuotationDate);
 
             // Update the container
             renderApprovedQuotationsHTML(container, allQuotationsHTML);
