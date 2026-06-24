@@ -229,6 +229,31 @@
             background-color: #00796b;
         }
 
+        /* Status-led queue (Phase 1) */
+        .queue-head {
+            font-size: 13px; color: #6b7280; font-weight: 600; margin: 16px 0 8px;
+        }
+        .queue-head.queue-attn { color: #92400e; }
+        .attn-row {
+            display: flex; align-items: center; gap: 10px;
+            padding: 9px 12px; margin-bottom: 8px;
+            border: 1px solid #ececec; border-radius: 8px; background: #fff; cursor: pointer;
+        }
+        .attn-row:hover { background: #faf9f6; }
+        .attn-row .attn-name {
+            flex: 1; min-width: 0; font-size: 14px; font-weight: 500;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .q-pill { font-size: 12px; padding: 3px 9px; border-radius: 8px; white-space: nowrap; }
+        .q-pill.q-new { background: #FBEAF0; color: #993556; }
+        .q-pill.q-approved { background: #E1F5EE; color: #0F6E56; }
+        .q-pill.q-sent { background: #E6F1FB; color: #0C447C; }
+        .queue-action {
+            font-size: 12px; padding: 5px 12px; border-radius: 8px;
+            background: #E6F1FB; color: #0C447C; border: 0.5px solid #85B7EB; cursor: pointer;
+        }
+        .queue-action:hover { background: #d8e9fa; }
+
         .email-modal-overlay {
             position: fixed; inset: 0; background: rgba(0,0,0,0.45);
             display: flex; align-items: center; justify-content: center; z-index: 100000;
@@ -689,6 +714,30 @@
         .pipe-type-header .drag-handle:active,
         .pipe-type-header .pipe-type-drag-handle:active {
             cursor: grabbing;
+        }
+
+        /* Margin % cell: input + "fill down" button side by side */
+        .margin-cell-wrap {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            justify-content: center;
+        }
+        .margin-fill-down-btn {
+            background: #1565c0;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            width: 20px;
+            height: 24px;
+            line-height: 1;
+            font-size: 13px;
+            padding: 0;
+            flex: 0 0 auto;
+        }
+        .margin-fill-down-btn:hover {
+            background: #0d47a1;
         }
 
         /* Main column header row (M+) — paired column label row */
@@ -1627,26 +1676,10 @@
             }
         }
 
-        const backendSaveTimers = new Map();
         const APPROVED_QUOTATIONS_PAGE_SIZE = 100;
         let approvedQuotationsCursor = null;   // opaque DynamoDB page cursor; null = first page
         let approvedQuotationsHasMore = false;
         let approvedQuotationsLoading = false;
-
-        function scheduleQuotationBackendSave(quotation, delay = 1000) {
-            if (!quotation || !quotation.id) {
-                return;
-            }
-            const existingTimer = backendSaveTimers.get(quotation.id);
-            if (existingTimer) {
-                clearTimeout(existingTimer);
-            }
-            const timeoutId = setTimeout(() => {
-                backendSaveTimers.delete(quotation.id);
-                saveQuotationToBackend(quotation);
-            }, delay);
-            backendSaveTimers.set(quotation.id, timeoutId);
-        }
 
         function updateLoadMoreApprovedButton() {
             const loadMoreBtn = document.getElementById('loadMoreApprovedBtn');
@@ -3740,14 +3773,17 @@
                                    step="0.01" style="width: 80px;">
                         </td>
                         <td class="col-margin">
-                            <input type="number" 
-                                   class="editable-field" 
+                            <div class="margin-cell-wrap">
+                            <input type="number"
+                                   class="editable-field"
                                    data-field="marginPercent"
                                    data-pipe-type="${pipeType}"
                                    data-row-id="${rowId}"
                                    value="${marginPercentValue}"
-                                   min="0" 
+                                   min="0"
                                    step="0.01" style="width: 60px;">
+                            <button type="button" class="margin-fill-down-btn" onclick="fillMarginDownBelow(this)" title="Apply this margin % to all items below in this group">↓</button>
+                            </div>
                         </td>
                         <td>₹<input type="number" 
                                    class="editable-field rate-per-mtr" 
@@ -3912,7 +3948,37 @@
                 });
             });
         }
-        
+
+        /*
+            ============================================
+            FILL MARGIN % DOWN (within pipe-type group)
+            ============================================
+            Copies the clicked row's margin % into every item row BELOW it that
+            belongs to the same pipe-type group (stops at the next pipe-type
+            header). Fires input/change on each target so the existing recalc and
+            unsaved-edit tracking runs — works for both the creation and approval
+            tables. (Editing marks the quote unsaved; it does NOT auto-save.)
+        */
+        function fillMarginDownBelow(buttonEl) {
+            const startRow = buttonEl.closest('tr');
+            if (!startRow) return;
+            const sourceInput = startRow.querySelector('[data-field="marginPercent"]');
+            if (!sourceInput) return;
+            const marginValue = sourceInput.value;
+            let row = startRow.nextElementSibling;
+            while (row && !row.classList.contains('pipe-type-header')) {
+                if (row.classList.contains('item-row') && !row.classList.contains('freight-row')) {
+                    const target = row.querySelector('[data-field="marginPercent"]');
+                    if (target) {
+                        target.value = marginValue;
+                        target.dispatchEvent(new Event('input', { bubbles: true }));
+                        target.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                }
+                row = row.nextElementSibling;
+            }
+        }
+
         /*
             ============================================
             RECALCULATE ROW FUNCTION
@@ -4137,7 +4203,7 @@
                 <td><input type="text" class="editable-field" data-field="originalDescription" data-pipe-type="${resolvedPipeType}" value="" placeholder="Enter description"></td>
                 <td><input type="number" class="editable-field" data-field="quantity" data-pipe-type="${resolvedPipeType}" value="0" min="0" step="1"></td>
                 <td class="col-base-rate">₹<input type="number" class="editable-field" data-field="unitRate" data-pipe-type="${resolvedPipeType}" value="0" min="0" step="0.01" style="width: 80px;"></td>
-                <td class="col-margin"><input type="number" class="editable-field" data-field="marginPercent" data-pipe-type="${resolvedPipeType}" value="${defaultMarginValue}" min="0" step="0.01" style="width: 60px;"></td>
+                <td class="col-margin"><div class="margin-cell-wrap"><input type="number" class="editable-field" data-field="marginPercent" data-pipe-type="${resolvedPipeType}" value="${defaultMarginValue}" min="0" step="0.01" style="width: 60px;"><button type="button" class="margin-fill-down-btn" onclick="fillMarginDownBelow(this)" title="Apply this margin % to all items below in this group">↓</button></div></td>
                 <td>₹<input type="number" class="editable-field rate-per-mtr" data-field="finalRate" data-pipe-type="${resolvedPipeType}" value="0" min="0" step="0.01" style="width: 100px;"></td>
                 <td>₹<input type="number" class="editable-field line-total-input" data-field="lineTotal" value="0" min="0" step="1" style="width: 100px;"></td>
             `;
@@ -4962,14 +5028,17 @@
                            step="0.01" style="width: 80px;">
                 </td>
                 <td class="col-margin">
-                    <input type="number" 
-                           class="editable-field" 
+                    <div class="margin-cell-wrap">
+                    <input type="number"
+                           class="editable-field"
                            data-field="marginPercent"
                            data-pipe-type="${resolvedPipeType}"
                            data-row-id="${rowId}"
-                           value="${defaultMarginValue}" 
-                           min="0" 
+                           value="${defaultMarginValue}"
+                           min="0"
                            step="0.01" style="width: 60px;">
+                    <button type="button" class="margin-fill-down-btn" onclick="fillMarginDownBelow(this)" title="Apply this margin % to all items below in this group">↓</button>
+                    </div>
                 </td>
                 <td>₹<input type="number" 
                            class="editable-field rate-per-mtr" 
@@ -6161,6 +6230,66 @@
             attachApprovalSectionListeners();
         }
 
+        // ── Status-led queue (Phase 1) ────────────────────────────────────────────
+        // A quote "needs attention" when the next action is the user's. Today only the
+        // "new / unreviewed" trigger is live; revised / reply-pending fields arrive in
+        // later phases and are referenced with safe fallbacks (undefined -> falsy).
+        function quotationReviewed(q) {
+            return !!(q && (q.everApproved || q.saved || q.sent));
+        }
+        function needsAttention(q) {
+            if (!q) return false;
+            if (!quotationReviewed(q)) return true;       // new — needs review
+            if (q.revised && !q.resent) return true;      // revised, not resent (later phase)
+            if (q.custReplyPending) return true;          // customer replied (later phase)
+            if (q.transporterReplyIn) return true;        // transporter reply in (later phase)
+            return false;
+        }
+        function determineLiveAction(q) {
+            if (!quotationReviewed(q)) return { label: 'Review', key: 'review' };
+            if (q.revised && !q.resent) return { label: 'Resend', key: 'resend' };
+            if (q.custReplyPending) return { label: 'Reply', key: 'reply' };
+            return null;
+        }
+        function statusPill(q) {
+            if (!quotationReviewed(q)) return '<span class="q-pill q-new">New</span>';
+            if (q.sent) return '<span class="q-pill q-sent">&#10003; Sent</span>';
+            return '<span class="q-pill q-approved">Approved</span>';
+        }
+        // Open the real folder (which lives in "All quotes") from a Needs-attention shortcut row.
+        function openQuotationFromQueue(id) {
+            const content = document.getElementById('folder-content-' + id);
+            const folder = document.getElementById('folder-' + id);
+            if (content && !content.classList.contains('show')) {
+                toggleQuotationFolder(id);
+            }
+            if (folder && folder.scrollIntoView) {
+                folder.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+        function buildNeedsAttentionRowHTML(quotation) {
+            const company = (quotation.companyName || quotation.projectName || '').trim();
+            const kindAttn = (quotation.customerName || '').trim();
+            const quoteNumber = (quotation.quoteNumber || '').trim();
+            const name = [company, kindAttn, quoteNumber].filter(Boolean).join(' - ') || 'Quotation';
+            const action = determineLiveAction(quotation);
+            const actionHTML = action
+                ? `<button class="queue-action" type="button" onclick="event.stopPropagation(); openQuotationFromQueue(${JSON.stringify(quotation.id)})">${action.label}</button>`
+                : '';
+            return `
+                <div class="attn-row" onclick="openQuotationFromQueue(${JSON.stringify(quotation.id)})">
+                    <span class="folder-icon">📁</span>
+                    ${statusPill(quotation)}
+                    <span class="attn-name">${escapeHtml(name)}</span>
+                    ${actionHTML}
+                </div>
+            `;
+        }
+        function buildNeedsAttentionSection(list) {
+            const rows = list.map(buildNeedsAttentionRowHTML).join('');
+            return `<div class="queue-head queue-attn">&#9888; Needs attention &middot; ${list.length}</div>${rows}`;
+        }
+
         function displayAllApprovedQuotations() {
             /*
                 This function loops through all approved quotations
@@ -6203,8 +6332,16 @@
                 const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
                 return bTime - aTime;
             });
-            const allQuotationsHTML = buildAllApprovedQuotationsHTMLForList(sortedByQuotationDate);
-            
+            const allListHTML = buildAllApprovedQuotationsHTMLForList(sortedByQuotationDate);
+            // Status-led layout: a "Needs attention" spotlight on top (shortcut rows that
+            // expand the real folder below), then the full "All quotes" list unchanged.
+            const needsList = sortedByQuotationDate.filter(needsAttention);
+            const allQuotationsHTML = needsList.length
+                ? buildNeedsAttentionSection(needsList)
+                  + `<div class="queue-head">All quotes &middot; ${sortedByQuotationDate.length}</div>`
+                  + allListHTML
+                : allListHTML;
+
             // Update the container
             renderApprovedQuotationsHTML(container, allQuotationsHTML);
             // Restore expanded folders and scroll position after re-render so "Load more"
@@ -6624,6 +6761,27 @@
                             rowNumberCell.textContent = index + 1;
                         }
                         
+                        // Ensure the margin cell has a "fill down" button (retrofits saved quotes
+                        // whose stored tableHTML predates this feature). New quotes already carry
+                        // the button, so the guard below skips them.
+                        const marginFieldForBtn = row.querySelector('[data-field="marginPercent"]');
+                        if (marginFieldForBtn && !row.querySelector('.margin-fill-down-btn')) {
+                            let wrap = marginFieldForBtn.parentElement;
+                            if (!wrap || !wrap.classList.contains('margin-cell-wrap')) {
+                                wrap = document.createElement('div');
+                                wrap.className = 'margin-cell-wrap';
+                                marginFieldForBtn.parentNode.insertBefore(wrap, marginFieldForBtn);
+                                wrap.appendChild(marginFieldForBtn);
+                            }
+                            const fillBtn = document.createElement('button');
+                            fillBtn.type = 'button';
+                            fillBtn.className = 'margin-fill-down-btn';
+                            fillBtn.setAttribute('onclick', 'fillMarginDownBelow(this)');
+                            fillBtn.title = 'Apply this margin % to all items below in this group';
+                            fillBtn.textContent = '↓';
+                            wrap.appendChild(fillBtn);
+                        }
+
                         // Attach event listeners
                         const editableFields = row.querySelectorAll('.editable-field');
                         editableFields.forEach(function(field) {
@@ -7007,14 +7165,17 @@
                            step="0.01" style="width: 80px;">
                 </td>
                 <td class="col-margin">
-                    <input type="number" 
-                           class="editable-field" 
+                    <div class="margin-cell-wrap">
+                    <input type="number"
+                           class="editable-field"
                            data-field="marginPercent"
                            data-pipe-type="${resolvedPipeType}"
                            data-row-id="${rowId}"
-                           value="${defaultMarginValue}" 
-                           min="0" 
+                           value="${defaultMarginValue}"
+                           min="0"
                            step="0.01" style="width: 60px;">
+                    <button type="button" class="margin-fill-down-btn" onclick="fillMarginDownBelow(this)" title="Apply this margin % to all items below in this group">↓</button>
+                    </div>
                 </td>
                 <td>₹<input type="number" 
                            class="editable-field rate-per-mtr" 
@@ -7267,10 +7428,12 @@
             }
             quotation.hasUnsavedEdits = true;
             quotation.updatedAt = new Date().toISOString();
-            
-            // Save to backend (debounced)
+
+            // Do NOT auto-save edits to the backend. Changes stay in-memory and are
+            // flagged unsaved (hasUnsavedEdits) so the save gate blocks Download/Send
+            // until the user explicitly clicks Save. Backend persistence happens only
+            // on explicit Save (saveQuotationChanges) or Approve (saveQuotation).
             saveToLocalStorage();
-            scheduleQuotationBackendSave(quotation);
         }
         
         /*
