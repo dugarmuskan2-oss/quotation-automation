@@ -249,6 +249,8 @@
         .q-pill.q-approved { background: #E1F5EE; color: #0F6E56; }
         .q-pill.q-sent { background: #E6F1FB; color: #0C447C; }
         .q-pill.q-revised { background: #EEEDFE; color: #26215C; }
+        .q-pill.q-reply { background: #FBEAF0; color: #993556; }
+        .thread-messages { max-height: 320px; overflow-y: auto; }
         .queue-action {
             font-size: 12px; padding: 5px 12px; border-radius: 8px;
             background: #E6F1FB; color: #0C447C; border: 0.5px solid #85B7EB; cursor: pointer;
@@ -6191,16 +6193,26 @@
             const baseContent = emailBlock || fileBlock
                 ? `${emailBlock}${fileBlock}`
                 : `<div style="margin-top:10px; font-size: 12px; color:#777; background:#fafafa; border:1px dashed #ddd; padding:8px; border-radius:4px;">No email or file content available.</div>`;
-            // Phase 5 (slice 1): reply to the customer in-thread, reusing /api/send-email.
-            // Only shown when the quote is linked to an email thread.
+            // Phase 5: in-card Conversation (read thread + reply). Shown only for thread-linked quotes.
             const hasThread = !!(quotation.gmailMessageId || quotation.threadId);
+            const originalMsg = (quotation.emailContent || '').trim();
+            const initialThread = originalMsg
+                ? `<div style="margin-bottom:8px;"><div style="font-size:11px;color:#9b988e;">Customer · original enquiry</div><div style="background:#f6f5f1;border-radius:8px;padding:8px 10px;font-size:13px;white-space:pre-wrap;">${escapeHtml(originalMsg.slice(0, 1200))}</div></div>`
+                : `<div style="font-size:12px;color:#9b988e;">Click "Check for replies" to load the thread.</div>`;
+            const conversationBlock = hasThread ? `
+                <div style="margin-top:10px;">
+                    ${gmailLinkBlock}
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;"><strong>Conversation</strong>
+                        <button type="button" class="save-btn" style="margin-left:auto; font-size:12px; padding:4px 10px;" onclick="event.stopPropagation(); loadThreadIntoPanel(${JSON.stringify(quotation.id)})">&#8635; Check for replies</button></div>
+                    <div id="thread-${quotation.id}" class="thread-messages">${initialThread}</div>
+                </div>` : '';
             const replyComposer = hasThread ? `
                 <div style="margin-top:12px; border-top:1px solid #eee; padding-top:10px;">
                     <div style="font-weight:600; font-size:13px; margin-bottom:6px;">Reply to customer</div>
                     <textarea id="reply-box-${quotation.id}" rows="3" placeholder="Type your reply…" style="width:100%; box-sizing:border-box;"></textarea>
                     <button type="button" class="save-btn" onclick="event.stopPropagation(); sendQuoteReply(${JSON.stringify(quotation.id)})" style="margin-top:6px;">✉️ Send reply</button>
                 </div>` : '';
-            const panelContent = baseContent + replyComposer;
+            const panelContent = (hasThread ? conversationBlock : baseContent) + replyComposer;
 
             return `
                 <div class="approval-side">
@@ -6300,6 +6312,7 @@
         }
         function statusPill(q) {
             if (!quotationReviewed(q)) return '<span class="q-pill q-new">New</span>';
+            if (q.custReplyPending) return '<span class="q-pill q-reply">Customer replied</span>';
             if (q.revised) return '<span class="q-pill q-revised">Revised</span>';
             if (q.sent) return '<span class="q-pill q-sent">&#10003; Sent</span>';
             return '<span class="q-pill q-approved">Approved</span>';
@@ -8395,6 +8408,47 @@
                 };
                 setTimeout(function() { overlay.querySelector('.chips-field[data-field="to"] input').focus(); }, 0);
             });
+        }
+
+        // Phase 5 (slice 2): fetch + render the full Gmail thread into the card's Conversation
+        // panel. Manual (button) only — no auto-poll. Needs the gmail.readonly scope + re-auth.
+        async function loadThreadIntoPanel(quotationId) {
+            const quotation = approvedQuotations.find(q => idsMatch(q.id, quotationId));
+            if (!quotation) return;
+            const container = document.getElementById('thread-' + quotationId);
+            if (!container) return;
+            const threadId = quotation.threadId;
+            const messageId = quotation.gmailMessageId;
+            if (!threadId && !messageId) return;
+            container.innerHTML = '<div style="font-size:12px;color:#9b988e;">Loading thread…</div>';
+            const qs = threadId ? ('threadId=' + encodeURIComponent(threadId)) : ('messageId=' + encodeURIComponent(messageId));
+            try {
+                const res = await fetch(`${API_BASE_URL}/thread-messages?` + qs);
+                const data = await safeJsonParse(res);
+                if (res.ok && data && Array.isArray(data.messages)) {
+                    renderThreadMessages(container, data.messages);
+                    const last = data.messages[data.messages.length - 1];
+                    quotation.custReplyPending = !!(last && last.direction === 'customer');
+                } else {
+                    container.innerHTML = '<div style="font-size:12px;color:#c62828;">Couldn\'t load the thread' + (data && data.error ? ': ' + escapeHtml(data.error) : '') + '. (Gmail read access may not be set up yet.)</div>';
+                }
+            } catch (err) {
+                container.innerHTML = '<div style="font-size:12px;color:#c62828;">Couldn\'t load the thread (Gmail read access not set up).</div>';
+            }
+        }
+        function renderThreadMessages(container, messages) {
+            if (!messages || !messages.length) { container.innerHTML = '<div style="font-size:12px;color:#9b988e;">No messages in this thread.</div>'; return; }
+            container.innerHTML = messages.map(function (m) {
+                const you = m.direction === 'you';
+                const who = you ? 'You' : (m.from || 'Customer');
+                const body = escapeHtml((m.body || m.snippet || '').slice(0, 1500));
+                return '<div style="margin-bottom:8px;"><div style="font-size:11px;color:#9b988e;">' + escapeHtml(who) + (m.date ? ' · ' + escapeHtml(m.date) : '') + '</div>'
+                    + '<div style="background:' + (you ? '#E6F1FB' : '#f6f5f1') + ';border-radius:8px;padding:8px 10px;font-size:13px;white-space:pre-wrap;">' + body + '</div></div>';
+            }).join('');
+            const last = messages[messages.length - 1];
+            if (last && last.direction === 'customer') {
+                container.innerHTML += '<div style="margin-top:6px;font-size:12px;color:#993556;">Customer has the last word — awaiting your reply.</div>';
+            }
         }
 
         // Phase 5 (slice 1): send a plain reply to the customer in the existing Gmail thread.

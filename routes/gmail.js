@@ -1,7 +1,7 @@
 'use strict';
 
 const express = require('express');
-const { sendEmail, lookupMessageThread } = require('../utils/gmail');
+const { sendEmail, lookupMessageThread, fetchThreadMessages } = require('../utils/gmail');
 
 // Prefix a subject with "Re:" unless it already has one (avoids "Re: Re: ...").
 function replySubject(original) {
@@ -21,6 +21,24 @@ function createGmailRouter() {
     } catch (err) {
       console.error('Thread resolve error:', err.message);
       res.status(500).json({ error: 'Could not read original email thread: ' + err.message });
+    }
+  });
+
+  // Read all messages in a quote's email thread (Phase 5). Accepts threadId or messageId.
+  // Requires the gmail.readonly scope (re-run tools/gmail-auth.js after adding it).
+  router.get('/thread-messages', async (req, res) => {
+    let { threadId, messageId } = req.query;
+    try {
+      if (!threadId && messageId) {
+        const info = await lookupMessageThread(messageId);
+        threadId = info.threadId;
+      }
+      if (!threadId) return res.status(400).json({ error: 'threadId or messageId is required' });
+      const data = await fetchThreadMessages(threadId);
+      res.json(data);
+    } catch (err) {
+      console.error('Thread messages error:', err.message);
+      res.status(500).json({ error: 'Could not read the thread: ' + err.message });
     }
   });
 

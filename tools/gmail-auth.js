@@ -17,7 +17,10 @@ const CLIENT_SECRET = process.env.GMAIL_CLIENT_SECRET;
 const REDIRECT_URI = 'http://localhost:3002/oauth2callback';
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.send',
-  'https://www.googleapis.com/auth/gmail.metadata',
+  // gmail.readonly (supersedes the old metadata-only scope) is required to read full
+  // thread message bodies for the in-card Conversation panel. Re-run this script after
+  // changing scopes to regenerate the refresh token with the new consent.
+  'https://www.googleapis.com/auth/gmail.readonly',
 ];
 const ENV_PATH = path.join(__dirname, '..', '.env');
 

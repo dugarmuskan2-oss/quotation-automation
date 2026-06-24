@@ -140,6 +140,58 @@ async function lookupMessageThread(messageId) {
   };
 }
 
-module.exports = { sendEmail, lookupMessageThread };
-// Pure helpers exposed for unit testing (MIME structure, inline-image CID rewrite).
-module.exports._test = { buildRawMessage, extractInlineImages, wrapBase64 };
+// ── Thread reading (Phase 5) — needs the gmail.readonly scope ───────────────────
+function decodeGmailB64(data) {
+  if (!data) return '';
+  try { return Buffer.from(String(data).replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'); }
+  catch (e) { return ''; }
+}
+function stripHtmlToText(html) {
+  return String(html || '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<\/(p|div|br|li|tr)>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n\s*\n\s*\n+/g, '\n\n')
+    .trim();
+}
+// Recursively pull the best readable body text from a Gmail message payload.
+function extractBodyText(payload) {
+  if (!payload) return '';
+  if (payload.mimeType === 'text/plain' && payload.body && payload.body.data) return decodeGmailB64(payload.body.data);
+  if (Array.isArray(payload.parts) && payload.parts.length) {
+    const plain = payload.parts.find(p => p.mimeType === 'text/plain' && p.body && p.body.data);
+    if (plain) return decodeGmailB64(plain.body.data);
+    for (let i = 0; i < payload.parts.length; i++) {
+      const t = extractBodyText(payload.parts[i]);
+      if (t) return t;
+    }
+  }
+  if (payload.mimeType === 'text/html' && payload.body && payload.body.data) return stripHtmlToText(decodeGmailB64(payload.body.data));
+  return '';
+}
+// Read all messages in a thread (full format). `direction` is 'you' for messages we
+// sent (SENT label) and 'customer' otherwise — used to tell whose reply is latest.
+async function fetchThreadMessages(threadId) {
+  const gmail = createGmailClient();
+  const res = await gmail.users.threads.get({ userId: 'me', id: threadId, format: 'full' });
+  const messages = (res.data.messages || []).map(function (m) {
+    const headers = (m.payload && m.payload.headers) || [];
+    const get = name => (headers.find(h => h.name && h.name.toLowerCase() === name.toLowerCase()) || {}).value || '';
+    return {
+      id: m.id,
+      direction: (m.labelIds || []).indexOf('SENT') >= 0 ? 'you' : 'customer',
+      from: get('From'),
+      date: get('Date'),
+      subject: get('Subject'),
+      snippet: m.snippet || '',
+      body: extractBodyText(m.payload) || m.snippet || '',
+    };
+  });
+  return { threadId: threadId, messages: messages };
+}
+
+module.exports = { sendEmail, lookupMessageThread, fetchThreadMessages };
+// Pure helpers exposed for unit testing (MIME structure, inline-image CID rewrite, body parse).
+module.exports._test = { buildRawMessage, extractInlineImages, wrapBase64, extractBodyText, stripHtmlToText };
