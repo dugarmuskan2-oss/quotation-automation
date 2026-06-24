@@ -32,8 +32,8 @@ button:hover{background:var(--color-background-secondary);}
 button:active{transform:scale(0.98);}
 button:disabled{opacity:0.45;cursor:not-allowed;}
 input,select,textarea{font-family:inherit;font-size:13px;color:var(--color-text-primary);background:var(--color-background-primary);border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);padding:6px 10px;height:34px;}
-textarea{height:auto;}
 input:focus,select:focus,textarea:focus{outline:none;box-shadow:0 0 0 2px var(--color-border-info);}
+textarea{height:auto;padding:8px 10px;line-height:1.5;width:100%;}
 a{color:inherit;}
 .fx-tab{font-size:13px;color:var(--color-text-secondary);padding-bottom:8px;cursor:pointer;border-bottom:2px solid transparent;background:none;border-top:none;border-left:none;border-right:none;border-radius:0;}
 .fx-tab:hover{background:none;}
@@ -42,208 +42,405 @@ a{color:inherit;}
 .fx-chip{font-size:12px;padding:4px 8px;border-radius:8px;background:#E6F1FB;color:#0C447C;display:inline-flex;align-items:center;gap:5px;}
 .fx-sugg{font-size:13px;padding:7px 10px;cursor:pointer;border-top:0.5px solid var(--color-border-tertiary);}
 .fx-sugg:hover{background:var(--color-background-secondary);}
-.fx-row{border:0.5px solid var(--color-border-tertiary);border-radius:8px;padding:10px 12px;display:flex;align-items:center;gap:10px;}
+.fx-row{border:0.5px solid var(--color-border-tertiary);border-radius:8px;padding:10px 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
 .fx-prim{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info);}
 .fx-prim:hover{background:#d8e9fa;}
+.fx-link{cursor:pointer;color:var(--color-text-info);text-decoration:underline;font-size:13px;background:none;border:none;padding:0;}
+.attn-head{font-size:12px;color:var(--color-text-tertiary);margin:18px 0 8px;}
+.folder{display:flex;align-items:center;gap:10px;border:0.5px solid var(--color-border-tertiary);border-radius:10px;padding:10px 12px;background:var(--color-background-primary);margin-bottom:8px;}
+.folder.live{cursor:pointer;}
+.folder.live:hover{background:var(--color-background-secondary);}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#EF9F27;margin-left:5px;vertical-align:1px;}
+.seg{font-size:13px;padding:6px 11px;border:0.5px solid var(--color-border-secondary);border-radius:8px;cursor:pointer;background:transparent;}
+.seg.on{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info);}
+.wt-grid{display:grid;grid-template-columns:22px 1fr 56px 56px 72px 24px;gap:8px;align-items:center;}
+.wt-row{padding:5px 0;border-top:0.5px solid var(--color-border-tertiary);}
+.wt-row.miss{background:#FCEBEB;border-radius:6px;}
+.wt-row input{height:30px;padding:4px 7px;width:100%;}
+.wt-row.drag{opacity:.4;}
+.wt-handle{cursor:grab;color:var(--color-text-tertiary);display:flex;align-items:center;justify-content:center;font-size:16px;}
+.wt-handle:active{cursor:grabbing;}
+.drop{border:0.5px solid var(--color-border-tertiary);border-radius:8px;padding:10px 12px;}
+.drop.over{border:1px dashed var(--color-border-info);background:var(--color-background-info);}
+.menu-wrap{position:relative;display:inline-block;}
+.menu{position:absolute;right:0;top:38px;background:var(--color-background-primary);border:0.5px solid var(--color-border-secondary);border-radius:8px;padding:5px;min-width:150px;z-index:5;}
+.menu button{display:block;width:100%;text-align:left;border:none;background:transparent;padding:7px 9px;border-radius:6px;}
+.menu button:hover{background:var(--color-background-secondary);}
 </style>
 </head>
 <body>
 <div class="page">
   <div class="proto-label"><i class="ti ti-flask" aria-hidden="true"></i> Prototype — not live data</div>
-  <p class="proto-sub">A clickable mock of the proposed freight &amp; sourcing flow inside a quote card. The transporter suggestions, the reply, and the detected number are simulated — the real app would pull these from Gmail.</p>
-
-  <div style="background:var(--color-background-secondary);border-radius:var(--border-radius-lg);padding:1.25rem;">
-    <div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:1rem 1.25rem;">
-
-      <div style="display:flex;align-items:center;gap:10px;">
-        <i class="ti ti-folder" style="font-size:20px;color:var(--color-text-secondary);" aria-hidden="true"></i>
-        <div style="flex:1;min-width:0;">
-          <p id="fxTitle" style="margin:0;font-size:15px;font-weight:500;">DSC-108 · Sri Venkateswara Traders</p>
-          <p style="margin:0;font-size:13px;color:var(--color-text-secondary);">Kind attn: Mahesh</p>
-        </div>
-        <span id="fxStatus" class="fx-pill" style="background:#E1F5EE;color:#0F6E56;">Approved</span>
-      </div>
-
-      <div style="display:flex;gap:18px;margin-top:14px;border-bottom:0.5px solid var(--color-border-tertiary);">
-        <button class="fx-tab" id="t-details">Details</button>
-        <button class="fx-tab on" id="t-freight">Freight &amp; sourcing</button>
-        <button class="fx-tab" id="t-rev">Revisions</button>
-      </div>
-
-      <div id="p-details" style="display:none;padding-top:16px;"><div id="detailsBody"></div></div>
-      <div id="p-freight" style="padding-top:16px;"><div id="freightBody"></div></div>
-      <div id="p-rev" style="display:none;padding-top:16px;"><div id="revBody"></div></div>
-
-      <p style="margin:14px 0 0;font-size:12px;color:var(--color-text-tertiary);text-align:center;"><span id="fxReset" style="cursor:pointer;text-decoration:underline;">Reset demo</span></p>
-    </div>
-  </div>
+  <p class="proto-sub">A clickable mock of the redesigned flow. The list is status-led: quotes that need you sit under <b>Needs attention</b> and drop into <b>All quotes</b> once handled. Open <b>DSC-108</b> (the only live one) to see the folder: a <b>Quote</b> tab, a <b>Freight</b> tab (editable weight, split into shipments, optional transporter sourcing), and a <b>History</b> tab. A revision is created only when you change a quote that was already sent.</p>
+  <div id="app"></div>
+  <p style="margin:18px 0 0;font-size:12px;color:var(--color-text-tertiary);text-align:center;"><span id="bReset" style="cursor:pointer;text-decoration:underline;">Reset demo</span></p>
 </div>
 
 <script>
 (function(){
-  var WEIGHT=1240, BASE=142200;
-  var TRANSPORTERS=["VRL Logistics","TCI Freight","Gati Express","Safexpress","Delhivery Cargo"];
-  var REPLIES={
-    "VRL Logistics":{amount:4340,msg:"For 1,240 kg Chennai to Hyderabad: 3.50/kg = 4,340 all inclusive. Transit 2 days."},
-    "TCI Freight":{amount:4800,msg:"Freight 4,800 lumpsum, door delivery Hyderabad. 3 days."},
-    "Gati Express":{amount:4100,msg:"4,100 all-in for the full consignment, 2-3 days."},
-    "Safexpress":{amount:5200,msg:"5,200 incl. door delivery and unloading."},
-    "Delhivery Cargo":{amount:4836,msg:"3.90/kg, approx 4,836. 2 days."}
-  };
-  var S;
-  function reset(){S={weight:null,composer:false,recipients:[],threads:[],revised:false,freightAmt:"",method:"line",viewing:"current"};}
+  var seq=10;
+  var items=[
+    {id:'a',d:'2" NB Heavy GI',qty:300,rate:390,kgm:3.61,sec:1},
+    {id:'b',d:'1" NB Medium ERW',qty:120,rate:210,kgm:1.31,sec:1},
+    {id:'c',d:'3/4" NB Medium GI',qty:200,rate:150,kgm:1.02,sec:1}
+  ];
+  var TR={'VRL Logistics':4340,'Gati Express':4100,'TCI Freight':4800};
+  var MSG={'VRL Logistics':'1,240 kg Chennai to Hyderabad: Rs 4,340 all-inclusive, 2 days.','Gati Express':'Rs 4,100 all-in for the full load, 2-3 days.','TCI Freight':'Rs 4,800 lumpsum, door delivery, 3 days.'};
+  var DEFAULT_ENQ='Dear Sir,\n\nPlease share your best freight rate for the consignment below:\n\n• Pickup: DSC Warehouse, Chennai\n• Drop: Hyderabad\n• Weight: 1,240 kg (7 items)\n• Material: MS pipes\n\nKindly include transit time and whether door delivery is covered.\n\nRegards,\nDSC Pipes';
+  var S, dragId=null;
+  function reset(){
+    S={open:false,tab:'quote',sent:false,revised:false,resent:false,viewing:'current',exportOpen:false,
+       freightApplied:false,fA:'',fB:'',method:'line',split:false,weightOpen:false,openIn:'all',
+       sourcingOpen:false,sourcingFor:1,recipients:[],threads:[],enquiryMsg:DEFAULT_ENQ,lastChecked:'',
+       messages:[{from:'customer',name:'Mahesh',time:'19 Jun, 10:02',text:'Hi, please quote: 300 m of 2" NB GI heavy + 120 m of 1" NB ERW medium. Delivery to Hyderabad, need FOR price.'}],custReplyArrived:false,custReplyPending:false,respondOpen:false,respondText:''};
+    items.forEach(function(i){i.sec=1;});
+  }
   reset();
-  var $=function(id){return document.getElementById(id);};
-  function money(n){return "Rs "+Math.round(parseFloat(n)||0).toLocaleString("en-IN");}
-  function fVal(){return parseFloat(S.freightAmt)||0;}
+  var app=document.getElementById('app');
+  function $(id){return document.getElementById(id);}
+  function money(n){return 'Rs '+Math.round(parseFloat(n)||0).toLocaleString('en-IN');}
+  function num(v){return parseFloat(v)||0;}
+  function fA(){return num(S.fA);}
+  function fB(){return S.split?num(S.fB):0;}
+  function freightTotal(){return S.freightApplied?(fA()+fB()):0;}
+  function weightOf(i){return i.qty*(i.kgm||0);}
+  function secItems(sec){return items.filter(function(i){return i.sec===sec;});}
+  function secWeight(sec){return secItems(sec).reduce(function(s,i){return s+weightOf(i);},0);}
+  function totalWeight(){return items.reduce(function(s,i){return s+weightOf(i);},0);}
+  function baseTotal(){return items.reduce(function(s,i){return s+i.qty*i.rate;},0);}
+  function hasPendingReply(){return S.threads.length>0&&S.threads.some(function(t){return t.replied;})&&!S.freightApplied;}
+  function needsAttention(){return (S.revised&&!S.resent)||hasPendingReply()||S.custReplyPending;}
 
-  function showTab(name){["details","freight","rev"].forEach(function(k){$("p-"+k).style.display=(k===name)?"block":"none";$("t-"+k).classList.toggle("on",k===name);});}
-  $("t-details").onclick=function(){renderDetails();showTab("details");};
-  $("t-freight").onclick=function(){renderFreight();showTab("freight");};
-  $("t-rev").onclick=function(){renderRev();showTab("rev");};
-  $("fxReset").onclick=function(){reset();renderAll();showTab("freight");};
-
-  function setHeader(){
-    $("fxTitle").textContent=S.revised?"DSC-108 (Rev 1) · Sri Venkateswara Traders":"DSC-108 · Sri Venkateswara Traders";
-    var p=$("fxStatus");
-    if(S.revised){p.textContent="Revised";p.style.background="#E6F1FB";p.style.color="#0C447C";}
-    else if(S.weight){p.textContent="Sourcing";p.style.background="#FAEEDA";p.style.color="#854F0B";}
-    else{p.textContent="Approved";p.style.background="#E1F5EE";p.style.color="#0F6E56";}
+  // ---------- LIST ----------
+  function statusChip(){
+    if(S.revised&&!S.resent)return '<span class="fx-pill" style="background:#EEEDFE;color:#26215C;">Revised</span>';
+    if(S.custReplyPending)return '<span class="fx-pill" style="background:#FAECE7;color:#993C1D;">Customer replied</span>';
+    if(hasPendingReply())return '<span class="fx-pill" style="background:#FAEEDA;color:#854F0B;">Reply in</span>';
+    if(S.sent)return '<span class="fx-pill" style="background:#E6F1FB;color:#0C447C;">Sent</span>';
+    return '<span class="fx-pill" style="background:#E1F5EE;color:#0F6E56;">Approved</span>';
+  }
+  function liveAction(){
+    if(!S.sent)return {label:'Send',key:'send'};
+    if(S.revised&&!S.resent)return {label:'Resend',key:'resend'};
+    if(S.custReplyPending)return {label:'Reply',key:'reply'};
+    if(hasPendingReply())return {label:'Add freight',key:'addfreight'};
+    return null;
+  }
+  function folderRow(group){
+    var a=liveAction();
+    var openHere=S.open&&S.openIn===group;
+    var act=a?'<button class="fx-prim f108action" data-group="'+group+'" style="padding:5px 11px;">'+a.label+'</button>':'';
+    var chev='<i class="ti ti-chevron-'+(openHere?'down':'right')+'" style="font-size:18px;color:var(--color-text-tertiary);" aria-hidden="true"></i>';
+    var row='<div class="folder live row108" data-group="'+group+'"><i class="ti ti-folder" style="font-size:19px;color:var(--color-text-secondary);" aria-hidden="true"></i>'
+      +'<div style="flex:1;min-width:0;"><p style="margin:0;font-size:14px;font-weight:500;">'+(S.revised?'DSC-108 (Rev 1)':'DSC-108')+' · Sri Venkateswara Traders</p>'
+      +'<p style="margin:0;font-size:12px;color:var(--color-text-secondary);">Kind attn: Mahesh</p></div>'
+      +statusChip()+act+chev+'</div>';
+    return row+(openHere?card():'');
+  }
+  function staticFolder(title,sub,chip,action){
+    var act=action?'<button class="fx-prim" style="padding:5px 11px;" disabled>'+action+'</button>':'';
+    return '<div class="folder"><i class="ti ti-folder" style="font-size:19px;color:var(--color-text-secondary);" aria-hidden="true"></i>'
+      +'<div style="flex:1;min-width:0;"><p style="margin:0;font-size:14px;font-weight:500;">'+title+'</p>'
+      +'<p style="margin:0;font-size:12px;color:var(--color-text-secondary);">'+sub+'</p></div>'+chip+act+'</div>';
+  }
+  function renderApp(){
+    if(S.open&&S.openIn==='attn'&&!needsAttention())S.openIn='all';
+    var NEW='<span class="fx-pill" style="background:#FBEAF0;color:#993556;">New</span>';
+    var SENT='<span class="fx-pill" style="background:#E6F1FB;color:#0C447C;">Sent</span>';
+    var attn='', all='';
+    // Needs attention = the subset that needs action (these ALSO stay in All quotes)
+    attn+=staticFolder('DSC-110 · Acme Steel','Kind attn: Rao',NEW,'Review');
+    if(needsAttention())attn+=folderRow('attn');
+    // All quotes = every quote, always
+    all+=staticFolder('DSC-110 · Acme Steel','Kind attn: Rao',NEW,'Review');
+    all+=folderRow('all');
+    all+=staticFolder('DSC-109 · Bharat Pipes','Kind attn: Iqbal',SENT,'');
+    all+=staticFolder('DSC-107 · Metro Infra','Kind attn: Sharma',SENT,'');
+    var attnCount=1+(needsAttention()?1:0);
+    var checked=S.lastChecked?'<span style="font-size:11px;color:var(--color-text-tertiary);margin-left:6px;">Updated '+S.lastChecked+'</span>':'';
+    app.innerHTML='<div class="attn-head" style="display:flex;align-items:center;gap:8px;"><span><i class="ti ti-alert-circle" style="font-size:13px;vertical-align:-2px;" aria-hidden="true"></i> Needs attention · '+attnCount+'</span><button class="fx-link" id="bRefresh" style="display:inline-flex;align-items:center;gap:4px;"><i class="ti ti-refresh" style="font-size:13px;" aria-hidden="true"></i> Check for replies</button>'+checked+'</div>'+attn
+      +'<p class="attn-head">All quotes · 4</p>'+all;
+    bindApp();
   }
 
-  function renderDetails(){
-    var v=S.viewing,f=fVal(),grand=BASE,banner="",extra="";
-    if(S.revised&&v==="current"){
-      banner='<div style="display:flex;align-items:center;gap:8px;padding:9px 11px;border-radius:8px;background:#E6F1FB;color:#0C447C;font-size:12px;margin-bottom:14px;"><i class="ti ti-git-branch" style="font-size:15px;" aria-hidden="true"></i><span style="flex:1;">You are viewing Rev 1 — the current version (freight added).</span><span id="goHist" style="cursor:pointer;text-decoration:underline;">History</span></div>';
-      grand=BASE+f;
-      if(S.method==="line")extra='<tr style="border-top:0.5px solid var(--color-border-tertiary);"><td style="padding:6px 0;">Freight</td><td></td><td></td><td style="text-align:right;">'+money(f)+'</td></tr>';
-      else extra='<tr style="border-top:0.5px solid var(--color-border-tertiary);"><td style="padding:6px 0;color:var(--color-text-tertiary);font-size:12px;" colspan="4">Freight '+money(f)+' included in rates (FOR) — hidden on the PDF</td></tr>';
-    } else if(S.revised&&v==="original"){
-      banner='<div style="display:flex;align-items:center;gap:8px;padding:9px 11px;border-radius:8px;background:#FAEEDA;color:#854F0B;font-size:12px;margin-bottom:14px;"><i class="ti ti-alert-triangle" style="font-size:15px;" aria-hidden="true"></i><span style="flex:1;">This is the original — superseded. A newer Rev 1 is current.</span><button id="goCur" style="font-size:12px;padding:3px 9px;">Go to current</button></div>';
+  // ---------- CARD ----------
+  function card(){
+    var fdot=S.freightApplied?'':'<span class="dot" title="freight not added yet"></span>';
+    var htab='History'+(S.revised?' · Rev 1':'');
+    var tabs='<div style="display:flex;gap:18px;margin-top:14px;border-bottom:0.5px solid var(--color-border-tertiary);">'
+      +'<button class="fx-tab'+(S.tab==='quote'?' on':'')+'" id="t-quote">Quote</button>'
+      +'<button class="fx-tab'+(S.tab==='freight'?' on':'')+'" id="t-freight">Freight '+fdot+'</button>'
+      +'<button class="fx-tab'+(S.tab==='history'?' on':'')+'" id="t-history">'+htab+'</button></div>';
+    var body=S.tab==='quote'?quoteTab():S.tab==='freight'?freightTab():historyTab();
+    return '<div style="background:var(--color-background-primary);border:1px solid #EF9F27;border-radius:var(--border-radius-lg);padding:1rem 1.15rem;margin:2px 0 12px;">'
+      +'<div style="display:flex;align-items:center;gap:8px;"><span style="flex:1;font-size:12px;color:var(--color-text-tertiary);">Opened — showing the current version</span>'
+      +'<button class="fx-link" id="cardClose">Close</button></div>'+tabs+body+'</div>';
+  }
+
+  // ---------- QUOTE TAB ----------
+  function primaryButton(){
+    if(S.viewing==='original')return '';
+    if(!S.sent)return '<button class="fx-prim" id="bPrimary" style="padding:7px 13px;"><i class="ti ti-send" style="font-size:14px;vertical-align:-2px;" aria-hidden="true"></i> Send to customer</button>';
+    if(S.revised&&!S.resent)return '<button class="fx-prim" id="bPrimary" style="padding:7px 13px;"><i class="ti ti-send" style="font-size:14px;vertical-align:-2px;" aria-hidden="true"></i> Resend to customer</button>';
+    return '<span style="font-size:13px;color:#0F6E56;"><i class="ti ti-check" style="font-size:15px;vertical-align:-2px;" aria-hidden="true"></i> Sent'+(S.resent?' (updated)':'')+'</span>';
+  }
+  function exportMenu(){
+    var menu=S.exportOpen?'<div class="menu"><button class="expItem"><i class="ti ti-printer" style="font-size:15px;vertical-align:-2px;margin-right:6px;" aria-hidden="true"></i>Print</button><button class="expItem"><i class="ti ti-download" style="font-size:15px;vertical-align:-2px;margin-right:6px;" aria-hidden="true"></i>Download PDF</button></div>':'';
+    return '<span class="menu-wrap"><button id="bExport" style="padding:7px 13px;">Export <i class="ti ti-chevron-down" style="font-size:14px;vertical-align:-2px;" aria-hidden="true"></i></button>'+menu+'</span>';
+  }
+  function quoteTab(){
+    var banner='';
+    if(S.revised&&S.viewing==='current')
+      banner='<div class="fx-row" style="background:#E6F1FB;color:#0C447C;border:none;margin:16px 0 0;font-size:12px;"><i class="ti ti-git-branch" style="font-size:15px;" aria-hidden="true"></i><span style="flex:1;">Viewing Rev 1 — the current version (freight added).</span><button class="fx-link" id="goHistory" style="color:#0C447C;">History</button></div>';
+    else if(S.revised&&S.viewing==='original')
+      banner='<div class="fx-row" style="background:#FAEEDA;color:#854F0B;border:none;margin:16px 0 0;font-size:12px;"><i class="ti ti-lock" style="font-size:15px;" aria-hidden="true"></i><span style="flex:1;">This is the original — superseded and read-only. Rev 1 is current.</span><button class="seg" id="goCurrent">Go to current</button></div>';
+    var v=S.viewing;
+    var showFreight=(v==='current')&&S.freightApplied;
+    var grand=baseTotal()+((v==='current')?freightTotal():0);
+    var rows=items.map(function(it){return '<tr style="border-top:0.5px solid var(--color-border-tertiary);"><td style="padding:6px 0;">'+it.d+'</td><td style="text-align:right;">'+it.qty+' m</td><td style="text-align:right;">'+money(it.rate)+'</td><td style="text-align:right;">'+money(it.qty*it.rate)+'</td></tr>';}).join('');
+    var extra='';
+    if(showFreight){
+      if(S.method==='line'){
+        if(S.split){extra='<tr style="border-top:0.5px solid var(--color-border-tertiary);"><td style="padding:6px 0;">Freight · Shipment 1</td><td></td><td></td><td style="text-align:right;">'+money(fA())+'</td></tr><tr><td style="padding:6px 0;">Freight · Shipment 2</td><td></td><td></td><td style="text-align:right;">'+money(fB())+'</td></tr>';}
+        else{extra='<tr style="border-top:0.5px solid var(--color-border-tertiary);"><td style="padding:6px 0;">Freight</td><td></td><td></td><td style="text-align:right;">'+money(fA())+'</td></tr>';}
+      } else {
+        extra='<tr style="border-top:0.5px solid var(--color-border-tertiary);"><td colspan="4" style="padding:6px 0;color:var(--color-text-tertiary);font-size:12px;">Freight '+money(freightTotal())+' folded into rates (FOR) — hidden on the PDF</td></tr>';
+      }
     }
-    var h=banner
-      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;font-size:13px;margin-bottom:14px;">'
-      +'<div style="display:flex;justify-content:space-between;"><span style="color:var(--color-text-tertiary);">Quote date</span><span>19 Jun 2026</span></div>'
-      +'<div style="display:flex;justify-content:space-between;"><span style="color:var(--color-text-tertiary);">Prepared by</span><span>Riya</span></div>'
-      +'<div style="display:flex;justify-content:space-between;"><span style="color:var(--color-text-tertiary);">Kind attn</span><span>Mahesh</span></div>'
-      +'<div style="display:flex;justify-content:space-between;"><span style="color:var(--color-text-tertiary);">Checked by</span><span>Anil</span></div></div>'
-      +'<table style="width:100%;font-size:13px;border-collapse:collapse;">'
+    var table='<table style="width:100%;font-size:13px;border-collapse:collapse;margin-top:14px;">'
       +'<tr style="color:var(--color-text-tertiary);font-size:12px;"><td style="text-align:left;padding:4px 0;">Item</td><td style="text-align:right;">Qty</td><td style="text-align:right;">Rate</td><td style="text-align:right;">Amount</td></tr>'
-      +'<tr style="border-top:0.5px solid var(--color-border-tertiary);"><td style="padding:6px 0;">2" NB Heavy GI</td><td style="text-align:right;">300 m</td><td style="text-align:right;">Rs 390</td><td style="text-align:right;">Rs 1,17,000</td></tr>'
-      +'<tr style="border-top:0.5px solid var(--color-border-tertiary);"><td style="padding:6px 0;">1" NB Medium ERW</td><td style="text-align:right;">120 m</td><td style="text-align:right;">Rs 210</td><td style="text-align:right;">Rs 25,200</td></tr>'
-      +extra
-      +'<tr style="border-top:0.5px solid var(--color-border-secondary);font-weight:500;"><td style="padding:8px 0;">Total</td><td></td><td></td><td style="text-align:right;">'+money(grand)+'</td></tr></table>'
-      +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:0.5px solid var(--color-border-tertiary);">'
-      +'<button style="font-size:13px;padding:6px 12px;">Print</button><button style="font-size:13px;padding:6px 12px;">Download PDF</button>'
-      +'<button class="fx-prim" style="font-size:13px;padding:6px 12px;">Send to customer</button></div>';
-    $("detailsBody").innerHTML=h;
-    if($("goHist"))$("goHist").onclick=function(){renderRev();showTab("rev");};
-    if($("goCur"))$("goCur").onclick=function(){S.viewing="current";renderDetails();};
-    setHeader();
+      +rows+extra
+      +'<tr style="border-top:0.5px solid var(--color-border-secondary);font-weight:500;"><td style="padding:8px 0;">Total</td><td></td><td></td><td style="text-align:right;">'+money(grand)+'</td></tr></table>';
+    var actions='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:0.5px solid var(--color-border-tertiary);">'+primaryButton()+'<span style="flex:1;"></span>'+(v==='original'?'':exportMenu())+'</div>';
+    if(v!=='current')return banner+table+actions;
+    return banner+'<div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start;margin-top:4px;"><div style="flex:2 1 340px;min-width:0;">'+table+actions+'</div><div style="flex:1 1 250px;min-width:0;">'+convoBlock()+'</div></div>';
   }
 
-  function weightBlock(){
-    if(!S.weight)return '<div style="border:0.5px dashed var(--color-border-secondary);border-radius:8px;padding:16px;text-align:center;"><p style="margin:0 0 10px;font-size:13px;color:var(--color-text-secondary);">No weight yet for this quote.</p><button id="bCalc" class="fx-prim" style="font-size:13px;padding:7px 14px;"><i class="ti ti-calculator" style="font-size:15px;vertical-align:-2px;" aria-hidden="true"></i> Calculate weight</button></div>';
-    return '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;"><span style="font-size:13px;font-weight:500;color:var(--color-text-secondary);">Weight</span><span style="font-size:12px;color:var(--color-text-tertiary);"><i class="ti ti-device-floppy" style="font-size:14px;vertical-align:-2px;" aria-hidden="true"></i> saved with quote</span></div>'
-      +'<table style="width:100%;font-size:13px;border-collapse:collapse;"><tr style="color:var(--color-text-tertiary);font-size:12px;"><td style="text-align:left;padding:3px 0;">Item</td><td style="text-align:right;">Qty</td><td style="text-align:right;">kg/m</td><td style="text-align:right;">Weight</td></tr>'
-      +'<tr style="border-top:0.5px solid var(--color-border-tertiary);"><td style="padding:5px 0;">2" NB Heavy GI</td><td style="text-align:right;">300 m</td><td style="text-align:right;">3.61</td><td style="text-align:right;">1,083 kg</td></tr>'
-      +'<tr style="border-top:0.5px solid var(--color-border-tertiary);"><td style="padding:5px 0;">1" NB Medium ERW</td><td style="text-align:right;">120 m</td><td style="text-align:right;">1.31</td><td style="text-align:right;">157 kg</td></tr>'
-      +'<tr style="border-top:0.5px solid var(--color-border-secondary);font-weight:500;"><td style="padding:7px 0;">Total</td><td></td><td></td><td style="text-align:right;">1,240 kg</td></tr></table>';
+  // ---------- FREIGHT TAB ----------
+  function convoBlock(){
+    var msgs=S.messages.map(function(m){
+      var you=m.from==='you';
+      return '<div style="margin-bottom:8px;"><div style="font-size:11px;color:var(--color-text-tertiary);margin-bottom:2px;">'+(you?'You':m.name)+(m.time?' · '+m.time:'')+'</div><div style="background:'+(you?'#E6F1FB':'var(--color-background-secondary)')+';border-radius:8px;padding:8px 10px;font-size:13px;white-space:pre-wrap;">'+m.text+'</div></div>';
+    }).join('');
+    var last=S.messages[S.messages.length-1];
+    var lastYou=last&&last.from==='you';
+    var gmailLink='<a href="https://mail.google.com" target="_blank" rel="noopener" class="fx-link">View in Gmail <i class="ti ti-external-link" style="font-size:12px;vertical-align:-1px;" aria-hidden="true"></i></a>';
+    var syncNote=(S.custReplyPending&&lastYou)?'<div style="margin:8px 0 0;font-size:12px;color:#854F0B;"><i class="ti ti-info-circle" style="font-size:13px;vertical-align:-2px;" aria-hidden="true"></i> Sent from Gmail — the app will catch up on the next “Check for replies”.</div>':'';
+    var demoLink=(S.custReplyPending&&!lastYou)?'<button class="fx-link" id="bGmailReply" style="font-size:12px;">or reply from Gmail (demo)</button>':'';
+    var composer='<div style="margin-top:10px;"><textarea id="respText" rows="3" placeholder="Type your reply...">'+(S.respondText||'')+'</textarea><div style="display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap;"><button class="fx-prim" id="bSendReply" style="padding:6px 12px;"><i class="ti ti-send" style="font-size:14px;vertical-align:-2px;" aria-hidden="true"></i> Send reply</button>'+demoLink+'</div></div>';
+    var badge=S.custReplyPending?(lastYou?'<span class="fx-pill" style="background:#FAEEDA;color:#854F0B;">Not synced</span>':'<span class="fx-pill" style="background:#FAECE7;color:#993C1D;">Awaiting reply</span>'):'';
+    return '<div style="border:0.5px solid var(--color-border-tertiary);border-radius:8px;padding:12px;"><div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;"><i class="ti ti-messages" style="font-size:16px;color:var(--color-text-secondary);" aria-hidden="true"></i><span style="font-size:13px;font-weight:500;">Conversation</span><span style="flex:1;"></span>'+badge+'</div>'+msgs+syncNote+composer+'<div style="margin-top:8px;">'+gmailLink+'</div></div>';
   }
-
-  function composerBlock(){
-    return '<div style="border:0.5px solid var(--color-border-secondary);border-radius:8px;padding:12px;margin-top:12px;"><div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;"><i class="ti ti-truck" style="font-size:18px;color:#185FA5;" aria-hidden="true"></i><span style="font-size:14px;font-weight:500;">Request freight</span></div>'
-      +'<label style="font-size:12px;color:var(--color-text-secondary);">To — transporters</label><div id="chips" style="display:flex;flex-wrap:wrap;gap:6px;margin:5px 0;"></div>'
-      +'<input id="toInput" placeholder="Type a name — e.g. v, g" style="width:100%;" autocomplete="off"><div id="sugg" style="display:none;border:0.5px solid var(--color-border-tertiary);border-radius:8px;margin-top:4px;overflow:hidden;"></div>'
-      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;"><div><label style="font-size:12px;color:var(--color-text-secondary);">Pickup point</label><select style="width:100%;"><option>DSC Warehouse — Chennai</option><option>Customer factory</option></select></div><div><label style="font-size:12px;color:var(--color-text-secondary);">Drop point</label><input value="Hyderabad" style="width:100%;"></div></div>'
-      +'<div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border:0.5px solid var(--color-border-tertiary);border-radius:8px;background:var(--color-background-secondary);margin-top:12px;"><i class="ti ti-weight" style="font-size:18px;color:var(--color-text-secondary);" aria-hidden="true"></i><div style="flex:1;"><p style="margin:0;font-size:13px;font-weight:500;">1,240 kg · 7 items</p><p style="margin:0;font-size:12px;color:var(--color-text-tertiary);">from this quote</p></div></div>'
-      +'<div style="display:flex;gap:8px;margin-top:12px;"><button id="bSend" class="fx-prim" style="font-size:13px;padding:7px 14px;"><i class="ti ti-send" style="font-size:15px;vertical-align:-2px;" aria-hidden="true"></i> Send request</button><button id="bCancel" style="font-size:13px;padding:7px 14px;">Cancel</button></div></div>';
+  function gridHead(){
+    return '<div class="wt-grid" style="font-size:12px;color:var(--color-text-tertiary);padding-bottom:2px;"><div></div><div>Item</div><div style="text-align:right;">Qty</div><div style="text-align:right;">kg/m</div><div style="text-align:right;">Weight</div><div></div></div>';
   }
-
-  function threadRow(t,i){
-    var pill=t.replied?'<span class="fx-pill" style="background:#E1F5EE;color:#0F6E56;">Replied</span>':'<span class="fx-pill" style="background:#FAEEDA;color:#854F0B;">Awaiting reply</span>';
-    var read=t.replied?'<button class="bRead" data-i="'+i+'" style="font-size:12px;padding:4px 9px;">'+(t.open?"Hide":"Read reply")+'</button>':'';
-    var top='<div style="display:flex;align-items:center;gap:10px;width:100%;"><i class="ti ti-truck" style="font-size:18px;color:'+(t.replied?"#0F6E56":"var(--color-text-tertiary)")+';" aria-hidden="true"></i><span style="flex:1;font-size:13px;">'+t.name+' · freight</span>'+pill+read+'<a href="https://mail.google.com" target="_blank" rel="noopener" aria-label="Open in Gmail" style="color:var(--color-text-tertiary);"><i class="ti ti-external-link" style="font-size:17px;" aria-hidden="true"></i></a></div>';
-    var body="";
-    if(t.replied&&t.open){
-      body='<div style="width:100%;margin-top:10px;padding:10px;border-radius:8px;background:var(--color-background-secondary);font-size:13px;color:var(--color-text-secondary);"><i class="ti ti-mail" style="font-size:14px;vertical-align:-2px;" aria-hidden="true"></i> '+t.msg+'<div style="margin-top:8px;"><button class="bUse" data-amt="'+t.amount+'" style="font-size:12px;padding:4px 9px;">Use '+money(t.amount)+' below</button></div></div>';
-    }
-    return '<div class="fx-row" style="flex-wrap:wrap;">'+top+body+'</div>';
+  function wtRow(it){
+    var miss=!it.kgm;
+    var w=miss?'<span style="color:#A32D2D;font-size:11px;">not counted</span>':(Math.round(weightOf(it)).toLocaleString('en-IN')+' kg');
+    var handle=S.split?'<span class="wt-handle" draggable="true" data-id="'+it.id+'" title="Drag to the other shipment" aria-label="Drag to move"><i class="ti ti-grip-vertical" aria-hidden="true"></i></span>':'<span></span>';
+    return '<div class="wt-row wt-grid'+(miss?' miss':'')+'" data-id="'+it.id+'">'
+      +handle
+      +'<input type="text" class="ed" data-id="'+it.id+'" data-f="d" value="'+it.d+'">'
+      +'<input type="number" class="ed" data-id="'+it.id+'" data-f="qty" value="'+it.qty+'" style="text-align:right;">'
+      +'<input type="number" class="ed" data-id="'+it.id+'" data-f="kgm" value="'+(it.kgm||'')+'" placeholder="—" style="text-align:right;">'
+      +'<div style="text-align:right;font-size:13px;">'+w+'</div>'
+      +'<button class="delItem" data-id="'+it.id+'" title="Delete line" aria-label="Delete line" style="justify-self:end;background:#FCEBEB;color:#A32D2D;border:0.5px solid #F09595;border-radius:6px;width:24px;height:24px;padding:0;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-trash" style="font-size:13px;" aria-hidden="true"></i></button></div>';
   }
-
-  function threadsHTML(){
-    if(!S.threads.length)return "";
-    var rows=S.threads.map(function(t,i){return threadRow(t,i);}).join("");
-    var anyAwait=S.threads.some(function(t){return !t.replied;});
-    var check=anyAwait?'<button id="bCheckAll" style="font-size:12px;padding:5px 10px;margin-top:8px;"><i class="ti ti-refresh" style="font-size:13px;vertical-align:-1px;" aria-hidden="true"></i> Check for replies</button>':"";
-    return '<p style="margin:14px 0 6px;font-size:12px;color:var(--color-text-tertiary);">Threads on this quote — read, then decide</p><div style="display:flex;flex-direction:column;gap:8px;">'+rows+'</div>'+check;
+  function weightSection(sec){
+    var its=secItems(sec);
+    var title=S.split?('Shipment '+sec):'Weight';
+    var rows=its.map(wtRow).join('');
+    var empty=its.length?'':'<p style="margin:8px 0;font-size:12px;color:var(--color-text-tertiary);text-align:center;">Drag items here to weigh and quote them separately.</p>';
+    var foot='<div style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><button class="fx-link addItem" data-sec="'+sec+'">+ Add item</button><span style="margin-left:auto;"></span>'
+      +(!S.split?'<button id="bOther"><i class="ti ti-plus" style="font-size:14px;vertical-align:-2px;" aria-hidden="true"></i> Calculate other weight</button>':'')
+      +'<button class="bPrintW" data-sec="'+sec+'"><i class="ti ti-printer" style="font-size:14px;vertical-align:-2px;" aria-hidden="true"></i> Print</button>'
+      +'<button class="fx-prim reqF" data-sec="'+sec+'" style="padding:5px 11px;"><i class="ti ti-truck" style="font-size:14px;vertical-align:-2px;" aria-hidden="true"></i> Request freight</button></div>';
+    return '<div class="drop" data-sec="'+sec+'" style="margin-top:'+(sec===2?'10px':'14px')+';">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;"><span style="font-size:13px;font-weight:500;color:var(--color-text-secondary);">'+title+' · '+Math.round(secWeight(sec)).toLocaleString('en-IN')+' kg</span>'
+      +(sec===2?'<button class="fx-link" id="bMerge">Remove · items go back</button>':'<span style="font-size:12px;color:var(--color-text-tertiary);"><i class="ti ti-device-floppy" style="font-size:13px;vertical-align:-2px;" aria-hidden="true"></i> saved with quote</span>')+'</div>'
+      +gridHead()+rows+empty
+      +(its.length?'<div class="wt-grid" style="border-top:0.5px solid var(--color-border-secondary);margin-top:3px;padding-top:7px;font-weight:500;font-size:13px;"><div></div><div>Total weight</div><div></div><div></div><div style="text-align:right;">'+Math.round(secWeight(sec)).toLocaleString('en-IN')+' kg</div><div></div></div>':'')
+      +foot+'</div>';
   }
-
   function addFreightBox(){
-    var note=S.revised?'<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#0F6E56;margin-bottom:10px;"><i class="ti ti-check" style="font-size:14px;" aria-hidden="true"></i> '+money(S.freightAmt)+' added as '+(S.method==="for"?"FOR":"line item")+' — Rev 1 is current</div>':"";
-    var lineCls=S.method==="line"?"fx-prim":"",forCls=S.method==="for"?"fx-prim":"";
-    var label=S.revised?"Update Rev 1":"Add &amp; create revision";
-    var dis=(S.freightAmt==="")?" disabled":"";
-    return '<div style="border:0.5px solid var(--color-border-secondary);border-radius:8px;padding:12px;margin-top:14px;"><p style="margin:0 0 10px;font-size:13px;font-weight:500;">Add freight to quote</p>'+note
-      +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span style="font-size:13px;color:var(--color-text-secondary);">Total Rs</span><input id="fAmt" value="'+S.freightAmt+'" placeholder="0" style="width:100px;"><span style="font-size:12px;color:var(--color-text-secondary);">as</span>'
-      +'<button id="bMLine" class="'+lineCls+'" style="font-size:13px;padding:6px 12px;">Line item</button><button id="bMFor" class="'+forCls+'" style="font-size:13px;padding:6px 12px;">FOR · hidden on PDF</button>'
-      +'<button id="bAdd" class="fx-prim" style="font-size:13px;padding:6px 12px;margin-left:auto;"'+dis+'>'+label+' <i class="ti ti-arrow-right" style="font-size:14px;vertical-align:-2px;" aria-hidden="true"></i></button></div>'
-      +'<p style="margin:8px 0 0;font-size:11px;color:var(--color-text-tertiary);">Read the replies above, then type the freight you have decided on.</p></div>';
+    var lbl=!S.sent?'Add freight':(S.revised?'Update Rev 1':'Add freight &amp; create Rev 1');
+    var note=!S.sent?'Not sent yet — this just adds freight to the quote (no revision).':(S.revised?'Updates the current revision (Rev 1).':'This quote was already sent — adding freight creates Rev 1.');
+    var amts;
+    if(S.split)amts='<span style="font-size:13px;color:var(--color-text-secondary);">Shipment 1 Rs</span><input id="amt1" value="'+S.fA+'" inputmode="numeric" style="width:84px;"><span style="font-size:13px;color:var(--color-text-secondary);">Shipment 2 Rs</span><input id="amt2" value="'+S.fB+'" inputmode="numeric" style="width:84px;">';
+    else amts='<span style="font-size:13px;color:var(--color-text-secondary);">Total Rs</span><input id="amt1" value="'+S.fA+'" inputmode="numeric" style="width:100px;">';
+    var segOn='font-size:13px;padding:6px 11px;border-radius:8px;cursor:pointer;background:#185FA5;color:#fff;border:0.5px solid #185FA5;';
+    var segOff='font-size:13px;padding:6px 11px;border-radius:8px;cursor:pointer;background:var(--color-background-primary);color:var(--color-text-primary);border:0.5px solid var(--color-border-secondary);';
+    var lineStyle=S.method==='line'?segOn:segOff,forStyle=S.method==='for'?segOn:segOff;
+    return '<div style="border:0.5px solid #85B7EB;background:#E6F1FB;border-radius:8px;padding:12px;margin-top:14px;"><p style="margin:0 0 10px;font-size:13px;font-weight:500;color:#0C447C;">Add freight to quote</p>'
+      +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'+amts
+      +'<span style="font-size:12px;color:var(--color-text-secondary);">as</span><button class="meth" data-m="line" style="'+lineStyle+'">Line item</button><button class="meth" data-m="for" style="'+forStyle+'">FOR · hidden on PDF</button>'
+      +'<button id="bApply" style="margin-left:auto;padding:7px 13px;background:#185FA5;color:#fff;border:none;border-radius:8px;cursor:pointer;">'+lbl+' <i class="ti ti-arrow-right" style="font-size:14px;vertical-align:-2px;" aria-hidden="true"></i></button></div>'
+      +(S.split?'<p style="margin:10px 0 0;font-size:13px;font-weight:500;color:#0C447C;">Total freight: '+money(fA()+fB())+'</p>':'')
+      +'<p style="margin:8px 0 0;font-size:11px;color:var(--color-text-secondary);">'+note+'</p></div>';
+  }
+  function sourcingBox(){
+    var sendDis=S.recipients.length?'':' disabled';
+    var wlabel=S.split?('Shipment '+S.sourcingFor+' · '+Math.round(secWeight(S.sourcingFor)).toLocaleString('en-IN')+' kg'):(Math.round(totalWeight()).toLocaleString('en-IN')+' kg · '+items.length+' items');
+    var threadsHTML='';
+    if(S.threads.length){
+      var rows=S.threads.map(function(t,i){
+        var pill=t.replied?'<span class="fx-pill" style="background:#E1F5EE;color:#085041;">Replied</span>':'<span class="fx-pill" style="background:#FAEEDA;color:#854F0B;">Awaiting reply</span>';
+        var read=t.replied?'<button class="bRead" data-i="'+i+'" style="font-size:12px;padding:4px 9px;">'+(t.open?'Hide':'Read reply')+'</button>':'';
+        var top='<div style="display:flex;align-items:center;gap:9px;width:100%;"><i class="ti ti-truck" style="font-size:17px;color:'+(t.replied?'#0F6E56':'var(--color-text-tertiary)')+';" aria-hidden="true"></i><span style="flex:1;font-size:13px;">'+t.name+'</span>'+pill+read+'</div>';
+        var body=(t.replied&&t.open)?'<div style="width:100%;margin-top:9px;padding:9px;border-radius:8px;background:var(--color-background-secondary);font-size:13px;color:var(--color-text-secondary);"><i class="ti ti-mail" style="font-size:14px;vertical-align:-2px;" aria-hidden="true"></i> '+t.msg+'<div style="margin-top:8px;"><button class="bUse" data-amt="'+t.amount+'" style="font-size:12px;padding:4px 9px;">Use '+money(t.amount)+'</button></div></div>':'';
+        return '<div class="fx-row">'+top+body+'</div>';
+      }).join('');
+      var anyAwait=S.threads.some(function(t){return !t.replied;});
+      var check=anyAwait?'<button id="bCheck" style="font-size:12px;padding:5px 10px;margin-top:8px;"><i class="ti ti-refresh" style="font-size:13px;vertical-align:-1px;" aria-hidden="true"></i> Check for replies</button>':'';
+      threadsHTML='<p style="margin:14px 0 6px;font-size:12px;color:var(--color-text-tertiary);">Transporter replies — read, then use a price</p><div style="display:flex;flex-direction:column;gap:8px;">'+rows+'</div>'+check;
+    }
+    return '<div style="border:0.5px solid var(--color-border-secondary);border-radius:8px;padding:12px;margin-top:10px;"><div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;"><i class="ti ti-truck" style="font-size:18px;color:#185FA5;" aria-hidden="true"></i><span style="font-size:14px;font-weight:500;">Send freight enquiry</span><button class="fx-link" id="bDone" style="margin-left:auto;">Done — back to quote</button></div>'
+      +'<label style="font-size:12px;color:var(--color-text-secondary);">To — transporters</label>'
+      +'<div id="chips" style="display:flex;flex-wrap:wrap;gap:6px;margin:5px 0;"></div>'
+      +'<input id="toInput" placeholder="Search past Gmail enquiries — type v, g, t" autocomplete="off" style="width:100%;"><div id="sugg" style="display:none;border:0.5px solid var(--color-border-tertiary);border-radius:8px;margin-top:4px;overflow:hidden;"></div>'
+      +'<p style="margin:4px 0 0;font-size:11px;color:var(--color-text-tertiary);"><i class="ti ti-mail" style="font-size:12px;vertical-align:-1px;" aria-hidden="true"></i> Matches transporters you’ve emailed before, from Gmail.</p>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0;"><div><label style="font-size:12px;color:var(--color-text-secondary);">Pickup point</label><input value="DSC Warehouse — Chennai" style="width:100%;"></div><div><label style="font-size:12px;color:var(--color-text-secondary);">Drop point</label><input value="Hyderabad" style="width:100%;"></div></div>'
+      +'<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:0.5px solid var(--color-border-tertiary);border-radius:8px;background:var(--color-background-secondary);margin:12px 0;"><i class="ti ti-weight" style="font-size:17px;color:var(--color-text-secondary);" aria-hidden="true"></i><span style="font-size:13px;">'+wlabel+'</span></div>'
+      +'<label style="font-size:12px;color:var(--color-text-secondary);">Message to transporters (editable)</label>'
+      +'<textarea id="enqMsg" rows="8" style="margin:5px 0 12px;">'+S.enquiryMsg+'</textarea>'
+      +'<div><button class="fx-prim" id="bSend"'+sendDis+' style="padding:7px 13px;"><i class="ti ti-send" style="font-size:14px;vertical-align:-2px;" aria-hidden="true"></i> Send request</button></div>'
+      +threadsHTML+'</div>';
+  }
+  function freightTab(){
+    var wChev=S.weightOpen?'ti-chevron-down':'ti-chevron-right';
+    var sChev=S.sourcingOpen?'ti-chevron-down':'ti-chevron-right';
+    var h='<div style="display:flex;flex-direction:column;gap:8px;margin-top:14px;">'
+      +'<button id="bWeight" class="'+(S.weightOpen?'fx-prim':'')+'" style="width:100%;display:flex;align-items:center;gap:8px;padding:9px 12px;"><i class="ti ti-calculator" style="font-size:16px;" aria-hidden="true"></i> Calculate weight <i class="ti '+wChev+'" style="font-size:15px;margin-left:auto;" aria-hidden="true"></i></button>'
+      +'<button id="bEnquiry" class="'+(S.sourcingOpen?'fx-prim':'')+'" style="width:100%;display:flex;align-items:center;gap:8px;padding:9px 12px;"><i class="ti ti-truck" style="font-size:16px;" aria-hidden="true"></i> Send freight enquiry <i class="ti '+sChev+'" style="font-size:15px;margin-left:auto;" aria-hidden="true"></i></button>'
+      +'</div>';
+    if(S.weightOpen){
+      h+=weightSection(1);
+      if(S.split)h+=weightSection(2);
+    }
+    if(S.sourcingOpen)h+=sourcingBox();
+    h+=addFreightBox();
+    return h;
   }
 
-  function renderFreight(){
-    var h=weightBlock();
-    if(S.weight&&!S.composer)h+='<div style="display:flex;gap:8px;margin-top:14px;padding-top:14px;border-top:0.5px solid var(--color-border-tertiary);"><button id="bReq" class="fx-prim" style="font-size:13px;padding:7px 14px;"><i class="ti ti-truck" style="font-size:15px;vertical-align:-2px;" aria-hidden="true"></i> Request freight</button><button style="font-size:13px;padding:7px 14px;"><i class="ti ti-package" style="font-size:15px;vertical-align:-2px;" aria-hidden="true"></i> New enquiry</button></div>';
-    if(S.composer)h+=composerBlock();
-    h+=threadsHTML();
-    if(S.weight)h+=addFreightBox();
-    $("freightBody").innerHTML=h;
-    bind();setHeader();
+  // ---------- HISTORY TAB ----------
+  function revRow(title,sub,icon,iconc,pillbg,pillc,pilltext,vk,cur){
+    return '<div class="fx-row"'+(cur?' style="border-color:#85B7EB;"':'')+'><i class="ti '+icon+'" style="font-size:18px;color:'+iconc+';" aria-hidden="true"></i><div style="flex:1;"><p style="margin:0;font-size:13px;font-weight:500;">'+title+'</p><p style="margin:0;font-size:12px;color:var(--color-text-secondary);">'+sub+'</p></div><span class="fx-pill" style="background:'+pillbg+';color:'+pillc+';">'+pilltext+'</span><button class="openRev" data-v="'+vk+'" style="font-size:12px;padding:4px 10px;">Open</button></div>';
+  }
+  function historyTab(){
+    if(!S.revised)
+      return '<div style="margin-top:16px;">'+revRow('DSC-108 · original','base quote · 19 Jun','ti-file-check','#185FA5','#E6F1FB','#0C447C','Current','current',true)
+        +'<p style="margin:12px 0 0;font-size:12px;color:var(--color-text-tertiary);">No revisions yet. Adding freight to a sent quote creates Rev 1.</p></div>';
+    return '<div style="margin-top:16px;">'+revRow('DSC-108 · original','base quote · 19 Jun · read-only','ti-file','var(--color-text-tertiary)','var(--color-background-secondary)','var(--color-text-secondary)','Superseded','original',false)
+      +'<div style="height:8px;"></div>'
+      +revRow('DSC-108 · Rev 1','Freight '+money(freightTotal())+' added','ti-file-check','#185FA5','#E6F1FB','#0C447C','Current','current',true)
+      +'<p style="margin:12px 0 0;font-size:12px;color:var(--color-text-tertiary);"><i class="ti ti-info-circle" style="font-size:14px;vertical-align:-2px;" aria-hidden="true"></i> Opening the folder always lands on the current version. Send always sends the current revision.</p></div>';
   }
 
-  function bind(){
+  // ---------- ACTIONS ----------
+  function applyFreight(){
+    if(fA()<=0&&fB()<=0)return;
+    S.freightApplied=true;
+    if(S.sent&&!S.revised){S.revised=true;S.viewing='current';}
+    S.tab='quote';
+    renderApp();
+  }
+  function sendQuote(){if(S.sent)return;S.sent=true;S.messages.push({from:'you',name:'You',time:'now',text:'Quotation DSC-108 sent — total Rs '+Math.round(baseTotal()+freightTotal()).toLocaleString('en-IN')+'.'});}
+  function resendQuote(){if(S.resent)return;S.resent=true;S.messages.push({from:'you',name:'You',time:'now',text:'Updated quote (Rev 1) sent — total Rs '+Math.round(baseTotal()+freightTotal()).toLocaleString('en-IN')+'.'});}
+  function addItem(sec){items.push({id:'n'+(seq++),d:'New item',qty:0,rate:0,kgm:0,sec:sec});renderApp();}
+  function delItem(id){items=items.filter(function(i){return i.id!==id;});renderApp();}
+  function printWeights(sec){
+    var its=secItems(sec);
+    var label=S.split?('Shipment '+sec):'Weight';
+    var rows=its.map(function(i){return '<tr><td style="padding:6px 4px;border-bottom:1px solid #eee;">'+i.d+'</td><td style="text-align:right;padding:6px 4px;border-bottom:1px solid #eee;">'+i.qty+'</td><td style="text-align:right;padding:6px 4px;border-bottom:1px solid #eee;">'+(i.kgm||'—')+'</td><td style="text-align:right;padding:6px 4px;border-bottom:1px solid #eee;">'+(i.kgm?Math.round(weightOf(i)).toLocaleString('en-IN')+' kg':'—')+'</td></tr>';}).join('');
+    var win=window.open('','_blank','width=720,height=820');
+    if(!win)return;
+    win.document.write('<html><head><title>Weight — DSC-108</title></head><body style="font-family:Arial,Helvetica,sans-serif;padding:24px;color:#20201d;"><h2 style="margin:0 0 4px;">Weight summary</h2><p style="margin:0 0 8px;color:#666;font-size:13px;">DSC-108 · Sri Venkateswara Traders</p><h3 style="font-size:15px;margin:16px 0 6px;">'+label+' — '+Math.round(secWeight(sec)).toLocaleString('en-IN')+' kg</h3><table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr><th style="text-align:left;border-bottom:1px solid #999;padding:6px 4px;">Item</th><th style="text-align:right;border-bottom:1px solid #999;padding:6px 4px;">Qty (m)</th><th style="text-align:right;border-bottom:1px solid #999;padding:6px 4px;">kg/m</th><th style="text-align:right;border-bottom:1px solid #999;padding:6px 4px;">Weight</th></tr></thead><tbody>'+rows+'</tbody></table><p style="margin-top:20px;color:#888;font-size:12px;">DSC Pipes</p></body></html>');
+    win.document.close();win.focus();win.print();
+  }
+
+  // ---------- BIND ----------
+  function bindApp(){
+    document.querySelectorAll('.row108').forEach(function(r){
+      r.onclick=function(e){if(e.target.closest('.f108action'))return;var g=r.getAttribute('data-group');if(S.open&&S.openIn===g){S.open=false;}else{S.open=true;S.openIn=g;}renderApp();};
+    });
+    document.querySelectorAll('.f108action').forEach(function(fa){
+      fa.onclick=function(e){e.stopPropagation();var a=liveAction();if(!a)return;var g=fa.closest('.row108').getAttribute('data-group');if(a.key==='send')sendQuote();else if(a.key==='resend')resendQuote();else if(a.key==='addfreight'){S.open=true;S.openIn=g;S.tab='freight';}else if(a.key==='reply'){S.open=true;S.openIn=g;S.tab='quote';S.respondOpen=true;}renderApp();};
+    });
+    var rf=$('bRefresh');if(rf)rf.onclick=function(){S.threads.forEach(function(t){t.replied=true;});if(S.sent&&!S.custReplyArrived){S.messages.push({from:'customer',name:'Mahesh',time:'now',text:'Thanks for the quote. Can you do a bit better on the FOR (freight-included) price? Also confirm delivery time to Hyderabad.'});S.custReplyArrived=true;S.custReplyPending=true;}if(S.custReplyArrived){var last=S.messages[S.messages.length-1];S.custReplyPending=(last&&last.from==='customer');}S.lastChecked=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});renderApp();};
+    bindCard();
+  }
+  function bindCard(){
+    if(!S.open)return;
     var b;
-    if(b=$("bCalc"))b.onclick=function(){S.weight=WEIGHT;renderFreight();};
-    if(b=$("bReq"))b.onclick=function(){S.composer=true;renderFreight();};
-    if(b=$("bCancel"))b.onclick=function(){S.composer=false;S.recipients=[];renderFreight();};
-    if(b=$("bSend"))b.onclick=function(){if(S.recipients.length===0)return;S.recipients.forEach(function(n){if(!S.threads.some(function(t){return t.name===n;})){var r=REPLIES[n]||{amount:0,msg:"(reply)"};S.threads.push({name:n,replied:false,amount:r.amount,msg:r.msg,open:false});}});S.recipients=[];S.composer=false;renderFreight();};
-    if(b=$("bCheckAll"))b.onclick=function(){S.threads.forEach(function(t){t.replied=true;});renderFreight();};
-    if(b=$("bAdd"))b.onclick=function(){if(S.freightAmt==="")return;S.revised=true;S.viewing="current";renderFreight();renderDetails();renderRev();};
-    if(b=$("bMLine"))b.onclick=function(){S.method="line";renderFreight();};
-    if(b=$("bMFor"))b.onclick=function(){S.method="for";renderFreight();};
-    var fa=$("fAmt");if(fa)fa.oninput=function(){S.freightAmt=fa.value;var x=$("bAdd");if(x)x.disabled=(S.freightAmt==="");};
-    document.querySelectorAll(".bRead").forEach(function(x){x.onclick=function(){var i=parseInt(x.getAttribute("data-i"),10);S.threads[i].open=!S.threads[i].open;renderFreight();};});
-    document.querySelectorAll(".bUse").forEach(function(x){x.onclick=function(){S.freightAmt=x.getAttribute("data-amt");renderFreight();};});
+    if(b=$('cardClose'))b.onclick=function(){S.open=false;renderApp();};
+    if(b=$('t-quote'))b.onclick=function(){S.tab='quote';S.exportOpen=false;renderApp();};
+    if(b=$('t-freight'))b.onclick=function(){S.tab='freight';renderApp();};
+    if(b=$('t-history'))b.onclick=function(){S.tab='history';renderApp();};
+    if(b=$('bPrimary'))b.onclick=function(){if(!S.sent)sendQuote();else if(S.revised&&!S.resent)resendQuote();renderApp();};
+    if(b=$('bExport'))b.onclick=function(){S.exportOpen=!S.exportOpen;renderApp();};
+    document.querySelectorAll('.expItem').forEach(function(x){x.onclick=function(){S.exportOpen=false;renderApp();};});
+    if(b=$('goHistory'))b.onclick=function(){S.tab='history';renderApp();};
+    if(b=$('bRespond'))b.onclick=function(){S.respondOpen=true;renderApp();};
+    if(b=$('bGmailReply'))b.onclick=function(){S.messages.push({from:'you',name:'You · via Gmail',time:'now',text:'(Replied directly from Gmail) Best FOR price Rs 1,78,000, delivery in 2 days.'});renderApp();};
+    if(b=$('bCancelReply'))b.onclick=function(){S.respondOpen=false;renderApp();};
+    if(b=$('bSendReply'))b.onclick=function(){var t=(($('respText')||{}).value||S.respondText||'').trim();if(!t)return;S.messages.push({from:'you',name:'You',time:'now',text:t});S.custReplyPending=false;S.respondOpen=false;S.respondText='';renderApp();};
+    if(b=$('respText'))$('respText').oninput=function(){S.respondText=$('respText').value;};
+    if(b=$('goCurrent'))b.onclick=function(){S.viewing='current';renderApp();};
+    document.querySelectorAll('.openRev').forEach(function(x){x.onclick=function(){S.viewing=x.getAttribute('data-v');S.tab='quote';renderApp();};});
+    // freight tab
+    document.querySelectorAll('.ed').forEach(function(inp){inp.onchange=function(){var it=items.filter(function(i){return i.id===inp.getAttribute('data-id');})[0];if(!it)return;var f=inp.getAttribute('data-f');if(f==='d')it.d=inp.value;else it[f]=num(inp.value);renderApp();};});
+    document.querySelectorAll('.addItem').forEach(function(x){x.onclick=function(){addItem(parseInt(x.getAttribute('data-sec'),10));};});
+    document.querySelectorAll('.delItem').forEach(function(x){x.onclick=function(){delItem(x.getAttribute('data-id'));};});
+    if(b=$('bOther'))b.onclick=function(){S.split=true;renderApp();};
+    document.querySelectorAll('.bPrintW').forEach(function(x){x.onclick=function(){printWeights(parseInt(x.getAttribute('data-sec'),10));};});
+    if(b=$('bMerge'))b.onclick=function(){items.forEach(function(i){if(i.sec===2)i.sec=1;});S.split=false;S.fB='';renderApp();};
+    document.querySelectorAll('.reqF').forEach(function(x){x.onclick=function(){S.sourcingFor=parseInt(x.getAttribute('data-sec'),10);S.sourcingOpen=true;renderApp();};});
+    if(b=$('bWeight'))b.onclick=function(){S.weightOpen=!S.weightOpen;renderApp();};
+    if(b=$('bEnquiry'))b.onclick=function(){S.sourcingFor=1;S.sourcingOpen=!S.sourcingOpen;renderApp();};
+    if(b=$('amt1'))$('amt1').onchange=function(){S.fA=$('amt1').value.replace(/[^0-9]/g,'');renderApp();};
+    if(b=$('amt2'))$('amt2').onchange=function(){S.fB=$('amt2').value.replace(/[^0-9]/g,'');renderApp();};
+    if(b=$('enqMsg'))$('enqMsg').oninput=function(){S.enquiryMsg=$('enqMsg').value;};
+    document.querySelectorAll('.meth').forEach(function(x){x.onclick=function(){S.method=x.getAttribute('data-m');renderApp();};});
+    if(b=$('bApply'))b.onclick=applyFreight;
     bindComposer();
+    if(b=$('bSend'))b.onclick=function(){if(!S.recipients.length)return;S.recipients.forEach(function(n){if(!S.threads.some(function(t){return t.name===n;}))S.threads.push({name:n,replied:false,amount:TR[n],msg:MSG[n],open:false});});S.recipients=[];renderApp();};
+    if(b=$('bCheck'))b.onclick=function(){S.threads.forEach(function(t){t.replied=true;});renderApp();};
+    document.querySelectorAll('.bRead').forEach(function(x){x.onclick=function(){var i=parseInt(x.getAttribute('data-i'),10);S.threads[i].open=!S.threads[i].open;renderApp();};});
+    document.querySelectorAll('.bUse').forEach(function(x){x.onclick=function(){var a=x.getAttribute('data-amt');if(S.split&&S.sourcingFor===2)S.fB=a;else S.fA=a;S.sourcingOpen=false;renderApp();};});
+    if(b=$('bDone'))b.onclick=function(){S.sourcingOpen=false;renderApp();};
+    bindDrag();
   }
-
   function bindComposer(){
-    var inp=$("toInput"),sugg=$("sugg"),chips=$("chips");if(!inp)return;
-    function drawChips(){chips.innerHTML=S.recipients.map(function(r){return '<span class="fx-chip">'+r+' <i class="ti ti-x" style="font-size:13px;cursor:pointer;" data-x="'+r+'" aria-hidden="true"></i></span>';}).join("");chips.querySelectorAll("[data-x]").forEach(function(x){x.onclick=function(){S.recipients=S.recipients.filter(function(r){return r!==x.getAttribute("data-x");});drawChips();};});}
-    inp.oninput=function(){var q=inp.value.trim().toLowerCase();var list=TRANSPORTERS.filter(function(t){return q&&t.toLowerCase().indexOf(q)>=0&&S.recipients.indexOf(t)<0;});if(!list.length){sugg.style.display="none";sugg.innerHTML="";return;}sugg.style.display="block";sugg.innerHTML=list.map(function(t){return '<div class="fx-sugg" data-t="'+t+'"><i class="ti ti-user" style="font-size:14px;vertical-align:-2px;color:var(--color-text-tertiary);" aria-hidden="true"></i> '+t+'</div>';}).join("");sugg.querySelectorAll(".fx-sugg").forEach(function(d){d.onclick=function(){S.recipients.push(d.getAttribute("data-t"));inp.value="";sugg.style.display="none";sugg.innerHTML="";drawChips();inp.focus();};});};
+    var inp=$('toInput'),sugg=$('sugg'),chips=$('chips');if(!inp)return;
+    function setSend(){var sb=$('bSend');if(sb)sb.disabled=!S.recipients.length;}
+    function drawChips(){
+      chips.innerHTML=S.recipients.map(function(r){return '<span class="fx-chip">'+r+' <i class="ti ti-x" data-x="'+r+'" style="font-size:13px;cursor:pointer;" aria-hidden="true"></i></span>';}).join(' ');
+      chips.querySelectorAll('[data-x]').forEach(function(x){x.onclick=function(){var v=x.getAttribute('data-x');S.recipients=S.recipients.filter(function(r){return r!==v;});drawChips();setSend();};});
+    }
+    inp.oninput=function(){
+      var q=inp.value.trim().toLowerCase();
+      var list=Object.keys(TR).filter(function(t){return q&&t.toLowerCase().indexOf(q)>=0&&S.recipients.indexOf(t)<0;});
+      if(!list.length){sugg.style.display='none';sugg.innerHTML='';return;}
+      sugg.style.display='block';
+      sugg.innerHTML=list.map(function(t){return '<div class="fx-sugg" data-t="'+t+'"><i class="ti ti-user" style="font-size:14px;vertical-align:-2px;color:var(--color-text-tertiary);" aria-hidden="true"></i> '+t+'</div>';}).join('');
+      sugg.querySelectorAll('.fx-sugg').forEach(function(d){d.onclick=function(){S.recipients.push(d.getAttribute('data-t'));inp.value='';sugg.style.display='none';sugg.innerHTML='';drawChips();setSend();inp.focus();};});
+    };
     drawChips();
   }
-
-  function revRow(title,sub,iconcolor,icon,pillbg,pillc,pilltext,viewKey){
-    var border=(pilltext==="Current")?"border-color:var(--color-border-info);border-width:1px;":"";
-    return '<div class="fx-row" style="'+border+'"><i class="ti '+icon+'" style="font-size:18px;color:'+iconcolor+';" aria-hidden="true"></i><div style="flex:1;"><p style="margin:0;font-size:13px;font-weight:500;">'+title+'</p><p style="margin:0;font-size:12px;color:var(--color-text-secondary);">'+sub+'</p></div><span class="fx-pill" style="background:'+pillbg+';color:'+pillc+';">'+pilltext+'</span><button class="bOpen" data-v="'+viewKey+'" style="font-size:12px;padding:4px 10px;">Open</button></div>';
-  }
-  function renderRev(){
-    var h;
-    if(!S.revised){
-      h=revRow("DSC-108 · original","base quote · 19 Jun","#185FA5","ti-file-check","#E6F1FB","#0C447C","Current","current")+'<p style="margin:12px 0 0;font-size:12px;color:var(--color-text-tertiary);">No revisions yet. Adding freight creates Rev 1.</p>';
-    } else {
-      h=revRow("DSC-108 · original","base quote · 19 Jun","var(--color-text-tertiary)","ti-file","var(--color-background-secondary)","var(--color-text-secondary)","Superseded","original")
-        +'<div style="height:8px;"></div>'
-        +revRow("DSC-108 · Rev 1","Freight "+money(S.freightAmt)+" added ("+(S.method==="for"?"FOR":"line item")+")","#185FA5","ti-file-check","#E6F1FB","#0C447C","Current","current")
-        +'<p style="margin:12px 0 0;font-size:12px;color:var(--color-text-tertiary);"><i class="ti ti-info-circle" style="font-size:14px;vertical-align:-2px;" aria-hidden="true"></i> Send to customer always sends the current revision.</p>';
-    }
-    $("revBody").innerHTML=h;
-    $("revBody").querySelectorAll(".bOpen").forEach(function(btn){btn.onclick=function(){S.viewing=btn.getAttribute("data-v");renderDetails();showTab("details");};});
+  function bindDrag(){
+    document.querySelectorAll('.wt-handle').forEach(function(h){
+      h.addEventListener('dragstart',function(){dragId=h.getAttribute('data-id');var r=h.closest('.wt-row');if(r)r.classList.add('drag');});
+      h.addEventListener('dragend',function(){dragId=null;var r=h.closest('.wt-row');if(r)r.classList.remove('drag');});
+    });
+    document.querySelectorAll('.drop').forEach(function(zone){
+      zone.addEventListener('dragover',function(e){e.preventDefault();zone.classList.add('over');});
+      zone.addEventListener('dragleave',function(){zone.classList.remove('over');});
+      zone.addEventListener('drop',function(e){e.preventDefault();zone.classList.remove('over');if(!dragId)return;var it=items.filter(function(i){return i.id===dragId;})[0];if(it)it.sec=parseInt(zone.getAttribute('data-sec'),10);dragId=null;renderApp();});
+    });
   }
 
-  function renderAll(){renderFreight();renderDetails();renderRev();}
-  renderAll();
+  var rb=$('bReset');if(rb)rb.onclick=function(){reset();renderApp();};
+  renderApp();
 })();
 </script>
 </body>
