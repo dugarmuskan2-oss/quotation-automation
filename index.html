@@ -6220,7 +6220,10 @@
                     <textarea id="reply-box-${quotation.id}" rows="3" placeholder="Type your reply…" style="width:100%; box-sizing:border-box;"></textarea>
                     <button type="button" class="save-btn" onclick="event.stopPropagation(); sendQuoteReply(${JSON.stringify(quotation.id)})" style="margin-top:6px;">✉️ Send reply</button>
                 </div>` : '';
-            const panelContent = (hasThread ? conversationBlock : baseContent) + replyComposer;
+            // Send the quote (PDF) to the customer straight from the conversation panel.
+            const sendQuoteBlock = hasThread ? `
+                <div style="margin-top:12px;"><button type="button" class="save-btn" style="background:#2e7d32;" onclick="event.stopPropagation(); sendQuotationToCustomer(${JSON.stringify(quotation.id)})">✉️ Send quote to customer</button></div>` : '';
+            const panelContent = (hasThread ? conversationBlock : baseContent) + sendQuoteBlock + replyComposer;
 
             return `
                 <div class="approval-side">
@@ -8622,6 +8625,11 @@
                     saveQuotationToBackend(quotation);
                     updateApprovalBadge(quotationId, quotation);
                     updateSentBadge(quotationId);
+                    // Reflect the send in the conversation thread (if the panel is open).
+                    const sentThreadEl = document.getElementById('thread-' + quotationId);
+                    if (sentThreadEl) {
+                        sentThreadEl.insertAdjacentHTML('beforeend', '<div style="margin-bottom:8px;"><div style="font-size:11px;color:#9b988e;">You · just now</div><div style="background:#E6F1FB;border-radius:8px;padding:8px 10px;font-size:13px;">Sent Quotation ' + escapeHtml(quotation.quoteNumber || '') + ' (PDF) to the customer.</div></div>');
+                    }
                     alert('✅ Email sent' + (data.sentTo ? ' to ' + data.sentTo : ''));
                 } else {
                     alert('Failed to send: ' + (data.error || 'Unknown error'));
@@ -9179,7 +9187,7 @@
     </script>
     <script src="weight-calculator.js?v=20260529-1"></script>
     <script src="enquiry-preparer.js?v=20260529-1"></script>
-    <script src="freight-tab-weight-editor.js?v=20260624-3"></script>
+    <script src="freight-tab-weight-editor.js?v=20260624-4"></script>
 </body>
 </html>
 

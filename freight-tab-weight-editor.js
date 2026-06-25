@@ -19,6 +19,7 @@
     }
     function liDesc(li) { return li.originalDescription || li.description || ''; }
     function esc(s) { return String(s == null ? '' : s).replace(/"/g, '&quot;'); }
+    function escTxt(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
     function fmt(n) { return Math.round(n).toLocaleString('en-IN'); }
 
     function seedRows(q) {
@@ -42,7 +43,7 @@
     function weightOf(r) { return r.qty * (r.kgm || 0); }
     function secRows(st, sec) { return st.rows.filter(function (r) { return r.sec === sec; }); }
     function secWeight(st, sec) {
-        return secRows(st, sec).reduce(function (s, r) { return s + weightOf(r); }, 0);
+        return secRows(st, sec).filter(function (r) { return !r.removed; }).reduce(function (s, r) { return s + weightOf(r); }, 0);
     }
 
     function injectStylesOnce() {
@@ -80,6 +81,13 @@
             + '<div style="text-align:right;">kg/m</div><div style="text-align:right;">Weight</div><div></div></div>';
     }
     function rowHtml(st, r) {
+        if (r.removed) {
+            return '<div class="fwe-row" data-id="' + r.id + '" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid #eee;">'
+                + '<span style="flex:1;text-decoration:line-through;color:#9b988e;font-size:13px;">' + escTxt(r.d) + ' &middot; ' + r.qty + ' &times; ' + (r.kgm || '—') + ' kg/m</span>'
+                + '<span style="font-size:11px;color:#9b988e;">removed</span>'
+                + '<button class="fwe-restore fwe-link" data-id="' + r.id + '" style="font-size:12px;">Add back</button>'
+                + '</div>';
+        }
         var miss = !r.kgm;
         var w = miss ? '<span style="color:#A32D2D;font-size:11px;">not counted</span>'
             : (fmt(weightOf(r)) + ' kg');
@@ -213,8 +221,15 @@
         });
         mountEl.querySelectorAll('.fwe-del').forEach(function (b) {
             b.onclick = function () {
-                var id = b.getAttribute('data-id');
-                st.rows = st.rows.filter(function (r) { return r.id !== id; });
+                var r = findRow(st, b.getAttribute('data-id'));
+                if (r) r.removed = true;   // soft-delete: keep visible, exclude from total
+                render(q, mountEl);
+            };
+        });
+        mountEl.querySelectorAll('.fwe-restore').forEach(function (b) {
+            b.onclick = function () {
+                var r = findRow(st, b.getAttribute('data-id'));
+                if (r) r.removed = false;
                 render(q, mountEl);
             };
         });
@@ -268,7 +283,7 @@
     }
 
     function printWeights(q, st, sec) {
-        var rows = secRows(st, sec);
+        var rows = secRows(st, sec).filter(function (r) { return !r.removed; });
         var label = st.split ? ('Shipment ' + sec) : 'Weight';
         var name = [(q.companyName || q.projectName || ''), (q.quoteNumber || '')].filter(Boolean).join(' · ');
         var body = rows.map(function (r) {
