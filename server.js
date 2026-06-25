@@ -433,30 +433,10 @@ async function handleGenerateQuotation({ emailContent, fileContent, instructions
             ? ` RATE FILE RULES — you MUST follow these exactly:\n${fileTypeRules.map((r, i) => `  File ${i + 1}: ${r}`).join('\n')}\nLook at the filename of each rate file to identify its pipe type, then use ONLY that file for matching items of that type. NEVER use GI rates for ERW pipes, ERW rates for GI pipes, or mix any other types. If an item's pipe type is ambiguous, infer it from keywords in its description (e.g. "GI", "galvanised", "ERW", "seamless").`
             : '';
 
-        const promptText = `Please analyze the following enquiry and extract quotation information. Use the PDF rate files provided (${uploadedFileIds.length} file(s)) to match base rates.${rateFileListText} Read the PDF files directly to find the correct rates. If the PDF rate files include a KG/meter (or kg per meter / weight per meter) value for an item, extract it into "kgPerMeter". Return the data in this exact JSON format:
-
-{
-  "customerName": "",
-  "companyName": "",
-  "projectName": "",
-  "phoneNumber": "",
-  "mobileNumber": "",
-  "quotationDate": "",
-  "lineItems": [
-    {
-      "originalDescription": "",
-      "identifiedPipeType": "",
-      "quantity": "",
-      "unitRate": "",
-      "kgPerMeter": "",
-      "marginPercent": "",
-      "finalRate": "",
-      "lineTotal": ""
-    }
-  ]
-}
-
-Extract ALL items and materials from the enquiry — including pipes, plates, fittings, flanges, structural steel, and any other product types (including all attached enquiry PDFs if any). Do not skip or ignore any item regardless of type. Read every enquiry document and combine relevant data. Match with rates from the uploaded PDF rate files where possible, calculate final rates with margins, and return the complete JSON. When KG/meter is not available for a matched item, return an empty string for "kgPerMeter".`;
+        // The detailed extraction rules (JSON shape, kg/meter, sizing, sheet selection, etc.) live
+        // in the configurable system instructions — the single source of truth. This user-message
+        // line only points to them + names the rate files, so it can't contradict them.
+        const promptText = `Follow the system instructions exactly. Extract EVERY item from the enquiry below — do not skip or ignore any item, regardless of type. For each item, match the rate AND the kg/meter from the ${uploadedFileIds.length} uploaded PDF rate file(s)${rateFileListText} by reading the PDFs directly, and return ONLY the JSON exactly as specified in the system instructions.`;
 
         const userContentParts = [
             {
