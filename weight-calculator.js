@@ -164,11 +164,6 @@
 
         const row = document.createElement('tr');
 
-        // Tint the row red when the AI couldn't find a weight for this pipe size
-        if (weightMissing) {
-            row.style.backgroundColor = 'rgba(255, 0, 0, 0.15)';
-        }
-
         const actionCell = document.createElement('td');
         const descCell = document.createElement('td');
         const kgCell = document.createElement('td');
@@ -187,22 +182,26 @@
         kgInput.value = Number.isFinite(kgPerMeter) ? kgPerMeter : '';
         kgInput.style.width = '100%';
 
-        // Clear the red tint as soon as the user enters a valid kg/m value
-        if (weightMissing) {
-            kgInput.addEventListener('input', function clearTint() {
-                if (Number.isFinite(parseFloat(kgInput.value))) {
-                    row.style.backgroundColor = '';
-                    kgInput.removeEventListener('input', clearTint);
-                }
-            });
-        }
-
         const qtyInput = document.createElement('input');
         qtyInput.type = 'number';
         qtyInput.step = '0.01';
         qtyInput.min = '0';
         qtyInput.value = Number.isFinite(qtyMeters) ? qtyMeters : '';
         qtyInput.style.width = '100%';
+
+        // Tint the row red while the kg/m or the quantity is blank on a real item — the
+        // AI is told never to guess these (no assumed 6 m pipe length), so blanks need
+        // the user's attention. Clears as soon as both fields hold valid numbers.
+        function refreshMissingTint() {
+            const hasItem = !!descInput.value.trim();
+            const kgOk = Number.isFinite(parseFloat(kgInput.value));
+            const qtyOk = Number.isFinite(parseFloat(qtyInput.value));
+            row.style.backgroundColor = (hasItem && (!kgOk || !qtyOk)) ? 'rgba(255, 0, 0, 0.15)' : '';
+        }
+        refreshMissingTint();
+        descInput.addEventListener('input', refreshMissingTint);
+        kgInput.addEventListener('input', refreshMissingTint);
+        qtyInput.addEventListener('input', refreshMissingTint);
 
         const totalSpan = document.createElement('span');
         totalSpan.textContent = '0.00';

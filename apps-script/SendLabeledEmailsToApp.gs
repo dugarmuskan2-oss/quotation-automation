@@ -180,6 +180,34 @@ function getEmailsWithLabelInWindow(labelName, startDateStr, endDatePlusOneStr, 
 }
 
 /**
+ * Fetch the first message of every thread that currently carries the label,
+ * limited to the last `days` days (by received date) to keep the scan bounded.
+ * Unlike getEmailsWithLabelInWindow, this does NOT filter by a report time window,
+ * so it catches emails labelled AFTER a report already advanced past them.
+ * The app de-duplicates by Gmail message id, so already-created quotes are skipped cheaply.
+ * @param {string} labelName - Gmail label name
+ * @param {number} [days] - Recency cap in days (default 60)
+ * @return {Array<Object>} Array of email payloads
+ */
+function getEmailsWithLabelRecent(labelName, days) {
+  var recency = (days && days > 0) ? days : 60;
+  var threads;
+  try {
+    threads = GmailApp.search('label:"' + labelName + '" newer_than:' + recency + 'd -in:spam -in:trash');
+  } catch (e) {
+    Logger.log('Search failed for label ' + labelName + ': ' + e.toString());
+    return [];
+  }
+  var emails = [];
+  for (var t = 0; t < threads.length; t++) {
+    var messages = threads[t].getMessages();
+    if (messages.length === 0) continue;
+    emails.push(buildEmailPayload(messages[0]));
+  }
+  return emails;
+}
+
+/**
  * POST the emails array to the app's ingest endpoint.
  * Tries /api/ingest-from-gmail first; falls back to /api/health if 404 (Vercel routing).
  * @param {string} appUrl - Base URL of the app (no trailing slash), e.g. https://your-app.vercel.app
@@ -235,7 +263,20 @@ function sendLabeledEmailsToAppForLabel(labelName, startMs, endMs, startDateStr,
   }
 
   Logger.log('Sending ' + emails.length + ' email(s) to app for label: ' + labelName);
+  var totalCreated = postEmailBatchesToApp_(appUrl, secret, emails);
+  Logger.log('App: created ' + totalCreated + ' quotation(s) total');
+  return totalCreated;
+}
 
+/**
+ * POST a pre-fetched array of email payloads to the app, one email per request
+ * (see MAX_EMAILS_PER_REQUEST). Payloads over MAX_PAYLOAD_BYTES are skipped.
+ * @param {string} appUrl - Base app URL (no trailing slash)
+ * @param {string|null} secret - Optional X-Ingest-Secret value
+ * @param {Array<Object>} emails - Email payloads from a getEmailsWithLabel* helper
+ * @return {number} Total quotations created (sum of app `created` counts)
+ */
+function postEmailBatchesToApp_(appUrl, secret, emails) {
   var totalCreated = 0;
   for (var i = 0; i < emails.length; i += MAX_EMAILS_PER_REQUEST) {
     var batch = emails.slice(i, i + MAX_EMAILS_PER_REQUEST);
@@ -257,6 +298,33 @@ function sendLabeledEmailsToAppForLabel(labelName, startMs, endMs, startDateStr,
       Logger.log('App request failed for email ' + (i + 1) + ': ' + c + ' - ' + (b.length > 200 ? b.substring(0, 200) + '...' : b));
     }
   }
+  return totalCreated;
+}
+
+/**
+ * Send every email that currently carries the label (within the last `days` days) to the app,
+ * regardless of when it was received or when the label was applied. Use this for the manual
+ * "Create Quotations" catch-up button so an email labelled AFTER a report still gets sent.
+ * The app de-duplicates by Gmail message id, so already-created quotes are skipped cheaply.
+ * @param {string} labelName - Gmail label name (defaults to LABEL_NAME)
+ * @param {number} [days] - Recency cap in days (default 60)
+ * @return {number} Total quotations created
+ */
+function sendLabeledEmailsToAppRecent(labelName, days) {
+  if (labelName === undefined || labelName === null || (typeof labelName === 'string' && labelName.trim() === '')) {
+    labelName = LABEL_NAME;
+  }
+  var appUrl = getAppUrl();
+  var secret = getIngestSecret();
+  var emails = getEmailsWithLabelRecent(labelName, days);
+
+  if (emails.length === 0) {
+    Logger.log('No recent emails found with label: ' + labelName);
+    return 0;
+  }
+
+  Logger.log('Sending ' + emails.length + ' recently-labelled email(s) to app for label: ' + labelName);
+  var totalCreated = postEmailBatchesToApp_(appUrl, secret, emails);
   Logger.log('App: created ' + totalCreated + ' quotation(s) total');
   return totalCreated;
 }

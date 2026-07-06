@@ -21,6 +21,10 @@ const SCOPES = [
   // thread message bodies for the in-card Conversation panel. Re-run this script after
   // changing scopes to regenerate the refresh token with the new consent.
   'https://www.googleapis.com/auth/gmail.readonly',
+  // People API — powers the real-time recipient autocomplete (people you've emailed +
+  // saved contacts). Requires the People API to be enabled in the Google Cloud project.
+  'https://www.googleapis.com/auth/contacts.readonly',
+  'https://www.googleapis.com/auth/contacts.other.readonly',
 ];
 const ENV_PATH = path.join(__dirname, '..', '.env');
 

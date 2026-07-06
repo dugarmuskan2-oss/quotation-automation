@@ -1,17 +1,28 @@
 const { google } = require('googleapis');
 
 let _gmailClient = null;
+let _peopleClient = null;
 
-function createGmailClient() {
-  if (_gmailClient) return _gmailClient;
+function getGoogleAuth() {
   const { GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN } = process.env;
   if (!GMAIL_CLIENT_ID || !GMAIL_CLIENT_SECRET || !GMAIL_REFRESH_TOKEN) {
     throw new Error('Gmail credentials missing from .env (GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN)');
   }
   const auth = new google.auth.OAuth2(GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET);
   auth.setCredentials({ refresh_token: GMAIL_REFRESH_TOKEN });
-  _gmailClient = google.gmail({ version: 'v1', auth });
+  return auth;
+}
+
+function createGmailClient() {
+  if (_gmailClient) return _gmailClient;
+  _gmailClient = google.gmail({ version: 'v1', auth: getGoogleAuth() });
   return _gmailClient;
+}
+
+function createPeopleClient() {
+  if (_peopleClient) return _peopleClient;
+  _peopleClient = google.people({ version: 'v1', auth: getGoogleAuth() });
+  return _peopleClient;
 }
 
 // Wrap a base64 string into 76-character lines (RFC 2045 §6.8).
@@ -192,6 +203,45 @@ async function fetchThreadMessages(threadId) {
   return { threadId: threadId, messages: messages };
 }
 
-module.exports = { sendEmail, lookupMessageThread, fetchThreadMessages };
+// ── Recipient autocomplete (People API) — mirrors Gmail's CC autocomplete ────────
+// otherContacts.search = people you've emailed (auto-saved); searchContacts = saved
+// contacts. Needs the People API enabled + contacts.other.readonly (+ contacts.readonly)
+// scopes. The search endpoints need a one-time "warm-up" call (empty query) to prime
+// their cache before they return results, so we do that once per process.
+let _contactsWarmed = false;
+async function warmContactsCache(people, readMask) {
+  if (_contactsWarmed) return;
+  _contactsWarmed = true;
+  try {
+    await Promise.all([
+      people.otherContacts.search({ query: '', pageSize: 1, readMask }),
+      people.people.searchContacts({ query: '', pageSize: 1, readMask }),
+    ]);
+  } catch (e) { /* warm-up is best-effort */ }
+}
+async function searchContactSuggestions(query) {
+  const q = String(query || '').trim();
+  if (!q) return [];
+  const people = createPeopleClient();
+  const readMask = 'names,emailAddresses';
+  await warmContactsCache(people, readMask);
+  const [other, saved] = await Promise.all([
+    people.otherContacts.search({ query: q, pageSize: 10, readMask }).then(r => r.data.results || []).catch(() => []),
+    people.people.searchContacts({ query: q, pageSize: 10, readMask }).then(r => r.data.results || []).catch(() => []),
+  ]);
+  const seen = {}, out = [];
+  [].concat(other, saved).forEach(function (res) {
+    const person = res.person || {};
+    const name = (person.names && person.names[0] && person.names[0].displayName) || '';
+    (person.emailAddresses || []).forEach(function (e) {
+      const email = (e.value || '').trim();
+      const key = email.toLowerCase();
+      if (email && !seen[key]) { seen[key] = true; out.push({ name, email }); }
+    });
+  });
+  return out.slice(0, 12);
+}
+
+module.exports = { sendEmail, lookupMessageThread, fetchThreadMessages, searchContactSuggestions };
 // Pure helpers exposed for unit testing (MIME structure, inline-image CID rewrite, body parse).
 module.exports._test = { buildRawMessage, extractInlineImages, wrapBase64, extractBodyText, stripHtmlToText };

@@ -253,6 +253,12 @@
         .q-pill.q-revised { background: #EEEDFE; color: #26215C; }
         .q-pill.q-reply { background: #FBEAF0; color: #993556; }
         .thread-messages { max-height: 320px; overflow-y: auto; }
+        /* Real-time recipient autocomplete (Gmail-style) */
+        .contact-dd { position: absolute; top: 100%; left: 0; right: 0; z-index: 10; background: #fff; border: 1px solid #ddd; border-radius: 6px; margin-top: 2px; max-height: 220px; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
+        .contact-dd-item { padding: 7px 10px; cursor: pointer; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .contact-dd-item:hover, .contact-dd-item.active { background: #f2f6fc; }
+        .contact-dd-name { font-weight: 500; }
+        .contact-dd-email { color: #5f6368; }
         .queue-action {
             font-size: 12px; padding: 5px 12px; border-radius: 8px;
             background: #E6F1FB; color: #0C447C; border: 0.5px solid #85B7EB; cursor: pointer;
@@ -6401,9 +6407,11 @@
                 ? Array.from(container.querySelectorAll('.quotation-folder-content.show'))
                     .map(function(contentEl) {
                         const id = (contentEl.id || '').replace('folder-content-', '');
-                        return id;
+                        // Keep the active tab too — the rebuild replaces the element, and
+                        // without this the card would flip back to the Quote tab.
+                        return { id: id, activeTab: contentEl.dataset.activeTab || '' };
                     })
-                    .filter(Boolean)
+                    .filter(function(f) { return f.id; })
                 : [];
             
             // If no quotations, show message
@@ -6442,11 +6450,14 @@
             renderApprovedQuotationsHTML(container, allQuotationsHTML);
             // Restore expanded folders and scroll position after re-render so "Load more"
             // feels stable instead of collapsing/jumping the list.
-            expandedFolderIds.forEach(function(folderId) {
-                const contentEl = document.getElementById('folder-content-' + folderId);
-                const folderElForIcon = document.getElementById('folder-' + folderId);
+            expandedFolderIds.forEach(function(folder) {
+                const contentEl = document.getElementById('folder-content-' + folder.id);
+                const folderElForIcon = document.getElementById('folder-' + folder.id);
                 const iconEl = folderElForIcon ? folderElForIcon.querySelector('.folder-toggle-icon') : null;
                 if (contentEl) {
+                    // Re-seed the active tab before rendering so activateApprovalTabs
+                    // reopens the tab the user was on (e.g. Freight), not the default.
+                    if (folder.activeTab) contentEl.dataset.activeTab = folder.activeTab;
                     // Render content for folders that were open before the re-render
                     if (contentEl.dataset.lazyId) {
                         renderApprovalFolderContent(contentEl.dataset.lazyId, contentEl);
@@ -8374,6 +8385,71 @@
         // Show a single dialog with To / CC / BCC fields. Each turns typed addresses
         // into pill chips (comma, space or Enter commits one; invalid ones show red).
         // Returns a Promise of { to, cc, bcc } (comma-joined) or null if cancelled.
+        // Real-time Gmail-style autocomplete for a recipient input. Debounced per keystroke;
+        // queries GET /api/contact-suggestions (People API). addFn(email) adds the chosen address.
+        // Optional localSuggest(query) returns [{name, email}] synchronously (e.g. remembered
+        // transporters) — shown instantly (and on focus when empty), with People API results
+        // merged in when they arrive.
+        function attachContactAutocomplete(field, input, addFn, localSuggest) {
+            field.style.position = 'relative';
+            let dd = null, timer = null, seq = 0;
+            function hide() { if (dd) { dd.remove(); dd = null; } }
+            function showSuggestions(list) {
+                hide();
+                if (!list.length) return;
+                dd = document.createElement('div');
+                dd.className = 'contact-dd';
+                list.forEach(function(s) {
+                    const item = document.createElement('div');
+                    item.className = 'contact-dd-item';
+                    item.innerHTML = (s.name ? '<span class="contact-dd-name">' + escapeHtml(s.name) + '</span> ' : '')
+                        + '<span class="contact-dd-email">' + escapeHtml(s.email) + '</span>';
+                    // mousedown (not click) so it fires before the input's blur hides the dropdown
+                    item.onmousedown = function(e) { e.preventDefault(); addFn(s.email); input.value = ''; hide(); input.focus(); };
+                    dd.appendChild(item);
+                });
+                field.appendChild(dd);
+            }
+            function localFor(q) {
+                if (typeof localSuggest !== 'function') return [];
+                try { return localSuggest(q) || []; } catch (e) { return []; }
+            }
+            function mergeUnique(local, remote) {
+                const seen = {};
+                return local.concat(remote).filter(function(s) {
+                    const key = (s.email || '').toLowerCase();
+                    if (!key || seen[key]) return false;
+                    seen[key] = true;
+                    return true;
+                });
+            }
+            input.addEventListener('input', function() {
+                const q = input.value.trim();
+                if (timer) clearTimeout(timer);
+                const local = localFor(q);
+                if (q.length < 2) {
+                    // Too short for the People API — still show remembered matches (or hide)
+                    showSuggestions(local.slice(0, 8));
+                    return;
+                }
+                showSuggestions(local.slice(0, 8)); // instant; refined when People results land
+                const mySeq = ++seq;
+                timer = setTimeout(async function() {
+                    try {
+                        const res = await fetch(`${API_BASE_URL}/contact-suggestions?q=` + encodeURIComponent(q));
+                        const data = await safeJsonParse(res);
+                        if (mySeq !== seq) return; // ignore stale responses
+                        const remote = Array.isArray(data.suggestions) ? data.suggestions : [];
+                        showSuggestions(mergeUnique(localFor(input.value.trim()), remote).slice(0, 12));
+                    } catch (e) { /* keep whatever is showing */ }
+                }, 250);
+            });
+            input.addEventListener('focus', function() {
+                if (!input.value.trim()) showSuggestions(localFor('').slice(0, 8));
+            });
+            input.addEventListener('blur', function() { setTimeout(hide, 150); });
+        }
+
         function promptForEmailRecipients(note) {
             return new Promise(function(resolve) {
                 const overlay = document.createElement('div');
@@ -8431,6 +8507,7 @@
                         const text = (e.clipboardData || window.clipboardData).getData('text');
                         if (/[,;\s]/.test(text)) { e.preventDefault(); add(text); input.value = ''; }
                     });
+                    attachContactAutocomplete(field, input, add);
                 });
 
                 function close(result) { overlay.remove(); resolve(result); }

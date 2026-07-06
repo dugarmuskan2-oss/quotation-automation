@@ -15,6 +15,7 @@ const {
     CONFIG_KEY_DEFAULT_MARGINS,
     CONFIG_KEY_DEFAULT_EMAIL_MESSAGE,
     CONFIG_KEY_DEFAULT_SIGNATURE,
+    CONFIG_KEY_FREIGHT_SUGGESTIONS,
 } = require('../utils/constants');
 
 function normalizeMarginValue(value) {
@@ -31,6 +32,92 @@ function sanitizeDefaultMargins(input) {
         gi:       normalizeMarginValue(source.gi),
         seamless: normalizeMarginValue(source.seamless),
     };
+}
+
+// ── Freight suggestions (transporters remembered per route + pickup/drop) ─────
+// Shape: {
+//   transporters: [{email, count, lastUsed}],              // global, all routes
+//   routes: [{pickup, drop, transporters: [{...}]}],       // per pickup(+drop) lane
+//   pickups: [string], drops: [string],                    // MRU place lists
+// }
+
+const FREIGHT_MAX_TRANSPORTERS = 50;
+const FREIGHT_MAX_PLACES = 10;
+const FREIGHT_MAX_ROUTES = 60;
+
+function normalizePlace(value) {
+    return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function sanitizeTransporterList(list) {
+    return (Array.isArray(list) ? list : [])
+        .filter(t => t && typeof t.email === 'string' && t.email.trim())
+        .map(t => ({
+            email: t.email.trim(),
+            count: Number.isFinite(Number(t.count)) ? Number(t.count) : 1,
+            lastUsed: typeof t.lastUsed === 'string' ? t.lastUsed : '',
+        }));
+}
+
+function sanitizeFreightSuggestions(input) {
+    const source = (input && typeof input === 'object') ? input : {};
+    const transporters = sanitizeTransporterList(source.transporters);
+    const routes = (Array.isArray(source.routes) ? source.routes : [])
+        .map(r => ({
+            pickup: String((r && r.pickup) || '').trim(),
+            drop: String((r && r.drop) || '').trim(),
+            transporters: sanitizeTransporterList(r && r.transporters),
+        }))
+        .filter(r => r.pickup && r.transporters.length)
+        .slice(0, FREIGHT_MAX_ROUTES);
+    const places = list => (Array.isArray(list) ? list : [])
+        .map(p => String(p || '').trim())
+        .filter(Boolean)
+        .slice(0, FREIGHT_MAX_PLACES);
+    return { transporters, routes, pickups: places(source.pickups), drops: places(source.drops) };
+}
+
+// Bump each recipient's usage count in a transporter list, most-used first.
+function bumpTransporters(list, recipients, now) {
+    const byEmail = {};
+    (list || []).forEach(t => { byEmail[t.email.toLowerCase()] = t; });
+    recipients.forEach(email => {
+        const key = email.toLowerCase();
+        if (byEmail[key]) { byEmail[key].count += 1; byEmail[key].lastUsed = now; }
+        else { byEmail[key] = { email, count: 1, lastUsed: now }; }
+    });
+    return Object.values(byEmail)
+        .sort((a, b) => (b.count - a.count) || String(b.lastUsed).localeCompare(String(a.lastUsed)))
+        .slice(0, FREIGHT_MAX_TRANSPORTERS);
+}
+
+// Record one enquiry: bump the global list, the route (pickup+drop) list, and the
+// MRU place lists. Route is keyed by normalized pickup+drop; needs a pickup to bind.
+function mergeFreightUsage(existing, usage) {
+    const now = new Date().toISOString();
+    const recipients = (Array.isArray(usage.recipients) ? usage.recipients : [])
+        .map(r => String(r || '').trim()).filter(Boolean);
+
+    const transporters = bumpTransporters(existing.transporters, recipients, now);
+
+    const pickup = String(usage.pickup || '').trim();
+    const drop = String(usage.drop || '').trim();
+    let routes = existing.routes.slice();
+    if (pickup && recipients.length) {
+        const npk = normalizePlace(pickup), ndp = normalizePlace(drop);
+        let route = routes.find(r => normalizePlace(r.pickup) === npk && normalizePlace(r.drop) === ndp);
+        if (!route) { route = { pickup, drop, transporters: [] }; routes.unshift(route); }
+        else { route.pickup = pickup; route.drop = drop; }   // refresh display casing
+        route.transporters = bumpTransporters(route.transporters, recipients, now);
+        routes = routes.slice(0, FREIGHT_MAX_ROUTES);
+    }
+
+    const mru = (list, value) => {
+        const v = String(value || '').trim();
+        if (!v) return list;
+        return [v].concat(list.filter(p => p.toLowerCase() !== v.toLowerCase())).slice(0, FREIGHT_MAX_PLACES);
+    };
+    return { transporters, routes, pickups: mru(existing.pickups, pickup), drops: mru(existing.drops, drop) };
 }
 
 module.exports = function createConfigRouter({ storage }) {
@@ -160,5 +247,40 @@ module.exports = function createConfigRouter({ storage }) {
         }
     });
 
+    // ── Freight suggestions ───────────────────────────────────────────────────
+    router.get('/get-freight-suggestions', async (req, res) => {
+        try {
+            const content = await storage.readText(CONFIG_KEY_FREIGHT_SUGGESTIONS);
+            let parsed = {};
+            if (content) {
+                try { parsed = JSON.parse(content); } catch { parsed = {}; }
+            }
+            res.json({ hasFile: content !== null, suggestions: sanitizeFreightSuggestions(parsed) });
+        } catch (error) {
+            console.error('Error getting freight suggestions:', error);
+            res.status(500).json({ error: 'Failed to get freight suggestions', details: error.message });
+        }
+    });
+
+    // Record one enquiry's usage: { recipients: [emails], pickup, drop }
+    router.post('/save-freight-suggestions', express.json(), async (req, res) => {
+        try {
+            const content = await storage.readText(CONFIG_KEY_FREIGHT_SUGGESTIONS);
+            let existing = {};
+            if (content) {
+                try { existing = JSON.parse(content); } catch { existing = {}; }
+            }
+            const merged = mergeFreightUsage(sanitizeFreightSuggestions(existing), req.body || {});
+            await storage.saveText(CONFIG_KEY_FREIGHT_SUGGESTIONS, JSON.stringify(merged));
+            res.json({ success: true, suggestions: merged });
+        } catch (error) {
+            console.error('Error saving freight suggestions:', error);
+            res.status(500).json({ error: 'Failed to save freight suggestions', details: error.message });
+        }
+    });
+
     return router;
 };
+
+// Pure helpers exposed for unit testing (see tests/freight-suggestions.test.js).
+module.exports._test = { sanitizeFreightSuggestions, mergeFreightUsage, bumpTransporters, normalizePlace };

@@ -1,7 +1,7 @@
 'use strict';
 
 const express = require('express');
-const { sendEmail, lookupMessageThread, fetchThreadMessages } = require('../utils/gmail');
+const { sendEmail, lookupMessageThread, fetchThreadMessages, searchContactSuggestions } = require('../utils/gmail');
 
 // Prefix a subject with "Re:" unless it already has one (avoids "Re: Re: ...").
 function replySubject(original) {
@@ -39,6 +39,19 @@ function createGmailRouter() {
     } catch (err) {
       console.error('Thread messages error:', err.message);
       res.status(500).json({ error: 'Could not read the thread: ' + err.message });
+    }
+  });
+
+  // Real-time recipient autocomplete (Gmail-style). Returns [{name, email}] for the typed
+  // fragment via the People API. Degrades to an empty list (no error surfaced) if the People
+  // API isn't enabled / re-auth not done, so the field just shows no suggestions.
+  router.get('/contact-suggestions', async (req, res) => {
+    try {
+      const suggestions = await searchContactSuggestions(req.query.q || '');
+      res.json({ suggestions });
+    } catch (err) {
+      console.error('Contact suggestions error:', err.message);
+      res.json({ suggestions: [], error: err.message });
     }
   });
 

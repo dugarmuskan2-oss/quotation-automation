@@ -21,6 +21,8 @@ const storage = require('./storage');
 const { createLineItemId, parseFlexibleNumber, calculateLineItem } = require('./utils/calculations');
 const {
     ENTITY_QUOTATION,
+    ENTITY_GMAIL_MSG_MARKER,
+    GMAIL_MSG_MARKER_PREFIX,
     QUOTE_COUNTER_ID,
     QUOTE_COUNTER_START,
     CONFIG_KEY_INSTRUCTIONS,
@@ -692,7 +694,9 @@ function buildWeightExtractionInstructions(instructions) {
         'For this request, focus only on extracting pipe line items for the weight calculator.',
         'Identify the pipe description/size, quantity if present, and the corresponding kgPerMeter.',
         'Ignore customer details, quotation headers, pricing, margins, taxes, totals, and non-pipe items.',
-        'If kgPerMeter is not available, return it as an empty string.'
+        'If kgPerMeter is not available, return it as an empty string.',
+        'If the quantity in meters is not explicitly stated, return quantity as an empty string.',
+        'NEVER assume a standard pipe length (such as 6 meters) and NEVER invent or estimate a quantity that is not written in the enquiry.'
     ].join(' ');
     return [baseInstructions, weightExtractionScope].filter(Boolean).join('\n\n');
 }
@@ -877,6 +881,51 @@ async function findQuotationByGmailMessageId(messageId) {
     const found = items[0];
     return found ? (found.payload || found.data || found) : null;
 }
+/**
+ * Atomically claim a Gmail message id before creating its quote.
+ * Writes a tiny marker row guarded by attribute_not_exists, so only the FIRST
+ * ingest of a given message wins — concurrent/rapid re-sends (double-clicked
+ * report button, overlapping runs) can no longer each create a quote.
+ * @param {string} messageId
+ * @returns {Promise<boolean>} true = claimed (proceed); false = already claimed (duplicate)
+ */
+async function reserveGmailMessageId(messageId) {
+    if (!ddbDocClient || !ddbTableName || !messageId) return true; // no DB → can't guard; proceed
+    const { PutCommand } = require('@aws-sdk/lib-dynamodb');
+    try {
+        await ddbDocClient.send(new PutCommand({
+            TableName: ddbTableName,
+            Item: {
+                id: GMAIL_MSG_MARKER_PREFIX + String(messageId),
+                _entity: ENTITY_GMAIL_MSG_MARKER,
+                gmailMessageId: String(messageId),
+                createdAt: new Date().toISOString()
+            },
+            ConditionExpression: 'attribute_not_exists(id)'
+        }));
+        return true;
+    } catch (err) {
+        if (err && err.name === 'ConditionalCheckFailedException') return false; // duplicate
+        console.warn('reserveGmailMessageId error (proceeding without guard):', err.message || err);
+        return true; // fail open — never drop a genuine enquiry over a transient DB error
+    }
+}
+/**
+ * Release a Gmail message claim so the email can be retried later.
+ * Called only when ingest fails AFTER claiming (so a transient error doesn't
+ * permanently block that email). Best-effort; failures are ignored.
+ * @param {string} messageId
+ */
+async function releaseGmailMessageId(messageId) {
+    if (!ddbDocClient || !ddbTableName || !messageId) return;
+    const { DeleteCommand } = require('@aws-sdk/lib-dynamodb');
+    try {
+        await ddbDocClient.send(new DeleteCommand({
+            TableName: ddbTableName,
+            Key: { id: GMAIL_MSG_MARKER_PREFIX + String(messageId) }
+        }));
+    } catch (e) { /* best-effort */ }
+}
 async function saveQuotationInternal(quotation) {
     if (!ddbDocClient || !ddbTableName) throw new Error('DynamoDB not configured');
     const { PutCommand } = require('@aws-sdk/lib-dynamodb');
@@ -910,6 +959,8 @@ const gmailIngestContext = {
     getNextQuoteNumber: getNextQuoteNumberInternal,
     saveQuotation: saveQuotationInternal,
     findQuotationByGmailMessageId,
+    reserveGmailMessageId,
+    releaseGmailMessageId,
     uploadEnquiryFileToOpenAI: uploadEnquiryFileFromBuffer,
     extractTextFromAttachment
 };

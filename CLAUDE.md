@@ -6,6 +6,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **Never update CLAUDE.md or write tests for a feature without explicit user approval first.** When a feature is complete, ask in chat: "This looks done — want me to update CLAUDE.md and add tests?" Then wait for a clear yes before doing either.
 
+## Active project — unified per-quote flow (read `SESSION-HANDOFF.md` first)
+
+A large in-progress rebuild unifies the three tools (Weight Calculator, Enquiry Preparer, Quotation approval) into one status-driven per-quote flow. **Before touching the approval list, the quote card/tabs, the Freight tab, revisions, the conversation panel, needs-attention status, or Gmail send/read, read `SESSION-HANDOFF.md` and `UNIFIED-QUOTE-FLOW-PLAN.md` first** — they hold live state the code alone won't tell you.
+
+`SESSION-HANDOFF.md` (point-in-time state) covers:
+- **What's built** — Phases 1–5 (status-led list, Quote/Freight/History tabs, Freight-tab weight panel + Add-freight box, revisions + History tab, conversation panel), the needs-attention rework (single list + light-red highlight + "Needs attention: {reason}" badge), and which backlog items are done (#1 soft-delete weights, #3 reason badge, #5 send-from-conversation).
+- **Git state** — the branch (`Testing-other-features`), how many commits are committed-but-**unpushed**, and which files are uncommitted (currently the People-API email autocomplete, pending an "undo" decision).
+- **Pending OWNER actions (blockers)** — the one-time Gmail **re-auth** (`node tools/gmail-auth.js`, scopes now include `gmail.readonly` + `contacts.readonly` + `contacts.other.readonly`), **enabling the People API**, the **transporter-email-source** decision, and **pushing** the commits.
+- **Remaining work** — backlog #2 (Complete/dismiss button) & #6 (verify Gmail-side reply clears the flag), the kg/m **truncate-vs-round** option, a standard **size→kg/m fallback table** (the `weight-calculator.js` matcher currently keys on the whole description — broken), and **Phase 6** (transporter sourcing).
+- **Key files, cross-cutting rules, and how things were verified** (preview server + injected mock `approvedQuotations`; live Gmail/People calls are untested until re-auth).
+
+`UNIFIED-QUOTE-FLOW-PLAN.md` (roadmap/design) has the phased plan, the 6-item backlog, and the per-phase file/function map. `prototypes/freight-sourcing-demo.html` is the signed-off target design.
+
 ## Commands
 
 ```bash
@@ -61,6 +74,8 @@ jest tests/approval-edit.test.js         # approval header-field edits (data-fie
 jest tests/email-compose.test.js         # MIME builder (CID inline images), email body/placeholders, reply subject
 jest tests/margin-fill-down.test.js      # margin % "fill down" button (copy margin to items below in the pipe-type group)
 jest tests/approval-no-autosave.test.js  # approval edits don't auto-save; only explicit Save/Approve persists
+jest tests/freight-suggestions.test.js   # route-aware freight memory (routes/config.js _test: sanitize/merge)
+jest tests/freight-tab.test.js           # freight module _test (parseFreightAmount, trimReplyForStorage, route ranking) + source guards
 jest --silent                            # quieter output (add to any command)
 ```
 

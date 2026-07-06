@@ -21,6 +21,10 @@ const FLAG_LABEL = 'Enquiry - Needs Reply';
 const ENQUIRY_LABEL = 'Enquiry';
 const QUOTATION_LABEL = 'Quotation';
 const OVERDUE_DAYS = 2;
+/** Lookback window (days) for the "Create Quotations" catch-up button. It scans emails that
+ *  currently carry the Create Quotation label within this many days, regardless of when the
+ *  label was applied. Bump it if you sometimes label enquiries older than this. */
+const CREATE_QUOTATIONS_LOOKBACK_DAYS = 7;
 
 function isCommonLabel_(label) {
   if (typeof label !== 'string') return false;
@@ -519,28 +523,19 @@ function runReportNow() {
 }
 
 /**
- * Create quotations from emails labeled "Quotation Automation/Create Quotation"
- * that arrived after the last report run. Use when new emails are tagged after
- * the report was generated.
- * Window: from last report end (PROP_LAST_END) to now.
+ * Create quotations from emails that currently carry the
+ * "Quotation Automation/Create Quotation" label, regardless of when they arrived
+ * or when the label was applied. Use this when you add the label to an email AFTER
+ * a report has already run: the report's time window filters by the email's received
+ * date, so a back-labelled older email would otherwise be skipped. Scans the last
+ * CREATE_QUOTATIONS_LOOKBACK_DAYS days; the app de-duplicates by Gmail message id, so
+ * quotes already created are skipped cheaply (no duplicates, no AI cost).
  */
 function createQuotationsFromLatest() {
-  const tz = Session.getScriptTimeZone();
-  const props = PropertiesService.getScriptProperties();
-  const now = new Date();
-  const nowMs = now.getTime();
-  const startMs = getStartMsFromProps_(props, now, PROP_LAST_END);
-  const endMs = nowMs;
-  const dateStrings = getSearchDateStrings_(tz, startMs, endMs);
-
-  const created = sendLabeledEmailsToAppForLabel(
+  return sendLabeledEmailsToAppRecent(
     'Quotation Automation/Create Quotation',
-    startMs,
-    endMs,
-    dateStrings.startDateStr,
-    dateStrings.endDatePlusOneStr
+    CREATE_QUOTATIONS_LOOKBACK_DAYS
   );
-  return created;
 }
 
 /**

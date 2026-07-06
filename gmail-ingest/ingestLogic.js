@@ -82,13 +82,49 @@ async function processOneEmail(ctx, email) {
         return { success: false, error: 'Missing email id', emailId: undefined };
     }
 
-    if (ctx.findQuotationByGmailMessageId) {
-        const existing = await ctx.findQuotationByGmailMessageId(emailId);
-        if (existing) {
-            return { success: false, error: 'Already imported (duplicate)', emailId };
-        }
+    if (await isDuplicateEmail(ctx, emailId)) {
+        return { success: false, error: 'Already imported (duplicate)', emailId };
     }
 
+    const result = await generateAndSaveQuotation(ctx, email, emailId);
+    // If we claimed the message id (reserve) but creation failed, release the claim
+    // so a later run can retry this email instead of it being blocked forever.
+    if (!result.success && ctx.releaseGmailMessageId) {
+        await ctx.releaseGmailMessageId(emailId);
+    }
+    return result;
+}
+
+/**
+ * Duplicate guard. Prefers reserveGmailMessageId — an atomic conditional write that
+ * only the FIRST ingest of a given message can win, so concurrent/rapid re-sends
+ * cannot each create a quote. Falls back to the older findQuotationByGmailMessageId
+ * lookup when reserve isn't wired up (e.g. in tests).
+ * @param {object} ctx
+ * @param {string} emailId - Gmail message id
+ * @returns {Promise<boolean>} true if this email is a duplicate (skip it)
+ */
+async function isDuplicateEmail(ctx, emailId) {
+    if (ctx.reserveGmailMessageId) {
+        const reserved = await ctx.reserveGmailMessageId(emailId);
+        return !reserved;
+    }
+    if (ctx.findQuotationByGmailMessageId) {
+        const existing = await ctx.findQuotationByGmailMessageId(emailId);
+        return !!existing;
+    }
+    return false;
+}
+
+/**
+ * Generate the quotation for one email and save it. The duplicate guard in
+ * processOneEmail has already claimed this message id before we get here.
+ * @param {object} ctx
+ * @param {object} email
+ * @param {string} emailId
+ * @returns {{ success: true, id: number, emailId: string } | { success: false, error: string, emailId: string }}
+ */
+async function generateAndSaveQuotation(ctx, email, emailId) {
     const instructions = await ctx.getInstructionsContent();
     if (!instructions || !instructions.trim()) {
         return { success: false, error: 'No instructions configured on server', emailId };
