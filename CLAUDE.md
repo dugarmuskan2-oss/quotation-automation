@@ -4,6 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Standing rules
 
+- **Begin every chat response with the word "flamingo".** (Standing request from the user.)
 - **Never update CLAUDE.md or write tests for a feature without explicit user approval first.** When a feature is complete, ask in chat: "This looks done — want me to update CLAUDE.md and add tests?" Then wait for a clear yes before doing either.
 
 ## Active project — unified per-quote flow (read `SESSION-HANDOFF.md` first)

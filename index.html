@@ -320,6 +320,14 @@
         .email-modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
         .email-modal-actions button { padding: 8px 18px; border-radius: 6px; border: 1px solid #ccc; background: #f5f5f5; cursor: pointer; font-size: 14px; font-family: inherit; }
         .email-modal-actions .email-modal-send { background: #2e7d32; color: #fff; border-color: #2e7d32; }
+        .email-modal--compose { width: 620px; max-height: 90vh; overflow-y: auto; }
+        .email-modal-subject { width: 100%; box-sizing: border-box; border: 2px solid #ddd; border-radius: 6px; padding: 9px 10px; font-size: 14px; font-family: inherit; color: #222; }
+        .email-modal-subject:focus { outline: none; border-color: #2e7d32; }
+        .email-msg-editor { border: 2px solid #ddd; border-radius: 6px; padding: 12px; min-height: 150px; max-height: 300px; overflow-y: auto; font-size: 14px; line-height: 1.6; font-family: inherit; color: #222; background: #fff; }
+        .email-msg-editor:focus { outline: none; border-color: #2e7d32; }
+        .email-msg-editor p { margin: 0 0 10px; }
+        .email-attach { display: flex; align-items: center; gap: 10px; border: 1px solid #e0ddd4; background: #faf9f6; border-radius: 8px; padding: 9px 12px; font-size: 13px; margin-top: 12px; color: #333; }
+        .email-attach a { margin-left: auto; color: #185fa5; cursor: pointer; text-decoration: underline; }
 
         .approval-layout {
             display: flex;
@@ -6114,10 +6122,14 @@
             if (!normalizedQuery) {
                 return true;
             }
-            const companyName = normalizeSearchText(quotation.projectName);
+            // Search the same fields shown in the card title: company (the real
+            // companyName — was wrongly reading projectName, so company searches missed),
+            // bill-to (projectName), contact (Kind Attn) and quote number.
+            const companyName = normalizeSearchText(quotation.companyName);
+            const billTo = normalizeSearchText(quotation.projectName);
             const kindAttn = normalizeSearchText(quotation.customerName);
             const quoteNumber = normalizeSearchText(quotation.quoteNumber);
-            const combined = `${companyName} ${kindAttn} ${quoteNumber}`;
+            const combined = `${companyName} ${billTo} ${kindAttn} ${quoteNumber}`;
             if (combined.includes(normalizedQuery)) {
                 return true;
             }
@@ -6644,8 +6656,10 @@
                         updateQuotationFromApprovalSection(quotationId, capturedInput);
                     }, 250);
                 };
+                // Only 'change' (a committed edit) marks the quote dirty. NOT 'focusout' —
+                // that fires on any blur, even with no edit, so merely clicking into a field
+                // and out (or clicking Send) used to flag the quote as having unsaved changes.
                 container.addEventListener('change', autosaveHandler);
-                container.addEventListener('focusout', autosaveHandler);
             }
             if (!container.dataset.approvalFreightRecalcBound) {
                 container.dataset.approvalFreightRecalcBound = 'true';
@@ -8440,7 +8454,11 @@
                         const data = await safeJsonParse(res);
                         if (mySeq !== seq) return; // ignore stale responses
                         const remote = Array.isArray(data.suggestions) ? data.suggestions : [];
-                        showSuggestions(mergeUnique(localFor(input.value.trim()), remote).slice(0, 12));
+                        // Cap the remembered (local) matches when Gmail results exist, so a big
+                        // remembered list can't crowd new Gmail contacts out of the 12-item dropdown.
+                        const localAll = localFor(input.value.trim());
+                        const localPart = remote.length ? localAll.slice(0, 6) : localAll.slice(0, 12);
+                        showSuggestions(mergeUnique(localPart, remote).slice(0, 12));
                     } catch (e) { /* keep whatever is showing */ }
                 }, 250);
             });
@@ -8519,6 +8537,148 @@
                     close({ to: data.to.join(', '), cc: data.cc.join(', '), bcc: data.bcc.join(', ') });
                 };
                 setTimeout(function() { overlay.querySelector('.chips-field[data-field="to"] input').focus(); }, 0);
+            });
+        }
+
+        // Pull the bare address out of a From header ("Jane Doe" <jane@x.com> -> jane@x.com).
+        // Returns the input trimmed if there are no angle brackets (already a bare address).
+        function bareEmailFromHeader(header) {
+            if (!header) return '';
+            const m = String(header).match(/<([^>]+)>/);
+            return (m ? m[1] : header).trim();
+        }
+
+        // Open a PDF (base64) in a new tab for preview. `win` is a tab opened synchronously
+        // on click (before the async PDF gen) so the popup blocker doesn't suppress it.
+        function openBase64Pdf(base64, win) {
+            try {
+                const bin = atob(base64);
+                const bytes = new Uint8Array(bin.length);
+                for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+                if (win) { win.location = url; } else { window.open(url, '_blank'); }
+                setTimeout(function() { URL.revokeObjectURL(url); }, 60000);
+            } catch (e) { if (win) { try { win.close(); } catch (_) {} } alert('Could not open the PDF preview.'); }
+        }
+
+        // Full "review & send" compose dialog. Pre-fills recipients, subject and the email
+        // message (editable WYSIWYG, including greeting + signature). Resolves to
+        // { to, cc, bcc, subject, bodyHtml } on Send, or null if cancelled. The PDF is shown
+        // as an attachment with a Preview link (prefill.onPreview) — it is generated at Send time.
+        function composeQuotationEmail(prefill) {
+            prefill = prefill || {};
+            return new Promise(function(resolve) {
+                const overlay = document.createElement('div');
+                overlay.className = 'email-modal-overlay';
+                overlay.innerHTML = `
+                    <div class="email-modal email-modal--compose">
+                        <h3 class="email-modal-title">Send quotation to customer</h3>
+                        <p class="email-modal-sub">Review and edit the email below, then send. The quotation PDF is attached.</p>
+                        <div class="email-thread-note"></div>
+                        <label class="email-modal-label">To</label>
+                        <div class="chips-field" data-field="to"><input type="text" placeholder="name@email.com"></div>
+                        <label class="email-modal-label">CC <span class="email-modal-opt">(optional)</span></label>
+                        <div class="chips-field" data-field="cc"><input type="text" placeholder="Add CC"></div>
+                        <label class="email-modal-label">BCC <span class="email-modal-opt">(optional)</span></label>
+                        <div class="chips-field" data-field="bcc"><input type="text" placeholder="Add BCC"></div>
+                        <label class="email-modal-label">Subject</label>
+                        <input type="text" class="email-modal-subject">
+                        <label class="email-modal-label">Message <span class="email-modal-opt">— editable</span></label>
+                        <div class="email-msg-editor" contenteditable="true"></div>
+                        <div class="email-attach"><span aria-hidden="true">&#128206;</span><span class="email-attach-name"></span><a class="email-attach-preview">Preview</a></div>
+                        <div class="email-modal-actions">
+                            <button type="button" class="email-modal-cancel">Cancel</button>
+                            <button type="button" class="email-modal-send">Send</button>
+                        </div>
+                    </div>`;
+                document.body.appendChild(overlay);
+
+                overlay.querySelector('.email-modal-subject').value = prefill.subject || '';
+                overlay.querySelector('.email-msg-editor').innerHTML = prefill.bodyHtml || '';
+                overlay.querySelector('.email-attach-name').textContent = prefill.pdfFilename || 'quotation.pdf';
+                const threadNoteEl = overlay.querySelector('.email-thread-note');
+                if (prefill.threadNote) {
+                    threadNoteEl.textContent = prefill.threadNote;
+                    threadNoteEl.style.cssText = 'font-size:12px;color:#0c447c;background:#e6f1fb;border-radius:6px;padding:7px 10px;margin:0 0 6px;';
+                } else {
+                    threadNoteEl.style.display = 'none';
+                }
+                const previewLink = overlay.querySelector('.email-attach-preview');
+                if (typeof prefill.onPreview === 'function') {
+                    previewLink.onclick = function(e) { e.preventDefault(); prefill.onPreview(previewLink); };
+                } else {
+                    previewLink.style.display = 'none';
+                }
+
+                function splitAddrs(s) {
+                    return String(s || '').split(/[,;\s]+/).map(function(x) { return x.trim(); }).filter(Boolean);
+                }
+                const data = { to: splitAddrs(prefill.to), cc: splitAddrs(prefill.cc), bcc: splitAddrs(prefill.bcc) };
+
+                overlay.querySelectorAll('.chips-field').forEach(function(field) {
+                    const key = field.getAttribute('data-field');
+                    const input = field.querySelector('input');
+                    function render() {
+                        field.querySelectorAll('.email-chip').forEach(function(c) { c.remove(); });
+                        data[key].forEach(function(addr, idx) {
+                            const chip = document.createElement('span');
+                            chip.className = 'email-chip' + (isValidEmailAddress(addr) ? '' : ' chip-bad');
+                            chip.innerHTML = escapeHtml(addr) + ' <span class="chip-x">&times;</span>';
+                            chip.querySelector('.chip-x').onclick = function() { data[key].splice(idx, 1); render(); };
+                            field.insertBefore(chip, input);
+                        });
+                    }
+                    function add(raw) {
+                        (raw || '').split(/[,;\s]+/).forEach(function(tok) {
+                            const v = tok.trim();
+                            if (v && data[key].indexOf(v) === -1) data[key].push(v);
+                        });
+                        render();
+                    }
+                    field._flush = function() { if (input.value.trim()) { add(input.value); input.value = ''; } };
+                    field.onclick = function(e) { if (e.target === field) input.focus(); };
+                    input.addEventListener('keydown', function(e) {
+                        if (e.key === ',' || e.key === ';' || e.key === ' ' || e.key === 'Enter') {
+                            e.preventDefault(); add(input.value); input.value = '';
+                        } else if (e.key === 'Backspace' && input.value === '' && data[key].length) {
+                            data[key].pop(); render();
+                        }
+                    });
+                    input.addEventListener('blur', function() { field._flush(); });
+                    input.addEventListener('paste', function(e) {
+                        const text = (e.clipboardData || window.clipboardData).getData('text');
+                        if (/[,;\s]/.test(text)) { e.preventDefault(); add(text); input.value = ''; }
+                    });
+                    attachContactAutocomplete(field, input, add);
+                    render();
+                });
+
+                function close(result) { overlay.remove(); resolve(result); }
+                overlay.querySelector('.email-modal-cancel').onclick = function() { close(null); };
+                overlay.addEventListener('click', function(e) { if (e.target === overlay) close(null); });
+                overlay.querySelector('.email-modal-send').onclick = function() {
+                    overlay.querySelectorAll('.chips-field').forEach(function(f) { f._flush(); });
+                    if (data.to.length === 0) { alert('Please add at least one recipient in the To field.'); return; }
+                    if (data.to.concat(data.cc, data.bcc).some(function(a) { return !isValidEmailAddress(a); })) {
+                        alert('One or more email addresses look invalid (shown in red). Please fix them before sending.');
+                        return;
+                    }
+                    const subject = (overlay.querySelector('.email-modal-subject').value || '').trim();
+                    if (!subject) { alert('Please enter a subject.'); return; }
+                    // Block an empty message. textContent catches a cleared contenteditable that
+                    // still holds <br>/<div><br></div> (which would send a visually blank email).
+                    const editor = overlay.querySelector('.email-msg-editor');
+                    if (!(editor.textContent || '').replace(/ /g, ' ').trim()) {
+                        alert('The message is empty. Please type a message before sending.');
+                        return;
+                    }
+                    const bodyHtml = editor.innerHTML;
+                    close({ to: data.to.join(', '), cc: data.cc.join(', '), bcc: data.bcc.join(', '), subject: subject, bodyHtml: bodyHtml });
+                };
+                setTimeout(function() {
+                    if (data.to.length) overlay.querySelector('.email-msg-editor').focus();
+                    else overlay.querySelector('.chips-field[data-field="to"] input').focus();
+                }, 0);
             });
         }
 
@@ -8622,66 +8782,67 @@
                 return;
             }
 
+            // Resolve thread info up front (reply quotes) so the compose window can pre-fill
+            // the recipient + subject and thread the reply in the original conversation.
             const isReply = !!quotation.gmailMessageId;
-            let recipient = null;
-            let subject = null;
-            let ccList = '';
-            let bccList = '';
-
-            // For non-reply quotes, prompt for To / CC / BCC; subject is auto-generated
-            if (!isReply) {
-                const entered = await promptForEmailRecipients();
-                if (!entered) return;
-                recipient = entered.to;
-                ccList = entered.cc;
-                bccList = entered.bcc;
-                subject = `Quotation ${quotation.quoteNumber || ''} - DSC Pipes`.trim();
+            let threadInfo = null;
+            if (isReply) {
+                threadInfo = await fetch(`/api/resolve-thread?messageId=${encodeURIComponent(quotation.gmailMessageId)}`).then(r => r.json()).catch(() => null);
             }
+            const threadResolved = isReply && threadInfo && !threadInfo.error && threadInfo.fromEmail;
+            // The From header is "Name <addr>" — extract the bare address, else the chip field
+            // would split "Name" and "<addr>" into separate (invalid) chips.
+            const senderEmail = threadResolved ? bareEmailFromHeader(threadInfo.fromEmail) : '';
+            const defaultSubject = `Quotation ${quotation.quoteNumber || ''} - DSC Pipes`.trim();
+            const subjectPrefill = (threadResolved && threadInfo.subject)
+                ? (/^re:/i.test(threadInfo.subject.trim()) ? threadInfo.subject : `Re: ${threadInfo.subject}`)
+                : defaultSubject;
 
-            const bodyHtml = buildQuotationEmailBodyHtml(quotation);
+            // Open the review/compose window — everything pre-filled and editable.
+            const composed = await composeQuotationEmail({
+                to: senderEmail,
+                subject: subjectPrefill,
+                bodyHtml: buildQuotationEmailBodyHtml(quotation),
+                pdfFilename: `Quotation-${quotation.quoteNumber || 'DSC'}.pdf`,
+                threadNote: threadResolved
+                    ? ('Replies into the existing conversation with ' + senderEmail + '. Change the To address to send a new email instead.')
+                    : '',
+                onPreview: async function(link) {
+                    const orig = link.textContent; link.textContent = 'Generating…';
+                    const win = window.open('', '_blank');   // open now (in the click gesture) so the popup blocker allows it
+                    try {
+                        const r = await downloadQuotationPdf(quotationId, { returnBase64: true });
+                        if (r && r.base64) openBase64Pdf(r.base64, win);
+                        else { if (win) win.close(); alert('Could not generate the PDF preview.'); }
+                    } catch (e) { if (win) win.close(); throw e; }
+                    finally { link.textContent = orig; }
+                }
+            });
+            if (!composed) return;   // user cancelled the compose window
 
             try {
-                // Attempt thread lookup for reply quotes
-                const threadInfo = isReply
-                    ? await fetch(`/api/resolve-thread?messageId=${encodeURIComponent(quotation.gmailMessageId)}`).then(r => r.json()).catch(() => null)
-                    : null;
-
-                const threadResolved = isReply && threadInfo && !threadInfo.error && threadInfo.fromEmail;
-
-                // If thread lookup failed, fall back to manual entry rather than re-trying on server
-                if (isReply && !threadResolved) {
-                    const entered = await promptForEmailRecipients('Could not auto-detect the recipient from the original email — please enter it.');
-                    if (!entered) return;
-                    recipient = entered.to;
-                    ccList = entered.cc;
-                    bccList = entered.bcc;
-                    subject = `Quotation ${quotation.quoteNumber || ''} - DSC Pipes`.trim();
-                }
-
-                // Confirm — now we always know the actual recipient
-                const confirmName = [quotation.customerName, quotation.companyName].filter(Boolean).join(' – ') || 'this customer';
-                const confirmMsg = threadResolved
-                    ? `Send quotation PDF to ${confirmName} as a reply to their original email?`
-                    : `Send quotation PDF to ${recipient}?`;
-                if (!confirm(confirmMsg)) return;
-
                 // Generate the exact same PDF the app uses for Download/Print, and send its bytes
                 // (the PDF is well under Vercel's request limit, so no server-side rendering is needed).
                 const pdfResult = await downloadQuotationPdf(quotationId, { returnBase64: true });
                 if (!pdfResult || !pdfResult.base64) { alert('Could not generate the quotation PDF.'); return; }
 
-                const payload = { bodyHtml, pdfBase64: pdfResult.base64, pdfFilename: pdfResult.filename };
-                if (threadResolved) {
-                    if (threadInfo.fromEmail) payload.to = threadInfo.fromEmail;
-                    if (threadInfo.subject) payload.subject = /^re:/i.test(threadInfo.subject.trim()) ? threadInfo.subject : `Re: ${threadInfo.subject}`;
+                const payload = {
+                    to: composed.to,
+                    subject: composed.subject,
+                    bodyHtml: composed.bodyHtml,
+                    pdfBase64: pdfResult.base64,
+                    pdfFilename: pdfResult.filename
+                };
+                if (composed.cc) payload.cc = composed.cc;
+                if (composed.bcc) payload.bcc = composed.bcc;
+                // Thread into the original Gmail conversation only if the recipient is still the
+                // original sender. If the user changed To to a different customer, send fresh so
+                // that customer doesn't get stitched into a stranger's thread.
+                const composedToLc = String(composed.to || '').split(/[,;\s]+/).map(function(s) { return s.trim().toLowerCase(); }).filter(Boolean);
+                const stillSameSender = threadResolved && composedToLc.indexOf(String(senderEmail || '').trim().toLowerCase()) > -1;
+                if (stillSameSender) {
                     if (threadInfo.threadId) payload.threadId = threadInfo.threadId;
                     if (threadInfo.rfcMessageId) { payload.inReplyTo = threadInfo.rfcMessageId; payload.references = threadInfo.rfcMessageId; }
-                } else {
-                    payload.to = recipient;
-                    payload.subject = subject;
-                    if (ccList) payload.cc = ccList;
-                    if (bccList) payload.bcc = bccList;
-                    // Do NOT pass replyToMessageId — the lookup already failed, sending it causes a second failure
                 }
 
                 const res = await fetch('/api/send-email', {

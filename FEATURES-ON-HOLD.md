@@ -37,10 +37,28 @@ Features that have been discussed and scoped but are not being built right now.
 
 ---
 
+## Freight transporter search works locally but not on deployed `main`
+
+**Symptom:** the freight-enquiry **To — transporters** autocomplete shows suggestions when running locally, but on the deployed site (from `origin/main`) typing (e.g. "ke") shows **nothing** — neither remembered transporters nor Gmail matches.
+
+**Why it's almost certainly environment, not code:** the same code runs in both places, so the difference is the deployed site's config. The local app reads secrets from `.env`; the deploy (Vercel) has its own env-var copies. Notably, the Gmail re-auth (`node tools/gmail-auth.js`) only updated the **local** `.env` — the deploy likely still holds the **old** `GMAIL_REFRESH_TOKEN` (without the `contacts.*` scopes), so the People API call fails → no Gmail suggestions. If remembered ones are also missing, the deploy may also lack AWS/S3 keys or be running stale code.
+
+**Diagnose on the LIVE site (not local):** F12 → Network → type in the To box → inspect the two requests:
+- `contact-suggestions` (Gmail matches) and `get-freight-suggestions` (remembered list).
+- **404** → deploy is running old code (redeploy). **500 / error** → missing/wrong secrets on the deploy. **200 + empty list** → stale token / People API not returning.
+
+**Likely fixes (by finding):**
+- Stale token → copy the new `GMAIL_REFRESH_TOKEN` from local `.env` into Vercel → Settings → Environment Variables, then redeploy. (Also confirm the People API is enabled for that Google Cloud project.)
+- Missing S3 keys → set the AWS env vars (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_BUCKET_NAME`) on Vercel.
+- 404 → trigger a redeploy of `main`.
+
+---
+
 ## Ideas to revisit (not yet scoped)
 
 - **Organise the configuration folder/section** — the Configuration area has grown (instructions, default terms, default margins, default email message, default signature). Group/reorder it so it's easier to scan.
 - **Separate signatures per employee** — today there's one shared Default Email Signature. Let each user/employee have their own signature, picked automatically based on who's sending (or who prepared the quote).
+- **Convert weight to tons** — add an option to show/convert the calculated weight (kg) into tons, in the Weight Calculator and/or the Freight tab.
 
 > **Resolved (no longer on hold):** ~~Explore autosave~~ — decided **against** autosave. Approval-section edits now stay in-memory and only persist on explicit Save/Approve; the Download/Send gate blocks while there are unsaved edits. The debounced backend autosave (`scheduleQuotationBackendSave`) was removed.
 
