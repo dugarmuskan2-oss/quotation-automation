@@ -267,6 +267,9 @@
         if (typeof updateQuotationFromApprovalSection === 'function') {
             try { updateQuotationFromApprovalSection(q.id, null); } catch (e) { }
         }
+        // Reflect the freight in the terms line (line item -> "included", FOR -> "FOR",
+        // and drop the "Price basis" line). FOR also syncs via applyFreightForApproval.
+        if (typeof syncFreightTermForQuote === 'function') { try { syncFreightTermForQuote(q.id); } catch (e) { } }
         var hist = fc.querySelector('.qtab-content[data-tab="history"]');
         if (hist && typeof buildHistoryTabContent === 'function') hist.innerHTML = buildHistoryTabContent(q);
         return { ok: true };

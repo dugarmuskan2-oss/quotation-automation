@@ -5296,6 +5296,8 @@
                 if (typeof updateQuotationFromApprovalSection === 'function') {
                     updateQuotationFromApprovalSection(quotationId, null);
                 }
+                // Freight is now folded in (FOR) — reflect it in the terms line.
+                syncFreightTermForQuote(quotationId);
             } catch (e) {
                 console.error('applyFreightForApproval error:', e);
                 alert('Failed to apply Freight FOR. Check console for details.');
@@ -5359,10 +5361,63 @@
                 if (typeof updateQuotationFromApprovalSection === 'function') {
                     updateQuotationFromApprovalSection(quotationId, null);
                 }
+                // FOR undone — freight is no longer folded in, so revert the terms line.
+                syncFreightTermForQuote(quotationId);
             } catch (e) {
                 console.error('undoFreightForApproval error:', e);
                 alert('Failed to undo. Check console for details.');
             }
+        }
+
+        // Rewrite the freight + price-basis lines in a terms block for the quote's freight
+        // state: 'for' (folded into rates) -> "FOR"; 'included' (line item) -> "included";
+        // 'extra' (none) -> "extra". When freight is present the "Price basis: ..." line is
+        // removed (the price is no longer ex-godown) and restored when freight is removed.
+        // Only these lines are touched — customised terms without them are left as-is.
+        function applyFreightTermsState(termsText, state, quotation) {
+            let text = String(termsText || '');
+            const value = state === 'for' ? 'FOR' : (state === 'included' ? 'included' : 'extra');
+            text = text.replace(/(freight[^:\n]{0,20}:[ \t]*)(extra|included|for)\b/i, function(_m, prefix) { return prefix + value; });
+            if (state !== 'extra') {
+                const m = text.match(/^[ \t]*(?:\d+\.[ \t]*)?price\s*basis[^\n]*(?:\n|$)/im);
+                if (m) {
+                    if (quotation && !quotation._priceBasisLine) quotation._priceBasisLine = m[0];
+                    text = text.replace(m[0], '');
+                }
+            } else if (quotation && quotation._priceBasisLine && !/price\s*basis/i.test(text)) {
+                const stored = quotation._priceBasisLine.replace(/\n+$/, '');
+                const fm = text.match(/^[ \t]*(?:\d+\.[ \t]*)?freight[^\n]*$/im);
+                text = fm ? text.replace(fm[0], stored + '\n' + fm[0]) : (stored + '\n' + text);
+                quotation._priceBasisLine = '';
+            }
+            return text;
+        }
+
+        // 'for' when freight is folded into the rates, 'included' when it's a separate freight
+        // line item with a positive amount, else 'extra'.
+        function detectQuoteFreightState(quotation, quotationId) {
+            if (quotation && quotation.freightDistributedIntoMargin === true) return 'for';
+            const fc = document.getElementById('folder-content-' + quotationId);
+            if (fc) {
+                const amt = fc.querySelector('.freight-row .freight-amount-input[data-field="lineTotal"]');
+                if (amt && parseFloat(String(amt.value).replace(/,/g, '')) > 0) return 'included';
+            }
+            return 'extra';
+        }
+
+        // Keep the terms' freight + price-basis lines in sync with the quote's freight state.
+        // Updates both the in-memory termsText and the visible terms box so Save/PDF reflect it.
+        function syncFreightTermForQuote(quotationId) {
+            const quotation = approvedQuotations.find(function(q) { return idsMatch(q.id, quotationId); });
+            if (!quotation) return;
+            const state = detectQuoteFreightState(quotation, quotationId);
+            const fc = document.getElementById('folder-content-' + quotationId);
+            const ta = fc && (fc.querySelector('.terms-box textarea') || fc.querySelector('.terms-textarea'));
+            const current = (ta && typeof ta.value === 'string') ? ta.value : (quotation.termsText || defaultTermsText || '');
+            const updated = applyFreightTermsState(current, state, quotation);
+            if (updated === current) return;   // no freight/price-basis lines, or already correct
+            quotation.termsText = updated;
+            if (ta) { ta.value = updated; ta.textContent = updated; }
         }
 
         function buildFreightForUndoSnapshot(args) {
@@ -7226,10 +7281,14 @@
                         if (pairedColRow) pairedColRow.remove();
                     }
                 }
+                const wasFreight = row.classList.contains('freight-row');
                 row.remove();
                 updateApprovalRowNumbers(quotationId);
                 recalculateApprovalQuotationTotals(quotationId, false);
                 updateQuotationFromApprovalSection(quotationId, null);
+                // Removing the freight line reverts the terms (freight back to "extra",
+                // price basis restored).
+                if (wasFreight) syncFreightTermForQuote(quotationId);
             }
         }
         
