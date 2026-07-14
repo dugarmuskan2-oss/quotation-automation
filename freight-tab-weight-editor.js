@@ -206,10 +206,8 @@
     // Button label + note say what applying will actually do to a sent quote (create /
     // update a revision) — mirrors what applyAddFreightToQuote already does.
     function addFreightLabels(q) {
-        var revCount = Array.isArray(q.revisions) ? q.revisions.length : 0;
-        if (!q.sent) return { lbl: 'Add freight', note: 'Not sent yet — this just adds freight to the quote (no revision).' };
-        if (q.revised) return { lbl: 'Update Rev ' + revCount, note: 'Updates the current revision (Rev ' + revCount + '). The version the customer already has stays in History.' };
-        return { lbl: 'Add freight &amp; create Rev ' + (revCount + 1), note: 'This quote was already sent — adding freight keeps the sent version in History and creates Rev ' + (revCount + 1) + '.' };
+        if (!q.sent) return { lbl: 'Add freight', note: 'Not sent yet — this just adds freight to the quote.' };
+        return { lbl: 'Add freight', note: 'This quote was already sent — after adding freight, use “Save as Revision” to keep the sent version in History.' };
     }
 
     function addFreightBoxHtml(q) {
@@ -245,10 +243,6 @@
         var freightRow = fc.querySelector('.freight-row');
         if (freightRow && freightRow.classList.contains('freight-distributed')) {
             return { ok: false, msg: 'Freight already applied as FOR — undo it on the Quote tab first.' };
-        }
-        // Adding freight to an already-sent quote creates a revision (keeps the sent original).
-        if (q.sent && !q.revised && typeof captureRevisionSnapshot === 'function') {
-            captureRevisionSnapshot(q, 'Freight added');
         }
         if (!freightRow && typeof addFreightRowApproval === 'function') {
             addFreightRowApproval(q.id);
@@ -878,6 +872,8 @@
             parseFreightAmount: parseFreightAmount,
             trimReplyForStorage: trimReplyForStorage,
             rememberedTransportersForRoute: rememberedTransportersForRoute,
+            weightOf: weightOf,
+            secWeight: secWeight,
             _setSuggest: function (s) { _freightSuggest = s; }
         };
     }

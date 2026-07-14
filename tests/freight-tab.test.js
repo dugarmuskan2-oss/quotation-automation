@@ -16,7 +16,7 @@ const path = require('path');
 const FWE_PATH = path.join(__dirname, '..', 'freight-tab-weight-editor.js');
 const INDEX_PATH = path.join(__dirname, '..', 'index.html');
 
-const { parseFreightAmount, trimReplyForStorage, rememberedTransportersForRoute, _setSuggest } =
+const { parseFreightAmount, trimReplyForStorage, rememberedTransportersForRoute, weightOf, secWeight, _setSuggest } =
     require('../freight-tab-weight-editor')._test;
 
 describe('parseFreightAmount — pull a rupee amount out of a transporter reply', () => {
@@ -131,6 +131,70 @@ describe('rememberedTransportersForRoute — route-aware ranking', () => {
     test('no cache loaded -> empty (never throws)', () => {
         _setSuggest(null);
         expect(rememberedTransportersForRoute('a', 'Chennai', 'Hyderabad')).toEqual([]);
+    });
+});
+
+describe('weightOf — qty × kg/m for one row', () => {
+    test('multiplies quantity by kg/m', () => {
+        expect(weightOf({ qty: 10, kgm: 2.5 })).toBe(25);
+    });
+    test('a null / missing quantity contributes 0', () => {
+        expect(weightOf({ qty: null, kgm: 5 })).toBe(0);
+        expect(weightOf({ kgm: 5 })).toBe(0);
+    });
+    test('a zero / missing kg/m contributes 0', () => {
+        expect(weightOf({ qty: 10, kgm: 0 })).toBe(0);
+        expect(weightOf({ qty: 10 })).toBe(0);
+        expect(weightOf({})).toBe(0);
+    });
+});
+
+describe('secWeight — section total that excludes soft-deleted rows (backlog #1)', () => {
+    const st = {
+        rows: [
+            { sec: 0, qty: 10, kgm: 2 },                  // 20
+            { sec: 0, qty: 5, kgm: 4, removed: true },    // excluded (soft-deleted)
+            { sec: 0, qty: null, kgm: 5 },                // 0 (no qty)
+            { sec: 1, qty: 3, kgm: 1 },                   // other section
+        ],
+    };
+    test('sums only the non-removed rows in the requested section', () => {
+        expect(secWeight(st, 0)).toBe(20);
+    });
+    test('a soft-deleted row is kept out of the total', () => {
+        const withoutRemoved = { rows: st.rows.filter(r => !r.removed) };
+        // the visible total is the same whether or not the removed row exists
+        expect(secWeight(st, 0)).toBe(secWeight(withoutRemoved, 0));
+    });
+    test('only totals the requested section', () => {
+        expect(secWeight(st, 1)).toBe(3);
+    });
+    test('a section whose rows are all removed totals 0', () => {
+        const allRemoved = { rows: [{ sec: 2, qty: 9, kgm: 9, removed: true }] };
+        expect(secWeight(allRemoved, 2)).toBe(0);
+    });
+    test('an empty section totals 0', () => {
+        expect(secWeight(st, 99)).toBe(0);
+    });
+});
+
+describe('source guards — soft-delete weights (backlog #1)', () => {
+    const src = fs.readFileSync(FWE_PATH, 'utf8');
+
+    test('a removed row is soft-deleted (kept visible, excluded from the total)', () => {
+        expect(src).toContain('if (r) r.removed = true;   // soft-delete: keep visible, exclude from total');
+        expect(src).toContain('if (r) r.removed = false;');
+    });
+    test('the removed row renders struck-through with an "Add back" button', () => {
+        expect(src).toContain('text-decoration:line-through;color:#9b988e;');
+        expect(src).toContain('<button class="fwe-restore fwe-link"');
+        expect(src).toContain('Add back');
+        expect(src).toContain("mountEl.querySelectorAll('.fwe-restore').forEach(function (b) {");
+    });
+    test('the section total, print and enquiry scopes all filter out removed rows', () => {
+        expect(src).toContain('.filter(function (r) { return !r.removed; }).reduce');
+        expect(src).toContain('var rows = st.rows.filter(function (r) { return !r.removed; });');
+        expect(src).toContain('var rows = secRows(st, sec).filter(function (r) { return !r.removed; });');
     });
 });
 

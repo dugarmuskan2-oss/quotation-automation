@@ -187,6 +187,11 @@
         .save-btn:hover {
             background-color: #F57C00;
         }
+
+        /* "Save as Revision" — distinct purple so it stands out from Save/Approve (orange)
+           and Send (green). */
+        .save-rev-btn { background-color: #7B1FA2; }
+        .save-rev-btn:hover { background-color: #6A1B9A; }
         
         /* Save button when clicked */
         .save-btn:active {
@@ -287,6 +292,9 @@
         .qhist-pill { font-size: 12px; padding: 3px 9px; border-radius: 8px; white-space: nowrap; }
         .qhist-pill.qhist-super { background: #f1efe8; color: #5f5e5a; }
         .qhist-pill.qhist-cur { background: #E6F1FB; color: #0C447C; }
+        .qhist-actions { display: inline-flex; gap: 6px; }
+        .qhist-btn { font-size: 12px; padding: 3px 10px; border: 1px solid #ccc; border-radius: 6px; background: #fff; cursor: pointer; font-family: inherit; }
+        .qhist-btn:hover { background: #f6f5f1; }
 
         .email-modal-overlay {
             position: fixed; inset: 0; background: rgba(0,0,0,0.45);
@@ -1695,6 +1703,7 @@
             if (fc && (fc.startsWith('%PDF') || fc.length > 500000)) {
                 q.fileContent = PDF_PLACEHOLDER;
             }
+            delete q._pendingRevisionSnapshot;   // legacy in-session field; never persist it
             return q;
         }
 
@@ -4453,13 +4462,16 @@
                         if (pairedColRow) pairedColRow.remove();
                     }
                 }
+                const wasFreight = row.classList.contains('freight-row');
                 row.remove();
                 if (container && tableBody) {
                     updateRowNumbers(tableBody);
                     recalculateAllTotalsInContainer(container);
+                    if (wasFreight) syncFreightTermForCreation(container);
                 } else {
                     updateRowNumbers(tableBody || undefined);
-                recalculateAllTotals();
+                    recalculateAllTotals();
+                    if (wasFreight) syncFreightTermForCreation(null);
                 }
             }
         }
@@ -5169,7 +5181,10 @@
             row.setAttribute('data-row-type', 'freight');
             row.innerHTML = buildFreightRowHtml({ hasButtonColumn: true, rowId: rowId });
             tableBody.appendChild(row);
-            attachFreightRowAmountListener(row, recalculateAllTotals);
+            attachFreightRowAmountListener(row, function() {
+                recalculateAllTotals();
+                syncFreightTermForCreation(null);   // typing the amount flips the terms line
+            });
             recalculateAllTotals();
         }
 
@@ -5186,7 +5201,10 @@
             row.setAttribute('data-row-type', 'freight');
             row.innerHTML = buildFreightRowHtml({ hasButtonColumn: true, entryId: entryId, rowId: rowId });
             tableBody.appendChild(row);
-            attachFreightRowAmountListener(row, function() { recalculateAllTotalsInContainer(folderContent); });
+            attachFreightRowAmountListener(row, function() {
+                recalculateAllTotalsInContainer(folderContent);
+                syncFreightTermForCreation(folderContent);   // typing the amount flips the terms line
+            });
             recalculateAllTotalsInContainer(folderContent);
         }
 
@@ -5418,6 +5436,29 @@
             if (updated === current) return;   // no freight/price-basis lines, or already correct
             quotation.termsText = updated;
             if (ta) { ta.value = updated; ta.textContent = updated; }
+        }
+
+        // Same sync for the CREATION section, where the draft has no saved quotation object.
+        // folderContent = a creation folder's content element, or null for the main creation
+        // table (#quotationTableBody + #termsText). The removed "Price basis" line is stashed
+        // on the textarea's dataset so it can be restored if the freight is removed again.
+        function syncFreightTermForCreation(folderContent) {
+            const scope = folderContent || document.getElementById('quotationTableBody');
+            const ta = folderContent
+                ? folderContent.querySelector('.terms-box textarea')
+                : document.getElementById('termsText');
+            if (!scope || !ta) return;
+            let state = 'extra';
+            if (scope.querySelector('.freight-row.freight-distributed')) {
+                state = 'for';
+            } else {
+                const amt = scope.querySelector('.freight-row .freight-amount-input[data-field="lineTotal"]');
+                if (amt && parseFloat(String(amt.value).replace(/,/g, '')) > 0) state = 'included';
+            }
+            const stash = { _priceBasisLine: ta.dataset.priceBasisLine || '' };
+            const updated = applyFreightTermsState(ta.value, state, stash);
+            ta.dataset.priceBasisLine = stash._priceBasisLine || '';
+            if (updated !== ta.value) { ta.value = updated; ta.textContent = updated; }
         }
 
         function buildFreightForUndoSnapshot(args) {
@@ -6050,7 +6091,7 @@
                 const quotationNumber = sourceList.length - index;
                 const companyName = (quotation.companyName || quotation.projectName || '').trim();
                 const kindAttn = (quotation.customerName || '').trim();
-                const quoteNumber = (quotation.quoteNumber || '').trim();
+                const quoteNumber = displayQuoteNumber(quotation);   // "DSC-108 (Rev 1)" once revised
                 let folderName = [companyName, kindAttn, quoteNumber].filter(Boolean).join(' - ');
                 if (!folderName) folderName = quotation.customerName || 'Quotation';
                 const termsText = quotation.termsText || defaultTermsText || '';
@@ -6220,8 +6261,15 @@
             searchInput.dataset.bound = 'true';
         }
 
-        function buildApprovalSplitLayout({ quotation, termsText, approveButtonHTML, saveButtonHTML, printButtonHTML, downloadButtonHTML, sendButtonHTML }) {
+        function buildApprovalSplitLayout({ quotation, termsText, approveButtonHTML, saveButtonHTML, printButtonHTML, downloadButtonHTML, sendButtonHTML, copyLinkButtonHTML }) {
             const sidePanelHTML = buildApprovalSidePanelHTML(quotation);
+            // "Save as Revision" appears once the quote has been committed at least once —
+            // saved (a baseline is captured), approved, or sent. Before that there's no prior
+            // version to preserve. Distinct colour so it's hard to miss.
+            const canRevise = quotation.everApproved || quotation.sent || !!quotation.revisionBaseline;
+            const saveRevisionButtonHTML = canRevise
+                ? `<button class="save-btn save-rev-btn" type="button" onclick="event.stopPropagation(); saveAsRevision(${JSON.stringify(quotation.id)})">🔖 Save as Revision</button>`
+                : '';
 
             return `
                 <div class="qtab-bar">
@@ -6244,8 +6292,10 @@
                         <div style="margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
                                 ${approveButtonHTML}
                             ${saveButtonHTML || ''}
+                                ${saveRevisionButtonHTML}
                                 ${printButtonHTML || ''}
                                 ${downloadButtonHTML}
+                                ${copyLinkButtonHTML || ''}
                                 ${sendButtonHTML || ''}
                             </div>
                         </div>
@@ -6553,42 +6603,271 @@
         // Snapshot the current (pre-change) state of a SENT quote into revisions[] so the
         // version the customer already has is preserved when the quote is edited/resent.
         // Lightweight snapshot (no tableHTML) to keep the DynamoDB item small.
-        function captureRevisionSnapshot(quotation, changeLabel) {
-            if (!quotation) return;
-            if (!Array.isArray(quotation.revisions)) quotation.revisions = [];
-            quotation.revisions.push({
+        // The snapshot's grandTotal includes freight, but lineItems (from
+        // extractStructuredLineItemsFromTable) skip .freight-row — add the live freight line
+        // so View/Download of the old version add up.
+        function snapshotFreightLine(quotation) {
+            const fc = document.getElementById('folder-content-' + quotation.id);
+            const input = fc && fc.querySelector('.freight-row:not(.freight-distributed) .freight-amount-input[data-field="lineTotal"]');
+            const amount = input ? parseFloat(String(input.value).replace(/,/g, '')) : 0;
+            if (!amount || amount <= 0) return null;
+            return { originalDescription: 'Freight', quantity: '', finalRate: '', lineTotal: String(amount) };
+        }
+
+        // Build a snapshot of the quote's CURRENT state (call BEFORE mutating it).
+        // revNo is fixed at creation (0 = Original, 1 = Rev 1, ...) via a persistent
+        // counter, so labels stay right even after the 10-snapshot cap drops old entries.
+        function buildRevisionSnapshotData(quotation, changeLabel) {
+            const revNo = (quotation.revisionCount != null) ? quotation.revisionCount
+                : (Array.isArray(quotation.revisions) ? quotation.revisions.length : 0);
+            const items = Array.isArray(quotation.lineItems) ? JSON.parse(JSON.stringify(quotation.lineItems)) : [];
+            const freightLine = snapshotFreightLine(quotation);
+            if (freightLine) items.push(freightLine);
+            return {
                 revisionId: 'rev-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6),
                 createdAt: new Date().toISOString(),
                 change: changeLabel || 'Edited after sending',
+                revNo: revNo,
                 quoteNumber: quotation.quoteNumber,
                 grandTotal: quotation.grandTotal,
-                lineItems: Array.isArray(quotation.lineItems) ? JSON.parse(JSON.stringify(quotation.lineItems)) : []
-            });
+                termsText: quotation.termsText || '',   // terms as they were for THIS version
+                lineItems: items
+            };
+        }
+        function commitRevisionSnapshot(quotation, snapshot) {
+            if (!Array.isArray(quotation.revisions)) quotation.revisions = [];
+            quotation.revisions.push(snapshot);
+            quotation.revisionCount = snapshot.revNo + 1;
             if (quotation.revisions.length > 10) quotation.revisions = quotation.revisions.slice(-10);
             quotation.revised = true;
+        }
+        function captureRevisionSnapshot(quotation, changeLabel) {
+            if (!quotation) return;
+            commitRevisionSnapshot(quotation, buildRevisionSnapshotData(quotation, changeLabel));
+        }
+        // On a freight edit to an already-sent quote, offer to create a revision. "OK" snapshots
+        // the version the customer has into History and the quote becomes the next revision.
+        // "Cancel" just applies the change to the current/previous version (no revision).
+        // The "revision baseline" is the version the NEXT revision will archive — set at send
+        // time (exactly what the customer received) and refreshed after each Save as Revision.
+        function revisionBaselineOf(quotation) {
+            return quotation.revisionBaseline || quotation.lastSentSnapshot || null;
+        }
+        // A stable "fingerprint" of a version: its line items (description + amount) and grand
+        // total, with all number formatting stripped so ₹250000 and ₹2,50,000 compare equal.
+        // Two versions with the same fingerprint are the same quote — nothing worth a revision.
+        function revisionSignature(items, grandTotal) {
+            function money(v) { return parseFloat(String(v == null ? '' : v).replace(/,/g, '').replace(/[^0-9.\-]/g, '')) || 0; }
+            var lines = (Array.isArray(items) ? items : []).map(function(li) {
+                var desc = String((li && (li.originalDescription || li.description)) || '').trim().toLowerCase();
+                return desc + '|' + money(li && li.lineTotal);
+            }).join('~');
+            return money(grandTotal) + '#' + lines;
+        }
+        // True if the quote as it stands now differs from the baseline version (the one the
+        // customer has). Reads the live line items + the current freight line from the DOM.
+        function currentDiffersFromBaseline(quotation, baseline) {
+            if (!baseline) return true;   // no baseline to compare against -> treat as changed
+            var live = Array.isArray(quotation.lineItems) ? quotation.lineItems.slice() : [];
+            var freight = snapshotFreightLine(quotation);
+            if (freight) live = live.concat([freight]);
+            return revisionSignature(live, quotation.grandTotal)
+                !== revisionSignature(baseline.lineItems, baseline.grandTotal);
+        }
+        // Called during a "Save as Revision": archive the baseline (the version the customer
+        // has) into History, make the just-saved state the next Rev N, and set the new baseline.
+        // Returns false (and does nothing) when the quote is unchanged since the baseline.
+        function createRevisionFromBaseline(quotation) {
+            var baseline = revisionBaselineOf(quotation);
+            baseline = baseline ? JSON.parse(JSON.stringify(baseline))
+                : buildRevisionSnapshotData(quotation, 'Sent version');   // legacy: no send-time baseline
+            if (!currentDiffersFromBaseline(quotation, baseline)) return false;   // nothing changed -> no revision
+            baseline.change = describePostSendChange(baseline, quotation);
+            commitRevisionSnapshot(quotation, baseline);   // pushes to revisions[], revised=true, revisionCount = revNo+1
+            // The just-saved version becomes the baseline the next revision will archive.
+            quotation.revisionBaseline = buildRevisionSnapshotData(quotation, 'Rev ' + quotation.revisionCount);
+            delete quotation.lastSentSnapshot;
+            refreshHistoryTab(quotation.id);
+            return true;
+        }
+        // Explicit "Save as Revision" — keeps the customer's current version in History and
+        // makes this the next revision. Only meaningful once the quote has been sent.
+        function saveAsRevision(quotationId) {
+            var quotation = approvedQuotations.find(function(q) { return idsMatch(q.id, quotationId); });
+            if (!quotation) { alert('Quotation not found!'); return; }
+            if (!quotation.sent) {
+                alert('Send this quote to the customer first — a revision keeps the version they already have.');
+                return;
+            }
+            saveQuotationChanges(quotationId, { asRevision: true });
+        }
+        // Re-render the History tab of an open card so a just-created revision shows without
+        // waiting for a full card re-render.
+        function refreshHistoryTab(quotationId) {
+            var quotation = approvedQuotations.find(function(q) { return idsMatch(q.id, quotationId); });
+            var fc = document.getElementById('folder-content-' + quotationId);
+            var hist = fc && fc.querySelector('.qtab-content[data-tab="history"]');
+            if (quotation && hist) hist.innerHTML = buildHistoryTabContent(quotation);
         }
         function formatRevisionDate(iso) {
             if (!iso) return '';
             var d = new Date(iso);
             return isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
         }
+        // Version number of the LIVE quote (0 = still the Original). Uses the persistent
+        // counter so it stays right after the 10-snapshot cap; falls back to array length
+        // for quotes saved before the counter existed.
+        function currentRevisionNumber(quotation) {
+            if (quotation.revisionCount != null) return quotation.revisionCount;
+            return Array.isArray(quotation.revisions) ? quotation.revisions.length : 0;
+        }
+        // Quote number for DISPLAY: "DSC-108 (Rev 1)" once revised. quoteNumber itself is
+        // never mutated — it stays the bare identifier (counters, search, threading).
+        function displayQuoteNumber(quotation) {
+            var n = (quotation.quoteNumber || '').trim();
+            var rev = currentRevisionNumber(quotation);
+            return (n && rev > 0) ? (n + ' (Rev ' + rev + ')') : n;
+        }
+        // Label for what a revision changed vs the sent snapshot — shown on the NEW version.
+        function describePostSendChange(snapshot, quotation) {
+            function freightAmt(items) {
+                var f = (items || []).filter(function(li) { return String(li.originalDescription || '').trim().toLowerCase() === 'freight'; })[0];
+                return f ? (parseFloat(String(f.lineTotal).replace(/,/g, '')) || 0) : 0;
+            }
+            var oldF = freightAmt(snapshot.lineItems);
+            var live = snapshotFreightLine(quotation);
+            var newF = live ? (parseFloat(live.lineTotal) || 0) : 0;
+            if (quotation.freightDistributedIntoMargin) return oldF ? 'Freight set as FOR' : 'Freight added (FOR)';
+            if (!oldF && newF) return 'Freight added';
+            if (oldF && !newF) return 'Freight removed';
+            if (oldF && newF && oldF !== newF) return 'Freight changed';
+            var oldT = parseFloat(String(snapshot.grandTotal).replace(/,/g, ''));
+            var newT = parseFloat(String(quotation.grandTotal).replace(/,/g, ''));
+            if (isFinite(oldT) && isFinite(newT) && oldT !== newT) return 'Prices changed';
+            return 'Edited after sending';
+        }
+        // Label for a stored snapshot: its own revNo when present (survives the cap dropping
+        // old entries), else its position (legacy snapshots).
+        function revisionLabel(rev, index) {
+            var n = (rev && rev.revNo != null) ? rev.revNo : index;
+            return n === 0 ? 'Original' : ('Rev ' + n);
+        }
+
         function buildHistoryTabContent(quotation) {
             var revs = Array.isArray(quotation.revisions) ? quotation.revisions : [];
             if (!revs.length) {
-                return '<div class="qhist-empty">No revisions yet. Editing a sent quote (for example, adding freight) creates one — the version the customer already has is kept here, read-only.</div>';
+                return '<div class="qhist-empty">No revisions yet. Adding freight to a sent quote offers to create one — the version the customer already has is kept here, read-only.</div>';
             }
-            var rows = revs.map(function (r) {
-                var total = (r.grandTotal != null && r.grandTotal !== '') ? ('&#8377;' + r.grandTotal) : '';
-                return '<div class="qhist-row"><span class="qhist-pill qhist-super">Superseded</span>'
-                    + '<span class="qhist-name">' + escapeHtml(r.change || 'Edited') + '</span>'
-                    + '<span class="qhist-meta">' + formatRevisionDate(r.createdAt) + (total ? ' &middot; ' + total : '') + '</span></div>';
+            var qidAttr = escapeHtml(String(quotation.id));
+            function fmtHistoryTotal(v) {
+                var n = parseFloat(String(v == null ? '' : v).replace(/,/g, ''));
+                return isFinite(n) ? ('&#8377;' + n.toLocaleString('en-IN')) : '';
+            }
+            // A snapshot's stored `change` describes the edit that SUPERSEDED it — so it names
+            // the NEXT version, not the snapshot itself ("Freight added" belongs to Rev 1, not
+            // the pre-freight Original).
+            function versionName(i) {
+                if (i === 0) {
+                    var r0 = revs[0];
+                    return (r0 && r0.revNo > 0) ? 'Earlier version' : 'Sent version';
+                }
+                return escapeHtml(revs[i - 1].change || 'Edited');
+            }
+            var rows = revs.map(function (r, i) {
+                var total = fmtHistoryTotal(r.grandTotal);
+                var actions = '<span class="qhist-actions">'
+                    + '<button type="button" class="qhist-btn" data-qid="' + qidAttr + '" data-rev="' + i + '" onclick="event.stopPropagation(); viewRevision(this)">View</button>'
+                    + '<button type="button" class="qhist-btn" data-qid="' + qidAttr + '" data-rev="' + i + '" onclick="event.stopPropagation(); downloadRevision(this)">Download</button></span>';
+                return '<div class="qhist-row"><span class="qhist-pill qhist-super">' + revisionLabel(r, i) + '</span>'
+                    + '<span class="qhist-name">' + versionName(i) + '</span>'
+                    + '<span class="qhist-meta">' + formatRevisionDate(r.createdAt) + (total ? ' &middot; ' + total : '') + '</span>'
+                    + actions + '</div>';
             }).join('');
-            var curTotal = (quotation.grandTotal != null && quotation.grandTotal !== '') ? ('&#8377;' + quotation.grandTotal) : '';
-            var current = '<div class="qhist-row qhist-current"><span class="qhist-pill qhist-cur">Current</span>'
-                + '<span class="qhist-name">Current version</span>'
+            var curTotal = fmtHistoryTotal(quotation.grandTotal);
+            var lastChange = revs.length ? escapeHtml(revs[revs.length - 1].change || 'Edited') : 'Current version';
+            var current = '<div class="qhist-row qhist-current"><span class="qhist-pill qhist-cur">Current &middot; Rev ' + currentRevisionNumber(quotation) + '</span>'
+                + '<span class="qhist-name">' + lastChange + '</span>'
                 + '<span class="qhist-meta">' + curTotal + '</span></div>';
             return '<div class="qhist-note">Opening the quote always shows the current version, and that is what gets sent. Older versions below are read-only.</div>'
                 + rows + current;
+        }
+
+        // Render a revision's line items into a read-only table (from the stored snapshot).
+        function revisionItemsTableHtml(rev) {
+            var items = Array.isArray(rev.lineItems) ? rev.lineItems : [];
+            var body = items.map(function (li) {
+                var desc = escapeHtml(li.originalDescription || li.description || '');
+                var qty = (li.quantity != null && li.quantity !== '') ? escapeHtml(String(li.quantity)) : '';
+                var rate = (li.finalRate != null && li.finalRate !== '') ? li.finalRate : (li.unitRate != null ? li.unitRate : '');
+                var tot = (li.lineTotal != null && li.lineTotal !== '') ? li.lineTotal : '';
+                return '<tr><td style="padding:6px 8px;border-bottom:1px solid #eee;">' + desc + '</td>'
+                    + '<td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">' + qty + '</td>'
+                    + '<td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">' + escapeHtml(String(rate)) + '</td>'
+                    + '<td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">' + escapeHtml(String(tot)) + '</td></tr>';
+            }).join('');
+            var gt = (rev.grandTotal != null && rev.grandTotal !== '') ? ('&#8377;' + escapeHtml(String(rev.grandTotal))) : '';
+            return '<table style="width:100%;border-collapse:collapse;font-size:13px;margin:8px 0;"><thead><tr>'
+                + '<th style="text-align:left;padding:6px 8px;border-bottom:1px solid #999;">Description</th>'
+                + '<th style="text-align:right;padding:6px 8px;border-bottom:1px solid #999;">Qty</th>'
+                + '<th style="text-align:right;padding:6px 8px;border-bottom:1px solid #999;">Rate</th>'
+                + '<th style="text-align:right;padding:6px 8px;border-bottom:1px solid #999;">Total</th>'
+                + '</tr></thead><tbody>' + body + '</tbody></table>'
+                + '<div style="text-align:right;font-weight:600;font-size:14px;margin-top:6px;">Grand total: ' + gt + '</div>';
+        }
+
+        function getRevisionFromButton(btn) {
+            var qid = btn.getAttribute('data-qid');
+            var i = parseInt(btn.getAttribute('data-rev'), 10);
+            var quotation = approvedQuotations.find(function (q) { return idsMatch(q.id, qid); });
+            if (!quotation || !Array.isArray(quotation.revisions) || !quotation.revisions[i]) {
+                alert('This version is no longer available.');
+                return null;
+            }
+            return { quotation: quotation, rev: quotation.revisions[i], index: i };
+        }
+
+        // Open a read-only view of a past version (its items + total).
+        function viewRevision(btn) {
+            var ctx = getRevisionFromButton(btn);
+            if (!ctx) return;
+            var quotation = ctx.quotation, rev = ctx.rev;
+            var sub = [quotation.companyName, quotation.customerName].filter(Boolean).join(' · ');
+            var overlay = document.createElement('div');
+            overlay.className = 'email-modal-overlay';
+            overlay.innerHTML = '<div class="email-modal" style="width:680px;max-width:94vw;max-height:90vh;overflow:auto;">'
+                + '<h3 class="email-modal-title">' + escapeHtml(quotation.quoteNumber || '') + ' — ' + revisionLabel(rev, ctx.index) + '</h3>'
+                + '<p class="email-modal-sub">' + escapeHtml(sub) + (rev.createdAt ? ' · ' + formatRevisionDate(rev.createdAt) : '') + '</p>'
+                + revisionItemsTableHtml(rev)
+                + '<div class="email-modal-actions"><button type="button" class="email-modal-cancel">Close</button>'
+                + '<button type="button" class="email-modal-send" data-qid="' + escapeHtml(String(quotation.id)) + '" data-rev="' + ctx.index + '">Download PDF</button></div></div>';
+            document.body.appendChild(overlay);
+            overlay.querySelector('.email-modal-cancel').onclick = function () { overlay.remove(); };
+            overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
+            overlay.querySelector('.email-modal-send').onclick = function () { downloadRevision(this); };
+        }
+
+        // Download a past version as PDF via a print-friendly window (browser "Save as PDF").
+        function downloadRevision(btn) {
+            var ctx = getRevisionFromButton(btn);
+            if (!ctx) return;
+            var quotation = ctx.quotation, rev = ctx.rev;
+            var label = revisionLabel(rev, ctx.index);
+            var sub = [quotation.companyName, quotation.customerName].filter(Boolean).join(' · ');
+            var header = '<h2 style="margin:0 0 4px;">' + escapeHtml(quotation.quoteNumber || '') + ' — ' + label + '</h2>'
+                + '<p style="margin:0 0 4px;color:#555;">' + escapeHtml(sub) + '</p>'
+                + (rev.createdAt ? '<p style="margin:0 0 12px;color:#888;font-size:12px;">Superseded on ' + formatRevisionDate(rev.createdAt) + '</p>' : '');
+            // Use the terms saved WITH this version — the live quote's terms may have changed
+            // since (e.g. the freight/price-basis auto-update). Legacy snapshots (no termsText)
+            // fall back to the current terms.
+            var termsSource = (rev.termsText != null) ? rev.termsText : (quotation.termsText || '');
+            var terms = termsSource ? ('<h3 style="margin:18px 0 6px;font-size:14px;">Terms &amp; Conditions</h3><pre style="white-space:pre-wrap;font-family:inherit;font-size:12px;color:#333;">' + escapeHtml(termsSource) + '</pre>') : '';
+            var win = window.open('', '_blank', 'width=800,height=900');
+            if (!win) { alert('Please allow pop-ups to download this version.'); return; }
+            win.document.write('<html><head><title>' + escapeHtml((quotation.quoteNumber || 'Quotation') + ' - ' + label) + '</title></head>'
+                + '<body style="font-family:Arial,Helvetica,sans-serif;padding:28px;color:#20201d;">'
+                + header + revisionItemsTableHtml(rev) + terms
+                + '<p style="margin-top:24px;color:#888;font-size:12px;">DSC Pipes</p></body></html>');
+            win.document.close(); win.focus(); win.print();
         }
 
         // Phase 2: show/hide the Quote/Freight/History tabs. Active tab is stored on the
@@ -6624,7 +6903,8 @@
                 const printButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); printQuotationPdf(${JSON.stringify(quotation.id)})">🖨️ Print</button>`;
                 const downloadButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); downloadQuotationPdf(${JSON.stringify(quotation.id)})">⬇️ Download PDF</button>`;
                 const sendButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); sendQuotationToCustomer(${JSON.stringify(quotation.id)})" style="background:#2e7d32;">✉️ Send to Customer</button>`;
-                folderContentEl.innerHTML = buildApprovalSplitLayout({ quotation, termsText, approveButtonHTML, saveButtonHTML, printButtonHTML, downloadButtonHTML, sendButtonHTML });
+                const copyLinkButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); copyQuotationPdfLink(${JSON.stringify(quotation.id)}, this)" title="Copy a link that opens this quotation's PDF">🔗 Copy Link</button>`;
+                folderContentEl.innerHTML = buildApprovalSplitLayout({ quotation, termsText, approveButtonHTML, saveButtonHTML, printButtonHTML, downloadButtonHTML, sendButtonHTML, copyLinkButtonHTML });
                 syncApprovalHeaderQuoteInputFromQuotationModel(folderContentEl, quotation);
                 attachApprovalSectionListeners(folderContentEl);
                 activateApprovalTabs(folderContentEl);
@@ -6718,15 +6998,20 @@
             }
             if (!container.dataset.approvalFreightRecalcBound) {
                 container.dataset.approvalFreightRecalcBound = 'true';
-                container.addEventListener('input', function(e) {
-                    var input = e.target;
-                    if (input.tagName !== 'INPUT' || !input.getAttribute('data-field') || input.getAttribute('data-field') !== 'lineTotal') return;
+                function freightRowQuotationId(input) {
+                    if (input.tagName !== 'INPUT' || input.getAttribute('data-field') !== 'lineTotal') return null;
                     var row = input.closest('tr');
-                    if (!row || !row.classList.contains('freight-row')) return;
+                    if (!row || !row.classList.contains('freight-row')) return null;
                     var folder = input.closest('.quotation-folder');
-                    if (!folder || !folder.id) return;
-                    var quotationId = folder.id.replace('folder-', '');
+                    return (folder && folder.id) ? folder.id.replace('folder-', '') : null;
+                }
+                container.addEventListener('input', function(e) {
+                    var quotationId = freightRowQuotationId(e.target);
+                    if (!quotationId) return;
                     recalculateApprovalQuotationTotals(quotationId, false);
+                    // Typing the amount is what actually puts freight on the quote — keep the
+                    // terms line (extra / included / FOR + price basis) in step as it changes.
+                    syncFreightTermForQuote(quotationId);
                 });
             }
             
@@ -7256,7 +7541,7 @@
         function deleteApprovalRow(quotationId, rowId) {
             const folder = document.getElementById('folder-' + quotationId);
             if (!folder) return;
-            
+
             const row = document.getElementById(rowId);
             if (!row || (!row.classList.contains('item-row') && !row.classList.contains('pipe-type-header') && !row.classList.contains('freight-row'))) {
                 return;
@@ -7509,7 +7794,7 @@
         function getFolderDisplayName(quotation) {
             const companyName = (quotation.companyName || quotation.projectName || '').trim();
             const kindAttn = (quotation.customerName || '').trim();
-            const quoteNumber = (quotation.quoteNumber || '').trim();
+            const quoteNumber = displayQuoteNumber(quotation);   // "DSC-108 (Rev 1)" once revised
             const parts = [companyName, kindAttn, quoteNumber].filter(Boolean);
             return parts.length ? parts.join(' - ') : (quotation.customerName || 'Quotation');
         }
@@ -7584,7 +7869,7 @@
             }
             
             const quotation = approvedQuotations[quotationIndex];
-            
+
             // Get the folder content element
             const folderContent = document.getElementById('folder-content-' + quotationId);
             if (!folderContent) {
@@ -8020,7 +8305,7 @@
             ============================================
             Saves edits made in the Approval section without approving.
         */
-        function saveQuotationChanges(quotationId) {
+        function saveQuotationChanges(quotationId, options) {
             const quotationIndex = approvedQuotations.findIndex(function(q) {
                 return idsMatch(q.id, quotationId);
             });
@@ -8081,6 +8366,19 @@
             updateFolderHeaderDisplay(quotation.id, quotation);
             if ((headerValues.grandTotal || '').toString().trim()) quotation.grandTotal = headerValues.grandTotal;
             if ((headerValues.termsText || '').toString().trim()) quotation.termsText = headerValues.termsText;
+            // "Save as Revision": archive the customer's current version into History and make
+            // this Rev N (with the model now synced from the DOM above). Explicit — no prompt.
+            var madeRevision = false;
+            var askedForRevision = !!(options && options.asRevision);
+            if (askedForRevision) {
+                madeRevision = createRevisionFromBaseline(quotation);   // false if nothing changed
+            } else if (!quotation.revisionBaseline) {
+                // First save establishes the baseline the first revision will archive (the
+                // version you finalise). Only set once — later working saves don't disturb it
+                // (only Send and Save as Revision advance it), so the archived "Original" stays
+                // the version you actually sent, not a mid-edit working save.
+                quotation.revisionBaseline = buildRevisionSnapshotData(quotation, 'Original');
+            }
             quotation.updatedAt = new Date().toISOString();
             quotation.saved = false;  // Save = persist changes only; Approve = mark as approved
             quotation.hasUnsavedEdits = false;
@@ -8091,7 +8389,14 @@
             setTimeout(function() { displayAllApprovedQuotations(); }, 0);
             (async function() {
                 const ok = await saveQuotationToBackend(quotation);
-                if (ok) alert('Changes saved.');
+                if (!ok) return;
+                if (madeRevision) {
+                    alert('Saved as Revision ' + currentRevisionNumber(quotation) + '. The version the customer has is kept in History.');
+                } else if (askedForRevision) {
+                    alert('No changes since the last saved version — nothing new to save as a revision.');
+                } else {
+                    alert('Changes saved.');
+                }
             })().catch(function(e) {
                 console.error('saveQuotationChanges async error:', e);
             });
@@ -8211,6 +8516,9 @@
             quotation.saved = true;
             quotation.everApproved = true;   // sticky: approved at least once
             quotation.hasUnsavedEdits = false;
+            // Establish the revision baseline on first commit if not already set (so "Save as
+            // Revision" has a prior version to archive).
+            if (!quotation.revisionBaseline) quotation.revisionBaseline = buildRevisionSnapshotData(quotation, 'Original');
             if (typeof window._cancelApprovalAutosave === 'function') {
                 window._cancelApprovalAutosave(quotationId);
             }
@@ -8852,17 +9160,19 @@
             // The From header is "Name <addr>" — extract the bare address, else the chip field
             // would split "Name" and "<addr>" into separate (invalid) chips.
             const senderEmail = threadResolved ? bareEmailFromHeader(threadInfo.fromEmail) : '';
-            const defaultSubject = `Quotation ${quotation.quoteNumber || ''} - DSC Pipes`.trim();
+            const defaultSubject = `Quotation ${displayQuoteNumber(quotation) || ''} - DSC Pipes`.trim();
             const subjectPrefill = (threadResolved && threadInfo.subject)
                 ? (/^re:/i.test(threadInfo.subject.trim()) ? threadInfo.subject : `Re: ${threadInfo.subject}`)
                 : defaultSubject;
+            const revN = currentRevisionNumber(quotation);
+            const pdfName = `Quotation-${quotation.quoteNumber || 'DSC'}${revN > 0 ? '-Rev' + revN : ''}.pdf`;
 
             // Open the review/compose window — everything pre-filled and editable.
             const composed = await composeQuotationEmail({
                 to: senderEmail,
                 subject: subjectPrefill,
                 bodyHtml: buildQuotationEmailBodyHtml(quotation),
-                pdfFilename: `Quotation-${quotation.quoteNumber || 'DSC'}.pdf`,
+                pdfFilename: pdfName,
                 threadNote: threadResolved
                     ? ('Replies into the existing conversation with ' + senderEmail + '. Change the To address to send a new email instead.')
                     : '',
@@ -8919,6 +9229,10 @@
                     quotation.everApproved = true;
                     quotation.hasUnsavedEdits = false;
                     quotation.revised = false; // resending sends the current version — clears the needs-resend flag
+                    // Snapshot EXACTLY what the customer just received — this becomes the
+                    // History entry the next "Save as Revision" archives.
+                    quotation.revisionBaseline = buildRevisionSnapshotData(quotation, 'Sent version');
+                    delete quotation.lastSentSnapshot;
                     saveQuotationToBackend(quotation);
                     updateApprovalBadge(quotationId, quotation);
                     updateSentBadge(quotationId);
@@ -8970,12 +9284,16 @@
                 alert('Quotation not found');
                 return;
             }
-            if (!canDownloadQuotation(quotation)) {
+            // A shared "preview link" is a read-only view of an already-saved quote, so it
+            // bypasses the unsaved-edits gate (there are no on-screen edits on a link page).
+            const isPreview = !!(options && options.preview);
+            if (!isPreview && !canDownloadQuotation(quotation)) {
                 alert((options && options.print) ? 'Please save changes to Print' : 'Please save changes to Download');
                 return;
             }
-            // Sync all manual edits from the folder DOM so the PDF reflects current content
-            const folderContent = document.getElementById('folder-content-' + quotationId);
+            // Sync all manual edits from the folder DOM so the PDF reflects current content.
+            // Preview links have no editable folder on screen — render straight from stored data.
+            const folderContent = isPreview ? null : document.getElementById('folder-content-' + quotationId);
             let tableForPdfHeaders = null;
             if (folderContent) {
                 recalculateApprovalQuotationTotals(quotationId, false);
@@ -9322,6 +9640,9 @@
                 const dataUri = doc.output('datauristring');
                 const base64 = dataUri.split(',')[1];
                 return { base64, filename };
+            } else if (options && options.preview) {
+                // Shared-link view: hand the caller a blob URL to embed (no print dialog, no popup).
+                return { blobUrl: String(doc.output('bloburl')), filename };
             } else if (options && options.print) {
                 doc.autoPrint();
                 const blobUrl = doc.output('bloburl');
@@ -9453,34 +9774,147 @@
         let defaultMarginsByPipeType = { erw: '', gi: '', seamless: '' };
         let defaultEmailMessage = 'Please find attached our quotation as requested. Do not hesitate to contact us for any queries.';
         let defaultSignature = 'Regards,<br>DSC Pipes';
-        
+
+        /*
+            ============================================
+            SHAREABLE PDF-PREVIEW LINK
+            ============================================
+            A quote card's "🔗 Copy Link" button copies a URL of the form
+            "…/?quote=ID&view=pdf". Opening that URL boots the page in "preview mode":
+            it fetches just that quote and shows its PDF, instead of the editable card.
+        */
+
+        // The URL that opens ONLY this quotation's PDF preview (not the editable card).
+        function buildQuotationPdfLink(quotationId) {
+            const base = window.location.origin + window.location.pathname;
+            return base + '?quote=' + encodeURIComponent(quotationId) + '&view=pdf';
+        }
+
+        // Copy the PDF-preview link to the clipboard; flash the button, or fall back to a prompt.
+        async function copyQuotationPdfLink(quotationId, btn) {
+            const link = buildQuotationPdfLink(quotationId);
+            const flash = function(msg) {
+                if (!btn) return;
+                const original = btn.innerHTML;
+                btn.innerHTML = msg;
+                setTimeout(function() { btn.innerHTML = original; }, 1600);
+            };
+            try {
+                await navigator.clipboard.writeText(link);
+                flash('✅ Link copied');
+            } catch (e) {
+                // Clipboard blocked (old browser / non-secure context) — show the link to copy by hand.
+                window.prompt('Copy this quotation link:', link);
+            }
+        }
+
+        // Reads the quote id from a "?view=pdf&quote=ID" link, or '' when it isn't one.
+        function getPreviewLinkQuoteId() {
+            try {
+                const params = new URLSearchParams(window.location.search);
+                if ((params.get('view') || '').toLowerCase() !== 'pdf') return '';
+                return params.get('quote') || '';
+            } catch (e) {
+                return '';
+            }
+        }
+
+        // The full-screen overlay used for the preview page (loading text, errors, or the PDF).
+        function getPreviewOverlay() {
+            let overlay = document.getElementById('pdf-preview-overlay');
+            if (!overlay) {
+                overlay = document.createElement('div');
+                overlay.id = 'pdf-preview-overlay';
+                overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#fff;display:flex;'
+                    + 'align-items:center;justify-content:center;font-family:Arial,sans-serif;color:#3b3f79;'
+                    + 'font-size:18px;text-align:center;padding:20px;';
+                document.body.appendChild(overlay);
+            }
+            return overlay;
+        }
+
+        // Full-screen message shown while a preview link loads (and on error).
+        function showPreviewMessage(message) {
+            const overlay = getPreviewOverlay();
+            overlay.textContent = '';
+            overlay.style.padding = '20px';
+            overlay.appendChild(document.createTextNode(message));
+        }
+
+        // Fill the page with the quotation PDF (browser's built-in viewer, with its own print/download).
+        function showPreviewPdf(blobUrl, filename) {
+            if (filename) document.title = filename.replace(/\.pdf$/i, '');
+            const overlay = getPreviewOverlay();
+            overlay.textContent = '';
+            overlay.style.padding = '0';
+            const frame = document.createElement('iframe');
+            frame.src = blobUrl;
+            frame.title = filename || 'Quotation PDF';
+            frame.style.cssText = 'border:0;width:100%;height:100%;';
+            overlay.appendChild(frame);
+        }
+
+        // When opened via a shared PDF link, take over the page and show only that quote's PDF.
+        // Returns true if it handled the link (so the normal app boot is skipped).
+        function handleQuotationPdfPreviewLink() {
+            const quoteId = getPreviewLinkQuoteId();
+            if (!quoteId) return false;
+            showPreviewMessage('Preparing quotation PDF…');
+            (async function() {
+                try {
+                    const res = await fetch(`${API_BASE_URL}/quotations/${encodeURIComponent(quoteId)}`);
+                    const data = await res.json();
+                    const quotation = data && data.quotation;
+                    if (!quotation) {
+                        showPreviewMessage('Sorry — this quotation could not be found.');
+                        return;
+                    }
+                    // Make the quote available to the shared PDF renderer, then show its PDF in this tab.
+                    const existing = approvedQuotations.find(function(q) { return idsMatch(q.id, quotation.id); });
+                    if (existing) Object.assign(existing, quotation);
+                    else approvedQuotations.push(quotation);
+                    const rendered = await downloadQuotationPdf(quotation.id, { preview: true });
+                    if (rendered && rendered.blobUrl) showPreviewPdf(rendered.blobUrl, rendered.filename);
+                    else showPreviewMessage('Sorry — this quotation PDF could not be opened.');
+                } catch (e) {
+                    console.error('PDF preview link failed:', e);
+                    showPreviewMessage('Sorry — this quotation PDF could not be opened.');
+                }
+            })();
+            return true;
+        }
+
         /*
             ============================================
             INITIALIZATION
             ============================================
             Code that runs when the page loads
         */
-        
+
         // This code runs when the page finishes loading
         console.log("Quotation Generator loaded successfully!");
-        
-        // Load saved quotations from backend
-        initQuotations();
-        
-        // Load instructions from server
-        loadInstructions();
-        
-        // Load default terms from server (sets defaultTermsText for new quotations)
-        loadDefaultTerms();
-        loadDefaultMargins();
-        loadDefaultEmailMessage();
-        loadDefaultSignature();
-        
-        // Load and display uploaded files
-        loadUploadedFiles();
-        
-        // Check current rate files status
-        checkCurrentFiles();
+
+        if (handleQuotationPdfPreviewLink()) {
+            // A shared "?view=pdf" link took over the page — skip booting the full app.
+        } else {
+            // Load saved quotations from backend
+            initQuotations();
+
+            // Load instructions from server
+            loadInstructions();
+
+            // Load default terms from server (sets defaultTermsText for new quotations)
+            loadDefaultTerms();
+            loadDefaultMargins();
+            loadDefaultEmailMessage();
+            loadDefaultSignature();
+
+            // Load and display uploaded files
+            loadUploadedFiles();
+
+            // Check current rate files status
+            checkCurrentFiles();
+        }
     </script>
     <script src="weight-calculator.js?v=20260529-1"></script>
     <script src="enquiry-preparer.js?v=20260529-1"></script>
