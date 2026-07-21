@@ -18,13 +18,25 @@
  *   - Rewrites one tab per month (e.g. "JUL 26"), oldest date first, with the
  *     per-day enquiry total computed automatically.
  *
- * The sheet is a MIRROR — the app is the source of truth. Manual edits to
- * these tabs are overwritten on the next refresh.
+ * Columns: the app fills Quotation Number, Enquiry Date, per-day total, STATUS
+ * (REGRET / MARGIN ALLOCATION PENDING / REVISION SENT / SENT / PENDING),
+ * Company, Contact, Prepared By, Date (sent date) and Value (quote total).
+ * The MANUAL columns — "Given for checking to", "Sent By", "Quote uploaded in
+ * BIGIN (Y/N)", "phone number checked in bigin", "email address checked in
+ * bigin" — are typed by staff and are PRESERVED across refreshes (matched by
+ * quote number, or by email id for rows without one).
  */
 
 var ENQUIRY_LABEL = 'Enquiry Client';
 var REGISTER_DAYS = 62;   // how far back to mirror
-var HEADER = ['Quotation Number', 'Enquiry Date', 'Total Enquiry per day', 'STATUS (REGRET/SENT/PENDING)', 'Company Name', 'Contact Name', 'Prepared By'];
+var HEADER = [
+  'Quotation Number', 'Enquiry Date', 'Total Enquiry per day',
+  'STATUS (REGRET/SENT/PENDING)', 'Company Name', 'Contact Name', 'Prepared By',
+  'Given for checking to', 'Sent By', 'Date', 'Value',
+  'Quote uploaded in BIGIN (Y/N)', 'phone number checked in bigin', 'email address checked in bigin',
+];
+// 1-based column numbers staff fill by hand — carried over on every refresh.
+var MANUAL_COLS = [8, 9, 12, 13, 14];
 var MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 
 function onOpen() {
@@ -111,6 +123,31 @@ function sheetForMonth_(ss, iso) {
   return found || ss.insertSheet(canonical, 0);
 }
 
+/** Row key for carrying manual columns across refreshes. */
+function rowKey_(quoteNumber, gmailMessageId) {
+  return String(quoteNumber || '').trim() || ('gm:' + String(gmailMessageId || '').trim());
+}
+
+/**
+ * Read the sheet's existing MANUAL column values, keyed by quote number (or
+ * email id), so a refresh never wipes what staff typed. The email id is kept
+ * hidden in a far column (P) purely so unquoted rows keep their key.
+ */
+function readManualValues_(sheet) {
+  var manual = {};
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return manual;
+  var data = sheet.getRange(2, 1, lastRow - 1, 16).getValues();
+  data.forEach(function (row) {
+    var key = rowKey_(row[0], row[15]);   // A = quote number, P = hidden email id
+    if (key === 'gm:') return;
+    var kept = {};
+    MANUAL_COLS.forEach(function (col) { kept[col] = row[col - 1]; });
+    manual[key] = kept;
+  });
+  return manual;
+}
+
 function refreshEnquiryRegister() {
   var appRows = fetchAppRegister_();
   var knownGmailIds = {};
@@ -128,22 +165,36 @@ function refreshEnquiryRegister() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   Object.keys(byMonth).forEach(function (monthKey) {
     var rows = byMonth[monthKey].sort(function (a, b) { return a.enquiryDate < b.enquiryDate ? -1 : 1; });
+    var sheet = sheetForMonth_(ss, rows[0].enquiryDate);
+    var manual = readManualValues_(sheet);
 
     // Per-day totals
     var perDay = {};
     rows.forEach(function (r) { var day = formatSheetDate_(r.enquiryDate); perDay[day] = (perDay[day] || 0) + 1; });
 
-    var values = [HEADER];
+    var values = [HEADER.concat([''], ['(email id — do not edit)'])];
     rows.forEach(function (r) {
       var day = formatSheetDate_(r.enquiryDate);
-      values.push([r.quoteNumber, day, perDay[day], r.status, r.company, r.contact, r.preparedBy]);
+      var kept = manual[rowKey_(r.quoteNumber, r.gmailMessageId)] || {};
+      values.push([
+        r.quoteNumber, day, perDay[day], r.status, r.company, r.contact, r.preparedBy,
+        kept[8] || '',                          // Given for checking to (manual)
+        kept[9] || '',                          // Sent By (manual)
+        r.sentDate ? formatSheetDate_(r.sentDate) : '',   // Date — auto (sent date)
+        r.value || '',                          // Value — auto (quote total)
+        kept[12] || '',                         // Quote uploaded in BIGIN (manual)
+        kept[13] || '',                         // phone checked in bigin (manual)
+        kept[14] || '',                         // email checked in bigin (manual)
+        '',                                     // spacer (O)
+        r.gmailMessageId || '',                 // hidden row key (P)
+      ]);
     });
 
-    var sheet = sheetForMonth_(ss, rows[0].enquiryDate);
     sheet.clearContents();
-    sheet.getRange(1, 1, values.length, HEADER.length).setValues(values);
-    sheet.getRange(1, 1, 1, HEADER.length).setFontWeight('bold');
+    sheet.getRange(1, 1, values.length, values[0].length).setValues(values);
+    sheet.getRange(1, 1, 1, values[0].length).setFontWeight('bold');
     sheet.setFrozenRows(1);
+    sheet.hideColumns(15, 2);   // spacer + email-id key stay out of sight
   });
 
   Logger.log('Enquiry register refreshed: ' + allRows.length + ' rows across ' + Object.keys(byMonth).length + ' month tab(s).');

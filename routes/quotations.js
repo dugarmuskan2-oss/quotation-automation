@@ -30,7 +30,7 @@ const SUMMARY_NESTED_PATHS = [
     '#eva', '#rev', '#crp',
     // Admin margin-allocation flow (desk renders from the list summary alone)
     'adminStatus', 'adminNote', 'itemSummary', 'isNewCompany', 'regretSentAt',
-    'preparedBy',
+    'preparedBy', 'sentAt',
 ];
 const SUMMARY_PROJECTION = [
     'id', 'updatedAt', 'createdAt',
@@ -359,6 +359,8 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName })
 
     function registerStatusOf(q) {
         if (q.adminStatus === 'regretted') return 'REGRET';
+        if (q.adminStatus === 'awaiting') return 'MARGIN ALLOCATION PENDING';
+        if (q.sent && q.revised) return 'REVISION SENT';
         if (q.sent) return 'SENT';
         return 'PENDING';
     }
@@ -371,6 +373,8 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName })
             company: q.companyName || q.projectName || '',
             contact: q.customerName || '',
             preparedBy: q.preparedBy || '',
+            sentDate: q.sentAt || '',            // "Date" column — filled once sent
+            value: q.grandTotal || '',           // "Value" column — quote total
             gmailMessageId: q.gmailMessageId || '',
         };
     }
