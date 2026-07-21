@@ -2363,16 +2363,9 @@
         function getDefaultMarginForPipeType(pipeTypeText) {
             const bucket = resolveDefaultMarginBucket(pipeTypeText);
             if (!bucket) {
-                // #region agent log
-                fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'baseline-default-margin',hypothesisId:'H2',location:'index.html:getDefaultMarginForPipeType:noBucket',message:'no default margin bucket matched',data:{pipeTypeText:String(pipeTypeText||'')},timestamp:Date.now()})}).catch(()=>{});
-                // #endregion
                 return '';
             }
-            const marginValue = defaultMarginsByPipeType[bucket] || '';
-            // #region agent log
-            fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'baseline-default-margin',hypothesisId:'H3',location:'index.html:getDefaultMarginForPipeType:resolved',message:'resolved default margin from bucket',data:{pipeTypeText:String(pipeTypeText||''),bucket,marginValue},timestamp:Date.now()})}).catch(()=>{});
-            // #endregion
-            return marginValue;
+            return defaultMarginsByPipeType[bucket] || '';
         }
 
         function shouldUseDefaultMarginForRawValue(rawMarginValue) {
@@ -2449,18 +2442,12 @@
             try {
                 const response = await fetch(`${API_BASE_URL}/get-default-margins`);
                 const result = await safeJsonParse(response);
-                // #region agent log
-                fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'baseline-default-margin',hypothesisId:'H1',location:'index.html:loadDefaultMargins:response',message:'loaded default margins response',data:{ok:response.ok,hasFile:result&&result.hasFile,defaultMargins:result&&result.defaultMargins},timestamp:Date.now()})}).catch(()=>{});
-                // #endregion
                 if (response.ok && result.defaultMargins) {
                     defaultMarginsByPipeType = {
                         erw: normalizeDefaultMarginInputValue(result.defaultMargins.erw),
                         gi: normalizeDefaultMarginInputValue(result.defaultMargins.gi),
                         seamless: normalizeDefaultMarginInputValue(result.defaultMargins.seamless)
                     };
-                    // #region agent log
-                    fetch('http://127.0.0.1:7704/ingest/401e8f63-b24f-4a79-ac2c-9ba6e0d45a1a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f5e334'},body:JSON.stringify({sessionId:'f5e334',runId:'baseline-default-margin',hypothesisId:'H1',location:'index.html:loadDefaultMargins:applied',message:'applied normalized default margins in memory',data:{defaultMarginsByPipeType},timestamp:Date.now()})}).catch(()=>{});
-                    // #endregion
                     applyDefaultMarginsToConfigInputs(defaultMarginsByPipeType);
                     if (statusEl) {
                         statusEl.textContent = result.hasFile ? '✓ Default margins loaded from server' : 'No default margins saved yet';
