@@ -16,6 +16,7 @@ const {
     CONFIG_KEY_DEFAULT_EMAIL_MESSAGE,
     CONFIG_KEY_DEFAULT_SIGNATURE,
     CONFIG_KEY_FREIGHT_SUGGESTIONS,
+    CONFIG_KEY_STAFF_LIST,
 } = require('../utils/constants');
 
 function normalizeMarginValue(value) {
@@ -32,6 +33,23 @@ function sanitizeDefaultMargins(input) {
         gi:       normalizeMarginValue(source.gi),
         seamless: normalizeMarginValue(source.seamless),
     };
+}
+
+const STAFF_LIST_MAX = 50;
+
+/** Trimmed, de-duplicated (case-insensitive) list of staff names, capped. */
+function sanitizeStaffList(input) {
+    const seen = {};
+    return (Array.isArray(input) ? input : [])
+        .map(n => String(n || '').trim())
+        .filter(n => {
+            if (!n) return false;
+            const key = n.toLowerCase();
+            if (seen[key]) return false;
+            seen[key] = true;
+            return true;
+        })
+        .slice(0, STAFF_LIST_MAX);
 }
 
 // ── Freight suggestions (transporters remembered per route + pickup/drop) ─────
@@ -197,6 +215,32 @@ module.exports = function createConfigRouter({ storage }) {
         }
     });
 
+    // ── Staff list (admin desk "Assign to" names) ─────────────────────────────
+    router.post('/save-staff-list', express.json(), async (req, res) => {
+        try {
+            const sanitized = sanitizeStaffList(req.body && req.body.staffList);
+            await storage.saveText(CONFIG_KEY_STAFF_LIST, JSON.stringify(sanitized));
+            res.json({ success: true, staffList: sanitized });
+        } catch (error) {
+            console.error('Error saving staff list:', error);
+            res.status(500).json({ error: 'Failed to save staff list', details: error.message });
+        }
+    });
+
+    router.get('/get-staff-list', async (req, res) => {
+        try {
+            const content = await storage.readText(CONFIG_KEY_STAFF_LIST);
+            let parsed = [];
+            if (content) {
+                try { parsed = JSON.parse(content); } catch { parsed = []; }
+            }
+            res.json({ hasFile: content !== null, staffList: sanitizeStaffList(parsed) });
+        } catch (error) {
+            console.error('Error getting staff list:', error);
+            res.status(500).json({ error: 'Failed to get staff list', details: error.message });
+        }
+    });
+
     // ── Default email message ─────────────────────────────────────────────────
     router.post('/save-default-email-message', express.json(), async (req, res) => {
         try {
@@ -283,4 +327,4 @@ module.exports = function createConfigRouter({ storage }) {
 };
 
 // Pure helpers exposed for unit testing (see tests/freight-suggestions.test.js).
-module.exports._test = { sanitizeFreightSuggestions, mergeFreightUsage, bumpTransporters, normalizePlace };
+module.exports._test = { sanitizeFreightSuggestions, mergeFreightUsage, bumpTransporters, normalizePlace, sanitizeStaffList };

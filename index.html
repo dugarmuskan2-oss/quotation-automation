@@ -1120,7 +1120,20 @@
                     </button>
                     <p id="defaultMarginsStatus" style="margin-top: 8px; font-size: 12px; color: #666;"></p>
                 </div>
-                
+
+                <!-- Staff list (admin desk "Assign to" names; Bigin owner later) -->
+                <div style="margin-top: 20px;">
+                    <label style="display:block; margin-bottom:8px;">Staff (for "Assign to" on new companies):</label>
+                    <div id="staffListChips" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px;"></div>
+                    <div style="display:flex; gap:8px;">
+                        <input type="text" id="staffAddInput" placeholder="Add a staff name"
+                            style="flex:1; padding:8px; border:2px solid #ddd; border-radius:4px;"
+                            onkeydown="if(event.key==='Enter'){event.preventDefault();addStaffMember();}">
+                        <button type="button" class="upload-btn" onclick="addStaffMember()" style="width:auto; padding:8px 16px;">+ Add</button>
+                    </div>
+                    <p id="staffListStatus" style="margin-top: 8px; font-size: 12px; color: #666;"></p>
+                </div>
+
                 <!-- Uploaded Files Management Section -->
                 <div class="input-section" id="filesManagementSection" style="margin-top: 30px;">
                     <h2>Uploaded Rate Files</h2>
@@ -2462,7 +2475,98 @@
                 }
             }
         }
-        
+
+        /*
+            ============================================
+            STAFF LIST (Configuration section)
+            ============================================
+            Editable list of staff names, shared with all devices. Used by the
+            admin desk's "Assign to" dropdown; later becomes the Bigin owner.
+        */
+        let staffList = [];
+
+        function renderStaffListChips() {
+            const box = document.getElementById('staffListChips');
+            if (!box) return;
+            if (!staffList.length) {
+                box.innerHTML = '<span style="font-size:12px; color:#999;">No staff added yet.</span>';
+                return;
+            }
+            box.innerHTML = staffList.map(function(name, i) {
+                return '<span style="display:inline-flex; align-items:center; gap:6px; background:#f1f1f1; border:1px solid #ddd; border-radius:14px; padding:4px 6px 4px 12px; font-size:13px;">'
+                    + escapeHtml(name)
+                    + '<button type="button" onclick="removeStaffMember(' + i + ')" title="Remove ' + escapeHtml(name) + '"'
+                    + ' style="border:none; background:none; color:#c62828; cursor:pointer; font-size:14px; line-height:1; padding:2px 6px;">&times;</button>'
+                    + '</span>';
+            }).join('');
+        }
+
+        async function persistStaffList(successMessage) {
+            const statusEl = document.getElementById('staffListStatus');
+            try {
+                const response = await fetch(`${API_BASE_URL}/save-staff-list`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ staffList })
+                });
+                const result = await safeJsonParse(response);
+                if (!response.ok) throw new Error(result.error || 'Failed to save staff list');
+                staffList = Array.isArray(result.staffList) ? result.staffList : staffList;
+                renderStaffListChips();
+                if (statusEl) {
+                    statusEl.textContent = successMessage || '✓ Staff list saved (shared with all devices)';
+                    statusEl.style.color = '#4CAF50';
+                }
+                return true;
+            } catch (error) {
+                console.error('Error saving staff list:', error);
+                if (statusEl) {
+                    statusEl.textContent = `Error: ${error.message}`;
+                    statusEl.style.color = '#f44336';
+                }
+                return false;
+            }
+        }
+
+        function addStaffMember() {
+            const input = document.getElementById('staffAddInput');
+            if (!input) return;
+            const name = (input.value || '').trim();
+            if (!name) return;
+            const exists = staffList.some(function(n) { return n.toLowerCase() === name.toLowerCase(); });
+            if (!exists) {
+                staffList.push(name);
+                persistStaffList('✓ Added ' + name);
+            }
+            input.value = '';
+            renderStaffListChips();
+        }
+
+        function removeStaffMember(index) {
+            const name = staffList[index];
+            if (name === undefined) return;
+            staffList.splice(index, 1);
+            // Clear the removed name from any quote it was assigned to (in memory;
+            // persisted whenever that quote is next saved).
+            approvedQuotations.forEach(function(q) {
+                if ((q.assignedTo || '') === name) q.assignedTo = '';
+            });
+            persistStaffList('✓ Removed ' + name);
+        }
+
+        async function loadStaffList() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/get-staff-list`);
+                const result = await safeJsonParse(response);
+                if (response.ok && Array.isArray(result.staffList)) {
+                    staffList = result.staffList;
+                }
+            } catch (error) {
+                console.error('Error loading staff list:', error);
+            }
+            renderStaffListChips();
+        }
+
         /*
             ============================================
             DELETE RATE FILE FUNCTION
@@ -9895,6 +9999,7 @@
             loadDefaultMargins();
             loadDefaultEmailMessage();
             loadDefaultSignature();
+            loadStaffList();
 
             // Load and display uploaded files
             loadUploadedFiles();
