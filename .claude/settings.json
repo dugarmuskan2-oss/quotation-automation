@@ -6,7 +6,15 @@
       "mcp__df206604-0240-4e06-bd32-ed228280dd34__get_thread",
       "mcp__ccd_session_mgmt__search_session_transcripts",
       "mcp__Claude_Preview__preview_screenshot",
-      "mcp__Claude_Preview__preview_list"
+      "mcp__Claude_Preview__preview_list",
+      "Bash(npx jest *)",
+      "Bash(node --check *)",
+      "Bash(npm test)",
+      "mcp__Claude_Browser__navigate",
+      "mcp__Claude_Browser__read_console_messages",
+      "mcp__Claude_Browser__preview_list",
+      "mcp__visualize__show_widget",
+      "mcp__visualize__read_me"
     ]
   }
 }

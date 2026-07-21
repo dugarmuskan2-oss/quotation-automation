@@ -8,7 +8,7 @@
  */
 
 // Pure utility functions — import directly, no server or mocks needed
-const { calculateLineItem, parseFlexibleNumber } = require('../utils/calculations');
+const { calculateLineItem, parseFlexibleNumber, pipeTypeBucket, buildItemSummary } = require('../utils/calculations');
 
 // =============================================================================
 // calculateLineItem
@@ -182,5 +182,37 @@ describe('parseFlexibleNumber', () => {
 
     test('strips currency symbols and spaces', () => {
         expect(parseFlexibleNumber('₹ 1,000')).toBe(1000);
+    });
+});
+
+// =============================================================================
+// pipeTypeBucket + buildItemSummary (admin desk item summary)
+// =============================================================================
+
+describe('pipeTypeBucket', () => {
+    test('maps free-text pipe types to buckets', () => {
+        expect(pipeTypeBucket('CS Seamless Pipe')).toBe('Seamless');
+        expect(pipeTypeBucket('GI pipe')).toBe('GI');
+        expect(pipeTypeBucket('galvanised iron')).toBe('GI');
+        expect(pipeTypeBucket('MS ERW')).toBe('ERW');
+        expect(pipeTypeBucket('')).toBe('');
+        expect(pipeTypeBucket(null)).toBe('');
+    });
+});
+
+describe('buildItemSummary', () => {
+    test('counts items, distinct type buckets, and no-rate items', () => {
+        const summary = buildItemSummary([
+            { identifiedPipeType: 'Seamless', unitRate: '501' },
+            { identifiedPipeType: 'seamless pipe', unitRate: '409' },
+            { identifiedPipeType: 'ERW', unitRate: '' },        // no rate
+            { identifiedPipeType: 'GI', unitRate: '0' },        // zero counts as no rate
+        ]);
+        expect(summary).toEqual({ count: 4, types: ['Seamless', 'ERW', 'GI'], noRate: 2 });
+    });
+
+    test('handles empty / missing line items', () => {
+        expect(buildItemSummary([])).toEqual({ count: 0, types: [], noRate: 0 });
+        expect(buildItemSummary(null)).toEqual({ count: 0, types: [], noRate: 0 });
     });
 });

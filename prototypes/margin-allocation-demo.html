@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DSC — Margin allocation prototype</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">
+<style>
+:root{
+  --bg0:#ffffff; --bg1:#f6f5f1; --bg2:#efeee8;
+  --tx0:#20201d; --tx1:#6e6c65; --tx2:#9b988e;
+  --bd0:rgba(0,0,0,0.10); --bd1:rgba(0,0,0,0.18);
+  --amber-bg:#FAEEDA; --amber-tx:#854F0B; --amber-dk:#633806;
+  --red-bg:#FCEBEB; --red-tx:#A32D2D; --red-dk:#791F1F; --red-bd:#F7C1C1;
+  --teal-bg:#E1F5EE; --teal-tx:#0F6E56; --teal-dk:#085041;
+  --blue-bg:#E6F1FB; --blue-dk:#0C447C;
+  --navy:#3b3f79;
+  --r-md:8px; --r-lg:12px;
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--bg2);font-family:var(--font);color:var(--tx0);-webkit-font-smoothing:antialiased;}
+.page{max-width:1000px;margin:0 auto;padding:20px 16px 60px;}
+.proto-label{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--amber-tx);background:var(--amber-bg);border-radius:var(--r-md);padding:5px 10px;}
+.proto-sub{font-size:13px;color:var(--tx1);margin:0 0 18px;line-height:1.6;}
+button{font-family:inherit;background:transparent;border:0.5px solid var(--bd1);border-radius:var(--r-md);padding:6px 12px;cursor:pointer;color:var(--tx0);font-size:13px;transition:background .12s,transform .06s;}
+button:hover{background:var(--bg1);}
+button:active{transform:scale(0.98);}
+input,select,textarea{font-family:inherit;font-size:13px;color:var(--tx0);background:var(--bg0);border:0.5px solid var(--bd1);border-radius:var(--r-md);padding:6px 10px;}
+input,select{height:32px;}
+input:focus,select:focus,textarea:focus{outline:none;box-shadow:0 0 0 2px #85B7EB;}
+textarea{line-height:1.5;width:100%;padding:8px 10px;}
+.sec-head{display:flex;align-items:center;gap:8px;margin:22px 0 10px;}
+.sec-title{font-size:15px;font-weight:600;}
+.count-pill{font-size:11px;padding:2px 8px;border-radius:10px;background:var(--amber-bg);color:var(--amber-dk);}
+.hint{font-size:12px;color:var(--tx2);margin-left:auto;}
+.card{background:var(--bg0);border:0.5px solid var(--bd0);border-radius:var(--r-lg);margin-bottom:8px;overflow:hidden;}
+.mrow{padding:12px 14px;}
+.mline{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.qname{font-size:13px;font-weight:600;}
+.qmeta{font-size:12px;color:var(--tx2);}
+.pill{font-size:11px;padding:2px 8px;border-radius:10px;white-space:nowrap;}
+.pill.amber{background:var(--amber-bg);color:var(--amber-dk);}
+.pill.red{background:var(--red-bg);color:var(--red-dk);}
+.pill.teal{background:var(--teal-bg);color:var(--teal-dk);}
+.pill.blue{background:var(--blue-bg);color:var(--blue-dk);}
+.pill.gray{background:var(--bg1);color:var(--tx2);border:0.5px solid var(--bd0);}
+.btn-apply{background:#1D9E75;color:#fff;border:none;font-weight:500;}
+.btn-apply:hover{background:#0F6E56;}
+.btn-regret{color:var(--red-tx);border-color:var(--red-bd);}
+.btn-regret:hover{background:var(--red-bg);}
+.staffhint{font-size:11px;color:var(--tx2);}
+.linky{background:none;border:none;padding:0;font-size:12px;color:var(--blue-dk);text-decoration:underline;cursor:pointer;}
+.manage-link{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--blue-dk);background:none;border:none;cursor:pointer;padding:0 2px;}
+.manage-link:hover{background:none;text-decoration:underline;}
+.staffrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 2px;border-bottom:0.5px solid var(--bd0);font-size:13px;}
+.staffdel{border:none;background:none;color:var(--red-tx);padding:3px 7px;font-size:14px;cursor:pointer;border-radius:6px;}
+.staffdel:hover{background:var(--red-bg);}
+
+/* margin controls */
+.mgctrl{margin-top:12px;background:var(--bg1);border-radius:var(--r-md);padding:10px 12px;display:flex;flex-direction:column;gap:9px;}
+.mgrow{display:flex;align-items:center;gap:10px;}
+.mglabel{font-size:12px;font-weight:500;color:var(--tx1);width:74px;flex-shrink:0;}
+.seg{display:inline-flex;background:var(--bg0);border:0.5px solid var(--bd0);border-radius:var(--r-md);padding:3px;gap:2px;}
+.seg button{border:none;height:26px;padding:0 12px;font-size:12px;color:var(--tx1);border-radius:6px;background:none;}
+.seg button.on{background:var(--navy);color:#fff;}
+.costplus{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--tx1);}
+.costplus input{width:54px;height:30px;text-align:center;padding:0;}
+.note-lbl{font-size:12px;color:var(--tx1);margin:12px 0 4px;display:flex;align-items:center;gap:5px;}
+.note-lbl .opt{color:var(--tx2);}
+
+/* enquiry preview */
+.enq-sec{margin-top:12px;padding-top:11px;border-top:0.5px solid var(--bd0);}
+.enq-h{display:flex;align-items:center;gap:6px;font-size:11px;letter-spacing:0.02em;text-transform:uppercase;color:var(--tx2);margin-bottom:6px;}
+.enq{background:var(--bg1);border:0.5px solid var(--bd0);border-radius:var(--r-md);padding:9px 10px;font-size:12px;color:var(--tx1);line-height:1.6;max-height:150px;overflow:auto;white-space:pre-wrap;}
+.enq .who{font-size:10px;color:var(--tx2);display:block;margin-bottom:3px;}
+.enq-img{background:#fbf9f2;border:0.5px solid var(--bd1);border-radius:6px;padding:10px 11px;cursor:pointer;transform:rotate(-0.5deg);box-shadow:1px 2px 0 rgba(0,0,0,0.06);font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10.5px;color:#3a382f;line-height:1.55;white-space:pre;overflow:hidden;display:inline-block;max-width:100%;}
+.enq-img:hover{border-color:var(--blue-dk);}
+.enq-cap{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--blue-dk);margin-top:6px;}
+.enq-note{font-size:11px;color:var(--tx2);margin-top:6px;line-height:1.5;}
+.filechip{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--tx1);background:var(--bg1);border:0.5px solid var(--bd1);border-radius:var(--r-md);padding:4px 9px;margin:4px 6px 0 0;cursor:pointer;}
+.filechip:hover{background:var(--bg0);border-color:var(--blue-dk);color:var(--blue-dk);}
+.filechip .fx{color:var(--tx2);margin-left:2px;}
+.filedoc{background:#fff;border:0.5px solid var(--bd1);border-radius:6px;padding:16px 18px;font-size:12.5px;color:#2c2a22;line-height:1.7;white-space:pre-wrap;max-height:60vh;overflow:auto;box-shadow:0 1px 3px rgba(0,0,0,0.06);}
+
+/* approval card */
+.qrow{padding:9px 14px;display:flex;align-items:center;gap:9px;cursor:pointer;flex-wrap:wrap;}
+.qrow:hover{background:var(--bg1);}
+.qrow .t{font-size:13px;}
+.card.open{border-color:var(--bd1);}
+.card.open>.qrow{border-bottom:0.5px solid var(--bd0);}
+.qtabs{display:flex;gap:18px;padding:8px 16px 0;border-bottom:0.5px solid var(--bd0);}
+.qtab{font-size:13px;color:var(--tx1);padding-bottom:8px;border-bottom:2px solid transparent;}
+.qtab.on{color:var(--tx0);font-weight:500;border-bottom:2px solid var(--tx0);}
+.qsplit{display:flex;gap:14px;padding:12px 16px 16px;align-items:flex-start;}
+.qleft{flex:1;min-width:0;}
+.qright{width:250px;flex-shrink:0;border-left:0.5px solid var(--bd0);padding-left:14px;}
+.ownerstrip{background:var(--amber-bg);border-radius:var(--r-md);padding:9px 12px;margin-bottom:12px;}
+.ownerstrip .os-h{font-size:12px;font-weight:600;color:var(--amber-dk);margin-bottom:3px;}
+.ownerstrip .os-b{font-size:12px;color:var(--amber-tx);line-height:1.6;}
+.ownerstrip .os-b b{color:var(--amber-dk);font-weight:600;}
+.waitstrip{background:var(--red-bg);color:var(--red-dk);border-radius:var(--r-md);padding:9px 12px;margin-bottom:12px;font-size:12px;display:flex;align-items:center;gap:6px;}
+.hgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px 22px;margin-bottom:10px;}
+.hf{display:flex;align-items:center;gap:8px;}
+.hf .lbl{font-size:10px;color:var(--tx2);width:96px;flex-shrink:0;}
+.hf .val{flex:1;font-size:12px;border:0.5px solid var(--bd0);border-radius:6px;padding:5px 8px;background:var(--bg1);min-height:28px;}
+.hf input.val{height:28px;background:var(--bg0);border-color:var(--bd1);}
+.qtable{width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:2px;}
+.qtable th{background:var(--navy);color:#fff;font-weight:500;text-align:left;padding:6px 7px;font-size:10.5px;white-space:nowrap;}
+.qtable th.r,.qtable td.r{text-align:right;}
+.qtable td{padding:6px 7px;border-bottom:0.5px solid var(--bd0);}
+.grp td{background:#e9eaf3;color:var(--navy);font-weight:600;font-size:11px;padding:5px 8px;}
+.qtable input.rate{width:64px;height:26px;font-size:11px;text-align:right;padding:0 6px;}
+.tag{font-size:9px;padding:1px 5px;border-radius:7px;margin-left:4px;}
+.tag.nr{background:var(--red-bg);color:var(--red-dk);}
+.pending{color:var(--tx2);}
+.totalbar{background:var(--navy);color:#fff;border-radius:var(--r-md);padding:9px 14px;text-align:right;font-size:14px;font-weight:600;margin:8px 0 12px;}
+.terms{border:0.5px solid var(--bd0);border-radius:var(--r-md);padding:10px 12px;}
+.terms h4{margin:0 0 6px;font-size:11px;color:var(--tx1);}
+.terms .tline{font-size:11px;color:var(--tx1);line-height:1.7;}
+.gm-link{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--blue-dk);margin-bottom:10px;}
+.btn-print{width:100%;margin-bottom:12px;font-size:12px;}
+.conv-h{display:flex;align-items:center;gap:6px;margin:4px 0 8px;}
+.conv-h .ct{font-size:13px;font-weight:600;}
+.conv-check{margin-left:auto;font-size:11px;padding:3px 8px;background:var(--amber-bg);color:var(--amber-dk);border-color:var(--amber-bg);}
+.btn-send{width:100%;background:#2e7d32;color:#fff;border:none;font-weight:500;margin-bottom:10px;}
+.btn-send:hover{background:#256628;}
+.reply-lbl{font-size:11px;color:var(--tx1);margin-bottom:4px;}
+.warnline{font-size:11px;color:var(--red-tx);margin:6px 0;display:flex;align-items:center;gap:5px;}
+
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px;overflow:auto;}
+.modal{background:var(--bg0);border-radius:var(--r-lg);padding:18px;width:420px;max-width:92vw;}
+.modal h3{margin:0 0 6px;font-size:15px;}
+.modal p{margin:0 0 12px;font-size:13px;color:var(--tx1);line-height:1.5;}
+.modal .acts{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;}
+.flash{animation:flashbg 1.6s ease-out;}
+@keyframes flashbg{0%{background:var(--teal-bg);}100%{background:var(--bg0);}}
+.printmodal{width:560px;max-width:94vw;}
+.psheet{border:0.5px solid var(--bd0);border-radius:var(--r-md);padding:20px 22px;max-height:60vh;overflow:auto;}
+.psheet h2{margin:0 0 2px;font-size:16px;}
+.psheet .pmeta{font-size:12px;color:var(--tx1);margin-bottom:14px;}
+.psheet .psec{font-size:11px;letter-spacing:0.03em;text-transform:uppercase;color:var(--tx2);border-bottom:0.5px solid var(--bd0);padding-bottom:3px;margin:14px 0 7px;}
+.psheet .pbody{font-size:12.5px;color:var(--tx0);line-height:1.65;white-space:pre-wrap;}
+.psheet .pimg{background:#fbf9f2;border:0.5px solid var(--bd1);border-radius:6px;padding:12px 14px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;color:#2c2a22;line-height:1.6;white-space:pre;margin-top:6px;}
+.psheet .pfile{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--tx1);padding:5px 0;}
+.psheet .pnote{background:var(--amber-bg);border-radius:6px;padding:9px 11px;font-size:12.5px;color:var(--amber-dk);line-height:1.6;}
+.pimg{background:#fbf9f2;border:0.5px solid var(--bd1);border-radius:6px;padding:12px 14px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:#2c2a22;line-height:1.7;white-space:pre;}
+@media print{
+  body>.page{display:none;}
+  body>.overlay{position:static;background:none;padding:0;display:block;overflow:visible;}
+  .overlay .modal{width:100%;box-shadow:none;padding:0;}
+  .overlay .modal h3, .overlay .acts, .proto-noprint{display:none!important;}
+  .psheet{border:none;max-height:none;overflow:visible;padding:0;}
+}
+</style>
+</head>
+<body>
+<div class="page">
+  <div style="display:flex;align-items:center;gap:10px;">
+    <span class="proto-label"><i class="ti ti-flask" aria-hidden="true"></i> Prototype — fake data, nothing is saved</span>
+    <button style="margin-left:auto;font-size:12px;" onclick="resetDemo()"><i class="ti ti-refresh" aria-hidden="true"></i> Reset demo</button>
+  </div>
+  <p class="proto-sub">Top = <b>your desk</b>: set the margin per pipe type (Price list, or Cost + %), add notes, then Send to approval. Regret sends a fixed regret reply in the same thread. Staff work in <b>All quotes</b> and can <b>Print enquiry</b>.</p>
+  <div id="app"></div>
+</div>
+
+<script>
+var STAFF, QUOTES, expandedId, modal;
+
+var REGRET_EMAIL = "Dear Sir/Ma'am,\n\nThank you for your enquiry. We, however, regret to inform you that we will not be able to quote for your requirement either because of lack of availability at the moment or because we do not deal in the specific items.(We deal in all kinds of MS and CS Pipes)\n\nThank you.\n\nYours Sincerely";
+
+function mg(mode){ return { mode:mode||'price', pct:'' }; }
+
+function seed(){
+  STAFF = ['Ramya','Jayanthi'];
+  expandedId = 'q4'; modal = null;
+  QUOTES = [
+    { id:'q1', company:'BSK Engineering Services', contact:'Salomi Victoria. S', qno:'DSC-2127', isNew:true,
+      status:'awaiting', assignedTo:'', note:'',
+      margins:{ Seamless:mg('price'), ERW:mg() },
+      date:'July 15, 2026', phone:'', mobile:'+91 8056251136', preparedBy:'RAMYA', shipTo:'PNM', checkedBy:'',
+      enquiry:'Dear Sir,\n\nRequest best price & stock availability:\n\nCS SMLS SCH40  2"      — 250 M\nCS SMLS SCH40  1-1/2"  — 250 M\nCS SMLS SCH40  1"      — 100 M\nMS ERW  3" HEAVY       — 60 M\nMS ERW  4" MEDIUM      — 40 M\nMS ERW  6" HEAVY       — 20 M  (pls rate)',
+      files:[],
+      items:[
+        {desc:'2" NB X Sch 40', type:'Seamless', qty:250, cost:477, price:501, manualRate:null},
+        {desc:'1-1/2" NB X Sch 40', type:'Seamless', qty:250, cost:371, price:409, manualRate:null},
+        {desc:'1" NB X Sch 40', type:'Seamless', qty:100, cost:289, price:347, manualRate:null},
+        {desc:'3" NB X Heavy', type:'ERW', qty:60, cost:720, price:null, manualRate:null},
+        {desc:'4" NB X Medium', type:'ERW', qty:40, cost:950, price:null, manualRate:null},
+        {desc:'6" NB X Heavy', type:'ERW', qty:20, cost:null, price:null, manualRate:null},
+      ]},
+    { id:'q2', company:'Orchid Pharma', contact:'MR S.Prem Kumar', qno:'DSC-2101', isNew:false,
+      status:'awaiting', assignedTo:'', note:'',
+      margins:{ Seamless:mg('price'), ERW:mg(), GI:mg() },
+      date:'July 11, 2026', phone:'', mobile:'', preparedBy:'RAMYA', shipTo:'PNM', checkedBy:'',
+      enquiry:'Dear Sir,  Greetings from Orchid Pharma!!!\nPlease send best competitive price for the attached list.',
+      files:[{name:'Orchid_requirement.pdf', kind:'pdf', content:'ORCHID PHARMA — MATERIAL REQUIREMENT\n\nCode     Description                    QTY (M)\n750231   CS A106 SMLS 2" SCH40           180\n750232   CS A106 SMLS 3" SCH80            40\nIS1239   MS ERW 1" HEAVY                  60\nIS1239   GI 1-1/2" HEAVY                 200\n\nPlease quote your best landed price, Chennai.'}],
+      items:[
+        {desc:'2" NB X Sch 40', type:'Seamless', qty:180, cost:477, price:501, manualRate:null},
+        {desc:'3" NB X Sch 80', type:'Seamless', qty:40, cost:1340, price:1407, manualRate:null},
+        {desc:'1" NB X Heavy', type:'ERW', qty:60, cost:320, price:null, manualRate:null},
+        {desc:'1-1/2" NB X Heavy', type:'GI', qty:200, cost:470, price:null, manualRate:null},
+      ]},
+    { id:'q3', company:'Maria Marine', contact:'Shiny kenitore', qno:'DSC-2093', isNew:false,
+      status:'awaiting', assignedTo:'', note:'',
+      margins:{ Seamless:mg('price') },
+      date:'July 10, 2026', phone:'+91-44-25532189', mobile:'+91-8903458686', preparedBy:'RAMYA', shipTo:'PNM', checkedBy:'',
+      enquiry:'Dear sir, Good day,\n\nKindly quote us for the attached image.\n\nWarm Regards,\nShiny kenitore (Ms)\nTechnical Executive - Maria Marine',
+      enquiryImage:'MARIA MARINE — REQUIREMENT\n\nCS SEAMLESS PIPE (ASTM A106)\n\n 1-1/2"  NB  SCH 160  —  24 M\n 1-1/4"  NB  SCH 160  —  08 M\n 2"      NB  SCH 40   —  50 M\n 3"      NB  SCH 40   —  10 M\n\n  * Please quote urgent *',
+      files:[{name:'pipe_list.jpg', kind:'image', content:'MARIA MARINE — REQUIREMENT\n\nCS SEAMLESS PIPE (ASTM A106)\n\n 1-1/2"  NB  SCH 160  —  24 M\n 1-1/4"  NB  SCH 160  —  08 M\n 2"      NB  SCH 40   —  50 M\n 3"      NB  SCH 40   —  10 M\n\n  * Please quote urgent *'}],
+      items:[
+        {desc:'1-1/2" NB X Sch 160', type:'Seamless', qty:24, cost:665, price:831, manualRate:null},
+        {desc:'1-1/4" NB X Sch 160', type:'Seamless', qty:8, cost:639, price:799, manualRate:null},
+        {desc:'2" NB X Sch 40', type:'Seamless', qty:50, cost:477, price:501, manualRate:null},
+      ]},
+    { id:'q4', company:'JK ENTERPRISES', contact:'J K Kabilan', qno:'DSC-2117', isNew:false,
+      status:'ready', assignedTo:'', note:'Stock ready — quote urgent.',
+      margins:{ Seamless:mg('price') },
+      date:'July 13, 2026', phone:'', mobile:'99400934995', preparedBy:'RAMYA', shipTo:'PNM', checkedBy:'',
+      enquiry:'1 GI PIPE (SEAMLESS STD) SCH40 — MAKE TATA/JINDAL\n\n 1/2"  150 M    1"  320 M    3"  12 M\n\nPLS GIVE BEST PRISES\nThanks & Best Regards, J K Kabilan',
+      files:[],
+      items:[
+        {desc:'1/2" NB X Sch 40', type:'Seamless', qty:150, cost:177, price:204, manualRate:null},
+        {desc:'1" NB X Sch 40', type:'Seamless', qty:320, cost:289, price:347, manualRate:null},
+        {desc:'3" NB X Sch 40', type:'Seamless', qty:12, cost:991, price:1041, manualRate:null},
+      ]},
+  ];
+  QUOTES.forEach(function(q){ if(q.status==='ready') stampItems(q); });
+}
+function resetDemo(){ seed(); render(); }
+
+var GROUP_LABEL = { Seamless:'CS Seamless Pipe as per ASTM 106 Gr. B', ERW:'MS ERW Pipe as per IS 1239 / 3589', GI:'GI Pipe as per IS 1239' };
+
+function byId(id){ return QUOTES.find(function(q){return q.id===id;}); }
+function types(q){ var s=[]; q.items.forEach(function(it){ if(s.indexOf(it.type)===-1) s.push(it.type); }); return s; }
+function noRateCount(q){ return q.items.filter(function(it){ return it.type==='Seamless' ? (it.price==null&&it.cost==null) : it.cost==null; }).length; }
+function baseOf(q,it){ return it.manualRate!=null ? it.manualRate : (it.appliedBase!=null ? it.appliedBase : null); }
+function itemMargin(it){ return (it.staffMargin!=null && it.staffMargin!=='') ? parseFloat(it.staffMargin) : null; }
+function finalOf(q,it){ var b=baseOf(q,it), m=itemMargin(it); if(b==null||isNaN(b)||m==null||isNaN(m)) return null; return Math.round(b*(1+m/100)); }
+function fmt(n){ return n==null?'—':'₹'+Number(n).toLocaleString('en-IN'); }
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// Stamp each item's base rate + margin from the admin's per-type choice (called on Send).
+function stampItems(q){
+  q.items.forEach(function(it){
+    var m = q.margins[it.type] || mg();
+    if(it.type==='Seamless' && m.mode!=='cost'){
+      it.appliedBase = it.price;   // Price list
+      it.staffMargin = 0;
+    } else {
+      it.appliedBase = it.cost;    // Cost + %
+      it.staffMargin = (m.pct!==''&&m.pct!=null) ? parseFloat(m.pct) : 0;
+    }
+  });
+}
+// Compile the admin's per-type margins into one message; append the free note.
+function adminMarginSummary(q){
+  return types(q).map(function(ty){
+    var m = q.margins[ty] || mg();
+    if(ty==='Seamless') return m.mode==='cost' ? 'Seamless: Cost + '+(m.pct||'0')+'%' : 'Seamless: Price list';
+    return ty+': Cost + '+(m.pct||'0')+'%';
+  }).join(' · ');
+}
+function buildAdminMessage(q){
+  var s = adminMarginSummary(q);
+  if(q.note && q.note.trim()) s += '\n' + q.note.trim();
+  return s;
+}
+
+// ─── Desk actions ───────────────────────────────────────────────────────────
+function setMarginMode(id,ty,mode){ byId(id).margins[ty].mode=mode; render(); }
+function setMarginPct(id,ty,v){ byId(id).margins[ty].pct=v; render(); }
+function setNote(id,v){ byId(id).note=v; }
+function toggleNew(id,el){ var q=byId(id); q.isNew=el.checked; if(!el.checked)q.assignedTo=''; render(); }
+function setAssign(id,v){ byId(id).assignedTo=v; render(); }
+// Manage the shared staff list (add / delete). One place, reflected in every "Assign to".
+function openStaffModal(id){ modal={kind:'staff',id:id}; render(); }
+function deleteStaff(i){
+  var name=STAFF[i]; STAFF.splice(i,1);
+  QUOTES.forEach(function(q){ if(q.assignedTo===name) q.assignedTo=''; });
+  render();
+}
+function addStaffName(){
+  var el=document.getElementById('staff-add-input'); if(!el) return;
+  var n=el.value.trim(); if(n && STAFF.indexOf(n)===-1) STAFF.push(n);
+  render();
+}
+function sendToApproval(id){
+  var q=byId(id); var ta=document.getElementById('note-'+id); if(ta) q.note=ta.value;
+  stampItems(q); q.status='ready'; q.justMoved=true; expandedId=id; render();
+}
+function askRegret(id){ modal={kind:'regret',id:id}; render(); }
+function doRegret(id){ var q=byId(id); q.status='regretted'; q.regretSent=true; modal=null; render(); }
+function undoRegret(id){ var q=byId(id); q.status='awaiting'; delete q.regretSent; render(); }
+
+// ─── Approval / staff actions ───────────────────────────────────────────────
+function toggleCard(id){ expandedId=(expandedId===id)?null:id; render(); }
+function typeRate(id,i,v){
+  var q=byId(id), it=q.items[i];
+  it.manualRate = v===''?null:parseFloat(v.replace(/,/g,''));
+  render(); var el=document.getElementById('rate-'+id+'-'+i); if(el){el.focus(); var L=el.value.length; el.setSelectionRange(L,L);}
+}
+function setItemMargin(id,idx,v){
+  byId(id).items[idx].staffMargin = v===''?null:v;
+  render(); var el=document.getElementById('mrg-'+id+'-'+idx); if(el){el.focus(); var L=el.value.length; el.setSelectionRange(L,L);}
+}
+function setChecked(id,v){ byId(id).checkedBy=v; }
+function trySend(id){
+  var q=byId(id); var cb=document.getElementById('cb-'+id); if(cb) q.checkedBy=cb.value;
+  if(q.status==='awaiting'){ modal={kind:'sendWarn',id:id}; render(); return; }
+  if(!q.checkedBy.trim()){ q.sendMsg='Fill "Checked By" first — same rule as the real app.'; render(); return; }
+  doSend(q);
+}
+function doSend(q){ q.status='sent'; q.sendMsg=null; modal=null; render(); }
+function sendAnyway(){ doSend(byId(modal.id)); }
+function showImg(id){ modal={kind:'img',id:id}; render(); }
+function viewFile(id,idx){ modal={kind:'file',id:id,idx:idx}; render(); }
+function printEnquiry(id){ modal={kind:'print',id:id}; render(); }
+function doPrint(){ window.print(); }
+
+// ─── Render ─────────────────────────────────────────────────────────────────
+function render(){
+  var desk = QUOTES.filter(function(q){return q.status==='awaiting';});
+  var h = '';
+  h += '<div class="sec-head"><i class="ti ti-percentage" style="font-size:18px;color:var(--amber-tx);" aria-hidden="true"></i>'
+     + '<span class="sec-title">Margins to allocate</span><span class="count-pill">'+desk.length+' waiting</span>'
+     + '<span class="hint">only you use this section</span></div>';
+  if(!desk.length) h += '<div class="card"><div class="mrow qmeta" style="text-align:center;">Nothing waiting — new enquiries will appear here.</div></div>';
+  desk.forEach(function(q){ h += deskRow(q); });
+  h += '<div class="sec-head" style="margin-top:28px;"><i class="ti ti-folders" style="font-size:18px;color:var(--tx1);" aria-hidden="true"></i>'
+     + '<span class="sec-title">All quotes</span><span class="hint">the real quotation card — staff work here</span></div>';
+  QUOTES.forEach(function(q){ h += quoteCard(q); });
+  if(modal) h += modalHtml();
+  document.getElementById('app').innerHTML = h;
+}
+
+function enquiryPreview(q){
+  var h = '<div class="enq-sec"><div class="enq-h"><i class="ti ti-file-description" aria-hidden="true"></i> Enquiry preview</div>';
+  if(q.enquiryImage){
+    h += '<div class="enq-img" onclick="showImg(\''+q.id+'\')">'+esc(q.enquiryImage)+'</div>'
+       + '<div class="enq-cap"><i class="ti ti-photo" aria-hidden="true"></i> Attached image · click to enlarge</div>'
+       + '<div class="enq-note">'+esc(q.enquiry)+'</div>';
+  } else {
+    h += '<div class="enq"><span class="who">Customer · original enquiry</span>'+esc(q.enquiry)+'</div>';
+  }
+  if(q.files && q.files.length){
+    h += '<div class="enq-h" style="margin-top:10px;"><i class="ti ti-paperclip" aria-hidden="true"></i> Attached files</div><div>'+q.files.map(function(f,fi){
+      return '<span class="filechip" onclick="viewFile(\''+q.id+'\','+fi+')"><i class="ti ti-'+(f.kind==='image'?'photo':'file-text')+'" aria-hidden="true"></i> '+esc(f.name)+' <i class="ti ti-eye fx" aria-hidden="true"></i></span>';
+    }).join('')+'</div>';
+  }
+  return h + '</div>';
+}
+
+function marginControls(q){
+  var h = '<div class="mgctrl">';
+  types(q).forEach(function(ty){
+    var m = q.margins[ty] || mg();
+    h += '<div class="mgrow"><span class="mglabel">'+ty+'</span>';
+    if(ty==='Seamless'){
+      h += '<span class="seg"><button class="'+(m.mode!=='cost'?'on':'')+'" onclick="setMarginMode(\''+q.id+'\',\'Seamless\',\'price\')">Price list</button>'
+         + '<button class="'+(m.mode==='cost'?'on':'')+'" onclick="setMarginMode(\''+q.id+'\',\'Seamless\',\'cost\')">Cost +</button></span>';
+      if(m.mode==='cost') h += '<span class="costplus"><input type="text" value="'+esc(m.pct)+'" placeholder="0" onchange="setMarginPct(\''+q.id+'\',\'Seamless\',this.value)" /> %</span>';
+    } else {
+      h += '<span class="costplus">Cost + <input type="text" value="'+esc(m.pct)+'" placeholder="0" onchange="setMarginPct(\''+q.id+'\',\''+ty+'\',this.value)" /> %</span>';
+    }
+    h += '</div>';
+  });
+  return h + '</div>';
+}
+
+function deskRow(q){
+  var t = types(q), nr = noRateCount(q);
+  var h = '<div class="card"><div class="mrow">';
+  h += '<div class="mline"><span class="qname">'+esc(q.company)+' - '+esc(q.qno)+'</span>'
+     + '<span class="qmeta">'+q.items.length+' items · '+t.join(' + ')+'</span>'
+     + (nr? '<span class="pill amber"><i class="ti ti-alert-triangle" aria-hidden="true"></i> '+nr+' item'+(nr>1?'s':'')+' not in price list</span>':'')
+     + '<button class="btn-regret" style="margin-left:auto;" onclick="askRegret(\''+q.id+'\')"><i class="ti ti-ban" aria-hidden="true"></i> Regret</button>'
+     + '<button class="btn-apply" onclick="sendToApproval(\''+q.id+'\')"><i class="ti ti-arrow-right" aria-hidden="true"></i> Send to approval</button></div>';
+
+  h += marginControls(q);
+
+  h += '<div class="mline" style="margin-top:10px;">'
+     + '<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--tx1);cursor:pointer;">'
+     + '<input type="checkbox" style="width:14px;height:14px;" '+(q.isNew?'checked':'')+' onchange="toggleNew(\''+q.id+'\',this)" /> New company?</label>';
+  if(q.isNew){
+    h += '<select style="height:28px;font-size:12px;" onchange="setAssign(\''+q.id+'\',this.value)">'
+       + '<option value="">Assign to…</option>'
+       + STAFF.map(function(s){ return '<option '+(q.assignedTo===s?'selected':'')+'>'+esc(s)+'</option>'; }).join('')
+       + '</select>'
+       + '<button class="manage-link" onclick="openStaffModal(\''+q.id+'\')"><i class="ti ti-settings" aria-hidden="true"></i> Manage</button>'
+       + '<span class="staffhint">becomes the owner in Bigin later</span>';
+  }
+  h += '</div>';
+
+  h += '<div class="note-lbl"><i class="ti ti-note" aria-hidden="true"></i> Notes for staff <span class="opt">(optional — added below the margins in the quote &amp; printed enquiry)</span></div>'
+     + '<textarea id="note-'+q.id+'" rows="2" placeholder="e.g. Quote the 6&quot; ERW at Jindal list less 5%." onchange="setNote(\''+q.id+'\',this.value)">'+esc(q.note)+'</textarea>';
+
+  h += enquiryPreview(q);
+  h += '</div></div>';
+  return h;
+}
+
+function statusPill(q){
+  if(q.status==='awaiting') return '<span class="pill red">Awaiting margin</span>';
+  if(q.status==='ready') return '<span class="pill teal">Ready to prepare</span>';
+  if(q.status==='sent') return '<span class="pill teal"><i class="ti ti-check" aria-hidden="true"></i> Sent</span>';
+  return '<span class="pill gray">Regretted'+(q.regretSent?' · regret email sent':'')+'</span>';
+}
+function hf(lbl,val,editId){
+  if(editId) return '<div class="hf"><span class="lbl">'+lbl+'</span><input class="val" id="'+editId+'" value="'+esc(val)+'" onchange="setChecked(this.id.slice(3),this.value)" /></div>';
+  return '<div class="hf"><span class="lbl">'+lbl+'</span><span class="val">'+esc(val||'')+'</span></div>';
+}
+function headerGrid(q){
+  return '<div class="hgrid">'
+    + hf('QUOTATION DATE',q.date) + hf('PREPARED BY',q.preparedBy)
+    + hf('KIND ATTN',q.contact) + hf('ASSIGNED TO',q.assignedTo)
+    + hf('PHONE NUMBER',q.phone) + hf('CHECKED BY',q.checkedBy,'cb-'+q.id)
+    + hf('MOBILE NUMBER',q.mobile) + hf('QUOTE NUMBER',q.qno)
+    + hf('BILL TO',q.company) + hf('SHIP TO',q.shipTo) + '</div>';
+}
+function itemsTable(q){
+  var h='<table class="qtable"><thead><tr><th>S.NO</th><th>ITEMS AND DESCRIPTION</th><th class="r">QTY (Mtrs)</th><th class="r">BASE RATE</th><th class="r">MARGIN %</th><th class="r">RATE PER MTR</th><th class="r">AMOUNT</th></tr></thead><tbody>';
+  var total=0,sno=0,anyComputed=false;
+  types(q).forEach(function(ty){
+    h += '<tr class="grp"><td colspan="7">'+esc(GROUP_LABEL[ty])+'</td></tr>';
+    q.items.forEach(function(it,idx){
+      if(it.type!==ty) return;
+      sno++;
+      var base=baseOf(q,it), fin=finalOf(q,it);
+      if(fin!=null){ total+=fin*it.qty; anyComputed=true; }
+      var baseCell = base!=null ? fmt(base)
+        : '<input id="rate-'+q.id+'-'+idx+'" class="rate" type="text" placeholder="rate" value="'+(it.manualRate!=null?it.manualRate:'')+'" oninput="typeRate(\''+q.id+'\','+idx+',this.value)" /> <span class="tag nr">no rate</span>';
+      var mCell = '<input id="mrg-'+q.id+'-'+idx+'" class="rate" style="width:46px;" type="text" placeholder="%" value="'+(it.staffMargin!=null?it.staffMargin:'')+'" oninput="setItemMargin(\''+q.id+'\','+idx+',this.value)" />';
+      var rCell = fin!=null? fmt(fin) : '<span class="pending">—</span>';
+      var aCell = fin!=null? fmt(fin*it.qty) : '<span class="pending">—</span>';
+      h += '<tr><td>'+sno+'</td><td>'+esc(it.desc)+'</td><td class="r">'+it.qty+'</td><td class="r">'+baseCell+'</td><td class="r">'+mCell+'</td><td class="r">'+rCell+'</td><td class="r">'+aCell+'</td></tr>';
+    });
+  });
+  h+='</tbody></table>';
+  return { html:h, total: anyComputed? total : null };
+}
+function ownerStrip(q){
+  var msg = esc(buildAdminMessage(q)).replace(/\n/g,'<br />');
+  var extra = q.assignedTo ? '<br />New company → assigned to <b>'+esc(q.assignedTo)+'</b>' : '';
+  return '<div class="ownerstrip"><div class="os-h"><i class="ti ti-user-star" aria-hidden="true"></i> From the admin</div>'
+       + '<div class="os-b"><b>'+msg+'</b>'+extra+'</div></div>';
+}
+function convPanel(q){
+  var h = '<button class="btn-print" onclick="printEnquiry(\''+q.id+'\')"><i class="ti ti-printer" aria-hidden="true"></i> Print enquiry</button>';
+  h += enquiryPreview(q);
+  h += '<a class="gm-link" style="margin-top:10px;"><i class="ti ti-mail" aria-hidden="true"></i> View in Gmail</a>';
+  h += '<div class="conv-h"><i class="ti ti-messages" style="font-size:15px;color:var(--tx1);" aria-hidden="true"></i><span class="ct">Conversation</span>'
+     + '<button class="conv-check"><i class="ti ti-refresh" style="font-size:11px;" aria-hidden="true"></i> Check for replies</button></div>';
+  if(q.status==='sent'){
+    h += '<div class="pill teal" style="display:block;text-align:center;padding:8px;margin-bottom:10px;"><i class="ti ti-check" aria-hidden="true"></i> Quote sent to customer</div>';
+  } else {
+    h += '<button class="btn-send" onclick="trySend(\''+q.id+'\')"><i class="ti ti-mail" aria-hidden="true"></i> Send quote to customer</button>';
+  }
+  if(q.sendMsg) h += '<div class="warnline"><i class="ti ti-alert-triangle" aria-hidden="true"></i> '+esc(q.sendMsg)+'</div>';
+  h += '<div class="reply-lbl">Reply to customer</div><textarea rows="2" placeholder="Type your reply…"></textarea>'
+     + '<button style="width:100%;margin-top:6px;font-size:12px;"><i class="ti ti-send" aria-hidden="true"></i> Send reply</button>';
+  return h;
+}
+function quoteCard(q){
+  var open = expandedId===q.id && q.status!=='regretted';
+  var flash = q.justMoved?' flash':''; q.justMoved=false;
+  var h = '<div class="card'+(open?' open':'')+flash+'">';
+  h += '<div class="qrow" onclick="toggleCard(\''+q.id+'\')">'
+     + '<i class="ti ti-folder'+(open?'-open':'')+'" style="font-size:15px;color:var(--tx2);" aria-hidden="true"></i>'
+     + '<span class="t'+(q.status==='regretted'?'" style="color:var(--tx2);text-decoration:line-through;':'')+'">'+esc(q.company)+' - '+esc(q.contact)+' - '+esc(q.qno)+'</span>'
+     + statusPill(q)
+     + (q.note&&q.note.trim()&&q.status!=='regretted'? '<span class="pill amber"><i class="ti ti-note" aria-hidden="true"></i> Admin note</span>':'')
+     + (q.assignedTo? '<span class="pill blue">Assigned to '+esc(q.assignedTo)+'</span>':'')
+     + (q.status==='regretted'? '<button class="linky" style="margin-left:auto;" onclick="event.stopPropagation();undoRegret(\''+q.id+'\')">Undo</button>'
+        : '<i class="ti ti-chevron-'+(open?'up':'down')+'" style="margin-left:auto;color:var(--tx2);" aria-hidden="true"></i>')
+     + '</div>';
+  if(open){
+    var tbl = itemsTable(q);
+    h += '<div class="qtabs"><span class="qtab on">Quote</span><span class="qtab">Freight</span><span class="qtab">History</span></div>';
+    h += '<div class="qsplit"><div class="qleft">';
+    h += (q.status==='awaiting')
+       ? '<div class="waitstrip"><i class="ti ti-clock" aria-hidden="true"></i> Not sent from the margins desk yet — sending will warn.</div>'
+       : ownerStrip(q);
+    h += headerGrid(q) + tbl.html;
+    h += '<div class="totalbar">Total: '+(tbl.total!=null?fmt(tbl.total):'—')+'</div>';
+    h += '<div class="terms"><h4>TERMS AND CONDITIONS</h4><div class="tline">1. GST: Exclusive rate of GST is 18% or 9% + 9%<br />2. Delivery: confirmed at finalisation. &nbsp; 3. Payment: Immediate / L.C. &nbsp; 4. Price basis: Ex-Godown &nbsp; 5. Freight: Extra</div></div>';
+    h += '</div><div class="qright">'+convPanel(q)+'</div></div>';
+  }
+  h += '</div>';
+  return h;
+}
+
+function modalHtml(){
+  if(modal.kind==='regret'){
+    var q=byId(modal.id);
+    return '<div class="overlay" onclick="if(event.target===this){modal=null;render();}"><div class="modal">'
+      + '<h3><i class="ti ti-ban" style="color:var(--red-tx);" aria-hidden="true"></i> Regret &amp; send reply</h3>'
+      + '<p>This sends the reply below to <b>'+esc(q.company)+'</b> in the same email thread, and moves the quote out of the active list.</p>'
+      + '<div class="enq" style="max-height:220px;">'+esc(REGRET_EMAIL)+'</div>'
+      + '<div class="acts"><button onclick="modal=null;render();">Cancel</button>'
+      + '<button class="btn-regret" onclick="doRegret(\''+q.id+'\')"><i class="ti ti-mail" aria-hidden="true"></i> Send regret</button></div></div></div>';
+  }
+  if(modal.kind==='staff'){
+    var rows = STAFF.length
+      ? STAFF.map(function(name,i){ return '<div class="staffrow"><span>'+esc(name)+'</span><button class="staffdel" onclick="deleteStaff('+i+')" aria-label="Delete '+esc(name)+'"><i class="ti ti-x" aria-hidden="true"></i></button></div>'; }).join('')
+      : '<div class="qmeta" style="padding:8px 0;">No staff yet — add one below.</div>';
+    return '<div class="overlay" onclick="if(event.target===this){modal=null;render();}"><div class="modal">'
+      + '<h3><i class="ti ti-users" aria-hidden="true"></i> Manage staff</h3>'
+      + '<p>These names fill every “Assign to” list. Deleting one removes it everywhere.</p>'
+      + '<div>'+rows+'</div>'
+      + '<div style="display:flex;gap:8px;margin-top:12px;"><input id="staff-add-input" placeholder="Add a name" style="flex:1;" onkeydown="if(event.key===\'Enter\')addStaffName()" /><button onclick="addStaffName()"><i class="ti ti-plus" aria-hidden="true"></i> Add</button></div>'
+      + '<div class="acts"><button onclick="modal=null;render();">Done</button></div></div></div>';
+  }
+  if(modal.kind==='sendWarn'){
+    return '<div class="overlay" onclick="if(event.target===this){modal=null;render();}"><div class="modal"><h3><i class="ti ti-alert-triangle" style="color:var(--amber-tx);" aria-hidden="true"></i> Not sent by the admin yet</h3>'
+      + '<p>The admin hasn’t sent this from the margins desk, so the margins may not be set. You can still send in an emergency — but the rates may not be final.</p>'
+      + '<div class="acts"><button onclick="modal=null;render();">Wait for admin</button><button class="btn-regret" onclick="sendAnyway()">Send anyway</button></div></div></div>';
+  }
+  if(modal.kind==='img'){
+    var qi=byId(modal.id);
+    return '<div class="overlay" onclick="if(event.target===this){modal=null;render();}"><div class="modal" style="width:auto;max-width:92vw;"><h3><i class="ti ti-photo" aria-hidden="true"></i> Enquiry image — '+esc(qi.company)+'</h3>'
+      + '<div class="pimg">'+esc(qi.enquiryImage)+'</div><div class="acts"><button onclick="modal=null;render();">Close</button></div></div></div>';
+  }
+  if(modal.kind==='file'){
+    var qf=byId(modal.id), f=qf.files[modal.idx]||{};
+    var body = f.kind==='image'
+      ? '<div class="pimg">'+esc(f.content||qf.enquiryImage||'')+'</div>'
+      : '<div class="filedoc">'+esc(f.content||'(file preview not available in this demo)')+'</div>';
+    return '<div class="overlay" onclick="if(event.target===this){modal=null;render();}"><div class="modal" style="width:auto;min-width:360px;max-width:92vw;">'
+      + '<h3><i class="ti ti-'+(f.kind==='image'?'photo':'file-text')+'" aria-hidden="true"></i> '+esc(f.name||'File')+'</h3>'+body
+      + '<div class="acts"><button onclick="modal=null;render();">Close</button></div></div></div>';
+  }
+  if(modal.kind==='print'){
+    var q=byId(modal.id);
+    var filesHtml = (q.files&&q.files.length)
+      ? q.files.map(function(f){
+          var c = f.content || (f.kind==='image'?q.enquiryImage:'');
+          var label = '<div class="pfile"><i class="ti ti-'+(f.kind==='image'?'photo':'file-text')+'" aria-hidden="true"></i> '+esc(f.name)+'</div>';
+          if(!c) return label;
+          return label + (f.kind==='image' ? '<div class="pimg">'+esc(c)+'</div>' : '<div class="filedoc" style="max-height:none;box-shadow:none;">'+esc(c)+'</div>');
+        }).join('')
+      : '<div class="pbody" style="color:var(--tx2);">No files attached.</div>';
+    return '<div class="overlay" onclick="if(event.target===this){modal=null;render();}"><div class="modal printmodal">'
+      + '<h3 class="proto-noprint"><i class="ti ti-printer" aria-hidden="true"></i> Print enquiry — preview</h3>'
+      + '<div class="psheet" id="printsheet">'
+        + '<h2>Enquiry — '+esc(q.company)+'</h2>'
+        + '<div class="pmeta">'+esc(q.contact)+' &middot; '+esc(q.qno)+' &middot; '+esc(q.date)+'</div>'
+        + '<div class="psec">Message from the admin</div><div class="pnote">'+esc(buildAdminMessage(q)).replace(/\n/g,'<br />')+'</div>'
+        + '<div class="psec">Enquiry message</div><div class="pbody">'+esc(q.enquiry)+'</div>'
+        + '<div class="psec">Attached files</div>'+filesHtml
+      + '</div>'
+      + '<div class="acts"><button onclick="modal=null;render();">Close</button><button style="background:var(--navy);color:#fff;border:none;" onclick="doPrint()"><i class="ti ti-printer" aria-hidden="true"></i> Print</button></div></div></div>';
+  }
+  return '';
+}
+
+seed(); render();
+</script>
+</body>
+</html>

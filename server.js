@@ -296,6 +296,19 @@ async function uploadEnquiryFileToOpenAI(uploadedFile) {
     return file.id;
 }
 
+// Size-disambiguation rules sent alongside the rate files. In the normalized size
+// notation ("1 1/4" → "11/4") a compound size literally CONTAINS the plain fraction
+// ("11/2X160" contains "1/2X160"), which once made GPT quote 1/2" Sch 160 for a
+// 1-1/2" Sch 160 item. The NB/OD cross-check makes the two rows impossible to confuse
+// (every size has a unique NB/OD in the price sheets). Complements — never overrides —
+// the configurable system instructions (sheet choice + price-column rules live there).
+const SIZE_MATCHING_RULES = `
+SIZE MATCHING RULES — apply when reading rate-file rows:
+- A fraction with a leading whole number is a COMPOUND size: "11/2", "1 1/2", "1-1/2" all mean ONE AND A HALF inch (1.5") — never half inch. Likewise "11/4" = 1.25", "21/2" = 2.5", "31/2" = 3.5".
+- Convert BOTH the enquiry size and the candidate row's size to decimal inches; use the row only when they are EXACTLY equal.
+- VERIFY the match against the row's NB and/or OD columns: 1/2"=15NB/21.3mm, 3/4"=20NB/26.7, 1"=25NB/33.4, 1-1/4"=32NB/42.2, 1-1/2"=40NB/48.3, 2"=50NB/60.3, 2-1/2"=65NB/73, 3"=80NB/88.9, 3-1/2"=90NB/101.6, 4"=100NB/114.3, 5"=125NB/141.3, 6"=150NB/168.3, 8"=200NB/219.1. If the NB/OD does not agree with the size you identified, you are reading the WRONG ROW — re-match.
+- Sanity check before returning: within the same pipe type and the same schedule/class, the rate always INCREASES with size. If a larger pipe came out cheaper than a smaller one, a row was misread — re-match those items.`;
+
 async function handleGenerateQuotation({ emailContent, fileContent, instructions, enquiryFileId, enquiryFileIds, enquiryImageDataUrl }, res) {
     try {
         const hasEnquiryFile = enquiryFileId || (enquiryFileIds && enquiryFileIds.length > 0);
@@ -432,7 +445,7 @@ async function handleGenerateQuotation({ emailContent, fileContent, instructions
             return `"${name}"`;
         });
         const rateFileListText = uploadedFileNames.length > 0
-            ? ` RATE FILE RULES — you MUST follow these exactly:\n${fileTypeRules.map((r, i) => `  File ${i + 1}: ${r}`).join('\n')}\nLook at the filename of each rate file to identify its pipe type, then use ONLY that file for matching items of that type. NEVER use GI rates for ERW pipes, ERW rates for GI pipes, or mix any other types. If an item's pipe type is ambiguous, infer it from keywords in its description (e.g. "GI", "galvanised", "ERW", "seamless").`
+            ? ` RATE FILE RULES — you MUST follow these exactly:\n${fileTypeRules.map((r, i) => `  File ${i + 1}: ${r}`).join('\n')}\nLook at the filename of each rate file to identify its pipe type, then use ONLY that file for matching items of that type. NEVER use GI rates for ERW pipes, ERW rates for GI pipes, or mix any other types. If an item's pipe type is ambiguous, infer it from keywords in its description (e.g. "GI", "galvanised", "ERW", "seamless").\n${SIZE_MATCHING_RULES}`
             : '';
 
         // The detailed extraction rules (JSON shape, kg/meter, sizing, sheet selection, etc.) live

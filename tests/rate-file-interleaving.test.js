@@ -140,3 +140,48 @@ describe('rate-file interleaving in the OpenAI request', () => {
         expect(new Set(labels).size).toBe(3);
     });
 });
+
+describe('size-matching rules in the OpenAI request', () => {
+    // THE BUG THIS GUARDS AGAINST: in the normalized size notation a compound
+    // size contains the plain fraction ("11/2X160" contains "1/2X160"), and GPT
+    // once quoted the 1/2" Sch 160 price for a 1-1/2" Sch 160 item. The prompt
+    // must carry disambiguation rules (decimal-inch equality + NB/OD row check
+    // + price-increases-with-size sanity check) whenever rate files are attached.
+    beforeEach(() => {
+        jest.clearAllMocks();
+        jest.spyOn(storage, 'getAllRateMappings').mockResolvedValue(FAKE_MAPPINGS);
+        mockOpenAICreate.mockResolvedValue({ output_text: JSON.stringify({ lineItems: [] }) });
+    });
+
+    afterEach(() => jest.restoreAllMocks());
+
+    async function getPromptText() {
+        await request(app).post('/api/generate-quotation')
+            .send({ emailContent: '1-1/2 inch sch 160 seamless pipe', instructions: 'extract' });
+        const content = getUserContent();
+        return content[0].text; // the prompt text part (before enquiry files / rate files)
+    }
+
+    test('the prompt carries the SIZE MATCHING RULES block', async () => {
+        const text = await getPromptText();
+        expect(text).toContain('SIZE MATCHING RULES');
+    });
+
+    test('compound sizes are spelled out as NOT the plain fraction', async () => {
+        const text = await getPromptText();
+        expect(text).toContain('ONE AND A HALF inch');
+        expect(text).toMatch(/never half inch/i);
+        expect(text).toContain('"11/4" = 1.25"');
+    });
+
+    test('the NB/OD cross-check distinguishes 1/2" from 1-1/2"', async () => {
+        const text = await getPromptText();
+        expect(text).toContain('1/2"=15NB/21.3mm');
+        expect(text).toContain('1-1/2"=40NB/48.3');
+    });
+
+    test('the price-increases-with-size sanity check is present', async () => {
+        const text = await getPromptText();
+        expect(text).toMatch(/rate always INCREASES with size/);
+    });
+});

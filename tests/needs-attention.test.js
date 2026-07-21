@@ -157,6 +157,29 @@ describe('statusPill — the coloured status chip markup', () => {
     });
 });
 
+describe('admin margin-allocation states (adminStatus)', () => {
+    test('awaiting -> red "Awaiting margin" pill, before review states', () => {
+        expect(statusPill({ adminStatus: 'awaiting' })).toBe('<span class="q-pill q-awaiting">Awaiting margin</span>');
+        // even a reviewed/sent quote still shows awaiting while on the desk
+        expect(statusPill({ adminStatus: 'awaiting', saved: true })).toBe('<span class="q-pill q-awaiting">Awaiting margin</span>');
+    });
+    test('regretted -> gray pill, wins over everything', () => {
+        expect(statusPill({ adminStatus: 'regretted', sent: true })).toBe('<span class="q-pill q-regretted">Regretted</span>');
+    });
+    test('regretted quotes are never flagged needs-attention', () => {
+        expect(needsAttention({ adminStatus: 'regretted', custReplyPending: true })).toBe(false);
+    });
+    test('awaiting/regretted give staff no live action (the admin desk owns them)', () => {
+        expect(determineLiveAction({ adminStatus: 'awaiting' })).toBeNull();
+        expect(determineLiveAction({ adminStatus: 'regretted' })).toBeNull();
+    });
+    test('quotes without adminStatus (all existing quotes) behave exactly as before', () => {
+        expect(statusPill({})).toBe('<span class="q-pill q-new">New</span>');
+        expect(statusPill({ sent: true })).toBe('<span class="q-pill q-sent">&#10003; Sent</span>');
+        expect(determineLiveAction({})).toEqual({ label: 'Review', key: 'review' });
+    });
+});
+
 describe('source guard — needs-attention wiring in the approval list', () => {
     test('the list computes needsAttn and renders the red badge + folder class', () => {
         expect(html).toContain("const needsAttn = (typeof needsAttention === 'function') && needsAttention(quotation);");

@@ -257,6 +257,8 @@
         .q-pill.q-sent { background: #E6F1FB; color: #0C447C; }
         .q-pill.q-revised { background: #EEEDFE; color: #26215C; }
         .q-pill.q-reply { background: #FBEAF0; color: #993556; }
+        .q-pill.q-awaiting { background: #FCEBEB; color: #791F1F; }
+        .q-pill.q-regretted { background: #f1f1f1; color: #9b988e; border: 1px solid #e0e0e0; }
         .thread-messages { max-height: 320px; overflow-y: auto; }
         /* Real-time recipient autocomplete (Gmail-style) */
         .contact-dd { position: absolute; top: 100%; left: 0; right: 0; z-index: 10; background: #fff; border: 1px solid #ddd; border-radius: 6px; margin-top: 2px; max-height: 220px; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
@@ -5971,10 +5973,34 @@
                     erw: defaultMarginsByPipeType.erw || '',
                     gi: defaultMarginsByPipeType.gi || '',
                     seamless: defaultMarginsByPipeType.seamless || ''
-                }
+                },
+                // Admin margin-allocation flow: new drafts wait on the admin desk.
+                adminStatus: 'awaiting',
+                adminNote: '',
+                itemSummary: buildItemSummaryForQuote(structuredLineItems)
             };
 
             return quotationData;
+        }
+
+        // Browser copy of utils/calculations.js buildItemSummary (kept in sync):
+        // tiny {count, types, noRate} summary so the admin desk renders without
+        // fetching full line items.
+        function buildItemSummaryForQuote(lineItems) {
+            const items = Array.isArray(lineItems) ? lineItems : [];
+            const types = [];
+            let noRate = 0;
+            items.forEach(function(item) {
+                const value = String((item && item.identifiedPipeType) || '').toLowerCase();
+                let bucket = '';
+                if (value.includes('seamless')) bucket = 'Seamless';
+                else if (value.includes('gi') || value.includes('galvan')) bucket = 'GI';
+                else if (value.includes('erw')) bucket = 'ERW';
+                if (bucket && types.indexOf(bucket) === -1) types.push(bucket);
+                const rate = parseFloat(item && item.unitRate);
+                if (!Number.isFinite(rate) || rate <= 0) noRate++;
+            });
+            return { count: items.length, types: types, noRate: noRate };
         }
 
         function addQuotationToApprovedQuotations(quotationData) {
@@ -6523,6 +6549,7 @@
         }
         function needsAttention(q) {
             if (!q) return false;
+            if (q.adminStatus === 'regretted') return false;   // closed — nothing to do
             // New / unreviewed quotes are intentionally NOT flagged (can be ignored).
             if (q.custReplyPending) return true;          // customer replied
             if (q.revised && !q.resent) return true;      // revised, not resent
@@ -6538,12 +6565,16 @@
             return '';
         }
         function determineLiveAction(q) {
+            if (q && (q.adminStatus === 'regretted' || q.adminStatus === 'awaiting')) return null;   // admin's desk, not staff's
             if (!quotationReviewed(q)) return { label: 'Review', key: 'review' };
             if (q.revised && !q.resent) return { label: 'Resend', key: 'resend' };
             if (q.custReplyPending) return { label: 'Reply', key: 'reply' };
             return null;
         }
         function statusPill(q) {
+            // Admin margin-allocation states come first — they precede review.
+            if (q && q.adminStatus === 'regretted') return '<span class="q-pill q-regretted">Regretted</span>';
+            if (q && q.adminStatus === 'awaiting') return '<span class="q-pill q-awaiting">Awaiting margin</span>';
             if (!quotationReviewed(q)) return '<span class="q-pill q-new">New</span>';
             if (q.custReplyPending) return '<span class="q-pill q-reply">Customer replied</span>';
             if (q.revised) return '<span class="q-pill q-revised">Revised</span>';

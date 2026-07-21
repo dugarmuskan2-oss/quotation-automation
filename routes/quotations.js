@@ -28,6 +28,8 @@ const SUMMARY_NESTED_PATHS = [
     'assignedTo', 'checkedBy', 'emailLink',
     'gmailMessageId', 'billTo', 'shipTo', 'grandTotal', '#snt',
     '#eva', '#rev', '#crp',
+    // Admin margin-allocation flow (desk renders from the list summary alone)
+    'adminStatus', 'adminNote', 'itemSummary', 'isNewCompany', 'regretSentAt',
 ];
 const SUMMARY_PROJECTION = [
     'id', 'updatedAt', 'createdAt',

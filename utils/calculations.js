@@ -95,4 +95,31 @@ function calculateLineItem(item) {
     };
 }
 
-module.exports = { createLineItemId, parseFlexibleNumber, calculateLineItem };
+/** Map a free-text pipe-type string to its bucket: 'Seamless' | 'GI' | 'ERW' | ''. */
+function pipeTypeBucket(pipeTypeText) {
+    const value = String(pipeTypeText || '').toLowerCase();
+    if (value.includes('seamless')) return 'Seamless';
+    if (value.includes('gi') || value.includes('galvan')) return 'GI';
+    if (value.includes('erw')) return 'ERW';
+    return '';
+}
+
+/**
+ * Tiny derived summary of a quote's line items, stored on the quotation so the
+ * admin "Margins to allocate" desk can render without fetching full line items.
+ * Shape: { count, types: ['Seamless','ERW',...], noRate }
+ */
+function buildItemSummary(lineItems) {
+    const items = Array.isArray(lineItems) ? lineItems : [];
+    const types = [];
+    let noRate = 0;
+    items.forEach(item => {
+        const bucket = pipeTypeBucket(item && item.identifiedPipeType);
+        if (bucket && types.indexOf(bucket) === -1) types.push(bucket);
+        const rate = parseFloat(item && item.unitRate);
+        if (!Number.isFinite(rate) || rate <= 0) noRate++;
+    });
+    return { count: items.length, types, noRate };
+}
+
+module.exports = { createLineItemId, parseFlexibleNumber, calculateLineItem, pipeTypeBucket, buildItemSummary };

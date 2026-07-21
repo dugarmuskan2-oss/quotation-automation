@@ -5,6 +5,7 @@
 
 const { buildTableHTMLFromLineItems, buildHeaderHTMLFromQuotation } = require('./htmlBuilder');
 const { getAllPdfAttachments, getAllExcelAttachments, getAllWordAttachments, getAllImageAttachments } = require('./attachmentUtils');
+const { buildItemSummary } = require('../utils/calculations');
 
 /**
  * Default Gmail inbox URL template. Use 0 for first account.
@@ -66,7 +67,12 @@ function buildQuotationToSave({ aiResult, quoteNumber, termsText, emailContent, 
         emailContentHtml: emailContentHtml || '',
         emailLink: emailLink || (gmailMessageId ? GMAIL_INBOX_URL + gmailMessageId : ''),
         gmailMessageId: gmailMessageId || '',
-        saved: false
+        saved: false,
+        // Admin margin-allocation flow: new enquiries wait on the admin desk
+        // until margins are allocated (adminStatus -> 'ready') or regretted.
+        adminStatus: 'awaiting',
+        adminNote: '',
+        itemSummary: buildItemSummary(aiResult.lineItems || [])
     };
 }
 
