@@ -1,8 +1,35 @@
 # Session handoff — unified per-quote flow rebuild
 
-> **Point-in-time state** (last updated 3 Jul 2026). Pairs with `UNIFIED-QUOTE-FLOW-PLAN.md`
+> **Point-in-time state** (last updated 21 Jul 2026). Pairs with `UNIFIED-QUOTE-FLOW-PLAN.md`
 > (the roadmap/design) — this file is the *current state*: what's built, git state, and what's
 > pending. Read both when picking this up in a new session.
+
+## NEW (21 Jul): Admin margin-allocation flow — BUILT on `Testing-other-features`, NOT yet on main
+Signed-off prototype: `prototypes/margin-allocation-demo.html`. Commits `da54bae`..HEAD:
+- **Margins-to-allocate desk** above the approval list (`#marginDeskSection`, `renderMarginDesk` in
+  `index.html`): quotes born with `adminStatus:'awaiting'` (both birth points: gmail-ingest
+  `buildQuotationToSave` + `buildQuotationData`). Per-type margin controls (Seamless: Price list /
+  Cost + %; ERW & GI: Cost + %), notes for staff, New company? + Assign-to (shared editable
+  **staff list**: `CONFIG_KEY_STAFF_LIST` + save/get in `routes/config.js`, editor in Configuration).
+- **Send to approval** → `POST /api/quotations/:id/apply-admin-margins` (server-side stamp via
+  `utils/calculations.js stampAdminMargins`, rebuilds tableHTML with the ingest builder,
+  `adminStatus:'ready'`). Card shows amber **"From the admin"** strip (`buildAdminMessage`).
+  Seamless cost-mode uses `costRate` per item when the AI extracted it, else falls back to unitRate
+  (⚠ AI extraction of costRate NOT yet added to instructions — margins still stamp correctly).
+- **Regret** → sends the FIXED regret reply in-thread (`mdkRegret`, uses `/api/send-email`
+  replyToMessageId) then `POST /api/quotations/:id/regret` (undo supported). No-thread quotes are
+  marked only. ⚠ Live email send untested (needs a real enquiry; transport = the tested send route).
+- **Enquiry attachments retained at ingest** (`persistEnquiryAttachments` → storage `enquiries/`
+  prefix, go-forward only) + `GET /api/view-enquiry-file` (in `routes/rates.js`) + clickable chips
+  + **Print enquiry** button (admin message first, then enquiry, then files).
+- **Enquiry register**: `GET /api/enquiry-register` (X-Ingest-Secret; REGRET/SENT/PENDING rows) +
+  `apps-script/EnquiryRegister.gs` (fills month tabs, per-day totals, includes unquoted
+  "Enquiry Client" emails as PENDING; menu + daily-7am trigger). ⚠ Owner must paste the script into
+  the register Sheet + set Script Properties (APP_URL, INGEST_SECRET).
+- Also: removed leftover debug-telemetry fetches (127.0.0.1:7704) from the default-margin functions.
+- Verified: full jest suite 22/551 green; desk/apply/regret round-tripped against a throwaway DB
+  quote (deleted after); register endpoint returned 277 real rows. Local `.env` IS S3-active
+  (bucket `quotationauto`, shared with prod — careful with test writes).
 
 ## The big effort
 Unify the three tools (Weight Calculator, Enquiry Preparer, Quotation approval) into **one

@@ -30,6 +30,7 @@ const SUMMARY_NESTED_PATHS = [
     '#eva', '#rev', '#crp',
     // Admin margin-allocation flow (desk renders from the list summary alone)
     'adminStatus', 'adminNote', 'itemSummary', 'isNewCompany', 'regretSentAt',
+    'preparedBy',
 ];
 const SUMMARY_PROJECTION = [
     'id', 'updatedAt', 'createdAt',
@@ -349,6 +350,72 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName })
         } catch (error) {
             console.error('Error looking up quotation by number:', error);
             res.status(500).json({ error: 'Failed to lookup quotation', details: error.message });
+        }
+    });
+
+    // ── Enquiry register (Google Sheet mirror) ───────────────────────────────
+    // Feeds the Apps Script that fills the register sheet. Secured with the
+    // same X-Ingest-Secret the Gmail ingest uses. Status: REGRET | SENT | PENDING.
+
+    function registerStatusOf(q) {
+        if (q.adminStatus === 'regretted') return 'REGRET';
+        if (q.sent) return 'SENT';
+        return 'PENDING';
+    }
+
+    function registerRowOf(q) {
+        return {
+            quoteNumber: q.quoteNumber || '',
+            enquiryDate: q.createdAt || q.updatedAt || '',
+            status: registerStatusOf(q),
+            company: q.companyName || q.projectName || '',
+            contact: q.customerName || '',
+            preparedBy: q.preparedBy || '',
+            gmailMessageId: q.gmailMessageId || '',
+        };
+    }
+
+    const REGISTER_MAX_ROWS = 2000;
+
+    router.get('/enquiry-register', async (req, res) => {
+        if (!requireDdb(res)) return;
+        const secret = process.env.INGEST_SECRET;
+        if (secret && req.headers['x-ingest-secret'] !== secret) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+        try {
+            const days = Math.min(400, Math.max(1, parseInt(req.query.days, 10) || 62));
+            const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+            const { QueryCommand } = require('@aws-sdk/lib-dynamodb');
+            const rows = [];
+            let startKey = null, pages = 0, reachedCutoff = false;
+            while (!reachedCutoff && rows.length < REGISTER_MAX_ROWS && pages < 30) {
+                const params = {
+                    TableName:                 ddbTableName,
+                    IndexName:                 QUOTATIONS_GSI_INDEX,
+                    KeyConditionExpression:    '#ent = :ent',
+                    ExpressionAttributeNames:  { ...SUMMARY_EXPR_NAMES, '#ent': '_entity' },
+                    ExpressionAttributeValues: { ':ent': ENTITY_QUOTATION },
+                    ScanIndexForward:          false,
+                    ProjectionExpression:      SUMMARY_PROJECTION,
+                    Limit:                     200,
+                };
+                if (startKey) params.ExclusiveStartKey = startKey;
+                const page = await ddbDocClient.send(new QueryCommand(params));
+                pages++;
+                (page.Items || []).forEach(item => {
+                    const q = quotationFromItem(item);
+                    if (!q) return;
+                    if ((q.updatedAt || '') < cutoff) { reachedCutoff = true; return; }
+                    if ((q.createdAt || q.updatedAt || '') >= cutoff) rows.push(registerRowOf(q));
+                });
+                startKey = page.LastEvaluatedKey || null;
+                if (!startKey) break;
+            }
+            res.json({ rows, days, generatedAt: new Date().toISOString() });
+        } catch (error) {
+            console.error('Error building enquiry register:', error);
+            res.status(500).json({ error: 'Failed to build enquiry register', details: error.message });
         }
     });
 
