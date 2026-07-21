@@ -122,4 +122,45 @@ function buildItemSummary(lineItems) {
     return { count: items.length, types, noRate };
 }
 
-module.exports = { createLineItemId, parseFlexibleNumber, calculateLineItem, pipeTypeBucket, buildItemSummary };
+/** Normalize an admin margin pct ('' | number-ish) to a finite number or 0. */
+function adminPct(value) {
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+/**
+ * Stamp the admin's per-pipe-type margin decisions onto line items.
+ * adminMargins shape: { seamless: {mode:'price'|'cost', pct}, erw: {pct}, gi: {pct} }
+ *  - Seamless 'price' mode: quote at the price-list rate (margin 0 — the list
+ *    price already carries margin).
+ *  - Seamless 'cost' mode: base becomes costRate when the AI extracted one
+ *    (falls back to the existing unitRate), plus pct% margin.
+ *  - ERW / GI: unitRate is already the cost column, plus pct% margin.
+ * Items with an unknown pipe type or no rate are left for staff (margin set,
+ * rate awaited). Returns a NEW array; never mutates the input.
+ */
+function stampAdminMargins(lineItems, adminMargins) {
+    const margins = (adminMargins && typeof adminMargins === 'object') ? adminMargins : {};
+    return (Array.isArray(lineItems) ? lineItems : []).map(item => {
+        const bucket = pipeTypeBucket(item && item.identifiedPipeType);
+        const next = { ...item };
+        if (bucket === 'Seamless') {
+            const cfg = margins.seamless || {};
+            if (cfg.mode === 'cost') {
+                const costRate = parseFloat(next.costRate);
+                if (Number.isFinite(costRate) && costRate > 0) next.unitRate = String(costRate);
+                next.marginPercent = String(adminPct(cfg.pct));
+            } else {
+                next.marginPercent = '0';   // price list already includes margin
+            }
+        } else if (bucket === 'ERW' || bucket === 'GI') {
+            const cfg = margins[bucket.toLowerCase()] || {};
+            next.marginPercent = String(adminPct(cfg.pct));
+        } else {
+            return next;   // unknown type — staff decides (admin note carries intent)
+        }
+        return calculateLineItem(next);
+    });
+}
+
+module.exports = { createLineItemId, parseFlexibleNumber, calculateLineItem, pipeTypeBucket, buildItemSummary, stampAdminMargins };

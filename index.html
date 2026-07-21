@@ -259,6 +259,37 @@
         .q-pill.q-reply { background: #FBEAF0; color: #993556; }
         .q-pill.q-awaiting { background: #FCEBEB; color: #791F1F; }
         .q-pill.q-regretted { background: #f1f1f1; color: #9b988e; border: 1px solid #e0e0e0; }
+
+        /* ── Margins-to-allocate desk (admin) ─────────────────────────────── */
+        .mdk-head { display: flex; align-items: center; gap: 8px; margin: 4px 0 10px; }
+        .mdk-title { font-size: 16px; font-weight: 600; }
+        .mdk-count { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #FAEEDA; color: #633806; }
+        .mdk-hint { font-size: 12px; color: #9b988e; margin-left: auto; }
+        .mdk-card { background: #fff; border: 1px solid rgba(0,0,0,0.12); border-radius: 10px; margin-bottom: 8px; padding: 12px 14px; }
+        .mdk-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .mdk-name { font-size: 13px; font-weight: 600; }
+        .mdk-meta { font-size: 12px; color: #9b988e; }
+        .mdk-pill { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #FAEEDA; color: #633806; white-space: nowrap; }
+        .mdk-ctrl { margin-top: 10px; background: #f6f5f1; border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+        .mdk-mgrow { display: flex; align-items: center; gap: 10px; }
+        .mdk-mglabel { font-size: 12px; font-weight: 500; color: #6e6c65; width: 74px; flex-shrink: 0; }
+        .mdk-seg { display: inline-flex; background: #fff; border: 1px solid rgba(0,0,0,0.1); border-radius: 8px; padding: 3px; gap: 2px; }
+        .mdk-seg button { border: none; height: 26px; padding: 0 12px; font-size: 12px; color: #6e6c65; border-radius: 6px; background: none; cursor: pointer; }
+        .mdk-seg button.on { background: #3b3f79; color: #fff; }
+        .mdk-costplus { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #6e6c65; }
+        .mdk-costplus input { width: 54px; height: 30px; text-align: center; padding: 0; border: 1px solid #ccc; border-radius: 6px; }
+        .mdk-note-lbl { font-size: 12px; color: #6e6c65; margin: 10px 0 4px; }
+        .mdk-note { width: 100%; box-sizing: border-box; border: 1px solid #ccc; border-radius: 6px; padding: 8px 10px; font-size: 13px; font-family: inherit; line-height: 1.5; }
+        .mdk-apply { background: #1D9E75; color: #fff; border: none; border-radius: 8px; padding: 7px 14px; font-size: 13px; font-weight: 500; cursor: pointer; }
+        .mdk-apply:hover { background: #0F6E56; }
+        .mdk-regret { background: none; color: #A32D2D; border: 1px solid #F7C1C1; border-radius: 8px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+        .mdk-regret:hover { background: #FCEBEB; }
+        .mdk-enq-h { font-size: 10px; letter-spacing: 0.03em; text-transform: uppercase; color: #9b988e; margin: 12px 0 5px; }
+        .mdk-enq { background: #f6f5f1; border: 1px solid rgba(0,0,0,0.08); border-radius: 8px; padding: 9px 10px; font-size: 12px; color: #6e6c65; line-height: 1.55; max-height: 140px; overflow: auto; white-space: pre-wrap; }
+        .mdk-manage { background: none; border: none; padding: 0; font-size: 12px; color: #0C447C; text-decoration: underline; cursor: pointer; }
+        .mdk-admin-strip { background: #FAEEDA; border-radius: 8px; padding: 9px 12px; margin-bottom: 12px; }
+        .mdk-admin-strip .h { font-size: 12px; font-weight: 600; color: #633806; margin-bottom: 3px; }
+        .mdk-admin-strip .b { font-size: 12px; color: #854F0B; line-height: 1.6; white-space: pre-wrap; }
         .thread-messages { max-height: 320px; overflow-y: auto; }
         /* Real-time recipient autocomplete (Gmail-style) */
         .contact-dd { position: absolute; top: 100%; left: 0; right: 0; z-index: 10; background: #fff; border: 1px solid #ddd; border-radius: 6px; margin-top: 2px; max-height: 220px; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
@@ -1298,6 +1329,8 @@
         <!-- Approval Section (shows all approved quotations) -->
         <div id="approvalSection" class="quotation-section">
             <h2>Approval</h2>
+            <!-- Margins to allocate — the admin desk. Shown only when quotes are awaiting. -->
+            <div id="marginDeskSection" style="display:none; margin-bottom: 18px;"></div>
             <div style="margin-bottom: 10px;">
                 <input
                     type="text"
@@ -6230,6 +6263,14 @@
                 const needsBadgeHTML = needsAttn
                     ? `<span class="saved-badge needs-attention-badge">Needs attention: ${needsAttentionReason(quotation)}</span>`
                     : '';
+                // Admin margin-allocation states + note chip
+                const isRegretted = quotation.adminStatus === 'regretted';
+                const adminStateBadgeHTML = isRegretted
+                    ? `<span class="q-pill q-regretted">Regretted${quotation.regretSentAt ? ' · reply sent' : ''}</span> <a href="#" class="gmail-link" style="font-size:12px;" onclick="event.preventDefault(); event.stopPropagation(); mdkUndoRegret(${JSON.stringify(String(quotation.id))});">Undo</a>`
+                    : (quotation.adminStatus === 'awaiting' ? '<span class="q-pill q-awaiting">Awaiting margin</span>' : '');
+                const adminNoteChipHTML = (!isRegretted && String(quotation.adminNote || '').trim())
+                    ? '<span class="mdk-pill">📝 Admin note</span>'
+                    : '';
 
                 // Show Approve button only if not saved yet
                 const approveButtonHTML = `<button class="save-btn" type="button" onclick="event.stopPropagation(); saveQuotation(${JSON.stringify(quotation.id)})">✅ Approve</button>`;
@@ -6245,7 +6286,9 @@
                         <div class="quotation-folder-header" onclick="toggleQuotationFolder(${JSON.stringify(quotation.id)})">
                             <span>
                                 <span class="folder-icon">📁</span>
-                                ${folderName}
+                                ${isRegretted ? `<s style="color:#9b988e;">${folderName}</s>` : folderName}
+                                ${adminStateBadgeHTML}
+                                ${adminNoteChipHTML}
                                 ${needsBadgeHTML}
                                 ${approvedBadgeHTML}
                                 ${assignedBadgeHTML}
@@ -6388,6 +6431,15 @@
                 ? `<button class="save-btn save-rev-btn" type="button" onclick="event.stopPropagation(); saveAsRevision(${JSON.stringify(quotation.id)})">🔖 Save as Revision</button>`
                 : '';
 
+            // "From the admin" strip — the compiled margin decisions + note left
+            // on the margins desk. Shown once the quote has been through it.
+            const adminMessage = (typeof buildAdminMessage === 'function') ? buildAdminMessage(quotation) : '';
+            const adminAssigned = (quotation.isNewCompany && quotation.assignedTo)
+                ? '\nNew company → assigned to ' + quotation.assignedTo : '';
+            const adminStripHTML = (quotation.adminStatus && quotation.adminStatus !== 'awaiting' && (adminMessage || adminAssigned))
+                ? `<div class="mdk-admin-strip"><div class="h">👤 From the admin</div><div class="b">${escapeHtml(adminMessage + adminAssigned)}</div></div>`
+                : '';
+
             return `
                 <div class="qtab-bar">
                     <button class="qtab" type="button" data-tab="quote">Quote</button>
@@ -6397,6 +6449,7 @@
                 <div class="qtab-content" data-tab="quote">
                 <div class="approval-layout">
                     <div class="approval-quotation">
+                            ${adminStripHTML}
                             ${quotation.headerHTML || ''}
                             ${quotation.tableHTML || ''}
                         <div class="freight-summary" style="display:none; margin-top: 6px; font-weight: bold; font-size: 14px;">
@@ -6634,6 +6687,245 @@
                 </div>`;
         }
 
+        /*
+            ============================================
+            MARGINS-TO-ALLOCATE DESK (admin)
+            ============================================
+            Quotes born with adminStatus 'awaiting' queue here. The admin sets the
+            margin per pipe type (Seamless: Price list / Cost + %; ERW & GI:
+            Cost + %), writes a note, marks new companies, then Sends to approval
+            (server stamps margins into the line items) or Regrets.
+        */
+
+        // Normalized in-memory margin controls for a desk quote, prefilled with
+        // the configured default margins the first time.
+        function adminMarginsOf(q) {
+            if (!q._adminMarginsDraft) {
+                const saved = (q.adminMargins && typeof q.adminMargins === 'object') ? q.adminMargins : {};
+                q._adminMarginsDraft = {
+                    seamless: { mode: (saved.seamless && saved.seamless.mode) || 'price', pct: (saved.seamless && saved.seamless.pct) || defaultMarginsByPipeType.seamless || '' },
+                    erw: { pct: (saved.erw && saved.erw.pct) || defaultMarginsByPipeType.erw || '' },
+                    gi: { pct: (saved.gi && saved.gi.pct) || defaultMarginsByPipeType.gi || '' }
+                };
+            }
+            return q._adminMarginsDraft;
+        }
+
+        // "Seamless: Cost + 5% · ERW: Cost + 3%" + the free-text note below it.
+        function buildAdminMessage(q) {
+            const m = (q.adminMargins && typeof q.adminMargins === 'object') ? q.adminMargins : null;
+            const types = (q.itemSummary && Array.isArray(q.itemSummary.types)) ? q.itemSummary.types : [];
+            const parts = [];
+            if (m) {
+                types.forEach(function(ty) {
+                    if (ty === 'Seamless') {
+                        const cfg = m.seamless || {};
+                        parts.push(cfg.mode === 'cost' ? ('Seamless: Cost + ' + (cfg.pct || '0') + '%') : 'Seamless: Price list');
+                    } else {
+                        const cfg = m[ty.toLowerCase()] || {};
+                        parts.push(ty + ': Cost + ' + (cfg.pct || '0') + '%');
+                    }
+                });
+            }
+            let msg = parts.join(' · ');
+            const note = String(q.adminNote || '').trim();
+            if (note) msg += (msg ? '\n' : '') + note;
+            return msg;
+        }
+
+        // Desk rows need the enquiry text, which the list summary doesn't carry —
+        // lazily hydrate the full quote once, then re-render the desk.
+        function ensureDeskEnquiryLoaded(q) {
+            if (q.emailContent !== undefined || q._deskLoading) return;
+            q._deskLoading = true;
+            fetch(`${API_BASE_URL}/quotations/${encodeURIComponent(q.id)}`)
+                .then(function(r) { return r.json(); })
+                .then(function(result) {
+                    if (result && result.quotation) Object.assign(q, result.quotation);
+                    q._deskLoaded = true;
+                    renderMarginDesk();
+                })
+                .catch(function(err) { console.error('Desk enquiry load failed:', err); });
+        }
+
+        function buildMarginDeskRow(q) {
+            const s = q.itemSummary || { count: 0, types: [], noRate: 0 };
+            const m = adminMarginsOf(q);
+            const idAttr = escapeHtml(String(q.id));
+            let h = '<div class="mdk-card" id="mdk-row-' + idAttr + '">';
+            h += '<div class="mdk-line"><span class="mdk-name">' + escapeHtml((q.companyName || q.projectName || 'Quotation') + ' - ' + (q.quoteNumber || '')) + '</span>'
+                + '<span class="mdk-meta">' + s.count + ' items · ' + (s.types.join(' + ') || '—') + '</span>'
+                + (s.noRate ? '<span class="mdk-pill">⚠ ' + s.noRate + ' item' + (s.noRate > 1 ? 's' : '') + ' not in price list</span>' : '')
+                + '<button type="button" class="mdk-regret" style="margin-left:auto;" onclick="mdkRegret(\'' + idAttr + '\')">🚫 Regret</button>'
+                + '<button type="button" class="mdk-apply" onclick="mdkSendToApproval(\'' + idAttr + '\')">→ Send to approval</button></div>';
+
+            // Per-type margin controls
+            h += '<div class="mdk-ctrl">';
+            s.types.forEach(function(ty) {
+                h += '<div class="mdk-mgrow"><span class="mdk-mglabel">' + escapeHtml(ty) + '</span>';
+                if (ty === 'Seamless') {
+                    h += '<span class="mdk-seg">'
+                        + '<button type="button" class="' + (m.seamless.mode !== 'cost' ? 'on' : '') + '" onclick="mdkSetMode(\'' + idAttr + '\',\'price\')">Price list</button>'
+                        + '<button type="button" class="' + (m.seamless.mode === 'cost' ? 'on' : '') + '" onclick="mdkSetMode(\'' + idAttr + '\',\'cost\')">Cost +</button></span>';
+                    if (m.seamless.mode === 'cost') {
+                        h += '<span class="mdk-costplus"><input type="text" value="' + escapeHtml(String(m.seamless.pct)) + '" placeholder="0" onchange="mdkSetPct(\'' + idAttr + '\',\'seamless\',this.value)"> %</span>';
+                    }
+                } else {
+                    const key = ty.toLowerCase();
+                    h += '<span class="mdk-costplus">Cost + <input type="text" value="' + escapeHtml(String(m[key].pct)) + '" placeholder="0" onchange="mdkSetPct(\'' + idAttr + '\',\'' + key + '\',this.value)"> %</span>';
+                }
+                h += '</div>';
+            });
+            h += '</div>';
+
+            // New company + assign
+            h += '<div class="mdk-line" style="margin-top:10px;">'
+                + '<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#6e6c65;cursor:pointer;">'
+                + '<input type="checkbox" style="width:14px;height:14px;" ' + (q.isNewCompany ? 'checked' : '') + ' onchange="mdkToggleNew(\'' + idAttr + '\',this)"> New company?</label>';
+            if (q.isNewCompany) {
+                h += '<select style="height:28px;font-size:12px;" onchange="mdkSetAssign(\'' + idAttr + '\',this.value)"><option value="">Assign to…</option>'
+                    + staffList.map(function(name) { return '<option ' + ((q.assignedTo || '') === name ? 'selected' : '') + '>' + escapeHtml(name) + '</option>'; }).join('')
+                    + '</select>'
+                    + '<button type="button" class="mdk-manage" onclick="mdkManageStaff()">⚙ Manage</button>'
+                    + '<span class="mdk-meta">becomes the owner in Bigin later</span>';
+            }
+            h += '</div>';
+
+            // Note for staff
+            h += '<div class="mdk-note-lbl">📝 Notes for staff <span style="color:#9b988e;">(optional — shown on the quote and the printed enquiry)</span></div>'
+                + '<textarea class="mdk-note" id="mdk-note-' + idAttr + '" rows="2" placeholder="e.g. Quote the 6&quot; ERW at Jindal list less 5%." onchange="mdkNoteChanged(\'' + idAttr + '\',this.value)">' + escapeHtml(q.adminNote || '') + '</textarea>';
+
+            // Enquiry preview (lazy)
+            h += '<div class="mdk-enq-h">Enquiry preview</div>';
+            if (q.emailContent === undefined) {
+                h += '<div class="mdk-enq">Loading enquiry…</div>';
+            } else {
+                const text = String(q.emailContent || '').trim();
+                h += '<div class="mdk-enq">' + (text ? escapeHtml(text) : '(no enquiry text)') + '</div>';
+            }
+            h += '</div>';
+            return h;
+        }
+
+        function renderMarginDesk() {
+            const section = document.getElementById('marginDeskSection');
+            if (!section) return;
+            const waiting = approvedQuotations.filter(function(q) { return q.adminStatus === 'awaiting'; });
+            if (!waiting.length) {
+                section.style.display = 'none';
+                section.innerHTML = '';
+                return;
+            }
+            section.style.display = 'block';
+            let h = '<div class="mdk-head"><span class="mdk-title">Margins to allocate</span>'
+                + '<span class="mdk-count">' + waiting.length + ' waiting</span>'
+                + '<span class="mdk-hint">only you use this section</span></div>';
+            waiting.forEach(function(q) { h += buildMarginDeskRow(q); });
+            section.innerHTML = h;
+            waiting.forEach(ensureDeskEnquiryLoaded);
+        }
+
+        // ── Desk event handlers ────────────────────────────────────────────────
+        function mdkQuote(id) { return approvedQuotations.find(function(q) { return idsMatch(q.id, id); }); }
+        function mdkSetMode(id, mode) { const q = mdkQuote(id); if (!q) return; adminMarginsOf(q).seamless.mode = mode; renderMarginDesk(); }
+        function mdkSetPct(id, key, value) { const q = mdkQuote(id); if (!q) return; adminMarginsOf(q)[key].pct = String(value || '').trim(); }
+        function mdkNoteChanged(id, value) { const q = mdkQuote(id); if (q) q.adminNote = value; }
+        function mdkToggleNew(id, el) { const q = mdkQuote(id); if (!q) return; q.isNewCompany = !!el.checked; if (!q.isNewCompany) q.assignedTo = ''; renderMarginDesk(); }
+        function mdkSetAssign(id, value) { const q = mdkQuote(id); if (q) q.assignedTo = value; }
+        function mdkManageStaff() {
+            const chips = document.getElementById('staffListChips');
+            if (chips) chips.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        async function mdkSendToApproval(id) {
+            const q = mdkQuote(id);
+            if (!q) return;
+            const noteEl = document.getElementById('mdk-note-' + id);
+            if (noteEl) q.adminNote = noteEl.value;
+            const draft = adminMarginsOf(q);
+            try {
+                const response = await fetch(`${API_BASE_URL}/quotations/${encodeURIComponent(q.id)}/apply-admin-margins`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        adminMargins: draft,
+                        adminNote: q.adminNote || '',
+                        isNewCompany: !!q.isNewCompany,
+                        assignedTo: q.assignedTo || ''
+                    })
+                });
+                const result = await safeJsonParse(response);
+                if (!response.ok) throw new Error(result.error || 'Failed to apply margins');
+                Object.assign(q, result.quotation);
+                delete q._adminMarginsDraft;
+                displayAllApprovedQuotations();
+            } catch (error) {
+                console.error('Send to approval failed:', error);
+                alert('Could not send to approval: ' + error.message);
+            }
+        }
+
+        // Regret: marks the quote regretted (the fixed regret reply is sent by
+        // sendRegretEmail when a Gmail thread exists — wired with the send flow).
+        async function mdkSetRegretStatus(id, undo, emailSent) {
+            const q = mdkQuote(id);
+            if (!q) return false;
+            try {
+                const response = await fetch(`${API_BASE_URL}/quotations/${encodeURIComponent(q.id)}/regret`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ undo: !!undo, emailSent: !!emailSent })
+                });
+                const result = await safeJsonParse(response);
+                if (!response.ok) throw new Error(result.error || 'Failed to update regret status');
+                Object.assign(q, result.quotation);
+                displayAllApprovedQuotations();
+                return true;
+            } catch (error) {
+                console.error('Regret update failed:', error);
+                alert('Could not update: ' + error.message);
+                return false;
+            }
+        }
+
+        function mdkUndoRegret(id) { mdkSetRegretStatus(id, true, false); }
+
+        // Fixed regret reply (admin-approved wording — sent verbatim, in-thread).
+        const REGRET_EMAIL_TEXT = "Dear Sir/Ma'am,\n\nThank you for your enquiry. We, however, regret to inform you that we will not be able to quote for your requirement either because of lack of availability at the moment or because we do not deal in the specific items.(We deal in all kinds of MS and CS Pipes)\n\nThank you.\n\nYours Sincerely";
+
+        function regretEmailBodyHtml() {
+            return REGRET_EMAIL_TEXT.split('\n\n').map(function(p) {
+                return '<p>' + escapeHtml(p).replace(/\n/g, '<br>') + '</p>';
+            }).join('');
+        }
+
+        async function mdkRegret(id) {
+            const q = mdkQuote(id);
+            if (!q) return;
+            const company = q.companyName || q.projectName || 'this customer';
+            if (q.gmailMessageId) {
+                const ok = confirm('Regret this enquiry?\n\nThis sends the reply below to ' + company + ' in the same email thread, and moves the quote out of the active list:\n\n' + REGRET_EMAIL_TEXT);
+                if (!ok) return;
+                try {
+                    const response = await fetch(`${API_BASE_URL}/send-email`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ replyToMessageId: q.gmailMessageId, bodyHtml: regretEmailBodyHtml() })
+                    });
+                    const result = await safeJsonParse(response);
+                    if (!response.ok) throw new Error(result.error || 'Failed to send the regret email');
+                    await mdkSetRegretStatus(id, false, true);
+                } catch (error) {
+                    console.error('Regret email failed:', error);
+                    alert('The regret email could not be sent (' + error.message + '). The quote was NOT marked regretted — try again.');
+                }
+            } else {
+                // No Gmail thread (e.g. pasted enquiry) — nothing to reply to.
+                const ok = confirm('Regret this enquiry?\n\nThere is no email thread for this quote, so no reply will be sent — it will just be marked Regretted.');
+                if (ok) await mdkSetRegretStatus(id, false, false);
+            }
+        }
+
         function displayAllApprovedQuotations() {
             /*
                 This function loops through all approved quotations
@@ -6653,12 +6945,15 @@
                     .filter(function(f) { return f.id; })
                 : [];
             
+            // The admin margins desk renders above the list (its own container).
+            renderMarginDesk();
+
             // If no quotations, show message
             if (approvedQuotations.length === 0) {
                 renderNoApprovedQuotationsMessage(container);
                 return;
             }
-            
+
             // Hide the "no quotations" message
             hideNoApprovedQuotationsMessage();
             

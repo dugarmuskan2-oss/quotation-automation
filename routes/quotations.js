@@ -352,6 +352,87 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName })
         }
     });
 
+    // ── Admin margin-allocation actions ──────────────────────────────────────
+    // Both act server-side on the STORED payload so the desk (which only holds
+    // list summaries) can never clobber heavy fields with a whole-object save.
+
+    async function loadStoredQuotation(id) {
+        const { GetCommand } = require('@aws-sdk/lib-dynamodb');
+        const result = await ddbDocClient.send(new GetCommand({
+            TableName: ddbTableName,
+            Key: { id: String(id) },
+        }));
+        const payload = result.Item && result.Item.payload;
+        return (payload && typeof payload === 'object') ? { item: result.Item, payload } : null;
+    }
+
+    async function storeQuotationPayload(item, payload) {
+        const { PutCommand } = require('@aws-sdk/lib-dynamodb');
+        const now = new Date().toISOString();
+        payload.updatedAt = now;
+        await ddbDocClient.send(new PutCommand({
+            TableName: ddbTableName,
+            Item: { ...item, updatedAt: now, payload },
+        }));
+    }
+
+    // Apply the admin's margins + note: stamp line items, rebuild the table
+    // snapshot with the same builder ingest uses, move the quote to 'ready'.
+    router.post('/quotations/:id/apply-admin-margins', async (req, res) => {
+        if (!requireDdb(res)) return;
+        try {
+            const { adminMargins, adminNote, isNewCompany, assignedTo } = req.body || {};
+            const stored = await loadStoredQuotation(req.params.id);
+            if (!stored) return res.status(404).json({ error: 'Quotation not found' });
+
+            const { stampAdminMargins, buildItemSummary } = require('../utils/calculations');
+            const { buildTableHTMLFromLineItems } = require('../gmail-ingest/htmlBuilder');
+            const payload = stored.payload;
+
+            payload.lineItems = stampAdminMargins(payload.lineItems, adminMargins);
+            const { tableHTML, grandTotalFormatted } = buildTableHTMLFromLineItems(payload.lineItems);
+            payload.tableHTML   = tableHTML;
+            payload.grandTotal  = grandTotalFormatted;
+            payload.itemSummary = buildItemSummary(payload.lineItems);
+            payload.adminMargins = adminMargins || null;
+            payload.adminNote    = String(adminNote || '');
+            payload.isNewCompany = !!isNewCompany;
+            if (assignedTo !== undefined) payload.assignedTo = String(assignedTo || '');
+            payload.adminStatus  = 'ready';
+
+            await storeQuotationPayload(stored.item, payload);
+            res.json({ success: true, quotation: payload });
+        } catch (error) {
+            console.error('Error applying admin margins:', error);
+            res.status(500).json({ error: 'Failed to apply admin margins', details: error.message });
+        }
+    });
+
+    // Regret / undo-regret. Flag-only mutation; the regret email itself is sent
+    // by the client through the existing /api/send-email reply flow.
+    router.post('/quotations/:id/regret', async (req, res) => {
+        if (!requireDdb(res)) return;
+        try {
+            const { undo, emailSent } = req.body || {};
+            const stored = await loadStoredQuotation(req.params.id);
+            if (!stored) return res.status(404).json({ error: 'Quotation not found' });
+
+            const payload = stored.payload;
+            if (undo) {
+                payload.adminStatus = 'awaiting';
+                delete payload.regretSentAt;
+            } else {
+                payload.adminStatus  = 'regretted';
+                payload.regretSentAt = emailSent ? new Date().toISOString() : '';
+            }
+            await storeQuotationPayload(stored.item, payload);
+            res.json({ success: true, quotation: payload });
+        } catch (error) {
+            console.error('Error updating regret status:', error);
+            res.status(500).json({ error: 'Failed to update regret status', details: error.message });
+        }
+    });
+
     // Get single quotation by ID (full data including heavy fields)
     router.get('/quotations/:id', async (req, res) => {
         if (!requireDdb(res)) return;
