@@ -964,6 +964,11 @@ async function uploadEnquiryFileFromBuffer(fileLike) {
     });
 }
 
+// Persist an original enquiry attachment (kept so the card can view/print it).
+async function saveEnquiryFileToStorage({ buffer, fileName }) {
+    return storage.upload(buffer, fileName, 'enquiries');
+}
+
 const { createIngestFromGmailRoute } = require('./gmail-ingest/route');
 const gmailIngestContext = {
     getInstructionsContent,
@@ -975,7 +980,8 @@ const gmailIngestContext = {
     reserveGmailMessageId,
     releaseGmailMessageId,
     uploadEnquiryFileToOpenAI: uploadEnquiryFileFromBuffer,
-    extractTextFromAttachment
+    extractTextFromAttachment,
+    saveEnquiryFile: saveEnquiryFileToStorage
 };
 const ingestFromGmailHandler = createIngestFromGmailRoute(gmailIngestContext);
 app.post('/api/ingest-from-gmail', ingestFromGmailHandler);

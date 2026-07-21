@@ -37,7 +37,37 @@ function formatQuoteNumber(value) {
  * @param {string} params.emailLink
  * @returns {object} Quotation object with id, tableHTML, headerHTML, grandTotal, saved, etc.
  */
-function buildQuotationToSave({ aiResult, quoteNumber, termsText, emailContent, emailContentHtml, gmailMessageId, emailLink }) {
+/** Safe storage filename for an attachment (keeps extension, strips oddities). */
+function sanitizeAttachmentName(name) {
+    return String(name || 'file').replace(/[^\w.\- ]+/g, '_').slice(0, 80);
+}
+
+/**
+ * Persist the ORIGINAL enquiry attachments to storage so the quote card can
+ * view/print them later (go-forward; older quotes have none). Best-effort:
+ * a failed file is skipped, never blocks the quote.
+ * @returns {Array<{name, key, contentType, size}>}
+ */
+async function persistEnquiryAttachments(ctx, attachments, emailId) {
+    if (!ctx.saveEnquiryFile) return [];
+    const files = [];
+    const list = Array.isArray(attachments) ? attachments : [];
+    for (let i = 0; i < list.length; i++) {
+        const att = list[i];
+        if (!att || !att.base64) continue;
+        try {
+            const buffer = Buffer.from(att.base64, 'base64');
+            const fileName = emailId + '-' + i + '-' + sanitizeAttachmentName(att.name);
+            const key = await ctx.saveEnquiryFile({ buffer, fileName });
+            files.push({ name: att.name || fileName, key: String(key), contentType: att.contentType || '', size: buffer.length });
+        } catch (err) {
+            console.warn('Gmail ingest: failed to persist attachment ' + (att && att.name) + ' for email ' + emailId, err.message);
+        }
+    }
+    return files;
+}
+
+function buildQuotationToSave({ aiResult, quoteNumber, termsText, emailContent, emailContentHtml, gmailMessageId, emailLink, enquiryFiles }) {
     const { tableHTML, grandTotalFormatted } = buildTableHTMLFromLineItems(aiResult.lineItems || []);
     const headerHTML = buildHeaderHTMLFromQuotation({
         ...aiResult,
@@ -72,7 +102,8 @@ function buildQuotationToSave({ aiResult, quoteNumber, termsText, emailContent, 
         // until margins are allocated (adminStatus -> 'ready') or regretted.
         adminStatus: 'awaiting',
         adminNote: '',
-        itemSummary: buildItemSummary(aiResult.lineItems || [])
+        itemSummary: buildItemSummary(aiResult.lineItems || []),
+        enquiryFiles: Array.isArray(enquiryFiles) ? enquiryFiles : []
     };
 }
 
@@ -237,6 +268,7 @@ async function generateAndSaveQuotation(ctx, email, emailId) {
     }
 
     const emailLink = emailId ? GMAIL_INBOX_URL + emailId : '';
+    const enquiryFiles = await persistEnquiryAttachments(ctx, allAttachments, emailId);
     const quotation = buildQuotationToSave({
         aiResult,
         quoteNumber,
@@ -244,7 +276,8 @@ async function generateAndSaveQuotation(ctx, email, emailId) {
         emailContent: body,
         emailContentHtml: email.bodyHtml || '',
         gmailMessageId: emailId,
-        emailLink
+        emailLink,
+        enquiryFiles
     });
 
     if (ctx.saveQuotation) {

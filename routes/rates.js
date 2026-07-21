@@ -202,6 +202,36 @@ module.exports = function createRatesRouter({ openai, upload, storage, ratesDir 
         }
     });
 
+    // ── View a retained enquiry attachment (stored at ingest) ─────────────────
+    router.get('/view-enquiry-file', async (req, res) => {
+        const key = String(req.query.key || '');
+        const name = path.basename(String(req.query.name || key));
+        // Only keys created by the enquiry-attachment retention are servable.
+        if (!key || key.includes('..') || !key.includes('enquiries')) {
+            return res.status(400).json({ error: 'Invalid file key' });
+        }
+        const contentTypeMap = {
+            '.pdf': 'application/pdf', '.png': 'image/png', '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp',
+            '.xls': 'application/vnd.ms-excel',
+            '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            '.doc': 'application/msword',
+            '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            '.csv': 'text/csv', '.txt': 'text/plain',
+        };
+        const ext = path.extname(name).toLowerCase();
+        res.setHeader('Content-Type', contentTypeMap[ext] || 'application/octet-stream');
+        res.setHeader('Content-Disposition', `inline; filename="${name}"`);
+        try {
+            await storage.streamToResponse(key, res);
+        } catch (error) {
+            if (!res.headersSent) {
+                const is404 = error.code === 404;
+                res.status(is404 ? 404 : 500).json({ error: is404 ? 'File not found' : 'Failed to load enquiry file' });
+            }
+        }
+    });
+
     // ── List current rate files ───────────────────────────────────────────────
     router.get('/current-rates', async (req, res) => {
         try {

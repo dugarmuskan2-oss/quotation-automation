@@ -6516,7 +6516,13 @@
             // Send the quote (PDF) to the customer straight from the conversation panel.
             const sendQuoteBlock = hasThread ? `
                 <div style="margin-top:12px;"><button type="button" class="save-btn" style="background:#2e7d32;" onclick="event.stopPropagation(); sendQuotationToCustomer(${JSON.stringify(quotation.id)})">✉️ Send quote to customer</button></div>` : '';
-            const panelContent = (hasThread ? conversationBlock : baseContent) + sendQuoteBlock + replyComposer;
+            // Print enquiry (admin message + enquiry + attachments) and the
+            // retained original attachment files, clickable to view.
+            const printEnquiryBlock = `
+                <div style="margin-bottom:8px;"><button type="button" class="save-btn" style="width:100%; font-size:12px;" onclick="event.stopPropagation(); printEnquirySheet(${JSON.stringify(quotation.id)})">🖨️ Print enquiry</button></div>`;
+            const enquiryFilesBlock = buildEnquiryFilesChipsHTML(quotation);
+            const panelContent = printEnquiryBlock + enquiryFilesBlock
+                + (hasThread ? conversationBlock : baseContent) + sendQuoteBlock + replyComposer;
 
             return `
                 <div class="approval-side">
@@ -6530,6 +6536,64 @@
                     </div>
                 </div>
             `;
+        }
+
+        // ── Enquiry attachments (retained originals) + Print enquiry ──────────
+
+        function enquiryFileViewUrl(file) {
+            return `${API_BASE_URL}/view-enquiry-file?key=${encodeURIComponent(file.key)}&name=${encodeURIComponent(file.name || '')}`;
+        }
+
+        function isImageEnquiryAttachment(file) {
+            return /^image\//i.test(file.contentType || '') || /\.(png|jpe?g|gif|webp)$/i.test(file.name || '');
+        }
+
+        // Clickable chips for the original enquiry attachments (older quotes have none).
+        function buildEnquiryFilesChipsHTML(quotation) {
+            const files = Array.isArray(quotation.enquiryFiles) ? quotation.enquiryFiles : [];
+            if (!files.length) return '';
+            const chips = files.map(function(f) {
+                return `<a href="${escapeHtml(enquiryFileViewUrl(f))}" target="_blank" rel="noopener" onclick="event.stopPropagation();"
+                    style="display:inline-flex; align-items:center; gap:5px; font-size:11px; color:#444; background:#f6f5f1; border:1px solid #ddd; border-radius:8px; padding:3px 8px; margin:0 6px 4px 0; text-decoration:none;">
+                    ${isImageEnquiryAttachment(f) ? '🖼️' : '📄'} ${escapeHtml(f.name || 'file')} 👁</a>`;
+            }).join('');
+            return `<div style="margin-bottom:8px;"><div style="font-size:11px; color:#9b988e; margin-bottom:3px;">ATTACHED FILES</div>${chips}</div>`;
+        }
+
+        // Print sheet: admin message first, then the enquiry message, then the
+        // attachments (images inline; other files listed by name).
+        function printEnquirySheet(quotationId) {
+            const quotation = approvedQuotations.find(function(q) { return idsMatch(q.id, quotationId); });
+            if (!quotation) return;
+            const adminMessage = (buildAdminMessage(quotation) || '').trim();
+            const files = Array.isArray(quotation.enquiryFiles) ? quotation.enquiryFiles : [];
+            const filesHtml = files.length
+                ? files.map(function(f) {
+                    const label = `<p style="margin:6px 0 2px; font-size:13px; color:#555;">${isImageEnquiryAttachment(f) ? '🖼️' : '📄'} ${escapeHtml(f.name || 'file')}</p>`;
+                    return isImageEnquiryAttachment(f)
+                        ? label + `<img src="${escapeHtml(enquiryFileViewUrl(f))}" style="max-width:100%; border:1px solid #ddd; border-radius:4px;">`
+                        : label;
+                }).join('')
+                : '<p style="color:#999; font-size:13px;">No files attached.</p>';
+            const section = function(title, bodyHtml) {
+                return `<div style="font-size:11px; letter-spacing:0.04em; text-transform:uppercase; color:#888; border-bottom:1px solid #ddd; padding-bottom:3px; margin:18px 0 8px;">${title}</div>${bodyHtml}`;
+            };
+            const win = window.open('', '_blank', 'width=800,height=900');
+            if (!win) { alert('Please allow pop-ups to print the enquiry.'); return; }
+            win.document.write('<html><head><title>Enquiry - ' + escapeHtml(quotation.quoteNumber || '') + '</title></head>'
+                + '<body style="font-family:Arial,Helvetica,sans-serif; padding:28px; color:#20201d;">'
+                + '<h2 style="margin:0 0 2px;">Enquiry — ' + escapeHtml(quotation.companyName || quotation.projectName || '') + '</h2>'
+                + '<p style="margin:0 0 10px; color:#666; font-size:13px;">' + escapeHtml([quotation.customerName, quotation.quoteNumber, quotation.quotationDate].filter(Boolean).join(' · ')) + '</p>'
+                + section('Message from the admin', adminMessage
+                    ? '<div style="background:#FAEEDA; border-radius:6px; padding:10px 12px; font-size:14px; white-space:pre-wrap;">' + escapeHtml(adminMessage) + '</div>'
+                    : '<p style="color:#999; font-size:13px;">— none —</p>')
+                + section('Enquiry message', '<div style="font-size:13px; white-space:pre-wrap; line-height:1.6;">' + escapeHtml(quotation.emailContent || '(no enquiry text)') + '</div>')
+                + section('Attached files', filesHtml)
+                + '</body></html>');
+            win.document.close();
+            win.focus();
+            // Give inline images a moment to load before the print dialog.
+            setTimeout(function() { win.print(); }, files.some(isImageEnquiryAttachment) ? 800 : 150);
         }
 
         /** headerHTML snapshots can have an empty quote input while quotation.quoteNumber is set (e.g. after data/payload merge). */
@@ -6795,13 +6859,14 @@
             h += '<div class="mdk-note-lbl">📝 Notes for staff <span style="color:#9b988e;">(optional — shown on the quote and the printed enquiry)</span></div>'
                 + '<textarea class="mdk-note" id="mdk-note-' + idAttr + '" rows="2" placeholder="e.g. Quote the 6&quot; ERW at Jindal list less 5%." onchange="mdkNoteChanged(\'' + idAttr + '\',this.value)">' + escapeHtml(q.adminNote || '') + '</textarea>';
 
-            // Enquiry preview (lazy)
+            // Enquiry preview (lazy) + retained attachment chips
             h += '<div class="mdk-enq-h">Enquiry preview</div>';
             if (q.emailContent === undefined) {
                 h += '<div class="mdk-enq">Loading enquiry…</div>';
             } else {
                 const text = String(q.emailContent || '').trim();
                 h += '<div class="mdk-enq">' + (text ? escapeHtml(text) : '(no enquiry text)') + '</div>';
+                h += '<div style="margin-top:6px;">' + buildEnquiryFilesChipsHTML(q) + '</div>';
             }
             h += '</div>';
             return h;
