@@ -110,6 +110,86 @@ function compressImageToFit(bytes, contentType, name, maxBytes) {
 }
 
 /**
+ * Get the content out of an oversized PDF (too big to forward as-is):
+ *   - TEXT via Google's OCR/conversion — great for digital PDFs and clean scans
+ *   - PAGE IMAGES when the conversion embeds them (scanned/non-text PDFs), each
+ *     compressed to fit, so the AI's vision can read them
+ *   - as a last resort, a rendered image of the first page
+ * Returns { text: string, images: [{bytes, contentType, name}] } (best-effort;
+ * any failure returns what it has, then the caller notes the file as too large).
+ * Requires the Drive advanced service (Services > Drive API) for OCR conversion.
+ * @return {{text: string, images: Array}}
+ */
+function extractLargePdf(bytes, name) {
+  var result = { text: '', images: [] };
+  var docId = null;
+  try {
+    var blob = Utilities.newBlob(bytes, 'application/pdf', (name || 'enquiry') + '.pdf');
+    // Convert + OCR the PDF into a Google Doc (extracts the text layer, or OCRs a scan).
+    var doc = Drive.Files.insert(
+      { title: (name || 'enquiry') + ' (ocr)', mimeType: 'application/vnd.google-apps.document' },
+      blob,
+      { ocr: true }
+    );
+    docId = doc.id;
+    var body = DocumentApp.openById(docId).getBody();
+    result.text = (body.getText() || '').trim();
+    var imgs = body.getImages();
+    for (var k = 0; k < imgs.length && result.images.length < 4; k++) {
+      try {
+        var ib = imgs[k].getBlob();
+        var ibytes = ib.getBytes();
+        var ict = ib.getContentType() || 'image/png';
+        if (ibytes.length > IMAGE_COMPRESS_TARGET_BYTES) {
+          var c = compressImageToFit(ibytes, ict, (name || 'pdf') + '-p' + (k + 1), IMAGE_COMPRESS_TARGET_BYTES);
+          if (c) { ibytes = c.bytes; ict = c.contentType; }
+        }
+        if (ibytes.length <= MAX_ATTACHMENT_BYTES) {
+          result.images.push({ bytes: ibytes, contentType: ict, name: (name || 'pdf') + '-p' + (k + 1) + (ict.indexOf('png') >= 0 ? '.png' : '.jpg') });
+        }
+      } catch (eImg) { /* skip a bad page image */ }
+    }
+  } catch (e) {
+    Logger.log('Large PDF OCR/convert failed for ' + name + ': ' + e.toString());
+  } finally {
+    if (docId) { try { DriveApp.getFileById(docId).setTrashed(true); } catch (e2) {} }
+  }
+  // Nothing usable yet — render the first page as an image so vision can read it.
+  if (!result.text && result.images.length === 0) {
+    var page1 = renderPdfFirstPageImage(bytes, name);
+    if (page1) result.images.push(page1);
+  }
+  return result;
+}
+
+/** Render a PDF's first page to a compressed image via Drive's thumbnail renderer. */
+function renderPdfFirstPageImage(bytes, name) {
+  var tempFile = null;
+  try {
+    tempFile = DriveApp.createFile(Utilities.newBlob(bytes, 'application/pdf', (name || 'enquiry') + '.pdf'));
+    var token = ScriptApp.getOAuthToken();
+    var url = 'https://drive.google.com/thumbnail?id=' + tempFile.getId() + '&sz=w2000';
+    for (var attempt = 0; attempt < 3; attempt++) {
+      var resp = UrlFetchApp.fetch(url, { headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true });
+      if (resp.getResponseCode() === 200) {
+        var out = resp.getBlob();
+        var b = out.getBytes();
+        var c = out.getContentType() || 'image/jpeg';
+        if (c.indexOf('image/') === 0 && b.length > 0 && b.length <= MAX_ATTACHMENT_BYTES) {
+          return { bytes: b, contentType: c, name: (name || 'pdf') + '-p1.jpg' };
+        }
+      }
+      Utilities.sleep(500); // thumbnail may still be rendering
+    }
+  } catch (e) {
+    Logger.log('PDF first-page render failed for ' + name + ': ' + e.toString());
+  } finally {
+    if (tempFile) { try { tempFile.setTrashed(true); } catch (e2) {} }
+  }
+  return null;
+}
+
+/**
  * Build the payload for one message: id, subject, from, date, body, bodyHtml, attachments (name, contentType, base64).
  * Attachments over MAX_ATTACHMENT_BYTES are skipped. bodyHtml is truncated if too long.
  * @param {GmailApp.GmailMessage} message
@@ -131,7 +211,8 @@ function buildEmailPayload(message) {
     bodyHtml = bodyHtml.substring(0, MAX_BODYHTML_LENGTH) + ' [truncated]';
   }
   var attachments = [];
-  var skipped = [];   // attachments too large to forward — noted in the body
+  var skipped = [];       // attachments too large to forward — noted in the body
+  var pdfTextParts = [];  // text pulled out of oversized PDFs
   var attachmentBlobs = message.getAttachments();
   if (attachmentBlobs.length > 0) {
     Logger.log('Email has ' + attachmentBlobs.length + ' attachment(s) from getAttachments()');
@@ -150,6 +231,7 @@ function buildEmailPayload(message) {
     var nameLow = (attName || '').trim().toLowerCase();
     var isImage = ct.indexOf('image/') === 0 ||
       ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.heic', '.heif'].some(function (e) { return nameLow.endsWith(e); });
+    var isPdf = ct.indexOf('pdf') !== -1 || nameLow.endsWith('.pdf');
 
     var outBytes = bytes;
     var outCt = att.getContentType();
@@ -165,8 +247,22 @@ function buildEmailPayload(message) {
       }
     }
     if (outBytes.length > MAX_ATTACHMENT_BYTES) {
-      // Still too large (non-image, or compression unavailable) — note it so
-      // staff know to open the original email.
+      if (isPdf) {
+        // Oversized PDF: pull its text (digital PDFs / clean scans) and, for
+        // scans, its page images — so the content still reaches the app.
+        var ex = extractLargePdf(bytes, attName);
+        var gotSomething = false;
+        if (ex.text) { pdfTextParts.push('[PDF: ' + attName + ']\n' + ex.text); gotSomething = true; }
+        for (var pi = 0; pi < ex.images.length; pi++) {
+          attachments.push({ name: ex.images[pi].name, contentType: ex.images[pi].contentType, base64: Utilities.base64Encode(ex.images[pi].bytes) });
+          gotSomething = true;
+        }
+        if (gotSomething) {
+          Logger.log('Large PDF ' + attName + ': text=' + (ex.text ? ex.text.length : 0) + ' chars, page-images=' + ex.images.length);
+          continue;
+        }
+      }
+      // Couldn't shrink or extract — note it so staff open the original email.
       skipped.push(attName + ' (' + (bytes.length / 1024 / 1024).toFixed(1) + ' MB)');
       Logger.log('Skipping attachment (too large): ' + attName + ' (' + (bytes.length / 1024).toFixed(1) + ' KB)');
       continue;
@@ -179,6 +275,9 @@ function buildEmailPayload(message) {
       contentType: outCt,
       base64: Utilities.base64Encode(outBytes)
     });
+  }
+  if (pdfTextParts.length > 0) {
+    body = (body || '') + '\n\n' + pdfTextParts.join('\n\n');
   }
   if (skipped.length > 0) {
     body = (body || '') + '\n\n[Note: ' + skipped.length + ' attachment(s) were too large to auto-process — ' +
