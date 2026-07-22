@@ -1047,6 +1047,7 @@ module.exports._test = {
     quotationSummaryFromDdbItem,
     calculateLineItem,
     parseFlexibleNumber,
+    generateQuotationData,   // for the multi-image enquiry test
 };
 
 // Start server only when running locally (not on Vercel)

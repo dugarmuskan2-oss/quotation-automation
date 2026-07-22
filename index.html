@@ -7169,6 +7169,18 @@
                 quoteNumber: quotation.quoteNumber,
                 grandTotal: quotation.grandTotal,
                 termsText: quotation.termsText || '',   // terms as they were for THIS version
+                // header details as they stood — so an old version renders as the full quote,
+                // not just its line items
+                header: {
+                    companyName: quotation.companyName || '',
+                    customerName: quotation.customerName || '',
+                    quotationDate: quotation.quotationDate || '',
+                    projectName: quotation.projectName || '',
+                    shipTo: quotation.shipTo || '',
+                    contactDetails: quotation.contactDetails || quotation.mobileNumber || quotation.phoneNumber || '',
+                    preparedBy: quotation.preparedBy || '',
+                    checkedBy: quotation.checkedBy || '',
+                },
                 lineItems: items
             };
         }
@@ -7214,12 +7226,11 @@
         }
         // Called during a "Save as Revision": archive the baseline (the version the customer
         // has) into History, make the just-saved state the next Rev N, and set the new baseline.
-        // Returns false (and does nothing) when the quote is unchanged since the baseline.
+        // Always creates a revision — one per click, with no change-detection gate.
         function createRevisionFromBaseline(quotation) {
             var baseline = revisionBaselineOf(quotation);
             baseline = baseline ? JSON.parse(JSON.stringify(baseline))
                 : buildRevisionSnapshotData(quotation, 'Sent version');   // legacy: no send-time baseline
-            if (!currentDiffersFromBaseline(quotation, baseline)) return false;   // nothing changed -> no revision
             baseline.change = describePostSendChange(baseline, quotation);
             commitRevisionSnapshot(quotation, baseline);   // pushes to revisions[], revised=true, revisionCount = revNo+1
             // The just-saved version becomes the baseline the next revision will archive.
@@ -7353,6 +7364,40 @@
                 + '<div style="text-align:right;font-weight:600;font-size:14px;margin-top:6px;">Grand total: ' + gt + '</div>';
         }
 
+        // A header field for a revision view: its own captured value, else the live quote's
+        // (older snapshots predate header capture, so they borrow the current header).
+        function revisionHeaderField(rev, quotation, key) {
+            var h = rev && rev.header;
+            var own = (h && h[key] != null && String(h[key]).trim() !== '') ? h[key] : null;
+            var v = own != null ? own : quotation[key];
+            return String(v == null ? '' : v);
+        }
+        // The header block for a past version — the same details the full quote shows.
+        function revisionHeaderHtml(quotation, rev) {
+            function row(label, val) {
+                var v = escapeHtml(val || '');
+                return v ? '<div style="display:flex;gap:6px;margin:2px 0;"><span style="min-width:96px;color:#777;">' + label + '</span><span style="font-weight:600;color:#20201d;">' + v + '</span></div>' : '';
+            }
+            return '<div style="font-size:13px;margin:6px 0 12px;">'
+                + row('Company', revisionHeaderField(rev, quotation, 'companyName'))
+                + row('Kind Attn', revisionHeaderField(rev, quotation, 'customerName'))
+                + row('Date', revisionHeaderField(rev, quotation, 'quotationDate'))
+                + row('Bill To', revisionHeaderField(rev, quotation, 'projectName'))
+                + row('Ship To', revisionHeaderField(rev, quotation, 'shipTo'))
+                + row('Phone', revisionHeaderField(rev, quotation, 'contactDetails'))
+                + row('Prepared By', revisionHeaderField(rev, quotation, 'preparedBy'))
+                + row('Checked By', revisionHeaderField(rev, quotation, 'checkedBy'))
+                + '</div>';
+        }
+        // The full quote for a past version: header + items + terms — read-only.
+        function revisionFullQuoteHtml(quotation, rev) {
+            var termsSource = (rev.termsText != null) ? rev.termsText : (quotation.termsText || '');
+            var terms = termsSource
+                ? '<h3 style="margin:18px 0 6px;font-size:14px;">Terms &amp; Conditions</h3><pre style="white-space:pre-wrap;font-family:inherit;font-size:12px;color:#333;margin:0;">' + escapeHtml(termsSource) + '</pre>'
+                : '';
+            return revisionHeaderHtml(quotation, rev) + revisionItemsTableHtml(rev) + terms;
+        }
+
         function getRevisionFromButton(btn) {
             var qid = btn.getAttribute('data-qid');
             var i = parseInt(btn.getAttribute('data-rev'), 10);
@@ -7369,13 +7414,11 @@
             var ctx = getRevisionFromButton(btn);
             if (!ctx) return;
             var quotation = ctx.quotation, rev = ctx.rev;
-            var sub = [quotation.companyName, quotation.customerName].filter(Boolean).join(' · ');
             var overlay = document.createElement('div');
             overlay.className = 'email-modal-overlay';
             overlay.innerHTML = '<div class="email-modal" style="width:680px;max-width:94vw;max-height:90vh;overflow:auto;">'
-                + '<h3 class="email-modal-title">' + escapeHtml(quotation.quoteNumber || '') + ' — ' + revisionLabel(rev, ctx.index) + '</h3>'
-                + '<p class="email-modal-sub">' + escapeHtml(sub) + (rev.createdAt ? ' · ' + formatRevisionDate(rev.createdAt) : '') + '</p>'
-                + revisionItemsTableHtml(rev)
+                + '<h3 class="email-modal-title">' + escapeHtml(quotation.quoteNumber || '') + ' — ' + revisionLabel(rev, ctx.index) + (rev.createdAt ? ' · ' + formatRevisionDate(rev.createdAt) : '') + '</h3>'
+                + revisionFullQuoteHtml(quotation, rev)
                 + '<div class="email-modal-actions"><button type="button" class="email-modal-cancel">Close</button>'
                 + '<button type="button" class="email-modal-send" data-qid="' + escapeHtml(String(quotation.id)) + '" data-rev="' + ctx.index + '">Download PDF</button></div></div>';
             document.body.appendChild(overlay);
@@ -7390,20 +7433,15 @@
             if (!ctx) return;
             var quotation = ctx.quotation, rev = ctx.rev;
             var label = revisionLabel(rev, ctx.index);
-            var sub = [quotation.companyName, quotation.customerName].filter(Boolean).join(' · ');
+            // The full quote (header + items + terms) uses the values saved WITH this version;
+            // legacy snapshots (no header/terms) fall back to the current quote.
             var header = '<h2 style="margin:0 0 4px;">' + escapeHtml(quotation.quoteNumber || '') + ' — ' + label + '</h2>'
-                + '<p style="margin:0 0 4px;color:#555;">' + escapeHtml(sub) + '</p>'
                 + (rev.createdAt ? '<p style="margin:0 0 12px;color:#888;font-size:12px;">Superseded on ' + formatRevisionDate(rev.createdAt) + '</p>' : '');
-            // Use the terms saved WITH this version — the live quote's terms may have changed
-            // since (e.g. the freight/price-basis auto-update). Legacy snapshots (no termsText)
-            // fall back to the current terms.
-            var termsSource = (rev.termsText != null) ? rev.termsText : (quotation.termsText || '');
-            var terms = termsSource ? ('<h3 style="margin:18px 0 6px;font-size:14px;">Terms &amp; Conditions</h3><pre style="white-space:pre-wrap;font-family:inherit;font-size:12px;color:#333;">' + escapeHtml(termsSource) + '</pre>') : '';
             var win = window.open('', '_blank', 'width=800,height=900');
             if (!win) { alert('Please allow pop-ups to download this version.'); return; }
             win.document.write('<html><head><title>' + escapeHtml((quotation.quoteNumber || 'Quotation') + ' - ' + label) + '</title></head>'
                 + '<body style="font-family:Arial,Helvetica,sans-serif;padding:28px;color:#20201d;">'
-                + header + revisionItemsTableHtml(rev) + terms
+                + header + revisionFullQuoteHtml(quotation, rev)
                 + '<p style="margin-top:24px;color:#888;font-size:12px;">DSC Pipes</p></body></html>');
             win.document.close(); win.focus(); win.print();
         }
@@ -8909,7 +8947,7 @@
             var madeRevision = false;
             var askedForRevision = !!(options && options.asRevision);
             if (askedForRevision) {
-                madeRevision = createRevisionFromBaseline(quotation);   // false if nothing changed
+                madeRevision = createRevisionFromBaseline(quotation);   // always makes a revision now
             } else if (!quotation.revisionBaseline) {
                 // First save establishes the baseline the first revision will archive (the
                 // version you finalise). Only set once — later working saves don't disturb it
@@ -8930,8 +8968,6 @@
                 if (!ok) return;
                 if (madeRevision) {
                     alert('Saved as Revision ' + currentRevisionNumber(quotation) + '. The version the customer has is kept in History.');
-                } else if (askedForRevision) {
-                    alert('No changes since the last saved version — nothing new to save as a revision.');
                 } else {
                     alert('Changes saved.');
                 }

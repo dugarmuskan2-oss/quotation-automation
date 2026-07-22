@@ -3,11 +3,11 @@
  *
  * tests/revision-signature.test.js
  *
- * The "no changes -> no revision" guard. `Save as Revision` only creates a new
- * version when the quote actually differs from the version the customer has.
- * The comparison is a pure fingerprint (`revisionSignature`) that strips number
- * formatting so ₹250000 and ₹2,50,000 compare equal — this is the exact bug that
- * made the first attempt at this guard misfire.
+ * `revisionSignature` — a pure fingerprint of a quote version (line items +
+ * grand total) that strips number formatting so ₹250000 and ₹2,50,000 compare
+ * equal. It once gated "Save as Revision" (no changes -> no revision); that gate
+ * was removed (every click now makes a revision), but the fingerprint helper is
+ * retained and still unit-tested here.
  *
  * `revisionSignature` lives inline in the browser-only SPA (index.html), so this
  * test extracts it by name (brace-matching) and evals it — same approach as
@@ -117,14 +117,13 @@ describe('revisionSignature — never throws on messy input', () => {
     });
 });
 
-describe('source guard — the guard is actually wired into Save as Revision', () => {
-    test('createRevisionFromBaseline consults currentDiffersFromBaseline and can bail', () => {
-        expect(html).toContain('function currentDiffersFromBaseline');
-        expect(html).toContain('if (!currentDiffersFromBaseline(quotation, baseline)) return false');
+describe('source guard — Save as Revision always creates a version (change-gate removed)', () => {
+    test('createRevisionFromBaseline no longer bails when the quote is unchanged', () => {
+        expect(html).toContain('function createRevisionFromBaseline');
+        expect(html).not.toContain('if (!currentDiffersFromBaseline(quotation, baseline)) return false');
     });
 
-    test('saveQuotationChanges uses the return value (no revision when unchanged)', () => {
+    test('saveQuotationChanges still routes Save as Revision through createRevisionFromBaseline', () => {
         expect(html).toContain('madeRevision = createRevisionFromBaseline(quotation)');
-        expect(html).toContain('nothing new to save as a revision');
     });
 });

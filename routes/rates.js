@@ -11,11 +11,11 @@ const path     = require('path');
 const fs       = require('fs');
 const { toFile } = require('openai/uploads');
 
-const router = express.Router();
-
 const MAX_OPENAI_FILE_MB = 100;
 
 module.exports = function createRatesRouter({ openai, upload, storage, ratesDir }) {
+
+    const router = express.Router();   // fresh router per call — a factory must not share module-level state
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

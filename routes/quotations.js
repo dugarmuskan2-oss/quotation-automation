@@ -8,7 +8,6 @@
  */
 
 const express = require('express');
-const router  = express.Router();
 
 const {
     ENTITY_QUOTATION,
@@ -27,7 +26,7 @@ const SUMMARY_NESTED_PATHS = [
     'customerName', 'quotationDate', '#sv',
     'assignedTo', 'checkedBy', 'emailLink',
     'gmailMessageId', 'billTo', 'shipTo', 'grandTotal', '#snt',
-    '#eva', '#rev', '#crp',
+    '#eva', '#rev', '#crp', 'revisionCount',
     // Admin margin-allocation flow (desk renders from the list summary alone)
     'adminStatus', 'adminNote', 'itemSummary', 'isNewCompany', 'regretSentAt',
     'preparedBy', 'sentAt', 'registerMeta',
@@ -180,6 +179,8 @@ function cacheSet(key, id) {
 // ── Routes ────────────────────────────────────────────────────────────────────
 
 module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName }) {
+
+    const router = express.Router();   // fresh router per call — a factory must not share module-level state
 
     function requireDdb(res) {
         if (!ddbDocClient || !ddbTableName) {
