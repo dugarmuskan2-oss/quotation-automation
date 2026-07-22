@@ -113,6 +113,56 @@ function quotationFromItem(item) {
     return merged;
 }
 
+// ── Enquiry-register helpers (pure; exported via _test) ───────────────────────
+
+/**
+ * Resolve the register window from query params: exact ?from/?to ISO bounds
+ * (in-app view — the client sends its LOCAL month edges), else ?month=YYYY-MM
+ * as a UTC calendar month. Returns { start, end } or null (caller falls back
+ * to the rolling ?days window).
+ */
+function registerRangeOf(query) {
+    const from = new Date(String(query.from || ''));
+    const to   = new Date(String(query.to || ''));
+    if (!isNaN(from.getTime()) && !isNaN(to.getTime()) && from < to) {
+        return { start: from.toISOString(), end: to.toISOString() };
+    }
+    const m = /^(\d{4})-(\d{2})$/.exec(String(query.month || ''));
+    if (!m) return null;
+    const year = parseInt(m[1], 10), month = parseInt(m[2], 10) - 1;
+    if (month < 0 || month > 11) return null;
+    return {
+        start: new Date(Date.UTC(year, month, 1)).toISOString(),
+        end:   new Date(Date.UTC(year, month + 1, 1)).toISOString(),
+    };
+}
+
+function registerStatusOf(q) {
+    if (q.adminStatus === 'regretted') return 'REGRET';
+    if (q.adminStatus === 'awaiting') return 'MARGIN ALLOCATION PENDING';
+    if (q.sent && q.revised) return 'REVISION SENT';
+    if (q.sent) return 'SENT';
+    return 'PENDING';
+}
+
+function registerRowOf(q) {
+    return {
+        id: q.id != null ? String(q.id) : '',
+        quoteNumber: q.quoteNumber || '',
+        enquiryDate: q.createdAt || q.updatedAt || '',
+        status: registerStatusOf(q),
+        company: q.companyName || q.projectName || '',
+        contact: q.customerName || '',
+        preparedBy: q.preparedBy || '',
+        checkedBy: q.checkedBy || '',        // auto-fills the register's Checked By column
+        sentDate: q.sentAt || '',            // "Sent On" column — filled once sent
+        value: q.grandTotal || '',           // "Value" column — quote total
+        gmailMessageId: q.gmailMessageId || '',
+        // Manual workflow fields, typed in the in-app register
+        registerMeta: (q.registerMeta && typeof q.registerMeta === 'object') ? q.registerMeta : {},
+    };
+}
+
 // In-memory cache: normalised quoteNumber → id
 const quoteNumberCache = new Map();
 const CACHE_MAX = 2000;
@@ -357,55 +407,20 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName })
     // Feeds the Apps Script that fills the register sheet. Secured with the
     // same X-Ingest-Secret the Gmail ingest uses. Status: REGRET | SENT | PENDING.
 
-    function registerStatusOf(q) {
-        if (q.adminStatus === 'regretted') return 'REGRET';
-        if (q.adminStatus === 'awaiting') return 'MARGIN ALLOCATION PENDING';
-        if (q.sent && q.revised) return 'REVISION SENT';
-        if (q.sent) return 'SENT';
-        return 'PENDING';
-    }
-
-    function registerRowOf(q) {
-        return {
-            id: q.id != null ? String(q.id) : '',
-            quoteNumber: q.quoteNumber || '',
-            enquiryDate: q.createdAt || q.updatedAt || '',
-            status: registerStatusOf(q),
-            company: q.companyName || q.projectName || '',
-            contact: q.customerName || '',
-            preparedBy: q.preparedBy || '',
-            checkedBy: q.checkedBy || '',        // auto-fills the register's Checked By column
-            sentDate: q.sentAt || '',            // "Sent On" column — filled once sent
-            value: q.grandTotal || '',           // "Value" column — quote total
-            gmailMessageId: q.gmailMessageId || '',
-            // Manual workflow fields, typed in the in-app register
-            registerMeta: (q.registerMeta && typeof q.registerMeta === 'object') ? q.registerMeta : {},
-        };
-    }
-
     const REGISTER_MAX_ROWS = 2000;
 
     // Read-only, same exposure as GET /api/quotations (no secret gate — the
     // in-app Register section fetches this from the browser; the optional
     // Google-Sheet mirror script calls it the same way).
-    // Parse "?month=YYYY-MM" into [start, end) ISO bounds, or null when absent.
-    function monthRangeOf(monthParam) {
-        const m = /^(\d{4})-(\d{2})$/.exec(String(monthParam || ''));
-        if (!m) return null;
-        const year = parseInt(m[1], 10), month = parseInt(m[2], 10) - 1;
-        return {
-            start: new Date(Date.UTC(year, month, 1)).toISOString(),
-            end:   new Date(Date.UTC(year, month + 1, 1)).toISOString(),
-        };
-    }
-
     router.get('/enquiry-register', async (req, res) => {
         if (!requireDdb(res)) return;
         try {
-            // Either one calendar month (?month=2026-07 — what the in-app view
-            // uses, fetched per month on demand) or a rolling window (?days=N —
-            // the Google-Sheet mirror script).
-            const range = monthRangeOf(req.query.month);
+            // Window options, most specific first:
+            //   ?from=ISO&to=ISO — exact [from, to) bounds (the in-app view sends
+            //     the viewer's LOCAL month bounds so month edges match the screen)
+            //   ?month=YYYY-MM   — calendar month in UTC (legacy)
+            //   ?days=N          — rolling window (the Google-Sheet mirror script)
+            const range = registerRangeOf(req.query);
             const days = Math.min(400, Math.max(1, parseInt(req.query.days, 10) || 62));
             const cutoff = range ? range.start : new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
             const cutoffEnd = range ? range.end : null;
@@ -576,3 +591,5 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName })
 
 // Export helper so server.js internal functions can reuse it
 module.exports.quotationFromItem = quotationFromItem;
+// Pure helpers exposed for unit testing (see tests/register.test.js).
+module.exports._test = { registerRangeOf, registerStatusOf, registerRowOf };

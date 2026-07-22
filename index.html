@@ -1714,7 +1714,9 @@
         <h1>📊 Enquiry Register</h1>
         <div class="reg-toolbar">
             <label for="registerMonthSelect" style="font-size:13px; color:#6e6c65;">Month</label>
-            <select id="registerMonthSelect" onchange="window.enquiryRegister && enquiryRegister.setMonth(this.value)"></select>
+            <select id="registerMonthSelect" onchange="window.enquiryRegister && enquiryRegister.pickMonthYear()"></select>
+            <label for="registerYearSelect" style="font-size:13px; color:#6e6c65;">Year</label>
+            <select id="registerYearSelect" onchange="window.enquiryRegister && enquiryRegister.pickMonthYear()"></select>
             <button type="button" class="upload-btn" style="width:auto; padding:7px 14px;" onclick="window.enquiryRegister && enquiryRegister.refresh()">↻ Refresh</button>
             <span class="reg-meta" id="registerMeta"></span>
         </div>
@@ -10444,7 +10446,7 @@
     <script src="weight-calculator.js?v=20260529-1"></script>
     <script src="enquiry-preparer.js?v=20260529-1"></script>
     <script src="freight-tab-weight-editor.js?v=20260624-4"></script>
-    <script src="register.js?v=20260722-4"></script>
+    <script src="register.js?v=20260722-5"></script>
 </body>
 </html>
 

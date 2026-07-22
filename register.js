@@ -16,7 +16,7 @@
     'use strict';
 
     var MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-    var MONTHS_SHOWN = 12;      // dropdown depth
+    var FIRST_YEAR = 2024;      // year dropdown reaches back to the app's first data
     var CACHE_KEY = 'enquiryRegisterCache-v2';
     var CACHE_MONTHS_KEPT = 6;  // bound localStorage size
 
@@ -28,26 +28,37 @@
         return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
-    // ── Months ────────────────────────────────────────────────────────────────
-    // The dropdown is a fixed list of the last 12 calendar months — it does not
-    // depend on fetched data, so any month can be picked (and lazily loaded).
+    // ── Months & years ────────────────────────────────────────────────────────
+    // Month + year dropdowns are fixed lists (independent of fetched data), so
+    // any month back to FIRST_YEAR can be picked and is lazily loaded.
     function monthLabelOf(date) {
         return MONTHS[date.getMonth()] + ' ' + String(date.getFullYear()).slice(-2);
     }
 
-    function monthParamOf(label) {
-        var parts = String(label || '').split(' ');
-        var monthIndex = MONTHS.indexOf(parts[0]);
-        if (monthIndex === -1 || !parts[1]) return '';
-        return '20' + parts[1] + '-' + ('0' + (monthIndex + 1)).slice(-2);
+    // 'JUL 26' -> { monthIndex: 6, year: 2026 } (null if malformed)
+    function parseLabel(label) {
+        var m = /^([A-Z]{3}) (\d{2})$/.exec(String(label || ''));
+        if (!m) return null;
+        var monthIndex = MONTHS.indexOf(m[1]);
+        if (monthIndex === -1) return null;
+        return { monthIndex: monthIndex, year: 2000 + parseInt(m[2], 10) };
     }
 
-    function monthOptions() {
+    // The viewer's LOCAL month edges as ISO instants — sent to the server so
+    // month boundaries match exactly what the user sees on screen (an enquiry
+    // at 2am on the 1st stays in the month the viewer would file it under).
+    function monthBoundsOf(label) {
+        var p = parseLabel(label);
+        if (!p) return null;
+        return {
+            from: new Date(p.year, p.monthIndex, 1).toISOString(),
+            to:   new Date(p.year, p.monthIndex + 1, 1).toISOString(),
+        };
+    }
+
+    function yearOptions() {
         var out = [];
-        var now = new Date();
-        for (var i = 0; i < MONTHS_SHOWN; i++) {
-            out.push(monthLabelOf(new Date(now.getFullYear(), now.getMonth() - i, 1)));
-        }
+        for (var y = new Date().getFullYear(); y >= FIRST_YEAR; y--) out.push(y);
         return out;
     }
 
@@ -92,7 +103,7 @@
         var btn = $('mainToolRegisterButton');
         if (app) app.style.display = '';
         if (btn) btn.classList.add('main-tools-button--active');
-        if (!state.month) state.month = monthOptions()[0];
+        if (!state.month) state.month = monthLabelOf(new Date());
         openMonth(state.month);
     }
 
@@ -139,10 +150,10 @@
 
     function fetchMonth(label) {
         if (state.loadingMonths[label]) return;
-        var monthParam = monthParamOf(label);
-        if (!monthParam) return;
+        var bounds = monthBoundsOf(label);
+        if (!bounds) return;
         state.loadingMonths[label] = true;
-        fetch(apiBase() + '/enquiry-register?month=' + monthParam)
+        fetch(apiBase() + '/enquiry-register?from=' + encodeURIComponent(bounds.from) + '&to=' + encodeURIComponent(bounds.to))
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 var rows = Array.isArray(data.rows) ? data.rows : [];
@@ -162,6 +173,15 @@
 
     function refresh() { delete state.rowsByMonth[state.month]; openMonth(state.month); }
     function setMonth(label) { openMonth(label); }
+
+    // Read the two dropdowns and open that month.
+    function pickMonthYear() {
+        var monthSelect = $('registerMonthSelect');
+        var yearSelect = $('registerYearSelect');
+        if (!monthSelect || !yearSelect) return;
+        var label = monthLabelOf(new Date(parseInt(yearSelect.value, 10), parseInt(monthSelect.value, 10), 1));
+        openMonth(label);
+    }
 
     // ── Formatting ────────────────────────────────────────────────────────────
     function fmtDay(iso) {
@@ -241,10 +261,17 @@
 
     // ── Render ────────────────────────────────────────────────────────────────
     function render() {
-        var select = $('registerMonthSelect');
-        if (select) {
-            select.innerHTML = monthOptions().map(function (key) {
-                return '<option' + (key === state.month ? ' selected' : '') + '>' + esc(key) + '</option>';
+        var picked = parseLabel(state.month) || { monthIndex: new Date().getMonth(), year: new Date().getFullYear() };
+        var monthSelect = $('registerMonthSelect');
+        if (monthSelect) {
+            monthSelect.innerHTML = MONTHS.map(function (name, i) {
+                return '<option value="' + i + '"' + (i === picked.monthIndex ? ' selected' : '') + '>' + name + '</option>';
+            }).join('');
+        }
+        var yearSelect = $('registerYearSelect');
+        if (yearSelect) {
+            yearSelect.innerHTML = yearOptions().map(function (y) {
+                return '<option value="' + y + '"' + (y === picked.year ? ' selected' : '') + '>' + y + '</option>';
             }).join('');
         }
 
@@ -312,5 +339,5 @@
 
     // ── Expose ────────────────────────────────────────────────────────────────
     window.switchToRegisterTab = switchToRegisterTab;
-    window.enquiryRegister = { refresh: refresh, setMonth: setMonth, saveField: saveMeta, _state: state };
+    window.enquiryRegister = { refresh: refresh, setMonth: setMonth, pickMonthYear: pickMonthYear, saveField: saveMeta, _state: state };
 })();
