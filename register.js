@@ -139,6 +139,17 @@
         return isFinite(n) && n > 0 ? '₹' + n.toLocaleString('en-IN') : '';
     }
 
+    // Whole days between enquiry received and quote sent ('' until sent).
+    function daysBetween(enquiryIso, sentIso) {
+        if (!enquiryIso || !sentIso) return '';
+        var a = new Date(enquiryIso), b = new Date(sentIso);
+        if (isNaN(a.getTime()) || isNaN(b.getTime())) return '';
+        // Compare calendar days, not raw hours, so same-day sends show 0.
+        var dayA = new Date(a.getFullYear(), a.getMonth(), a.getDate());
+        var dayB = new Date(b.getFullYear(), b.getMonth(), b.getDate());
+        return String(Math.round((dayB - dayA) / 86400000));
+    }
+
     function statusPillHtml(status) {
         var cls = { 'SENT': 'q-sent', 'REVISION SENT': 'q-revised', 'REGRET': 'q-regretted', 'MARGIN ALLOCATION PENDING': 'q-awaiting', 'PENDING': 'q-new' }[status] || 'q-new';
         return '<span class="q-pill ' + cls + '">' + esc(status) + '</span>';
@@ -217,23 +228,34 @@
         }
 
         var h = '<table class="reg-table"><thead><tr>'
-            + '<th>Quotation No</th><th>Enquiry Date</th><th>Per day</th><th>Status</th><th>Company</th><th>Contact</th><th>Prepared By</th>'
-            + '<th>Given for checking to</th><th>Sent By</th><th>Date</th><th class="r">Value</th>'
+            + '<th>Quotation No</th><th>Enquiry Date</th><th>Per day</th>'
+            + '<th>Status (as per App)</th><th>Status (Manual)</th>'
+            + '<th>Company</th><th>Contact</th><th>Prepared By</th>'
+            + '<th>Checked By</th><th>Sent By</th><th>Sent On</th>'
+            + '<th>Days: Recd → Sent</th><th class="r">Value</th>'
             + '<th>BIGIN (Y/N)</th><th>Phone checked</th><th>Email checked</th>'
             + '</tr></thead><tbody>';
+        var prevDay = null;
         rows.forEach(function (r) {
             var day = fmtDay(r.enquiryDate);
             h += '<tr>'
-                + '<td><b>' + esc(r.quoteNumber || '—') + '</b></td>'
-                + '<td>' + esc(day) + '</td>'
-                + '<td class="reg-day">' + perDay[day] + '</td>'
-                + '<td>' + statusPillHtml(r.status) + '</td>'
+                + '<td><b>' + esc(r.quoteNumber || '—') + '</b></td>';
+            // Merge the Enquiry Date + Per day cells across rows of the same day
+            // (rowspan on the first row, like the merged cells in the sheet).
+            if (day !== prevDay) {
+                h += '<td class="reg-merged" rowspan="' + perDay[day] + '">' + esc(day) + '</td>'
+                    + '<td class="reg-merged reg-day" rowspan="' + perDay[day] + '">' + perDay[day] + '</td>';
+                prevDay = day;
+            }
+            h += '<td>' + statusPillHtml(r.status) + '</td>'
+                + textCell(r, 'statusManual', 100)
                 + '<td>' + esc(r.company) + '</td>'
                 + '<td>' + esc(r.contact) + '</td>'
                 + '<td>' + esc(r.preparedBy) + '</td>'
-                + textCell(r, 'givenForCheckingTo')
+                + '<td>' + esc(r.checkedBy || '') + '</td>'
                 + textCell(r, 'sentBy', 90)
                 + '<td>' + esc(r.sentDate ? fmtDay(r.sentDate) : '') + '</td>'
+                + '<td class="reg-day">' + esc(daysBetween(r.enquiryDate, r.sentDate)) + '</td>'
                 + '<td class="r">' + esc(fmtValue(r.value)) + '</td>'
                 + ynCell(r, 'biginUploaded')
                 + ynCell(r, 'phoneCheckedInBigin')

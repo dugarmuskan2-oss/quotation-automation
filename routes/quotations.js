@@ -374,7 +374,8 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName })
             company: q.companyName || q.projectName || '',
             contact: q.customerName || '',
             preparedBy: q.preparedBy || '',
-            sentDate: q.sentAt || '',            // "Date" column — filled once sent
+            checkedBy: q.checkedBy || '',        // auto-fills the register's Checked By column
+            sentDate: q.sentAt || '',            // "Sent On" column — filled once sent
             value: q.grandTotal || '',           // "Value" column — quote total
             gmailMessageId: q.gmailMessageId || '',
             // Manual workflow fields, typed in the in-app register
@@ -508,7 +509,7 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName })
 
     // Save the register's manual workflow fields (Given for checking to,
     // Sent By, BIGIN checks). Flag-only merge — never clobbers heavy fields.
-    const REGISTER_META_FIELDS = ['givenForCheckingTo', 'sentBy', 'biginUploaded', 'phoneCheckedInBigin', 'emailCheckedInBigin'];
+    const REGISTER_META_FIELDS = ['givenForCheckingTo', 'sentBy', 'statusManual', 'biginUploaded', 'phoneCheckedInBigin', 'emailCheckedInBigin'];
 
     router.post('/quotations/:id/register-meta', async (req, res) => {
         if (!requireDdb(res)) return;
