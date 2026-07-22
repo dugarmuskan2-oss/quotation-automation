@@ -309,10 +309,15 @@ SIZE MATCHING RULES — apply when reading rate-file rows:
 - VERIFY the match against the row's NB and/or OD columns: 1/2"=15NB/21.3mm, 3/4"=20NB/26.7, 1"=25NB/33.4, 1-1/4"=32NB/42.2, 1-1/2"=40NB/48.3, 2"=50NB/60.3, 2-1/2"=65NB/73, 3"=80NB/88.9, 3-1/2"=90NB/101.6, 4"=100NB/114.3, 5"=125NB/141.3, 6"=150NB/168.3, 8"=200NB/219.1. If the NB/OD does not agree with the size you identified, you are reading the WRONG ROW — re-match.
 - Sanity check before returning: within the same pipe type and the same schedule/class, the rate always INCREASES with size. If a larger pipe came out cheaper than a smaller one, a row was misread — re-match those items.`;
 
-async function handleGenerateQuotation({ emailContent, fileContent, instructions, enquiryFileId, enquiryFileIds, enquiryImageDataUrl }, res) {
+async function handleGenerateQuotation({ emailContent, fileContent, instructions, enquiryFileId, enquiryFileIds, enquiryImageDataUrl, enquiryImageDataUrls }, res) {
     try {
+        // All enquiry images (a photographed requirement can span several photos).
+        // Accepts the new enquiryImageDataUrls array and the legacy single param.
+        const imageDataUrls = (Array.isArray(enquiryImageDataUrls) ? enquiryImageDataUrls : [])
+            .concat(enquiryImageDataUrl ? [enquiryImageDataUrl] : [])
+            .filter(Boolean);
         const hasEnquiryFile = enquiryFileId || (enquiryFileIds && enquiryFileIds.length > 0);
-        if (!emailContent && !fileContent && !hasEnquiryFile && !enquiryImageDataUrl) {
+        if (!emailContent && !fileContent && !hasEnquiryFile && imageDataUrls.length === 0) {
             return res.status(400).json({ error: 'No content provided' });
         }
 
@@ -322,8 +327,10 @@ async function handleGenerateQuotation({ emailContent, fileContent, instructions
 
         // Prepare content for OpenAI
         let enquiryText = emailContent || fileContent || '';
-        if (enquiryImageDataUrl && !enquiryText.trim()) {
-            enquiryText = '(Enquiry is in the attached image. Please extract all relevant details from the image.)';
+        if (imageDataUrls.length > 0 && !enquiryText.trim()) {
+            enquiryText = imageDataUrls.length > 1
+                ? `(Enquiry is in the ${imageDataUrls.length} attached images. Read ALL of them and extract every item across all images.)`
+                : '(Enquiry is in the attached image. Please extract all relevant details from the image.)';
         }
 
         // Try to use existing OpenAI file IDs from the rate index (fast path - no S3 read, no upload)
@@ -466,10 +473,10 @@ async function handleGenerateQuotation({ emailContent, fileContent, instructions
         for (const fid of enquiryIds) {
             userContentParts.push({ type: 'input_file', file_id: fid });
         }
-        if (enquiryImageDataUrl) {
+        for (const imageUrl of imageDataUrls) {
             userContentParts.push({
                 type: 'input_image',
-                image_url: enquiryImageDataUrl
+                image_url: imageUrl
             });
         }
 

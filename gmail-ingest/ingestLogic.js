@@ -224,19 +224,22 @@ async function generateAndSaveQuotation(ctx, email, emailId) {
         body = (body ? body + '\n\n' : '') + extractedTextParts.join('\n\n');
     }
 
-    let enquiryImageDataUrl = null;
-    const imageAttachments = getAllImageAttachments(allAttachments);
-    if (imageAttachments.length > 0) {
-        const first = imageAttachments[0];
-        const mime = (first.contentType || 'image/png').split(';')[0].trim();
-        enquiryImageDataUrl = 'data:' + mime + ';base64,' + first.buffer.toString('base64');
+    // Send EVERY enquiry image to the AI — a photographed requirement often
+    // spans several photos, so page 2+ must not be dropped.
+    const enquiryImageDataUrls = getAllImageAttachments(allAttachments).map(function (img) {
+        const mime = (img.contentType || 'image/png').split(';')[0].trim();
+        return 'data:' + mime + ';base64,' + img.buffer.toString('base64');
+    });
+    if (enquiryImageDataUrls.length > 0) {
         if (!body.trim()) {
-            body = '(Enquiry is in the attached image. Please extract all relevant details from the image.)';
+            body = enquiryImageDataUrls.length > 1
+                ? '(Enquiry is in the ' + enquiryImageDataUrls.length + ' attached images. Read ALL of them and extract every item.)'
+                : '(Enquiry is in the attached image. Please extract all relevant details from the image.)';
         }
-        console.log('Gmail ingest: using first of ' + imageAttachments.length + ' image(s) for email ' + emailId);
+        console.log('Gmail ingest: sending all ' + enquiryImageDataUrls.length + ' image(s) to the AI for email ' + emailId);
     }
 
-    if (!body.trim() && enquiryFileIds.length === 0 && !enquiryImageDataUrl) {
+    if (!body.trim() && enquiryFileIds.length === 0 && enquiryImageDataUrls.length === 0) {
         return { success: false, error: 'Email has no body and no supported attachment (PDF, Excel, Word, Image)', emailId };
     }
 
@@ -246,7 +249,7 @@ async function generateAndSaveQuotation(ctx, email, emailId) {
             emailContent: body,
             instructions,
             enquiryFileIds: enquiryFileIds.length > 0 ? enquiryFileIds : undefined,
-            enquiryImageDataUrl: enquiryImageDataUrl || undefined
+            enquiryImageDataUrls: enquiryImageDataUrls.length > 0 ? enquiryImageDataUrls : undefined
         });
     } catch (err) {
         const message = err && (err.message || err.error || String(err));

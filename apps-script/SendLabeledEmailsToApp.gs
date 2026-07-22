@@ -44,14 +44,16 @@ function getIngestSecret() {
   return PropertiesService.getScriptProperties().getProperty('INGEST_SECRET');
 }
 
-/** Max attachment size in bytes (3 MB). Larger attachments are skipped to avoid 413. */
+/** Max attachment size in bytes (3 MB binary -> ~4 MB base64, under Vercel's 4.5 MB).
+ *  Larger attachments can't be forwarded, but their names are noted in the body
+ *  (see buildEmailPayload) so they're never silently lost. */
 var MAX_ATTACHMENT_BYTES = 3 * 1024 * 1024;
 
 /** Max bodyHtml length; truncate if larger to reduce payload. */
 var MAX_BODYHTML_LENGTH = 200000;
 
-/** Max request body size in bytes (Vercel limit ~4.5 MB). Use 4 MB to stay safe. */
-var MAX_PAYLOAD_BYTES = 4 * 1024 * 1024;
+/** Max request body size in bytes. Vercel caps at ~4.5 MB; 4.3 MB leaves headroom. */
+var MAX_PAYLOAD_BYTES = 4300 * 1024;
 
 /** Max emails per request. Keep at 1 so each request finishes within Vercel's 60s timeout (AI generation per email takes ~30–60s). */
 var MAX_EMAILS_PER_REQUEST = 1;
@@ -78,6 +80,7 @@ function buildEmailPayload(message) {
     bodyHtml = bodyHtml.substring(0, MAX_BODYHTML_LENGTH) + ' [truncated]';
   }
   var attachments = [];
+  var skipped = [];   // attachments too large to forward — noted in the body
   var attachmentBlobs = message.getAttachments();
   if (attachmentBlobs.length > 0) {
     Logger.log('Email has ' + attachmentBlobs.length + ' attachment(s) from getAttachments()');
@@ -93,27 +96,24 @@ function buildEmailPayload(message) {
       attName = 'attachment_' + i;
     }
     Logger.log('Attachment[' + i + ']: name="' + attName + '", contentType="' + ct + '", size=' + bytes.length + ' bytes');
-    var nameLow = (attName || '').trim().toLowerCase();
     if (bytes.length > MAX_ATTACHMENT_BYTES) {
+      // Too large for the request limit — record its name so staff know to look.
+      skipped.push(attName + ' (' + (bytes.length / 1024 / 1024).toFixed(1) + ' MB)');
       Logger.log('Skipping attachment (too large): ' + attName + ' (' + (bytes.length / 1024).toFixed(1) + ' KB)');
       continue;
     }
-    var isPdf = ct.indexOf('pdf') !== -1 || nameLow.endsWith('.pdf');
-    var excelExts = ['.xlsx', '.xlsm', '.xlsb', '.xls', '.xlx', '.xlw', '.ods', '.fods', '.csv', '.dif', '.sylk', '.slk', '.prn', '.xml'];
-    var isExcel = ct.indexOf('spreadsheet') !== -1 || ct.indexOf('ms-excel') !== -1 || ct.indexOf('opendocument.spreadsheet') !== -1 || excelExts.some(function(e) { return nameLow.endsWith(e); });
-    var isWord = ct.indexOf('msword') !== -1 || ct.indexOf('wordprocessingml') !== -1 || ct.indexOf('rtf') !== -1 || nameLow.endsWith('.docx') || nameLow.endsWith('.doc') || nameLow.endsWith('.rtf');
-    var isImage = ct.indexOf('image/') === 0 || ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'].some(function(e) { return nameLow.endsWith(e); });
-    if (!isPdf && !isExcel && !isWord && !isImage) {
-      Logger.log('Skipping attachment (unsupported type): ' + attName + ' (contentType: ' + ct + ')');
-      continue;
-    }
-    var typeLabel = isPdf ? 'PDF' : isExcel ? 'Excel' : isWord ? 'Word' : isImage ? 'Image' : 'Unknown';
-    Logger.log('Including attachment: ' + attName + ' (' + (bytes.length / 1024).toFixed(1) + ' KB, ' + typeLabel + ')');
+    // Forward EVERY type. The app extracts from PDF/Excel/Word/image and retains
+    // all originals (including unreadable ones like .zip/.dwg) for viewing.
+    Logger.log('Including attachment: ' + attName + ' (' + (bytes.length / 1024).toFixed(1) + ' KB, ' + ct + ')');
     attachments.push({
       name: attName,
       contentType: att.getContentType(),
       base64: Utilities.base64Encode(bytes)
     });
+  }
+  if (skipped.length > 0) {
+    body = (body || '') + '\n\n[Note: ' + skipped.length + ' attachment(s) were too large to auto-process — ' +
+      skipped.join(', ') + '. Open the original email (View in Gmail) to see them.]';
   }
   return {
     id: id,
@@ -282,8 +282,19 @@ function postEmailBatchesToApp_(appUrl, secret, emails) {
     var batch = emails.slice(i, i + MAX_EMAILS_PER_REQUEST);
     var payloadStr = JSON.stringify({ emails: batch });
     if (payloadStr.length > MAX_PAYLOAD_BYTES) {
-      Logger.log('Skipping email ' + (i + 1) + ': payload too large');
-      continue;
+      // Don't drop the enquiry — resend WITHOUT attachments plus a visible note,
+      // so a quote still gets created and staff can open the original email.
+      Logger.log('Email ' + (i + 1) + ' payload too large (' + (payloadStr.length / 1024 / 1024).toFixed(1) + ' MB) — resending without attachments + note.');
+      batch = batch.map(function (e) {
+        var names = (e.attachments || []).map(function (a) { return a.name; }).join(', ');
+        return {
+          id: e.id, subject: e.subject, from: e.from, date: e.date,
+          body: (e.body || '') + '\n\n[Note: attachment(s) too large to send automatically' +
+            (names ? ' — ' + names : '') + '. Open the original email (View in Gmail) to view them.]',
+          bodyHtml: e.bodyHtml, attachments: []
+        };
+      });
+      payloadStr = JSON.stringify({ emails: batch });
     }
     var r = postEmailsToApp(appUrl, batch, secret);
     var c = r.getResponseCode();
