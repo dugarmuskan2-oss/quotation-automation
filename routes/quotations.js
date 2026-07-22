@@ -30,7 +30,7 @@ const SUMMARY_NESTED_PATHS = [
     '#eva', '#rev', '#crp',
     // Admin margin-allocation flow (desk renders from the list summary alone)
     'adminStatus', 'adminNote', 'itemSummary', 'isNewCompany', 'regretSentAt',
-    'preparedBy', 'sentAt',
+    'preparedBy', 'sentAt', 'registerMeta',
 ];
 const SUMMARY_PROJECTION = [
     'id', 'updatedAt', 'createdAt',
@@ -367,6 +367,7 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName })
 
     function registerRowOf(q) {
         return {
+            id: q.id != null ? String(q.id) : '',
             quoteNumber: q.quoteNumber || '',
             enquiryDate: q.createdAt || q.updatedAt || '',
             status: registerStatusOf(q),
@@ -376,17 +377,18 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName })
             sentDate: q.sentAt || '',            // "Date" column — filled once sent
             value: q.grandTotal || '',           // "Value" column — quote total
             gmailMessageId: q.gmailMessageId || '',
+            // Manual workflow fields, typed in the in-app register
+            registerMeta: (q.registerMeta && typeof q.registerMeta === 'object') ? q.registerMeta : {},
         };
     }
 
     const REGISTER_MAX_ROWS = 2000;
 
+    // Read-only, same exposure as GET /api/quotations (no secret gate — the
+    // in-app Register section fetches this from the browser; the optional
+    // Google-Sheet mirror script calls it the same way).
     router.get('/enquiry-register', async (req, res) => {
         if (!requireDdb(res)) return;
-        const secret = process.env.INGEST_SECRET;
-        if (secret && req.headers['x-ingest-secret'] !== secret) {
-            return res.status(401).json({ error: 'Unauthorized' });
-        }
         try {
             const days = Math.min(400, Math.max(1, parseInt(req.query.days, 10) || 62));
             const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
@@ -501,6 +503,32 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName })
         } catch (error) {
             console.error('Error updating regret status:', error);
             res.status(500).json({ error: 'Failed to update regret status', details: error.message });
+        }
+    });
+
+    // Save the register's manual workflow fields (Given for checking to,
+    // Sent By, BIGIN checks). Flag-only merge — never clobbers heavy fields.
+    const REGISTER_META_FIELDS = ['givenForCheckingTo', 'sentBy', 'biginUploaded', 'phoneCheckedInBigin', 'emailCheckedInBigin'];
+
+    router.post('/quotations/:id/register-meta', async (req, res) => {
+        if (!requireDdb(res)) return;
+        try {
+            const stored = await loadStoredQuotation(req.params.id);
+            if (!stored) return res.status(404).json({ error: 'Quotation not found' });
+
+            const payload = stored.payload;
+            const meta = (payload.registerMeta && typeof payload.registerMeta === 'object') ? payload.registerMeta : {};
+            const updates = (req.body && typeof req.body.registerMeta === 'object') ? req.body.registerMeta : {};
+            REGISTER_META_FIELDS.forEach(field => {
+                if (updates[field] !== undefined) meta[field] = String(updates[field] || '');
+            });
+            payload.registerMeta = meta;
+
+            await storeQuotationPayload(stored.item, payload);
+            res.json({ success: true, registerMeta: meta });
+        } catch (error) {
+            console.error('Error saving register meta:', error);
+            res.status(500).json({ error: 'Failed to save register fields', details: error.message });
         }
     });
 

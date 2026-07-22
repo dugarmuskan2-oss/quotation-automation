@@ -998,9 +998,26 @@
         /* Ensure main containers have a bit of left padding so they don't sit under the buttons */
         #quotationApp,
         #weightCalculatorApp,
-        #enquiryPreparerApp {
+        #enquiryPreparerApp,
+        #registerApp {
             padding-left: 70px;
         }
+
+        /* ── Enquiry register (in-app report) ─────────────────────────────── */
+        .reg-toolbar { display: flex; align-items: center; gap: 10px; margin: 14px 0; flex-wrap: wrap; }
+        .reg-toolbar select { height: 34px; padding: 4px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; }
+        .reg-meta { font-size: 12px; color: #9b988e; margin-left: auto; }
+        .reg-wrap { overflow-x: auto; border: 1px solid rgba(0,0,0,0.12); border-radius: 10px; background: #fff; }
+        .reg-table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 1150px; }
+        .reg-table th { background: #3b3f79; color: #fff; font-weight: 500; text-align: left; padding: 7px 8px; font-size: 11px; white-space: nowrap; position: sticky; top: 0; }
+        .reg-table td { padding: 6px 8px; border-bottom: 1px solid rgba(0,0,0,0.07); white-space: nowrap; vertical-align: middle; }
+        .reg-table tr:hover td { background: #f8f7f3; }
+        .reg-table td.r { text-align: right; }
+        .reg-table input, .reg-table select { height: 26px; font-size: 12px; padding: 2px 6px; border: 1px solid #ddd; border-radius: 5px; background: #fff; width: 110px; }
+        .reg-table select { width: 58px; }
+        .reg-day { color: #9b988e; }
+        .reg-note { font-size: 12px; color: #9b988e; margin-top: 10px; line-height: 1.6; }
+        .reg-saved { color: #1D9E75; font-size: 11px; margin-left: 4px; }
 
         /* Enquiry copy button pressed/active feedback */
         #copyEnquiryHtmlBtn {
@@ -1055,6 +1072,15 @@
             title="Enquiry Preparer"
         >
             <span>📨</span>
+        </button>
+        <button
+            type="button"
+            class="main-tools-button"
+            id="mainToolRegisterButton"
+            onclick="switchToRegisterTab()"
+            title="Enquiry Register"
+        >
+            <span>📊</span>
         </button>
     </div>
 
@@ -1681,8 +1707,23 @@
             <p id="generatedEnquiryStatus" style="margin-top: 6px; font-size: 12px; color: #666;"></p>
         </div>
     </div>
-    
-    <!-- 
+
+    <!-- Enquiry Register — the live report (mirrors the Google Sheet layout) -->
+    <div class="container" id="registerApp" style="display: none;">
+        <h1>📊 Enquiry Register</h1>
+        <div class="reg-toolbar">
+            <label for="registerMonthSelect" style="font-size:13px; color:#6e6c65;">Month</label>
+            <select id="registerMonthSelect" onchange="window.enquiryRegister && enquiryRegister.setMonth(this.value)"></select>
+            <button type="button" class="upload-btn" style="width:auto; padding:7px 14px;" onclick="window.enquiryRegister && enquiryRegister.refresh()">↻ Refresh</button>
+            <span class="reg-meta" id="registerMeta"></span>
+        </div>
+        <div class="reg-wrap"><div id="registerTableContainer">
+            <p style="text-align:center; color:#999; padding:24px;">Loading register…</p>
+        </div></div>
+        <p class="reg-note">STATUS, Date and Value fill themselves from the app. <b>Given for checking to</b>, <b>Sent By</b> and the <b>BIGIN</b> columns are typed here and saved to the quote instantly. Enquiries that never became quotes (emails only tagged in Gmail) appear only in the optional Google-Sheet mirror.</p>
+    </div>
+
+    <!--
         ============================================
         JAVASCRIPT - This makes the page interactive
         ============================================
@@ -10402,6 +10443,7 @@
     <script src="weight-calculator.js?v=20260529-1"></script>
     <script src="enquiry-preparer.js?v=20260529-1"></script>
     <script src="freight-tab-weight-editor.js?v=20260624-4"></script>
+    <script src="register.js?v=20260722-1"></script>
 </body>
 </html>
 
