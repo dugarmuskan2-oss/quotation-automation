@@ -162,6 +162,40 @@ function extractLargePdf(bytes, name) {
   return result;
 }
 
+/**
+ * Upload a large attachment straight to the app's storage (S3), bypassing the
+ * request-size limit, so the original stays viewable on the quote card. Asks the
+ * app for a presigned URL, then PUTs the bytes directly to storage.
+ * @return {{key: string}|null} storage key, or null if unavailable/failed.
+ */
+function uploadLargeAttachmentToStorage(bytes, name, contentType) {
+  try {
+    var appUrl = getAppUrl();
+    var secret = getIngestSecret();
+    var headers = {};
+    if (secret) headers['X-Ingest-Secret'] = secret;
+    var safeName = String(name || 'file').replace(/[^\w.\- ]+/g, '_');
+    var unique = new Date().getTime() + '-' + Math.floor(Math.random() * 100000) + '-' + safeName;
+    var urlResp = UrlFetchApp.fetch(appUrl + '/api/enquiry-upload-url?name=' + encodeURIComponent(unique),
+      { headers: headers, muteHttpExceptions: true });
+    if (urlResp.getResponseCode() !== 200) {
+      Logger.log('enquiry-upload-url failed (' + urlResp.getResponseCode() + ') for ' + name);
+      return null;
+    }
+    var info = JSON.parse(urlResp.getContentText());
+    if (!info.url || !info.key) return null;
+    var blob = Utilities.newBlob(bytes, contentType || 'application/octet-stream', safeName);
+    var putResp = UrlFetchApp.fetch(info.url, { method: 'put', payload: blob, muteHttpExceptions: true });
+    var pc = putResp.getResponseCode();
+    if (pc >= 200 && pc < 300) return { key: info.key };
+    Logger.log('Direct S3 PUT failed (' + pc + ') for ' + name + ': ' + putResp.getContentText().substring(0, 200));
+    return null;
+  } catch (e) {
+    Logger.log('Direct upload failed for ' + name + ': ' + e.toString());
+    return null;
+  }
+}
+
 /** Render a PDF's first page to a compressed image via Drive's thumbnail renderer. */
 function renderPdfFirstPageImage(bytes, name) {
   var tempFile = null;
@@ -211,9 +245,10 @@ function buildEmailPayload(message) {
     bodyHtml = bodyHtml.substring(0, MAX_BODYHTML_LENGTH) + ' [truncated]';
   }
   var attachments = [];
-  var skipped = [];         // attachments too large to forward — noted in the body
-  var pdfTextParts = [];    // text pulled out of oversized PDFs
-  var attachmentNotes = []; // originals not forwarded as-is — shown as info chips on the card
+  var skipped = [];         // attachments too large to store at all — noted in the body
+  var pdfTextParts = [];    // text pulled out of oversized PDFs (for the AI)
+  var attachmentNotes = []; // originals we couldn't store — shown as info chips on the card
+  var uploadedFiles = [];   // large originals uploaded straight to storage — viewable chips
   var attachmentBlobs = message.getAttachments();
   if (attachmentBlobs.length > 0) {
     Logger.log('Email has ' + attachmentBlobs.length + ' attachment(s) from getAttachments()');
@@ -248,29 +283,27 @@ function buildEmailPayload(message) {
       }
     }
     if (outBytes.length > MAX_ATTACHMENT_BYTES) {
+      // A PDF can't be sent whole, but the AI still needs its content: pull the
+      // text (digital PDFs / clean scans) and, for scans, its page images.
       if (isPdf) {
-        // Oversized PDF: pull its text (digital PDFs / clean scans) and, for
-        // scans, its page images — so the content still reaches the app.
         var ex = extractLargePdf(bytes, attName);
-        var gotSomething = false;
-        if (ex.text) { pdfTextParts.push('[PDF: ' + attName + ']\n' + ex.text); gotSomething = true; }
+        if (ex.text) pdfTextParts.push('[PDF: ' + attName + ']\n' + ex.text);
         for (var pi = 0; pi < ex.images.length; pi++) {
           attachments.push({ name: ex.images[pi].name, contentType: ex.images[pi].contentType, base64: Utilities.base64Encode(ex.images[pi].bytes) });
-          gotSomething = true;
         }
-        if (gotSomething) {
-          var parts = [];
-          if (ex.text) parts.push('text');
-          if (ex.images.length) parts.push(ex.images.length + ' page image' + (ex.images.length > 1 ? 's' : ''));
-          attachmentNotes.push({ name: attName, note: parts.join(' + ') + ' extracted (original too large to attach)' });
-          Logger.log('Large PDF ' + attName + ': text=' + (ex.text ? ex.text.length : 0) + ' chars, page-images=' + ex.images.length);
-          continue;
-        }
+        Logger.log('Large PDF ' + attName + ': text=' + (ex.text ? ex.text.length : 0) + ' chars, page-images=' + ex.images.length);
       }
-      // Couldn't shrink or extract — note it so staff open the original email.
-      skipped.push(attName + ' (' + (bytes.length / 1024 / 1024).toFixed(1) + ' MB)');
-      attachmentNotes.push({ name: attName, note: 'too large to attach — open the original email' });
-      Logger.log('Skipping attachment (too large): ' + attName + ' (' + (bytes.length / 1024).toFixed(1) + ' KB)');
+      // Upload the ORIGINAL straight to storage so it stays viewable on the card.
+      var up = uploadLargeAttachmentToStorage(bytes, attName, att.getContentType());
+      if (up) {
+        uploadedFiles.push({ name: attName, key: up.key, contentType: att.getContentType(), size: bytes.length });
+        Logger.log('Uploaded oversized ' + attName + ' straight to storage: ' + up.key);
+      } else {
+        // Couldn't store it — leave a visible note pointing to the original email.
+        skipped.push(attName + ' (' + (bytes.length / 1024 / 1024).toFixed(1) + ' MB)');
+        attachmentNotes.push({ name: attName, note: 'too large to attach — open the original email' });
+        Logger.log('Could not store oversized attachment: ' + attName + ' (' + (bytes.length / 1024).toFixed(1) + ' KB)');
+      }
       continue;
     }
     // Forward EVERY type. The app extracts from PDF/Excel/Word/image and retains
@@ -297,7 +330,8 @@ function buildEmailPayload(message) {
     body: body || '',
     bodyHtml: bodyHtml || '',
     attachments: attachments,
-    attachmentNotes: attachmentNotes
+    attachmentNotes: attachmentNotes,
+    uploadedFiles: uploadedFiles
   };
 }
 
@@ -467,6 +501,7 @@ function postEmailBatchesToApp_(appUrl, secret, emails) {
           body: (e.body || '') + '\n\n[Note: attachment(s) too large to send automatically' +
             (names ? ' — ' + names : '') + '. Open the original email (View in Gmail) to view them.]',
           bodyHtml: e.bodyHtml, attachments: [],
+          uploadedFiles: e.uploadedFiles || [],
           // keep the extracted-file info chips, and note the ones we just stripped
           attachmentNotes: (e.attachmentNotes || []).concat((e.attachments || []).map(function (a) {
             return { name: a.name, note: 'too large to send — open the original email' };

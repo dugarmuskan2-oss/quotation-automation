@@ -178,6 +178,24 @@ async function _s3Read(filePath) {
     return Buffer.concat(chunks);
 }
 
+/**
+ * Presigned S3 PUT URL so a client (the Apps Script) can upload a large enquiry
+ * attachment DIRECTLY to storage, bypassing the app's request-size limit. The
+ * object lands under 'enquiries/' so the existing view-enquiry-file route can
+ * stream it. S3 only — returns null on other backends (caller falls back).
+ * @param {string} fileName
+ * @returns {Promise<{url: string, key: string}|null>}
+ */
+async function getEnquiryUploadUrl(fileName) {
+    if (!(useAWS && s3Client)) return null;
+    const { PutObjectCommand } = require('@aws-sdk/client-s3');
+    const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+    const safe = String(fileName || 'file').replace(/[^\w.\- ]+/g, '_').slice(0, 120);
+    const key = 'enquiries/' + safe;
+    const url = await getSignedUrl(s3Client, new PutObjectCommand({ Bucket: s3BucketName, Key: key }), { expiresIn: 600 });
+    return { url, key };
+}
+
 // ─── Public unified API ───────────────────────────────────────────────────────
 
 /** Returns true when a cloud backend (GCS or S3) is active. Used by server.js for multer config. */
@@ -361,6 +379,7 @@ module.exports = {
     list,
     read,
     streamToResponse,
+    getEnquiryUploadUrl,
     readText,
     saveText,
     getAllLocalFiles,

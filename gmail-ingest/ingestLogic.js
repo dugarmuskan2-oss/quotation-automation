@@ -275,6 +275,11 @@ async function generateAndSaveQuotation(ctx, email, emailId) {
 
     const emailLink = emailId ? GMAIL_INBOX_URL + emailId : '';
     const enquiryFiles = await persistEnquiryAttachments(ctx, allAttachments, emailId);
+    // Large originals the Apps Script uploaded straight to storage (bypassing the
+    // request-size limit) — already stored, so just record them as viewable files.
+    const preUploaded = (Array.isArray(email.uploadedFiles) ? email.uploadedFiles : [])
+        .filter(function (f) { return f && f.key; })
+        .map(function (f) { return { name: f.name || 'file', key: String(f.key), contentType: f.contentType || '', size: f.size || 0 }; });
     const quotation = buildQuotationToSave({
         aiResult,
         quoteNumber,
@@ -283,7 +288,7 @@ async function generateAndSaveQuotation(ctx, email, emailId) {
         emailContentHtml: email.bodyHtml || '',
         gmailMessageId: emailId,
         emailLink,
-        enquiryFiles,
+        enquiryFiles: enquiryFiles.concat(preUploaded),
         enquiryFileNotes: Array.isArray(email.attachmentNotes) ? email.attachmentNotes : []
     });
 

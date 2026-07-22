@@ -232,6 +232,27 @@ module.exports = function createRatesRouter({ openai, upload, storage, ratesDir 
         }
     });
 
+    // ── Presigned URL to upload a LARGE enquiry attachment directly to storage ─
+    // The Apps Script calls this, then PUTs the file straight to S3, bypassing
+    // the app's request-size limit — so oversized originals stay viewable.
+    // Gated by the same ingest secret. S3 only.
+    router.get('/enquiry-upload-url', async (req, res) => {
+        const secret = process.env.INGEST_SECRET;
+        if (secret && req.headers['x-ingest-secret'] !== secret) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+        const name = String(req.query.name || '').trim();
+        if (!name) return res.status(400).json({ error: 'name is required' });
+        try {
+            const result = await storage.getEnquiryUploadUrl(name);
+            if (!result) return res.status(501).json({ error: 'Direct upload unavailable (S3 not configured)' });
+            res.json(result); // { url, key }
+        } catch (error) {
+            console.error('Error creating enquiry upload URL:', error);
+            res.status(500).json({ error: 'Failed to create upload URL', details: error.message });
+        }
+    });
+
     // ── List current rate files ───────────────────────────────────────────────
     router.get('/current-rates', async (req, res) => {
         try {

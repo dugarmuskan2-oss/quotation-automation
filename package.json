@@ -32,6 +32,7 @@
     "@aws-sdk/client-dynamodb": "^3.985.0",
     "@aws-sdk/client-s3": "^3.490.0",
     "@aws-sdk/lib-dynamodb": "^3.985.0",
+    "@aws-sdk/s3-request-presigner": "^3.1092.0",
     "@google-cloud/storage": "^7.7.0",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",

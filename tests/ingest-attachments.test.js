@@ -114,6 +114,33 @@ describe('Gmail ingest — info notes for originals not forwarded', () => {
     });
 });
 
+describe('Gmail ingest — large originals uploaded straight to storage', () => {
+    test('email.uploadedFiles become viewable enquiryFiles (no re-upload)', async () => {
+        const { ctx, state } = makeCtx();
+        await processOneEmail(ctx, {
+            id: 'm-direct', body: 'text',
+            attachments: [{ name: 'small.jpg', contentType: 'image/jpeg', base64: b64('IMG') }],
+            uploadedFiles: [
+                { name: 'huge.pdf', key: 'enquiries/123-huge.pdf', contentType: 'application/pdf', size: 7000000 },
+            ],
+        });
+        const files = state.saved.enquiryFiles;
+        const names = files.map((f) => f.name);
+        // both the normally-retained small image AND the direct-uploaded big PDF
+        expect(names).toEqual(expect.arrayContaining(['small.jpg', 'huge.pdf']));
+        const pdf = files.find((f) => f.name === 'huge.pdf');
+        expect(pdf.key).toBe('enquiries/123-huge.pdf');
+        // it was NOT re-uploaded through saveEnquiryFile (only the small image was)
+        expect(state.retained.some((n) => n.includes('huge.pdf'))).toBe(false);
+    });
+
+    test('uploadedFiles entries without a key are ignored', async () => {
+        const { ctx, state } = makeCtx();
+        await processOneEmail(ctx, { id: 'm-bad', body: 'text', attachments: [], uploadedFiles: [{ name: 'x.pdf' }] });
+        expect(state.saved.enquiryFiles).toEqual([]);
+    });
+});
+
 describe('Gmail ingest — retention keeps EVERY attachment', () => {
     test('all seven attachments are persisted, including the unreadable .zip', async () => {
         const { ctx, state } = makeCtx();
