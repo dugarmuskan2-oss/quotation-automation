@@ -67,7 +67,7 @@ async function persistEnquiryAttachments(ctx, attachments, emailId) {
     return files;
 }
 
-function buildQuotationToSave({ aiResult, quoteNumber, termsText, emailContent, emailContentHtml, gmailMessageId, emailLink, enquiryFiles }) {
+function buildQuotationToSave({ aiResult, quoteNumber, termsText, emailContent, emailContentHtml, gmailMessageId, emailLink, enquiryFiles, enquiryFileNotes }) {
     const { tableHTML, grandTotalFormatted } = buildTableHTMLFromLineItems(aiResult.lineItems || []);
     const headerHTML = buildHeaderHTMLFromQuotation({
         ...aiResult,
@@ -103,7 +103,10 @@ function buildQuotationToSave({ aiResult, quoteNumber, termsText, emailContent, 
         adminStatus: 'awaiting',
         adminNote: '',
         itemSummary: buildItemSummary(aiResult.lineItems || []),
-        enquiryFiles: Array.isArray(enquiryFiles) ? enquiryFiles : []
+        enquiryFiles: Array.isArray(enquiryFiles) ? enquiryFiles : [],
+        // Originals not forwarded as-is (e.g. an oversized PDF whose text was
+        // extracted) — shown as non-clickable info chips on the card.
+        enquiryFileNotes: Array.isArray(enquiryFileNotes) ? enquiryFileNotes : []
     };
 }
 
@@ -280,7 +283,8 @@ async function generateAndSaveQuotation(ctx, email, emailId) {
         emailContentHtml: email.bodyHtml || '',
         gmailMessageId: emailId,
         emailLink,
-        enquiryFiles
+        enquiryFiles,
+        enquiryFileNotes: Array.isArray(email.attachmentNotes) ? email.attachmentNotes : []
     });
 
     if (ctx.saveQuotation) {

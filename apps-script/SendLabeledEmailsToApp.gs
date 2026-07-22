@@ -211,8 +211,9 @@ function buildEmailPayload(message) {
     bodyHtml = bodyHtml.substring(0, MAX_BODYHTML_LENGTH) + ' [truncated]';
   }
   var attachments = [];
-  var skipped = [];       // attachments too large to forward — noted in the body
-  var pdfTextParts = [];  // text pulled out of oversized PDFs
+  var skipped = [];         // attachments too large to forward — noted in the body
+  var pdfTextParts = [];    // text pulled out of oversized PDFs
+  var attachmentNotes = []; // originals not forwarded as-is — shown as info chips on the card
   var attachmentBlobs = message.getAttachments();
   if (attachmentBlobs.length > 0) {
     Logger.log('Email has ' + attachmentBlobs.length + ' attachment(s) from getAttachments()');
@@ -258,12 +259,17 @@ function buildEmailPayload(message) {
           gotSomething = true;
         }
         if (gotSomething) {
+          var parts = [];
+          if (ex.text) parts.push('text');
+          if (ex.images.length) parts.push(ex.images.length + ' page image' + (ex.images.length > 1 ? 's' : ''));
+          attachmentNotes.push({ name: attName, note: parts.join(' + ') + ' extracted (original too large to attach)' });
           Logger.log('Large PDF ' + attName + ': text=' + (ex.text ? ex.text.length : 0) + ' chars, page-images=' + ex.images.length);
           continue;
         }
       }
       // Couldn't shrink or extract — note it so staff open the original email.
       skipped.push(attName + ' (' + (bytes.length / 1024 / 1024).toFixed(1) + ' MB)');
+      attachmentNotes.push({ name: attName, note: 'too large to attach — open the original email' });
       Logger.log('Skipping attachment (too large): ' + attName + ' (' + (bytes.length / 1024).toFixed(1) + ' KB)');
       continue;
     }
@@ -290,7 +296,8 @@ function buildEmailPayload(message) {
     date: date ? date.toISOString() : '',
     body: body || '',
     bodyHtml: bodyHtml || '',
-    attachments: attachments
+    attachments: attachments,
+    attachmentNotes: attachmentNotes
   };
 }
 
@@ -459,7 +466,11 @@ function postEmailBatchesToApp_(appUrl, secret, emails) {
           id: e.id, subject: e.subject, from: e.from, date: e.date,
           body: (e.body || '') + '\n\n[Note: attachment(s) too large to send automatically' +
             (names ? ' — ' + names : '') + '. Open the original email (View in Gmail) to view them.]',
-          bodyHtml: e.bodyHtml, attachments: []
+          bodyHtml: e.bodyHtml, attachments: [],
+          // keep the extracted-file info chips, and note the ones we just stripped
+          attachmentNotes: (e.attachmentNotes || []).concat((e.attachments || []).map(function (a) {
+            return { name: a.name, note: 'too large to send — open the original email' };
+          }))
         };
       });
       payloadStr = JSON.stringify({ emails: batch });

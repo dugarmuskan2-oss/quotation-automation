@@ -22,18 +22,20 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 const b64 = (s) => Buffer.from(s).toString('base64');
 
 /** Build a fresh in-memory ingest context + shared state. */
-function makeCtx({ atomic = true, generateThrows = false, aiDelayMs = 5, uploadFileId = 'file_test', extractedText = '[extracted spreadsheet rows]' } = {}) {
+function makeCtx({ atomic = true, generateThrows = false, aiDelayMs = 5, uploadFileId = 'file_test' } = {}) {
     const state = {
         saved: [],           // saved quotations
         reserved: new Set(), // message ids currently claimed (models the marker table)
         counter: 107,        // quote-number counter
         generateCalls: 0,
+        generateArgs: [],    // opts passed into each generateQuotationData call
     };
 
     const ctx = {
         getInstructionsContent: async () => 'SOME INSTRUCTIONS',
         getDefaultTermsContent: async () => 'TERMS',
-        generateQuotationData: async () => {
+        generateQuotationData: async (opts) => {
+            state.generateArgs.push(opts);
             state.generateCalls += 1;
             await tick(aiDelayMs); // simulate the ~30-60s AI step (widens any race window)
             if (generateThrows) throw new Error('AI failed');
@@ -48,7 +50,7 @@ function makeCtx({ atomic = true, generateThrows = false, aiDelayMs = 5, uploadF
         getNextQuoteNumber: async () => { state.counter += 1; return state.counter; },
         saveQuotation: async (q) => { state.saved.push(q); },
         uploadEnquiryFileToOpenAI: async () => uploadFileId,
-        extractTextFromAttachment: async () => extractedText,
+        extractTextFromAttachment: async ({ originalname } = {}) => '[extracted text of ' + (originalname || 'file') + ']',
     };
 
     if (atomic) {
@@ -216,6 +218,125 @@ describe('Gmail ingest — enquiries that live in an attachment (little/no body)
         expect(first.success).toBe(true);
         expect(second.success).toBe(false);
         expect(second.error).toMatch(/Already imported/);
+        expect(state.saved).toHaveLength(1);
+    });
+});
+
+/** Build an attachment payload of a given name/type. */
+const attach = (name, contentType, payload) => ({ name, contentType, base64: b64(payload || name) });
+
+describe('Gmail ingest — multiple files in one email', () => {
+    test('three PDFs on one email → one quote, and all three are sent to quote generation', async () => {
+        const { ctx, state } = makeCtx();
+        const atts = [
+            attach('a.pdf', 'application/pdf', 'pdf-a'),
+            attach('b.pdf', 'application/pdf', 'pdf-b'),
+            attach('c.pdf', 'application/pdf', 'pdf-c'),
+        ];
+        const res = await processOneEmail(ctx, email('MULTI_PDF', { body: '', attachments: atts }));
+
+        expect(res.success).toBe(true);
+        expect(state.saved).toHaveLength(1);
+        expect(state.generateArgs[0].enquiryFileIds).toHaveLength(3); // all three PDFs used
+    });
+
+    test('a mixed bundle (PDF + Excel + Word + image) on one email → one quote using all of it', async () => {
+        const { ctx, state } = makeCtx();
+        const atts = [
+            attach('quote.pdf', 'application/pdf', 'pdf'),
+            attach('requirement.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'xlsx'),
+            attach('spec.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'docx'),
+            attach('photo.jpg', 'image/jpeg', 'img'),
+        ];
+        const res = await processOneEmail(ctx, email('MIXED', { body: '', attachments: atts }));
+        const gen = state.generateArgs[0];
+
+        expect(res.success).toBe(true);
+        expect(state.saved).toHaveLength(1);
+        expect(gen.enquiryFileIds).toHaveLength(1);             // the PDF
+        expect(gen.enquiryImageDataUrls).toHaveLength(1);       // the image
+        expect(gen.emailContent).toContain('requirement.xlsx'); // Excel text folded in
+        expect(gen.emailContent).toContain('spec.docx');        // Word text folded in
+    });
+
+    test('several spreadsheets/word docs → all of their text is folded into the enquiry', async () => {
+        const { ctx, state } = makeCtx();
+        const atts = [
+            attach('sizes.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'x1'),
+            attach('rates.csv', 'text/csv', 'x2'),
+            attach('notes.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'w1'),
+        ];
+        const res = await processOneEmail(ctx, email('MULTI_DOCS', { body: '', attachments: atts }));
+        const gen = state.generateArgs[0];
+
+        expect(res.success).toBe(true);
+        expect(gen.emailContent).toContain('sizes.xlsx');
+        expect(gen.emailContent).toContain('rates.csv');
+        expect(gen.emailContent).toContain('notes.docx');
+    });
+
+    test('several photos on one email → ALL of them are sent to the AI (page 2+ not dropped)', async () => {
+        const { ctx, state } = makeCtx();
+        const atts = [
+            attach('first.jpg', 'image/jpeg', 'FIRST-IMAGE'),
+            attach('second.jpg', 'image/jpeg', 'SECOND-IMAGE'),
+        ];
+        const res = await processOneEmail(ctx, email('MULTI_IMG', { body: '', attachments: atts }));
+        const gen = state.generateArgs[0];
+
+        expect(res.success).toBe(true);
+        expect(gen.enquiryImageDataUrls).toHaveLength(2);       // both photos
+        const joined = gen.enquiryImageDataUrls.join('|');
+        expect(joined).toContain(b64('FIRST-IMAGE'));
+        expect(joined).toContain(b64('SECOND-IMAGE'));
+    });
+
+    test('a multi-file email sent twice is still de-duplicated to one quote', async () => {
+        const { ctx, state } = makeCtx();
+        const atts = [attach('a.pdf', 'application/pdf', 'pdf-a'), attach('b.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'x')];
+        await processOneEmail(ctx, email('MULTI_DUP', { body: '', attachments: atts }));
+        const second = await processOneEmail(ctx, email('MULTI_DUP', { body: '', attachments: atts }));
+
+        expect(second.success).toBe(false);
+        expect(state.saved).toHaveLength(1);
+    });
+});
+
+describe('Gmail ingest — every supported file type is recognised', () => {
+    const supported = [
+        ['PDF',   'invoice.pdf',      'application/pdf'],
+        ['Excel xlsx', 'req.xlsx',    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+        ['Excel xls',  'req.xls',     'application/vnd.ms-excel'],
+        ['CSV',   'rates.csv',        'text/csv'],
+        ['Word docx', 'spec.docx',    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+        ['Word doc',  'spec.doc',     'application/msword'],
+        ['RTF',   'note.rtf',         'application/rtf'],
+        ['PNG',   'pic.png',          'image/png'],
+        ['JPEG',  'pic.jpg',          'image/jpeg'],
+        ['GIF',   'pic.gif',          'image/gif'],
+        ['WEBP',  'pic.webp',         'image/webp'],
+    ];
+
+    test.each(supported)('a %s-only enquiry (no body) creates a quote', async (_label, name, contentType) => {
+        const { ctx, state } = makeCtx();
+        const res = await processOneEmail(ctx, email('T_' + name, { body: '', attachments: [attach(name, contentType, 'bytes')] }));
+        expect(res.success).toBe(true);
+        expect(state.saved).toHaveLength(1);
+    });
+
+    test('an UNSUPPORTED-only attachment (e.g. .zip) with no body is rejected, not turned into a blank quote', async () => {
+        const { ctx, state } = makeCtx();
+        const res = await processOneEmail(ctx, email('ZIP_ONLY', { body: '', attachments: [attach('archive.zip', 'application/zip', 'zip')] }));
+        expect(res.success).toBe(false);
+        expect(res_err(res)).toMatch(/no body and no supported attachment/i);
+        expect(state.saved).toHaveLength(0);
+        expect(state.reserved.has('ZIP_ONLY')).toBe(false); // released → retryable if content arrives later
+    });
+
+    test('an attachment with no data (missing base64) is skipped without crashing', async () => {
+        const { ctx, state } = makeCtx();
+        const res = await processOneEmail(ctx, email('EMPTY_ATT', { body: 'Please quote', attachments: [{ name: 'x.pdf', contentType: 'application/pdf' }] }));
+        expect(res.success).toBe(true); // body still carries the enquiry
         expect(state.saved).toHaveLength(1);
     });
 });

@@ -94,6 +94,26 @@ describe('Gmail ingest — PDFs and Excel/Word', () => {
     });
 });
 
+describe('Gmail ingest — info notes for originals not forwarded', () => {
+    test('attachmentNotes from the payload land on the quote as enquiryFileNotes', async () => {
+        const { ctx, state } = makeCtx();
+        await processOneEmail(ctx, {
+            id: 'm-notes', body: 'some enquiry text',
+            attachments: [],
+            attachmentNotes: [{ name: 'big.pdf', note: 'text extracted (original too large to attach)' }],
+        });
+        expect(state.saved.enquiryFileNotes).toEqual([
+            { name: 'big.pdf', note: 'text extracted (original too large to attach)' },
+        ]);
+    });
+
+    test('no notes -> empty array (older/normal quotes unaffected)', async () => {
+        const { ctx, state } = makeCtx();
+        await processOneEmail(ctx, { id: 'm-none', body: 'text', attachments: [] });
+        expect(state.saved.enquiryFileNotes).toEqual([]);
+    });
+});
+
 describe('Gmail ingest — retention keeps EVERY attachment', () => {
     test('all seven attachments are persisted, including the unreadable .zip', async () => {
         const { ctx, state } = makeCtx();

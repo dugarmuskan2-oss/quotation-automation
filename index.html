@@ -6592,16 +6592,24 @@
             return /^image\//i.test(file.contentType || '') || /\.(png|jpe?g|gif|webp)$/i.test(file.name || '');
         }
 
-        // Clickable chips for the original enquiry attachments (older quotes have none).
+        // Clickable chips for the original enquiry attachments, plus non-clickable
+        // info chips for originals that weren't forwarded (e.g. an oversized PDF
+        // whose text was extracted). Older quotes have neither.
         function buildEnquiryFilesChipsHTML(quotation) {
             const files = Array.isArray(quotation.enquiryFiles) ? quotation.enquiryFiles : [];
-            if (!files.length) return '';
+            const notes = Array.isArray(quotation.enquiryFileNotes) ? quotation.enquiryFileNotes : [];
+            if (!files.length && !notes.length) return '';
             const chips = files.map(function(f) {
                 return `<a href="${escapeHtml(enquiryFileViewUrl(f))}" target="_blank" rel="noopener" onclick="event.stopPropagation();"
                     style="display:inline-flex; align-items:center; gap:5px; font-size:11px; color:#444; background:#f6f5f1; border:1px solid #ddd; border-radius:8px; padding:3px 8px; margin:0 6px 4px 0; text-decoration:none;">
                     ${isImageEnquiryAttachment(f) ? '🖼️' : '📄'} ${escapeHtml(f.name || 'file')} 👁</a>`;
             }).join('');
-            return `<div style="margin-bottom:8px;"><div style="font-size:11px; color:#9b988e; margin-bottom:3px;">ATTACHED FILES</div>${chips}</div>`;
+            const noteChips = notes.map(function(n) {
+                return `<span title="Open the original email to view this file"
+                    style="display:inline-flex; align-items:center; gap:5px; font-size:11px; color:#854F0B; background:#FAEEDA; border:1px solid #f0d9a8; border-radius:8px; padding:3px 8px; margin:0 6px 4px 0;">
+                    📄 ${escapeHtml(n.name || 'file')} — <i>${escapeHtml(n.note || 'not attached')}</i></span>`;
+            }).join('');
+            return `<div style="margin-bottom:8px;"><div style="font-size:11px; color:#9b988e; margin-bottom:3px;">ATTACHED FILES</div>${chips}${noteChips}</div>`;
         }
 
         // Print sheet: admin message first, then the enquiry message, then the
@@ -6611,13 +6619,17 @@
             if (!quotation) return;
             const adminMessage = (buildAdminMessage(quotation) || '').trim();
             const files = Array.isArray(quotation.enquiryFiles) ? quotation.enquiryFiles : [];
-            const filesHtml = files.length
+            const notes = Array.isArray(quotation.enquiryFileNotes) ? quotation.enquiryFileNotes : [];
+            const notesHtml = notes.map(function(n) {
+                return `<p style="margin:6px 0 2px; font-size:13px; color:#854F0B;">📄 ${escapeHtml(n.name || 'file')} — <i>${escapeHtml(n.note || 'not attached')}</i></p>`;
+            }).join('');
+            const filesHtml = (files.length || notes.length)
                 ? files.map(function(f) {
                     const label = `<p style="margin:6px 0 2px; font-size:13px; color:#555;">${isImageEnquiryAttachment(f) ? '🖼️' : '📄'} ${escapeHtml(f.name || 'file')}</p>`;
                     return isImageEnquiryAttachment(f)
                         ? label + `<img src="${escapeHtml(enquiryFileViewUrl(f))}" style="max-width:100%; border:1px solid #ddd; border-radius:4px;">`
                         : label;
-                }).join('')
+                }).join('') + notesHtml
                 : '<p style="color:#999; font-size:13px;">No files attached.</p>';
             const section = function(title, bodyHtml) {
                 return `<div style="font-size:11px; letter-spacing:0.04em; text-transform:uppercase; color:#888; border-bottom:1px solid #ddd; padding-bottom:3px; margin:18px 0 8px;">${title}</div>${bodyHtml}`;
