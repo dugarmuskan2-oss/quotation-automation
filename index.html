@@ -822,6 +822,20 @@
         .margin-fill-down-btn:hover {
             background: #0d47a1;
         }
+        /* Read-only "(Rev N)" tag shown beside the editable quote-number box. Display only —
+           it is a span, never an input, so Save/sync ignore it and the stored number stays raw. */
+        .quote-rev-tag {
+            display: inline-block;
+            margin-left: 6px;
+            padding: 1px 6px;
+            font-size: 11px;
+            font-weight: 700;
+            color: #8a5a00;
+            background: #FAEEDA;
+            border-radius: 4px;
+            vertical-align: middle;
+            user-select: none;
+        }
 
         /* Main column header row (M+) — paired column label row */
         .main-column-header-row {
@@ -6669,7 +6683,23 @@
             if (inp) {
                 inp.value = v;
                 inp.setAttribute('value', v);
+                addRevisionTagBesideQuoteInput(inp, quotation);
             }
+        }
+
+        // Show a small read-only "(Rev N)" tag next to the editable quote-number box so the
+        // screen matches the PDF/email. It is a display-only span (no data-field, not an input),
+        // so the Save/sync logic never reads it and the stored quoteNumber stays the raw number.
+        function addRevisionTagBesideQuoteInput(inp, quotation) {
+            const existing = inp.parentNode && inp.parentNode.querySelector('.quote-rev-tag');
+            if (existing) existing.remove();   // idempotent: never stack tags across re-renders
+            const rev = (typeof currentRevisionNumber === 'function') ? currentRevisionNumber(quotation) : 0;
+            if (!(rev > 0)) return;
+            const tag = document.createElement('span');
+            tag.className = 'quote-rev-tag';
+            tag.textContent = '(Rev ' + rev + ')';
+            tag.title = 'This quote is on revision ' + rev + ' — shown on the PDF, email and title. The box keeps the plain number.';
+            inp.insertAdjacentElement('afterend', tag);
         }
 
         function updateEmailPreviewScroll(folderContent) {
@@ -9308,7 +9338,8 @@
         function fillEmailPlaceholders(text, quotation) {
             const name = (quotation.customerName || '').trim() || 'Sir/Madam';
             const company = (quotation.companyName || '').trim();
-            const quoteNo = (quotation.quoteNumber || '').trim();
+            // "(Rev N)"-aware, matching the email subject and the PDF's quote-number field
+            const quoteNo = (typeof displayQuoteNumber === 'function' ? displayQuoteNumber(quotation) : (quotation.quoteNumber || '')).trim();
             return String(text || '')
                 .replace(/\[\s*name\s*\]/gi, name)
                 .replace(/\[\s*company\s*\]/gi, company)
@@ -10003,7 +10034,9 @@
                 ['PREPARED BY', quotation.preparedBy || ''],
                 ['ASSIGNED TO', quotation.assignedTo || ''],
                 ['CHECKED BY', quotation.checkedBy || ''],
-                ['QUOTE NUMBER', quotation.quoteNumber || '']
+                // show "(Rev N)" on the document too — displayQuoteNumber decorates without
+                // touching the stored quoteNumber (kept raw for counters/search/threading)
+                ['QUOTE NUMBER', displayQuoteNumber(quotation) || quotation.quoteNumber || '']
             ];
             let metaCursorY = cursorY;
             for (let idx = 0; idx < Math.max(metaLeft.length, metaRight.length); idx++) {
