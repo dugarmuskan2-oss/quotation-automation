@@ -76,24 +76,59 @@
         return (origin && origin !== 'null' && origin.indexOf('http') === 0) ? origin + '/api' : 'http://localhost:3001/api';
     }
 
+    // Last-fetched rows kept in localStorage so the tab paints instantly on
+    // open (like a spreadsheet showing its saved data) while fresh rows load
+    // silently in the background.
+    var CACHE_KEY = 'enquiryRegisterCache-v1';
+
+    function readCache() {
+        try {
+            var parsed = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
+            return (parsed && Array.isArray(parsed.rows)) ? parsed : null;
+        } catch (e) { return null; }
+    }
+
+    function writeCache(rows) {
+        try { localStorage.setItem(CACHE_KEY, JSON.stringify({ rows: rows, savedAt: new Date().toISOString() })); }
+        catch (e) { /* cache is best-effort */ }
+    }
+
+    function applyRows(rows) {
+        state.rows = rows;
+        state.loaded = true;
+        if (!state.month || monthOptions().indexOf(state.month) === -1) {
+            state.month = monthOptions()[0] || '';
+        }
+        render();
+    }
+
     function load() {
         if (state.loading) return;
         state.loading = true;
         var container = $('registerTableContainer');
-        if (container && !state.loaded) container.innerHTML = '<p style="text-align:center; color:#999; padding:24px;">Loading register…</p>';
+
+        // Instant paint from the cache; the fetch below refreshes it silently.
+        var cached = !state.loaded && readCache();
+        if (cached) {
+            applyRows(cached.rows);
+            var meta = $('registerMeta');
+            if (meta) meta.textContent += ' · updating…';
+        } else if (container && !state.loaded) {
+            container.innerHTML = '<p style="text-align:center; color:#999; padding:24px;">Loading register…</p>';
+        }
+
         fetch(apiBase() + '/enquiry-register?days=' + REGISTER_DAYS)
             .then(function (r) { return r.json(); })
             .then(function (data) {
-                state.rows = Array.isArray(data.rows) ? data.rows : [];
-                state.loaded = true;
-                if (!state.month || monthOptions().indexOf(state.month) === -1) {
-                    state.month = monthOptions()[0] || '';
-                }
-                render();
+                var rows = Array.isArray(data.rows) ? data.rows : [];
+                writeCache(rows);
+                applyRows(rows);
             })
             .catch(function (err) {
                 console.error('Register load failed:', err);
-                if (container) container.innerHTML = '<p style="text-align:center; color:#c62828; padding:24px;">Could not load the register. Check the server and try Refresh.</p>';
+                if (state.rows.length === 0 && container) {
+                    container.innerHTML = '<p style="text-align:center; color:#c62828; padding:24px;">Could not load the register. Check the server and try Refresh.</p>';
+                }
             })
             .finally(function () { state.loading = false; });
     }
@@ -171,6 +206,7 @@
         })
             .then(function (r) {
                 if (!r.ok) throw new Error('save failed');
+                writeCache(state.rows);   // typed values survive into the instant paint
                 flashSaved(cellEl);
             })
             .catch(function (err) {

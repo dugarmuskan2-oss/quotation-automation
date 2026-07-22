@@ -405,7 +405,9 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName })
                     ExpressionAttributeValues: { ':ent': ENTITY_QUOTATION },
                     ScanIndexForward:          false,
                     ProjectionExpression:      SUMMARY_PROJECTION,
-                    Limit:                     200,
+                    // Summary items are tiny (~0.5 KB) — a large page keeps a
+                    // 6-month register to a single DynamoDB round trip.
+                    Limit:                     1000,
                 };
                 if (startKey) params.ExclusiveStartKey = startKey;
                 const page = await ddbDocClient.send(new QueryCommand(params));
