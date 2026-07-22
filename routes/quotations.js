@@ -388,11 +388,27 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName })
     // Read-only, same exposure as GET /api/quotations (no secret gate — the
     // in-app Register section fetches this from the browser; the optional
     // Google-Sheet mirror script calls it the same way).
+    // Parse "?month=YYYY-MM" into [start, end) ISO bounds, or null when absent.
+    function monthRangeOf(monthParam) {
+        const m = /^(\d{4})-(\d{2})$/.exec(String(monthParam || ''));
+        if (!m) return null;
+        const year = parseInt(m[1], 10), month = parseInt(m[2], 10) - 1;
+        return {
+            start: new Date(Date.UTC(year, month, 1)).toISOString(),
+            end:   new Date(Date.UTC(year, month + 1, 1)).toISOString(),
+        };
+    }
+
     router.get('/enquiry-register', async (req, res) => {
         if (!requireDdb(res)) return;
         try {
+            // Either one calendar month (?month=2026-07 — what the in-app view
+            // uses, fetched per month on demand) or a rolling window (?days=N —
+            // the Google-Sheet mirror script).
+            const range = monthRangeOf(req.query.month);
             const days = Math.min(400, Math.max(1, parseInt(req.query.days, 10) || 62));
-            const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+            const cutoff = range ? range.start : new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+            const cutoffEnd = range ? range.end : null;
             const { QueryCommand } = require('@aws-sdk/lib-dynamodb');
             const rows = [];
             let startKey = null, pages = 0, reachedCutoff = false;
@@ -416,7 +432,8 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName })
                     const q = quotationFromItem(item);
                     if (!q) return;
                     if ((q.updatedAt || '') < cutoff) { reachedCutoff = true; return; }
-                    if ((q.createdAt || q.updatedAt || '') >= cutoff) rows.push(registerRowOf(q));
+                    const created = q.createdAt || q.updatedAt || '';
+                    if (created >= cutoff && (!cutoffEnd || created < cutoffEnd)) rows.push(registerRowOf(q));
                 });
                 startKey = page.LastEvaluatedKey || null;
                 if (!startKey) break;

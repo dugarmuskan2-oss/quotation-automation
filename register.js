@@ -2,31 +2,56 @@
  * register.js — the in-app Enquiry Register (📊 tool).
  *
  * Live report over every quotation, mirroring the Google-Sheet register layout:
- * quote number, enquiry date, per-day totals, STATUS (REGRET / MARGIN
- * ALLOCATION PENDING / REVISION SENT / SENT / PENDING), company, contact,
- * prepared by — plus the manual workflow columns (Given for checking to,
- * Sent By, BIGIN checks) which are typed HERE and saved onto the quotation
- * via POST /api/quotations/:id/register-meta (Date and Value fill themselves).
+ * quote number, merged enquiry-date cells, per-day totals, STATUS (as per App)
+ * + STATUS (Manual), company, contact, prepared by, auto Checked By, Sent By,
+ * Sent On, days from received to sent, value — plus the manual workflow
+ * columns saved per quote via POST /api/quotations/:id/register-meta.
  *
- * Reads GET /api/enquiry-register. The optional Google-Sheet mirror
- * (apps-script/EnquiryRegister.gs) reads the same endpoint.
+ * Loads ONE MONTH AT A TIME (?month=YYYY-MM): the month you open is fetched on
+ * demand, painted instantly from a per-month localStorage cache on revisits,
+ * and refreshed silently in the background. Other months cost nothing until
+ * you pick them. The optional Google-Sheet mirror still uses ?days=N.
  */
 (function () {
     'use strict';
 
     var MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-    var REGISTER_DAYS = 180;
+    var MONTHS_SHOWN = 12;      // dropdown depth
+    var CACHE_KEY = 'enquiryRegisterCache-v2';
+    var CACHE_MONTHS_KEPT = 6;  // bound localStorage size
 
-    var state = { rows: [], month: '', loaded: false, loading: false };
+    // rowsByMonth: 'JUL 26' -> rows[]; loadingMonths guards duplicate fetches.
+    var state = { rowsByMonth: {}, month: '', loadingMonths: {} };
 
     function $(id) { return document.getElementById(id); }
     function esc(s) {
         return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
+    // ── Months ────────────────────────────────────────────────────────────────
+    // The dropdown is a fixed list of the last 12 calendar months — it does not
+    // depend on fetched data, so any month can be picked (and lazily loaded).
+    function monthLabelOf(date) {
+        return MONTHS[date.getMonth()] + ' ' + String(date.getFullYear()).slice(-2);
+    }
+
+    function monthParamOf(label) {
+        var parts = String(label || '').split(' ');
+        var monthIndex = MONTHS.indexOf(parts[0]);
+        if (monthIndex === -1 || !parts[1]) return '';
+        return '20' + parts[1] + '-' + ('0' + (monthIndex + 1)).slice(-2);
+    }
+
+    function monthOptions() {
+        var out = [];
+        var now = new Date();
+        for (var i = 0; i < MONTHS_SHOWN; i++) {
+            out.push(monthLabelOf(new Date(now.getFullYear(), now.getMonth() - i, 1)));
+        }
+        return out;
+    }
+
     // ── Tab switching ─────────────────────────────────────────────────────────
-    // The other tools' switchers don't know this app exists — wrap them so
-    // switching away always hides the register too.
     function hideRegister() {
         var app = $('registerApp');
         var btn = $('mainToolRegisterButton');
@@ -67,7 +92,8 @@
         var btn = $('mainToolRegisterButton');
         if (app) app.style.display = '';
         if (btn) btn.classList.add('main-tools-button--active');
-        if (!state.loaded) load();
+        if (!state.month) state.month = monthOptions()[0];
+        openMonth(state.month);
     }
 
     // ── Data ──────────────────────────────────────────────────────────────────
@@ -76,93 +102,68 @@
         return (origin && origin !== 'null' && origin.indexOf('http') === 0) ? origin + '/api' : 'http://localhost:3001/api';
     }
 
-    // Last-fetched rows kept in localStorage so the tab paints instantly on
-    // open (like a spreadsheet showing its saved data) while fresh rows load
-    // silently in the background.
-    var CACHE_KEY = 'enquiryRegisterCache-v1';
-
     function readCache() {
         try {
             var parsed = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
-            return (parsed && Array.isArray(parsed.rows)) ? parsed : null;
-        } catch (e) { return null; }
+            return (parsed && parsed.months && typeof parsed.months === 'object') ? parsed : { months: {} };
+        } catch (e) { return { months: {} }; }
     }
 
-    function writeCache(rows) {
-        try { localStorage.setItem(CACHE_KEY, JSON.stringify({ rows: rows, savedAt: new Date().toISOString() })); }
-        catch (e) { /* cache is best-effort */ }
+    function writeCacheMonth(label, rows) {
+        try {
+            var cache = readCache();
+            cache.months[label] = { rows: rows, savedAt: new Date().toISOString() };
+            // Trim to the most recently saved months so the cache stays small.
+            var labels = Object.keys(cache.months)
+                .sort(function (a, b) { return cache.months[a].savedAt < cache.months[b].savedAt ? 1 : -1; })
+                .slice(0, CACHE_MONTHS_KEPT);
+            var trimmed = {};
+            labels.forEach(function (key) { trimmed[key] = cache.months[key]; });
+            localStorage.setItem(CACHE_KEY, JSON.stringify({ months: trimmed }));
+        } catch (e) { /* cache is best-effort */ }
     }
 
-    function applyRows(rows) {
-        state.rows = rows;
-        state.loaded = true;
-        if (!state.month || monthOptions().indexOf(state.month) === -1) {
-            state.month = monthOptions()[0] || '';
-        }
+    // Open a month: paint instantly from memory/cache when possible, then
+    // (or otherwise) fetch it fresh in the background.
+    function openMonth(label) {
+        state.month = label;
+        var cachedEntry = !state.rowsByMonth[label] && readCache().months[label];
+        if (cachedEntry) state.rowsByMonth[label] = cachedEntry.rows;
         render();
+        if (state.rowsByMonth[label]) {
+            var meta = $('registerMeta');
+            if (meta && !state.loadingMonths[label]) meta.textContent += ' · updating…';
+        }
+        fetchMonth(label);
     }
 
-    function load() {
-        if (state.loading) return;
-        state.loading = true;
-        var container = $('registerTableContainer');
-
-        // Instant paint from the cache; the fetch below refreshes it silently.
-        var cached = !state.loaded && readCache();
-        if (cached) {
-            applyRows(cached.rows);
-            var meta = $('registerMeta');
-            if (meta) meta.textContent += ' · updating…';
-        } else if (container && !state.loaded) {
-            container.innerHTML = '<p style="text-align:center; color:#999; padding:24px;">Loading register…</p>';
-        }
-
-        fetch(apiBase() + '/enquiry-register?days=' + REGISTER_DAYS)
+    function fetchMonth(label) {
+        if (state.loadingMonths[label]) return;
+        var monthParam = monthParamOf(label);
+        if (!monthParam) return;
+        state.loadingMonths[label] = true;
+        fetch(apiBase() + '/enquiry-register?month=' + monthParam)
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 var rows = Array.isArray(data.rows) ? data.rows : [];
-                writeCache(rows);
-                applyRows(rows);
+                state.rowsByMonth[label] = rows;
+                writeCacheMonth(label, rows);
+                if (state.month === label) render();
             })
             .catch(function (err) {
-                console.error('Register load failed:', err);
-                if (state.rows.length === 0 && container) {
-                    container.innerHTML = '<p style="text-align:center; color:#c62828; padding:24px;">Could not load the register. Check the server and try Refresh.</p>';
+                console.error('Register month load failed:', err);
+                if (state.month === label && !state.rowsByMonth[label]) {
+                    var container = $('registerTableContainer');
+                    if (container) container.innerHTML = '<p style="text-align:center; color:#c62828; padding:24px;">Could not load the register. Check the server and try Refresh.</p>';
                 }
             })
-            .finally(function () { state.loading = false; });
+            .finally(function () { state.loadingMonths[label] = false; });
     }
 
-    function refresh() { state.loaded = false; load(); }
-    function setMonth(value) { state.month = value; render(); }
+    function refresh() { delete state.rowsByMonth[state.month]; openMonth(state.month); }
+    function setMonth(label) { openMonth(label); }
 
     // ── Formatting ────────────────────────────────────────────────────────────
-    function monthKeyOf(iso) {
-        var d = new Date(iso);
-        if (isNaN(d.getTime())) return '';
-        return MONTHS[d.getMonth()] + ' ' + String(d.getFullYear()).slice(-2);
-    }
-
-    function monthOptions() {
-        var seen = [];
-        state.rows.forEach(function (r) {
-            var key = monthKeyOf(r.enquiryDate);
-            if (key && seen.indexOf(key) === -1) seen.push(key);
-        });
-        // newest first (rows arrive unsorted; sort keys by their first row date)
-        return seen.sort(function (a, b) {
-            var da = firstDateOfMonth(a), db = firstDateOfMonth(b);
-            return da < db ? 1 : -1;
-        });
-    }
-
-    function firstDateOfMonth(key) {
-        for (var i = 0; i < state.rows.length; i++) {
-            if (monthKeyOf(state.rows[i].enquiryDate) === key) return state.rows[i].enquiryDate;
-        }
-        return '';
-    }
-
     function fmtDay(iso) {
         var d = new Date(iso);
         if (isNaN(d.getTime())) return '';
@@ -192,7 +193,8 @@
 
     // ── Manual workflow fields ────────────────────────────────────────────────
     function saveMeta(rowId, field, value, cellEl) {
-        var row = state.rows.filter(function (r) { return String(r.id) === String(rowId); })[0];
+        var rows = state.rowsByMonth[state.month] || [];
+        var row = rows.filter(function (r) { return String(r.id) === String(rowId); })[0];
         if (row) {
             row.registerMeta = row.registerMeta || {};
             row.registerMeta[field] = value;
@@ -206,7 +208,7 @@
         })
             .then(function (r) {
                 if (!r.ok) throw new Error('save failed');
-                writeCache(state.rows);   // typed values survive into the instant paint
+                writeCacheMonth(state.month, rows);   // typed values survive into the instant paint
                 flashSaved(cellEl);
             })
             .catch(function (err) {
@@ -243,20 +245,26 @@
         if (select) {
             select.innerHTML = monthOptions().map(function (key) {
                 return '<option' + (key === state.month ? ' selected' : '') + '>' + esc(key) + '</option>';
-            }).join('') || '<option>—</option>';
+            }).join('');
         }
 
-        var rows = state.rows
-            .filter(function (r) { return monthKeyOf(r.enquiryDate) === state.month; })
-            .sort(function (a, b) { return a.enquiryDate < b.enquiryDate ? -1 : 1; });
+        var container = $('registerTableContainer');
+        var meta = $('registerMeta');
+        var monthRows = state.rowsByMonth[state.month];
+
+        if (!monthRows) {
+            if (meta) meta.textContent = '';
+            if (container) container.innerHTML = '<p style="text-align:center; color:#999; padding:24px;">Loading ' + esc(state.month) + '…</p>';
+            return;
+        }
+
+        var rows = monthRows.slice().sort(function (a, b) { return a.enquiryDate < b.enquiryDate ? -1 : 1; });
 
         var perDay = {};
         rows.forEach(function (r) { var day = fmtDay(r.enquiryDate); perDay[day] = (perDay[day] || 0) + 1; });
 
-        var meta = $('registerMeta');
         if (meta) meta.textContent = rows.length + ' enquiries in ' + (state.month || '—');
 
-        var container = $('registerTableContainer');
         if (!container) return;
         if (!rows.length) {
             container.innerHTML = '<p style="text-align:center; color:#999; padding:24px;">No enquiries in this month.</p>';
