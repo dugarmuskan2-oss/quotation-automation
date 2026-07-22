@@ -58,6 +58,57 @@ var MAX_PAYLOAD_BYTES = 4300 * 1024;
 /** Max emails per request. Keep at 1 so each request finishes within Vercel's 60s timeout (AI generation per email takes ~30–60s). */
 var MAX_EMAILS_PER_REQUEST = 1;
 
+/** Images larger than this (bytes) are shrunk, so oversized photos fit and several
+ *  photos of one requirement can travel together. ~1 MB stays well readable. */
+var IMAGE_COMPRESS_TARGET_BYTES = 1024 * 1024;
+
+/** Widths to try when shrinking an image (largest first), via Drive's thumbnail renderer. */
+var IMAGE_RESIZE_WIDTHS = [2000, 1400, 1000];
+
+/**
+ * Shrink an image to fit under maxBytes. Apps Script has no native image resizer,
+ * so this uses Drive's thumbnail renderer: save the blob to Drive, fetch a
+ * width-limited render, delete the temp file. Returns { bytes, contentType }
+ * (<= maxBytes) or null if it couldn't. Requires Drive access — the script will
+ * prompt to re-authorize once when this is first used.
+ * @param {number[]} bytes
+ * @param {string} contentType
+ * @param {string} name
+ * @param {number} maxBytes
+ * @return {{bytes: number[], contentType: string}|null}
+ */
+function compressImageToFit(bytes, contentType, name, maxBytes) {
+  var tempFile = null;
+  try {
+    var blob = Utilities.newBlob(bytes, contentType, name || 'image');
+    tempFile = DriveApp.createFile(blob);
+    var fileId = tempFile.getId();
+    var token = ScriptApp.getOAuthToken();
+    for (var w = 0; w < IMAGE_RESIZE_WIDTHS.length; w++) {
+      var url = 'https://drive.google.com/thumbnail?id=' + fileId + '&sz=w' + IMAGE_RESIZE_WIDTHS[w];
+      for (var attempt = 0; attempt < 2; attempt++) {
+        var resp = UrlFetchApp.fetch(url, { headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true });
+        if (resp.getResponseCode() === 200) {
+          var out = resp.getBlob();
+          var outBytes = out.getBytes();
+          var outCt = out.getContentType() || 'image/jpeg';
+          if (outCt.indexOf('image/') === 0 && outBytes.length > 0 && outBytes.length <= maxBytes) {
+            return { bytes: outBytes, contentType: outCt };
+          }
+          break; // rendered but still too big at this width — try a smaller one
+        }
+        Utilities.sleep(400); // thumbnail may not be ready yet; brief retry
+      }
+    }
+    return null;
+  } catch (e) {
+    Logger.log('Image compression failed for ' + name + ': ' + e.toString());
+    return null;
+  } finally {
+    if (tempFile) { try { tempFile.setTrashed(true); } catch (e2) {} }
+  }
+}
+
 /**
  * Build the payload for one message: id, subject, from, date, body, bodyHtml, attachments (name, contentType, base64).
  * Attachments over MAX_ATTACHMENT_BYTES are skipped. bodyHtml is truncated if too long.
@@ -96,19 +147,37 @@ function buildEmailPayload(message) {
       attName = 'attachment_' + i;
     }
     Logger.log('Attachment[' + i + ']: name="' + attName + '", contentType="' + ct + '", size=' + bytes.length + ' bytes');
-    if (bytes.length > MAX_ATTACHMENT_BYTES) {
-      // Too large for the request limit — record its name so staff know to look.
+    var nameLow = (attName || '').trim().toLowerCase();
+    var isImage = ct.indexOf('image/') === 0 ||
+      ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.heic', '.heif'].some(function (e) { return nameLow.endsWith(e); });
+
+    var outBytes = bytes;
+    var outCt = att.getContentType();
+    // Shrink large photos so they fit under the request limit (and so several
+    // photos of one requirement can travel together). Non-images can't be
+    // compressed here — they fall through to the too-large note below.
+    if (isImage && bytes.length > IMAGE_COMPRESS_TARGET_BYTES) {
+      var compressed = compressImageToFit(bytes, att.getContentType(), attName, IMAGE_COMPRESS_TARGET_BYTES);
+      if (compressed) {
+        Logger.log('Compressed image ' + attName + ': ' + (bytes.length / 1024 / 1024).toFixed(1) + ' MB -> ' + (compressed.bytes.length / 1024 / 1024).toFixed(2) + ' MB');
+        outBytes = compressed.bytes;
+        outCt = compressed.contentType;
+      }
+    }
+    if (outBytes.length > MAX_ATTACHMENT_BYTES) {
+      // Still too large (non-image, or compression unavailable) — note it so
+      // staff know to open the original email.
       skipped.push(attName + ' (' + (bytes.length / 1024 / 1024).toFixed(1) + ' MB)');
       Logger.log('Skipping attachment (too large): ' + attName + ' (' + (bytes.length / 1024).toFixed(1) + ' KB)');
       continue;
     }
     // Forward EVERY type. The app extracts from PDF/Excel/Word/image and retains
     // all originals (including unreadable ones like .zip/.dwg) for viewing.
-    Logger.log('Including attachment: ' + attName + ' (' + (bytes.length / 1024).toFixed(1) + ' KB, ' + ct + ')');
+    Logger.log('Including attachment: ' + attName + ' (' + (outBytes.length / 1024).toFixed(1) + ' KB, ' + outCt + ')');
     attachments.push({
       name: attName,
-      contentType: att.getContentType(),
-      base64: Utilities.base64Encode(bytes)
+      contentType: outCt,
+      base64: Utilities.base64Encode(outBytes)
     });
   }
   if (skipped.length > 0) {
