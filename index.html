@@ -1942,30 +1942,59 @@
         }
 
         // Read a quote's customer thread; flag custReplyPending if their message is last.
-        // Returns { newReply } — true only when it flips from not-pending to pending.
+        // Ignores machine messages (auto-replies / bounces). Persists the flag so it survives
+        // a reload. Returns { newReply, changed } — newReply is a fresh not-pending->pending
+        // flip; changed is a flip in EITHER direction (so a cleared flag also re-renders).
         async function checkCustomerReplyForQuote(q) {
             const threadId = q.threadId, messageId = q.gmailMessageId;
-            if (!threadId && !messageId) return { newReply: false };
+            if (!threadId && !messageId) return { newReply: false, changed: false };
             const qs = threadId ? ('threadId=' + encodeURIComponent(threadId)) : ('messageId=' + encodeURIComponent(messageId));
             try {
                 const res = await fetch(`${API_BASE_URL}/thread-messages?` + qs);
                 const data = await safeJsonParse(res);
-                if (!res.ok || !data || !Array.isArray(data.messages)) return { newReply: false };
-                const last = data.messages[data.messages.length - 1];
+                if (!res.ok || !data || !Array.isArray(data.messages)) return { newReply: false, changed: false };
+                // Ignore auto-replies / bounces when deciding who spoke last.
+                const real = data.messages.filter(function (m) { return !m.auto; });
+                const last = real[real.length - 1];
                 const pending = !!(last && last.direction === 'customer');
                 const wasPending = !!q.custReplyPending;
+                const changed = pending !== wasPending;
                 q.custReplyPending = pending;
-                return { newReply: pending && !wasPending };
-            } catch (e) { return { newReply: false }; }
+                // Persist the set OR clear, using the same guard the freight path uses —
+                // never save over the user's unsaved edits.
+                if (changed && !q.hasUnsavedEdits && typeof saveQuotationToBackend === 'function') {
+                    saveQuotationToBackend(q);
+                }
+                return { newReply: pending && !wasPending, changed: changed };
+            } catch (e) { return { newReply: false, changed: false }; }
+        }
+
+        // Re-render the approval list to show new reply flags — but NOT if that would wipe
+        // in-progress edits (a focused approval field, or any quote with unsaved edits).
+        // Protecting edits wins; the flags appear on the next natural render / after Save.
+        // Returns true if it actually re-rendered.
+        function refreshApprovalListPreservingEdits() {
+            const active = document.activeElement;
+            const editing = active && typeof active.closest === 'function'
+                && active.closest('#approvedQuotationsContainer .quotation-folder-content');
+            const anyDirty = Array.isArray(approvedQuotations) && approvedQuotations.some(function (q) { return q && q.hasUnsavedEdits; });
+            if (editing || anyDirty) return false;
+            displayAllApprovedQuotations();
+            return true;
         }
 
         async function checkAllReplies(options) {
             const background = !!(options && options.background);
-            if (_checkAllRepliesRunning) return;
-            _checkAllRepliesRunning = true;
             const btn = document.getElementById('checkAllRepliesBtn');
             const statusEl = document.getElementById('checkAllRepliesStatus');
             const setStatus = function (msg) { if (statusEl && !background) statusEl.textContent = msg; };
+            // Guard AFTER wiring status, so a click during the on-load sweep is acknowledged
+            // instead of silently vanishing.
+            if (_checkAllRepliesRunning) {
+                setStatus('A check is already running — one moment…');
+                return;
+            }
+            _checkAllRepliesRunning = true;
             if (btn && !background) { btn.disabled = true; btn.textContent = '↻ Checking…'; }
 
             // Freight: always (naturally small — only quotes with unanswered transporter
@@ -1981,22 +2010,29 @@
                 }
                 setStatus('Checking ' + (freightQuotes.length + customerQuotes.length) + ' quote(s)…');
 
-                let freightNew = 0, custNew = 0;
+                let freightNew = 0, custNew = 0, changedAny = false;
                 const CONC = 5;
                 if (freightQuotes.length && typeof window.checkFreightRepliesForQuote === 'function') {
                     const r = await runWithConcurrency(freightQuotes, CONC, function (q) { return window.checkFreightRepliesForQuote(q); });
-                    r.forEach(function (x) { if (x && x.newReplies) freightNew += x.newReplies; });
+                    r.forEach(function (x) { if (x && x.newReplies) { freightNew += x.newReplies; changedAny = true; } });
                 }
                 if (customerQuotes.length) {
                     const r = await runWithConcurrency(customerQuotes, CONC, checkCustomerReplyForQuote);
-                    r.forEach(function (x) { if (x && x.newReply) custNew++; });
+                    r.forEach(function (x) { if (x) { if (x.newReply) custNew++; if (x.changed) changedAny = true; } });
                 }
 
                 const total = freightNew + custNew;
-                if (total > 0) { try { displayAllApprovedQuotations(); } catch (e) {} }
-                setStatus(total > 0
-                    ? ('Found ' + total + ' new repl' + (total > 1 ? 'ies' : 'y') + ' — see the "Needs attention" flags.')
-                    : 'No new replies.');
+                // Re-render when anything changed (flag set OR cleared), but never over an
+                // open/dirty card — that would wipe unsaved edits.
+                let rendered = true;
+                if (total > 0 || changedAny) { try { rendered = refreshApprovalListPreservingEdits(); } catch (e) {} }
+                if (total > 0) {
+                    setStatus(rendered
+                        ? ('Found ' + total + ' new repl' + (total > 1 ? 'ies' : 'y') + ' — see the "Needs attention" flags.')
+                        : ('Found ' + total + ' new repl' + (total > 1 ? 'ies' : 'y') + ' — save your open quote to see the flags.'));
+                } else {
+                    setStatus('No new replies.');
+                }
             } finally {
                 _checkAllRepliesRunning = false;
                 if (btn && !background) { btn.disabled = false; btn.innerHTML = '↻ Check all replies'; }

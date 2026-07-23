@@ -16,6 +16,8 @@ const path = require('path');
 
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const routesQuotations = fs.readFileSync(path.join(__dirname, '..', 'routes', 'quotations.js'), 'utf8');
+const freightSrc = fs.readFileSync(path.join(__dirname, '..', 'freight-tab-weight-editor.js'), 'utf8');
+const { isAutoOrSystemMessage } = require('../utils/gmail')._test;
 
 // Pull a top-level function out of source by brace-matching; keep a leading `async`.
 function extractFunction(src, name) {
@@ -93,6 +95,50 @@ describe('quoteHasCustomerThread — customer candidate filter', () => {
     test('false when not sent, or sent with no thread', () => {
         expect(quoteHasCustomerThread({ sent: false, threadId: 't' })).toBe(false);
         expect(quoteHasCustomerThread({ sent: true })).toBe(false);
+    });
+});
+
+describe('isAutoOrSystemMessage — auto-reply / bounce detection', () => {
+    // Case-insensitive header lookup, mirroring fetchThreadMessages' `get`.
+    const hdr = (map) => (name) => map[String(name).toLowerCase()] || '';
+
+    test('Auto-Submitted (anything but "no") is auto', () => {
+        expect(isAutoOrSystemMessage(hdr({ 'auto-submitted': 'auto-replied' }), 'a@b.com')).toBe(true);
+        expect(isAutoOrSystemMessage(hdr({ 'auto-submitted': 'auto-generated' }), 'a@b.com')).toBe(true);
+    });
+    test('Auto-Submitted: no is NOT auto', () => {
+        expect(isAutoOrSystemMessage(hdr({ 'auto-submitted': 'no' }), 'a@b.com')).toBe(false);
+    });
+    test('X-Autoreply / Precedence auto_reply are auto', () => {
+        expect(isAutoOrSystemMessage(hdr({ 'x-autoreply': 'yes' }), 'a@b.com')).toBe(true);
+        expect(isAutoOrSystemMessage(hdr({ 'precedence': 'auto_reply' }), 'a@b.com')).toBe(true);
+    });
+    test('system / no-reply senders are auto', () => {
+        expect(isAutoOrSystemMessage(hdr({}), 'MAILER-DAEMON@googlemail.com')).toBe(true);
+        expect(isAutoOrSystemMessage(hdr({}), 'postmaster@x.com')).toBe(true);
+        expect(isAutoOrSystemMessage(hdr({}), 'no-reply@vendor.com')).toBe(true);
+        expect(isAutoOrSystemMessage(hdr({}), 'donotreply@vendor.com')).toBe(true);
+    });
+    test('a normal transporter reply is NOT auto', () => {
+        expect(isAutoOrSystemMessage(hdr({}), 'Ravi Roadlines <ravi@roadlines.com>')).toBe(false);
+    });
+});
+
+describe('source guards — reply-sweep review fixes', () => {
+    test('customer checker ignores auto messages, persists on change, reports changed', () => {
+        expect(html).toContain('const real = data.messages.filter(function (m) { return !m.auto; });');
+        expect(html).toContain('if (changed && !q.hasUnsavedEdits');
+        expect(html).toContain('return { newReply: pending && !wasPending, changed: changed };');
+    });
+    test('re-render is edit-preserving and fires on any change (set or clear)', () => {
+        expect(html).toContain('function refreshApprovalListPreservingEdits');
+        expect(html).toContain('if (total > 0 || changedAny)');
+    });
+    test('a re-entrant call is acknowledged, not silently dropped', () => {
+        expect(html).toContain('A check is already running');
+    });
+    test('the freight reply-checkers also ignore auto messages', () => {
+        expect(freightSrc).toContain("m.direction === 'customer' && !m.auto");
     });
 });
 

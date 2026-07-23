@@ -182,18 +182,34 @@ function extractBodyText(payload) {
   if (payload.mimeType === 'text/html' && payload.body && payload.body.data) return stripHtmlToText(decodeGmailB64(payload.body.data));
   return '';
 }
+// True for machine-generated messages that must NOT count as a real counterpart reply:
+// out-of-office / vacation auto-replies (Auto-Submitted, X-Autoreply), and bounces or
+// no-reply system senders. Keeps the reply detectors from flagging these as a reply.
+function isAutoOrSystemMessage(getHeader, from) {
+  const autoSubmitted = (getHeader('Auto-Submitted') || '').trim();
+  if (autoSubmitted && !/^no$/i.test(autoSubmitted)) return true;   // auto-replied / auto-generated
+  if (getHeader('X-Autoreply') || getHeader('X-Autorespond') || getHeader('X-Auto-Response-Suppress')) return true;
+  if ((getHeader('Precedence') || '').toLowerCase().trim() === 'auto_reply') return true;
+  const fromLc = String(from || '').toLowerCase();
+  if (/(mailer-daemon|postmaster|no-?reply|do-?not-?reply)@/.test(fromLc)) return true;
+  return false;
+}
+
 // Read all messages in a thread (full format). `direction` is 'you' for messages we
 // sent (SENT label) and 'customer' otherwise — used to tell whose reply is latest.
+// `auto` marks machine messages (auto-replies/bounces) so they aren't counted as replies.
 async function fetchThreadMessages(threadId) {
   const gmail = createGmailClient();
   const res = await gmail.users.threads.get({ userId: 'me', id: threadId, format: 'full' });
   const messages = (res.data.messages || []).map(function (m) {
     const headers = (m.payload && m.payload.headers) || [];
     const get = name => (headers.find(h => h.name && h.name.toLowerCase() === name.toLowerCase()) || {}).value || '';
+    const from = get('From');
     return {
       id: m.id,
       direction: (m.labelIds || []).indexOf('SENT') >= 0 ? 'you' : 'customer',
-      from: get('From'),
+      auto: isAutoOrSystemMessage(get, from),
+      from: from,
       date: get('Date'),
       subject: get('Subject'),
       snippet: m.snippet || '',
@@ -244,4 +260,4 @@ async function searchContactSuggestions(query) {
 
 module.exports = { sendEmail, lookupMessageThread, fetchThreadMessages, searchContactSuggestions };
 // Pure helpers exposed for unit testing (MIME structure, inline-image CID rewrite, body parse).
-module.exports._test = { buildRawMessage, extractInlineImages, wrapBase64, extractBodyText, stripHtmlToText };
+module.exports._test = { buildRawMessage, extractInlineImages, wrapBase64, extractBodyText, stripHtmlToText, isAutoOrSystemMessage };

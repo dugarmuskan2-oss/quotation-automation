@@ -188,6 +188,6 @@ describe('source guard — conversation panel + custReplyPending producer', () =
 
     test('the pure parsers stay exposed on utils/gmail._test', () => {
         const gmailSrc = fs.readFileSync(path.join(__dirname, '..', 'utils', 'gmail.js'), 'utf8');
-        expect(gmailSrc).toContain('module.exports._test = { buildRawMessage, extractInlineImages, wrapBase64, extractBodyText, stripHtmlToText };');
+        expect(gmailSrc).toContain('module.exports._test = { buildRawMessage, extractInlineImages, wrapBase64, extractBodyText, stripHtmlToText, isAutoOrSystemMessage };');
     });
 });

@@ -554,7 +554,7 @@
                         // The route answers Gmail failures with 500 + {error} JSON — treat
                         // that as "couldn't check", not as an empty thread.
                         if (!res.ok || !data || !Array.isArray(data.messages)) return false;
-                        var replies = data.messages.filter(function (m) { return m.direction === 'customer'; });
+                        var replies = data.messages.filter(function (m) { return m.direction === 'customer' && !m.auto; });
                         if (replies.length) {
                             var last = replies[replies.length - 1];
                             var fullReply = last.body || last.snippet || '';
@@ -588,8 +588,12 @@
             }
             render(q, mountEl);
             // Refresh the list last — it rebuilds the cards, and the module state re-renders
-            // this panel (open flags, status message) into the fresh card.
-            if (newReplies && typeof displayAllApprovedQuotations === 'function') { try { displayAllApprovedQuotations(); } catch (e) { } }
+            // this panel (open flags, status message) into the fresh card. Use the edit-safe
+            // refresh so it never wipes an open, unsaved quote elsewhere in the list.
+            if (newReplies) {
+                if (typeof window.refreshApprovalListPreservingEdits === 'function') { try { window.refreshApprovalListPreservingEdits(); } catch (e) { } }
+                else if (typeof displayAllApprovedQuotations === 'function') { try { displayAllApprovedQuotations(); } catch (e) { } }
+            }
         });
     }
 
@@ -605,7 +609,7 @@
                 .then(function (res) { return res.ok ? res.json() : null; })
                 .then(function (data) {
                     if (!data || !Array.isArray(data.messages)) return false;
-                    var replies = data.messages.filter(function (m) { return m.direction === 'customer'; });
+                    var replies = data.messages.filter(function (m) { return m.direction === 'customer' && !m.auto; });
                     if (!replies.length) return false;
                     var last = replies[replies.length - 1];
                     var full = last.body || last.snippet || '';

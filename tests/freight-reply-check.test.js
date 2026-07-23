@@ -43,6 +43,15 @@ describe('checkFreightRepliesForQuote', () => {
         expect(q.transporterReplyIn).toBe(true);
     });
 
+    test('ignores auto-replies / bounces (auto:true) — not counted as a reply', async () => {
+        stubFetch({ t1: [you(), { direction: 'customer', auto: true, from: 'mailer-daemon@x.com', body: 'Delivery failed' }] });
+        const q = { hasUnsavedEdits: true, freightEnquiries: [{ email: 'a@b.com', threadId: 't1', replied: false }] };
+        const res = await checkFreightRepliesForQuote(q);
+        expect(res).toEqual({ checked: 1, newReplies: 0 });
+        expect(q.freightEnquiries[0].replied).toBe(false);
+        expect(q.transporterReplyIn).toBeUndefined();
+    });
+
     test('a thread with only our own messages -> no reply counted', async () => {
         stubFetch({ t1: [you(), you('gentle follow-up')] });
         const q = { hasUnsavedEdits: true, freightEnquiries: [{ email: 'a@b.com', threadId: 't1', replied: false }] };
