@@ -30,6 +30,10 @@ const SUMMARY_NESTED_PATHS = [
     // Admin margin-allocation flow (desk renders from the list summary alone)
     'adminStatus', 'adminNote', 'itemSummary', 'isNewCompany', 'regretSentAt',
     'preparedBy', 'sentAt', 'registerMeta',
+    // Reply-sweep ("Check all replies"): the transporter enquiry threads + the customer
+    // thread id + the transporter-reply flag, so awaiting quotes are found from the list
+    // alone (these fields are small and only present on quotes that actually have them).
+    'freightEnquiries', 'threadId', 'transporterReplyIn',
 ];
 const SUMMARY_PROJECTION = [
     'id', 'updatedAt', 'createdAt',

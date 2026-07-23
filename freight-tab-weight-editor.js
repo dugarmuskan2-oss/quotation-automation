@@ -593,6 +593,37 @@
         });
     }
 
+    // Headless variant of checkFreightReplies for the global "Check all replies" sweep:
+    // reads a quote's awaiting transporter threads from Gmail and updates the model + the
+    // transporterReplyIn flag, with no UI/mountEl. Returns { checked, newReplies }.
+    function checkFreightRepliesForQuote(q) {
+        var threads = getEnquiryThreads(q);
+        var waiting = threads.filter(function (t) { return t && !t.replied && t.threadId; });
+        if (!waiting.length) return Promise.resolve({ checked: 0, newReplies: 0 });
+        return Promise.all(waiting.map(function (t) {
+            return fetch(apiBase() + '/thread-messages?threadId=' + encodeURIComponent(t.threadId))
+                .then(function (res) { return res.ok ? res.json() : null; })
+                .then(function (data) {
+                    if (!data || !Array.isArray(data.messages)) return false;
+                    var replies = data.messages.filter(function (m) { return m.direction === 'customer'; });
+                    if (!replies.length) return false;
+                    var last = replies[replies.length - 1];
+                    var full = last.body || last.snippet || '';
+                    var trimmed = trimReplyForStorage(full);
+                    t.replied = true;
+                    t.replyAt = last.date || '';
+                    t.amount = parseFreightAmount(trimmed) || parseFreightAmount(full);
+                    t.replyText = trimmed;
+                    return true;
+                })
+                .catch(function () { return false; /* leave awaiting; next sweep retries */ });
+        })).then(function (flags) {
+            var newReplies = flags.filter(Boolean).length;
+            if (newReplies) { q.transporterReplyIn = true; persistEnquiryThreads(q); }
+            return { checked: waiting.length, newReplies: newReplies };
+        });
+    }
+
     function bindEnquiry(q, st, mountEl) {
         var enq = st.enquiry;
         var toggle = mountEl.querySelector('.fwe-enq-toggle');
@@ -862,6 +893,8 @@
             try { render(quotation, mountEl); }
             catch (e) { mountEl.innerHTML = '<div style="padding:16px;color:#c62828;">Weight editor failed to load.</div>'; console.error('FWE render error', e); }
         };
+        // Used by the global "Check all replies" sweep in index.html.
+        window.checkFreightRepliesForQuote = checkFreightRepliesForQuote;
     }
 
     // Pure helpers exposed for unit testing in Node (see tests/freight-tab.test.js).
@@ -874,6 +907,7 @@
             rememberedTransportersForRoute: rememberedTransportersForRoute,
             weightOf: weightOf,
             secWeight: secWeight,
+            checkFreightRepliesForQuote: checkFreightRepliesForQuote,
             _setSuggest: function (s) { _freightSuggest = s; }
         };
     }

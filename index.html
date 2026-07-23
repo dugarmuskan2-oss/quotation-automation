@@ -1380,6 +1380,11 @@
                     style="width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 4px;"
                 >
             </div>
+            <!-- Global sweep: check every quote awaiting a transporter/customer reply in one go. -->
+            <div style="margin-bottom: 10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                <button id="checkAllRepliesBtn" class="upload-btn" type="button" onclick="checkAllReplies()" style="width:auto; padding:7px 14px;" title="Check every quote waiting on a transporter or customer reply">&#8635; Check all replies</button>
+                <span id="checkAllRepliesStatus" style="font-size:12px; color:#6b6862;"></span>
+            </div>
             <div id="approvedQuotationsContainer">
                 <!-- All approved quotations will be displayed here -->
                 <p id="noApprovedQuotations" style="text-align: center; color: #999; padding: 20px;">
@@ -1889,6 +1894,9 @@
             approvedQuotationsCursor = null;
             approvedQuotationsHasMore = false;
             await loadQuotationsFromBackend(false);
+            // Quietly check freight-awaiting quotes for new replies once the list has rendered.
+            // Background (non-blocking) + freight-only, so the app opens instantly.
+            setTimeout(function () { checkAllReplies({ background: true }); }, 0);
         }
 
         async function loadMoreApprovedQuotations() {
@@ -1896,6 +1904,103 @@
                 return;
             }
             await loadQuotationsFromBackend(true);
+        }
+
+        /*
+            ============================================
+            GLOBAL "CHECK ALL REPLIES" SWEEP
+            ============================================
+            Checks every quote awaiting a reply in small concurrent batches, so it never
+            blocks the UI or floods Gmail. Freight uses the freight module's headless
+            checker; customer threads are read directly. Lights up the "Needs attention"
+            flags (transporterReplyIn / custReplyPending) when a new reply is found.
+        */
+        let _checkAllRepliesRunning = false;
+
+        // Simple concurrency pool: runs `worker` over `items`, at most `limit` in flight.
+        async function runWithConcurrency(items, limit, worker) {
+            let i = 0;
+            const results = [];
+            async function next() {
+                while (i < items.length) {
+                    const idx = i++;
+                    try { results[idx] = await worker(items[idx]); }
+                    catch (e) { results[idx] = null; }
+                }
+            }
+            const runners = [];
+            for (let k = 0; k < Math.min(limit, items.length); k++) runners.push(next());
+            await Promise.all(runners);
+            return results;
+        }
+
+        function quoteAwaitsFreightReply(q) {
+            return Array.isArray(q.freightEnquiries) && q.freightEnquiries.some(function (t) { return t && !t.replied && t.threadId; });
+        }
+        function quoteHasCustomerThread(q) {
+            return !!(q.sent && (q.threadId || q.gmailMessageId));
+        }
+
+        // Read a quote's customer thread; flag custReplyPending if their message is last.
+        // Returns { newReply } — true only when it flips from not-pending to pending.
+        async function checkCustomerReplyForQuote(q) {
+            const threadId = q.threadId, messageId = q.gmailMessageId;
+            if (!threadId && !messageId) return { newReply: false };
+            const qs = threadId ? ('threadId=' + encodeURIComponent(threadId)) : ('messageId=' + encodeURIComponent(messageId));
+            try {
+                const res = await fetch(`${API_BASE_URL}/thread-messages?` + qs);
+                const data = await safeJsonParse(res);
+                if (!res.ok || !data || !Array.isArray(data.messages)) return { newReply: false };
+                const last = data.messages[data.messages.length - 1];
+                const pending = !!(last && last.direction === 'customer');
+                const wasPending = !!q.custReplyPending;
+                q.custReplyPending = pending;
+                return { newReply: pending && !wasPending };
+            } catch (e) { return { newReply: false }; }
+        }
+
+        async function checkAllReplies(options) {
+            const background = !!(options && options.background);
+            if (_checkAllRepliesRunning) return;
+            _checkAllRepliesRunning = true;
+            const btn = document.getElementById('checkAllRepliesBtn');
+            const statusEl = document.getElementById('checkAllRepliesStatus');
+            const setStatus = function (msg) { if (statusEl && !background) statusEl.textContent = msg; };
+            if (btn && !background) { btn.disabled = true; btn.textContent = '↻ Checking…'; }
+
+            // Freight: always (naturally small — only quotes with unanswered transporter
+            // threads). Customer threads: only on an explicit click, since "sent" can be a
+            // large set and we don't want to slow the app's opening with it.
+            const freightQuotes = approvedQuotations.filter(quoteAwaitsFreightReply);
+            const customerQuotes = background ? [] : approvedQuotations.filter(quoteHasCustomerThread);
+
+            try {
+                if (!freightQuotes.length && !customerQuotes.length) {
+                    setStatus('Nothing is awaiting a reply right now.');
+                    return;
+                }
+                setStatus('Checking ' + (freightQuotes.length + customerQuotes.length) + ' quote(s)…');
+
+                let freightNew = 0, custNew = 0;
+                const CONC = 5;
+                if (freightQuotes.length && typeof window.checkFreightRepliesForQuote === 'function') {
+                    const r = await runWithConcurrency(freightQuotes, CONC, function (q) { return window.checkFreightRepliesForQuote(q); });
+                    r.forEach(function (x) { if (x && x.newReplies) freightNew += x.newReplies; });
+                }
+                if (customerQuotes.length) {
+                    const r = await runWithConcurrency(customerQuotes, CONC, checkCustomerReplyForQuote);
+                    r.forEach(function (x) { if (x && x.newReply) custNew++; });
+                }
+
+                const total = freightNew + custNew;
+                if (total > 0) { try { displayAllApprovedQuotations(); } catch (e) {} }
+                setStatus(total > 0
+                    ? ('Found ' + total + ' new repl' + (total > 1 ? 'ies' : 'y') + ' — see the "Needs attention" flags.')
+                    : 'No new replies.');
+            } finally {
+                _checkAllRepliesRunning = false;
+                if (btn && !background) { btn.disabled = false; btn.innerHTML = '↻ Check all replies'; }
+            }
         }
 
         /*
