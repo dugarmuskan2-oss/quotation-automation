@@ -6483,7 +6483,7 @@
                 const isRegretted = quotation.adminStatus === 'regretted';
                 const adminStateBadgeHTML = isRegretted
                     ? `<span class="q-pill q-regretted">Regretted${quotation.regretSentAt ? ' · reply sent' : ''}</span> <a href="#" class="gmail-link" style="font-size:12px;" onclick="event.preventDefault(); event.stopPropagation(); mdkUndoRegret(${JSON.stringify(String(quotation.id))});">Undo</a>`
-                    : (quotation.adminStatus === 'awaiting' ? '<span class="q-pill q-awaiting">Awaiting margin</span>' : '');
+                    : (quotation.adminStatus === 'awaiting' && !quotation.sent ? '<span class="q-pill q-awaiting">Awaiting margin</span>' : '');
                 const adminNoteChipHTML = (!isRegretted && String(quotation.adminNote || '').trim())
                     ? '<span class="mdk-pill">📝 Admin note</span>'
                     : '';
@@ -6942,7 +6942,7 @@
             return '';
         }
         function determineLiveAction(q) {
-            if (q && (q.adminStatus === 'regretted' || q.adminStatus === 'awaiting')) return null;   // admin's desk, not staff's
+            if (q && (q.adminStatus === 'regretted' || (q.adminStatus === 'awaiting' && !q.sent))) return null;   // admin's desk, not staff's
             if (!quotationReviewed(q)) return { label: 'Review', key: 'review' };
             if (q.revised && !q.resent) return { label: 'Resend', key: 'resend' };
             if (q.custReplyPending) return { label: 'Reply', key: 'reply' };
@@ -6951,7 +6951,7 @@
         function statusPill(q) {
             // Admin margin-allocation states come first — they precede review.
             if (q && q.adminStatus === 'regretted') return '<span class="q-pill q-regretted">Regretted</span>';
-            if (q && q.adminStatus === 'awaiting') return '<span class="q-pill q-awaiting">Awaiting margin</span>';
+            if (q && q.adminStatus === 'awaiting' && !q.sent) return '<span class="q-pill q-awaiting">Awaiting margin</span>';
             if (!quotationReviewed(q)) return '<span class="q-pill q-new">New</span>';
             if (q.custReplyPending) return '<span class="q-pill q-reply">Customer replied</span>';
             if (q.revised) return '<span class="q-pill q-revised">Revised</span>';
@@ -9734,6 +9734,13 @@
             return (m ? m[1] : header).trim();
         }
 
+        // All bare emails from a To/Cc header ("A <a@x>, b@y" -> ["a@x","b@y"]). Robust to
+        // display names / commas by matching email-like tokens directly.
+        function bareEmailsFromHeader(header) {
+            if (!header) return [];
+            return (String(header).match(/[^\s<>,;"]+@[^\s<>,;"]+/g) || []).map(function(e) { return e.trim(); });
+        }
+
         // Open a PDF (base64) in a new tab for preview. `win` is a tab opened synchronously
         // on click (before the async PDF gen) so the popup blocker doesn't suppress it.
         function openBase64Pdf(base64, win) {
@@ -9979,6 +9986,21 @@
             // The From header is "Name <addr>" — extract the bare address, else the chip field
             // would split "Name" and "<addr>" into separate (invalid) chips.
             const senderEmail = threadResolved ? bareEmailFromHeader(threadInfo.fromEmail) : '';
+            // Reply-all: CC everyone else who was on the enquiry (its To + Cc) — the customer's
+            // other people — minus the sender (already in To) and our own dscpipes.com addresses.
+            // Shown as editable chips so the user can adjust before sending.
+            let replyAllCc = '';
+            if (threadResolved) {
+                const seenCc = {};
+                replyAllCc = bareEmailsFromHeader(threadInfo.to).concat(bareEmailsFromHeader(threadInfo.cc))
+                    .filter(function(a) {
+                        const lc = String(a).toLowerCase();
+                        if (!lc || lc === String(senderEmail).toLowerCase() || /@dscpipes\.com$/.test(lc) || seenCc[lc]) return false;
+                        seenCc[lc] = true;
+                        return true;
+                    })
+                    .join(', ');
+            }
             const defaultSubject = `Quotation ${displayQuoteNumber(quotation) || ''} - DSC Pipes`.trim();
             const subjectPrefill = (threadResolved && threadInfo.subject)
                 ? (/^re:/i.test(threadInfo.subject.trim()) ? threadInfo.subject : `Re: ${threadInfo.subject}`)
@@ -9989,6 +10011,7 @@
             // Open the review/compose window — everything pre-filled and editable.
             const composed = await composeQuotationEmail({
                 to: senderEmail,
+                cc: replyAllCc,
                 subject: subjectPrefill,
                 bodyHtml: buildQuotationEmailBodyHtml(quotation),
                 pdfFilename: pdfName,

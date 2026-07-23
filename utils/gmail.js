@@ -138,15 +138,17 @@ async function lookupMessageThread(messageId) {
     userId: 'me',
     id: messageId,
     format: 'metadata',
-    metadataHeaders: ['Message-ID', 'From', 'Subject'],
+    metadataHeaders: ['Message-ID', 'From', 'To', 'Cc', 'Subject'],
   });
   const threadId = msg.data.threadId;
   const headers = msg.data.payload.headers || [];
-  const get = name => (headers.find(h => h.name === name) || {}).value || null;
+  const get = name => (headers.find(h => h.name && h.name.toLowerCase() === name.toLowerCase()) || {}).value || null;
   return {
     threadId,
     rfcMessageId: get('Message-ID'),
     fromEmail: get('From'),
+    to: get('To'),   // other recipients on the enquiry — used to reply-all
+    cc: get('Cc'),
     subject: get('Subject'),
   };
 }
