@@ -72,6 +72,9 @@
             + '.fwe-link{background:none;border:none;color:#185FA5;text-decoration:underline;cursor:pointer;font-size:13px;padding:0;}'
             + '.fwe-del{background:#FCEBEB;color:#A32D2D;border:1px solid #F09595;border-radius:6px;width:24px;height:24px;padding:0;cursor:pointer;display:flex;align-items:center;justify-content:center;}'
             + '.fwe-total{font-weight:600;font-size:13px;border-top:1px solid rgba(0,0,0,.18);margin-top:3px;padding-top:7px;}'
+            + '.fwe-subtotal{font-size:12px;color:#6e6c65;padding-top:2px;}'
+            + '.fwe-addbtn{width:28px;height:28px;border-radius:6px;border:1px solid #85B7EB;background:#E6F1FB;color:#0C447C;font-size:18px;line-height:1;cursor:pointer;font-weight:600;padding:0;}'
+            + '.fwe-addbtn:hover{background:#d5e8fb;}'
             + '.fwe-addfreight{border:1px solid #85B7EB;background:#E6F1FB;border-radius:8px;padding:12px;margin-top:14px;color:#0C447C;font-size:13px;}'
             + '.fwe-famt{height:32px;padding:4px 8px;border:1px solid rgba(0,0,0,.25);border-radius:6px;}'
             + '.fwe-fmethod{font-size:13px;padding:6px 11px;border:1px solid rgba(0,0,0,.18);border-radius:8px;background:#fff;color:#20201d;cursor:pointer;}'
@@ -156,10 +159,12 @@
                 : '<span style="font-size:11px;color:#9b988e;">&#128190; saved with quote</span>') + '</div>';
         var body = rows.length ? rows.map(function (r) { return rowHtml(st, r); }).join('')
             : '<p style="margin:8px 0;font-size:12px;color:#9b988e;text-align:center;">Drag items here to weigh them separately.</p>';
+        var secWt = secWeight(st, sec);
         var totalRow = rows.length
-            ? '<div class="fwe-grid fwe-total"><div></div><div>Total weight</div><div></div><div></div><div style="text-align:right;">' + fmt(secWeight(st, sec)) + ' kg</div><div></div></div>'
+            ? '<div class="fwe-grid fwe-total"><div></div><div>Total weight</div><div></div><div></div><div style="text-align:right;">' + fmt(secWt) + ' kg</div><div></div></div>'
+              + '<div class="fwe-grid fwe-subtotal"><div></div><div>With tolerance (7%)</div><div></div><div></div><div style="text-align:right;">' + fmt(secWt * 0.93) + ' kg</div><div></div></div>'
             : '';
-        var foot = '<div class="fwe-foot"><button class="fwe-link fwe-add" data-sec="' + sec + '">+ Add item</button><span style="margin-left:auto;"></span>'
+        var foot = '<div class="fwe-foot"><button class="fwe-add fwe-addbtn" data-sec="' + sec + '" title="Add item" aria-label="Add item">+</button><span style="margin-left:auto;"></span>'
             + (!st.split ? '<button class="fwe-btn fwe-split">+ Calculate other weight</button>' : '')
             + '<button class="fwe-btn fwe-print" data-sec="' + sec + '">&#128424; Print</button>'
             + '<button class="fwe-reqf" data-sec="' + sec + '">&#128666; Request freight</button></div>';
