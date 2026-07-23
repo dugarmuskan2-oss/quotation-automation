@@ -650,6 +650,8 @@ For each item, use your intelligence to separate the description into these four
 - "quantity": numeric value only, empty string if not mentioned
 - "unit": unit of measure (MTRS, NOS, KG, MT, etc.), empty string if not mentioned
 
+For PIPE items, write "originalDescription" in a clean, normalisable form: "<size>\\" NB X <Heavy|Medium|Light>" when a class or wall thickness is given, or "<size>\\" NB X <thickness>mm" for a bare wall thickness — e.g. "1\\" NB X Heavy", "2\\" NB X Medium", "4\\" NB X 5.4mm". Convert millimetre bore to inches (25mm=1", 32mm=1-1/4", 40mm=1-1/2", 50mm=2", 65mm=2-1/2", 80mm=3", 100mm=4", 125mm=5", 150mm=6"). Use a SINGLE "X" as the separator and spell the class word out in full. NEVER output compressed codes with doubled or dropped letters such as "1XXHY", "2XXH", or "3XX5".
+
 Return JSON in this exact format:
 {
   "lineItems": [

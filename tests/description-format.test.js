@@ -54,6 +54,31 @@ describe('class formatting — inch notation', () => {
 });
 
 // =============================================================================
+// Garbled AI codes — a doubled "X" separator (regression: DSC-2196 stored "1XXHY")
+// =============================================================================
+describe('garbled AI codes — doubled "X" is tolerated (frontend)', () => {
+    test('1XXHY ERW -> Heavy', () => expect(f('1XXHY', 'ERW')).toBe('1" NB X Heavy -- ERW'));
+    test('2XXH ERW -> Heavy', () => expect(f('2XXH', 'ERW')).toBe('2" NB X Heavy -- ERW'));
+    test('11/4XXH ERW -> 1-1/4 Heavy', () => expect(f('11/4XXH', 'ERW')).toBe('1-1/4" NB X Heavy -- ERW'));
+    test('21/2XXH ERW -> 2-1/2 Heavy', () => expect(f('21/2XXH', 'ERW')).toBe('2-1/2" NB X Heavy -- ERW'));
+    test('3XX5 ERW -> 5mm thk', () => expect(f('3XX5', 'ERW')).toBe('3" NB X 5mm thk -- ERW'));
+    test('4XX5.4 ERW -> 5.4mm thk', () => expect(f('4XX5.4', 'ERW')).toBe('4" NB X 5.4mm thk -- ERW'));
+    test('clean 2XH is unchanged (no regression)', () => expect(f('2XH', 'ERW')).toBe('2" NB X Heavy -- ERW'));
+});
+
+// The Gmail-ingest formatter (server-side, runs at ingest + on table rebuild) must decode
+// identically — it mirrors the frontend one.
+const ingestFormat = require('../gmail-ingest/descriptionFormatter').formatItemDescriptionByPipeType;
+const gi = (code, type) => ingestFormat({ originalDescription: code, identifiedPipeType: type });
+describe('garbled AI codes — Gmail-ingest formatter mirrors the fix', () => {
+    test('1XXHY -> Heavy', () => expect(gi('1XXHY', 'ERW')).toBe('1" NB X Heavy -- ERW'));
+    test('2XXH -> Heavy', () => expect(gi('2XXH', 'ERW')).toBe('2" NB X Heavy -- ERW'));
+    test('4XX5.4 -> 5.4mm thk', () => expect(gi('4XX5.4', 'ERW')).toBe('4" NB X 5.4mm thk -- ERW'));
+    // Seamless "XXS" (extra-extra-strong) must NOT be collapsed to "XS".
+    test('seamless "2XXS" is preserved, not corrupted by the collapse', () => expect(gi('2XXS', 'Seamless')).toBe('2XXS'));
+});
+
+// =============================================================================
 // Spelled-out and abbreviated class tokens
 // =============================================================================
 describe('class token variants', () => {

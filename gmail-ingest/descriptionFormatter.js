@@ -46,12 +46,17 @@ function formatItemDescriptionByPipeType(item) {
     if (!raw) return raw;
 
     const pipeType = (item.identifiedPipeType || '').toLowerCase();
-    const normalized = normalizeFractionText(raw.replace(/["]/g, '').trim());
+    let normalized = normalizeFractionText(raw.replace(/["]/g, '').trim());
+    // Garbled AI codes double the separator "X" (e.g. "2XXH", "1XXHY"); collapse it so the
+    // size↔class split still parses. Skip seamless — its "XXS" schedule legitimately has "XX".
+    if (!pipeType.includes('seamless')) {
+        normalized = normalized.replace(/x{2,}/gi, 'X');
+    }
     const numberToken = '\\d+(?:\\.\\d+)?|\\d+-\\d+\\/\\d+|\\d+\\/\\d+';
-    const nxhMatch = normalized.match(new RegExp(`^(${numberToken})\\s*[xX]\\s*(h|hv|hvy|heavy|hevy)$`, 'i'));
+    const nxhMatch = normalized.match(new RegExp(`^(${numberToken})\\s*[xX]\\s*(h|hy|hv|hvy|heavy|hevy)$`, 'i'));
     const nxmMatch = normalized.match(new RegExp(`^(${numberToken})\\s*[xX]\\s*(m|med|medium)$`, 'i'));
     const xMatch = normalized.match(new RegExp(`(${numberToken})\\s*[xX]\\s*([A-Za-z0-9.\\/-]+)`));
-    const hMatch = normalized.match(new RegExp(`^(${numberToken})\\s*(h|hv|hvy|heavy|hevy)$`, 'i'));
+    const hMatch = normalized.match(new RegExp(`^(${numberToken})\\s*(h|hy|hv|hvy|heavy|hevy)$`, 'i'));
     const mMatch = normalized.match(new RegExp(`^(${numberToken})\\s*(m|med|medium)$`, 'i'));
     const schMatch = normalized.match(new RegExp(`^(${numberToken})\\s*(?:sch|schedule)\\s*(\\d+(?:\\.\\d+)?)$`, 'i'));
 
@@ -107,7 +112,7 @@ function formatItemDescriptionByPipeType(item) {
     if (!isGi && !isErw) return raw;
 
     const pipeLabel = isGi ? 'GI' : 'ERW';
-    const heavyTokens = ['h', 'hv', 'hvy', 'heavy', 'hevy'];
+    const heavyTokens = ['h', 'hy', 'hv', 'hvy', 'heavy', 'hevy'];
     const mediumTokens = ['m', 'med', 'medium'];
 
     if (isHeavy || heavyTokens.includes(secondClean)) {
