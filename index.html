@@ -288,6 +288,11 @@
         .mdk-enq { background: #f6f5f1; border: 1px solid rgba(0,0,0,0.08); border-radius: 8px; padding: 9px 10px; font-size: 12px; color: #6e6c65; line-height: 1.55; max-height: 140px; overflow: auto; white-space: pre-wrap; }
         /* Formatted email preview in the desk — shows the enquiry as-is (tables & layout). */
         .mdk-enq-preview { max-height: 340px; overflow: auto; border-radius: 8px; }
+        /* Collapsible desk card (folder) — mirrors the approval-list cards. */
+        .mdk-folder-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; cursor: pointer; user-select: none; }
+        .mdk-folder-head:hover .mdk-name { color: #3b3f79; }
+        .mdk-caret { font-size: 11px; color: #6e6c65; width: 12px; flex-shrink: 0; }
+        .mdk-folder-body { margin-top: 12px; }
         .mdk-manage { background: none; border: none; padding: 0; font-size: 12px; color: #0C447C; text-decoration: underline; cursor: pointer; }
         .mdk-admin-strip { background: #FAEEDA; border-radius: 8px; padding: 9px 12px; margin-bottom: 12px; }
         .mdk-admin-strip .h { font-size: 12px; font-weight: 600; color: #633806; margin-bottom: 3px; }
@@ -1371,11 +1376,13 @@
             </button>
         </div>
         
+        <!-- Margins to allocate — the admin desk. Its OWN section, above Approval.
+             Rendered entirely by renderMarginDesk(); shown only when quotes await margins. -->
+        <div id="marginDeskSection" class="quotation-section" style="display:none;"></div>
+
         <!-- Approval Section (shows all approved quotations) -->
         <div id="approvalSection" class="quotation-section">
             <h2>Approval</h2>
-            <!-- Margins to allocate — the admin desk. Shown only when quotes are awaiting. -->
-            <div id="marginDeskSection" style="display:none; margin-bottom: 18px;"></div>
             <div style="margin-bottom: 10px;">
                 <input
                     type="text"
@@ -7053,12 +7060,19 @@
             const s = q.itemSummary || { count: 0, types: [], noRate: 0 };
             const m = adminMarginsOf(q);
             const idAttr = escapeHtml(String(q.id));
+            const expanded = !!mdkExpandedIds[q.id];
             let h = '<div class="mdk-card" id="mdk-row-' + idAttr + '">';
-            h += '<div class="mdk-line"><span class="mdk-name">' + escapeHtml((q.companyName || q.projectName || 'Quotation') + ' - ' + (q.quoteNumber || '')) + '</span>'
+            // Collapsible header (folder) — click to expand/collapse, like an approval card.
+            h += '<div class="mdk-folder-head" onclick="mdkToggleCard(\'' + idAttr + '\')">'
+                + '<span class="mdk-caret" id="mdk-caret-' + idAttr + '">' + (expanded ? '▼' : '▶') + '</span>'
+                + '<span class="mdk-name">' + escapeHtml((q.companyName || q.projectName || 'Quotation') + ' - ' + (q.quoteNumber || '')) + '</span>'
                 + '<span class="mdk-meta">' + s.count + ' items · ' + (s.types.join(' + ') || '—') + '</span>'
                 + (s.noRate ? '<span class="mdk-pill">⚠ ' + s.noRate + ' item' + (s.noRate > 1 ? 's' : '') + ' not in price list</span>' : '')
-                + '<button type="button" class="mdk-regret" style="margin-left:auto;" onclick="mdkRegret(\'' + idAttr + '\')">🚫 Regret</button>'
-                + '<button type="button" class="mdk-apply" onclick="mdkSendToApproval(\'' + idAttr + '\')">→ Send to approval</button></div>';
+                + '<span class="q-pill q-awaiting" style="margin-left:auto;">Awaiting margin</span>'
+                + '</div>';
+
+            // Collapsible body — everything below the header.
+            h += '<div class="mdk-folder-body" id="mdk-body-' + idAttr + '" style="display:' + (expanded ? 'block' : 'none') + ';">';
 
             // Per-type margin controls
             h += '<div class="mdk-ctrl">';
@@ -7112,14 +7126,26 @@
                     : '<div class="mdk-enq">(no enquiry text)</div>';
                 h += '<div style="margin-top:6px;">' + buildEnquiryFilesChipsHTML(q) + '</div>';
             }
-            h += '</div>';
+
+            // Action buttons — inside the body, at the bottom.
+            h += '<div class="mdk-line" style="margin-top:14px;">'
+                + '<button type="button" class="mdk-regret" onclick="mdkRegret(\'' + idAttr + '\')">🚫 Regret</button>'
+                + '<button type="button" class="mdk-apply" style="margin-left:auto;" onclick="mdkSendToApproval(\'' + idAttr + '\')">→ Send to approval</button></div>';
+
+            h += '</div>';   // close .mdk-folder-body
+            h += '</div>';   // close .mdk-card
             return h;
         }
+
+        // Which desk cards are expanded — preserved across the desk's re-renders.
+        let mdkExpandedIds = {};
 
         function renderMarginDesk() {
             const section = document.getElementById('marginDeskSection');
             if (!section) return;
-            const waiting = approvedQuotations.filter(function(q) { return q.adminStatus === 'awaiting'; });
+            // Awaiting margin allocation — but drop any already SENT to the customer: a quote
+            // was created/sent without going through the desk, so there's nothing to allocate.
+            const waiting = approvedQuotations.filter(function(q) { return q.adminStatus === 'awaiting' && !q.sent; });
             if (!waiting.length) {
                 section.style.display = 'none';
                 section.innerHTML = '';
@@ -7131,7 +7157,21 @@
                 + '<span class="mdk-hint">only you use this section</span></div>';
             waiting.forEach(function(q) { h += buildMarginDeskRow(q); });
             section.innerHTML = h;
-            waiting.forEach(ensureDeskEnquiryLoaded);
+            // Cards start collapsed; only load the enquiry email for ones already expanded.
+            waiting.forEach(function(q) { if (mdkExpandedIds[q.id]) ensureDeskEnquiryLoaded(q); });
+        }
+
+        // Expand/collapse a desk card; loads its enquiry email on first open.
+        function mdkToggleCard(id) {
+            mdkExpandedIds[id] = !mdkExpandedIds[id];
+            const body = document.getElementById('mdk-body-' + id);
+            const caret = document.getElementById('mdk-caret-' + id);
+            if (body) body.style.display = mdkExpandedIds[id] ? 'block' : 'none';
+            if (caret) caret.textContent = mdkExpandedIds[id] ? '▼' : '▶';
+            if (mdkExpandedIds[id]) {
+                const q = mdkQuote(id);
+                if (q) ensureDeskEnquiryLoaded(q);
+            }
         }
 
         // ── Desk event handlers ────────────────────────────────────────────────
