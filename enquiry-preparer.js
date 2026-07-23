@@ -710,15 +710,22 @@
             return;
         }
 
-        // Prefer already-loaded approvals; otherwise fetch directly from API.
+        // The loaded approvals list is a lightweight summary (no lineItems/tableHTML until a
+        // card is opened), so use it only if it actually carries items — otherwise fetch the
+        // full quote from the server so we get the line items.
         let match = findByQuotationNumber(quoteNumber);
-        if (!match) {
+        const hasItems = function (m) { return !!(m && ((Array.isArray(m.lineItems) && m.lineItems.length) || m.tableHTML)); };
+        if (!hasItems(match)) {
             try {
                 setStatus('enquiryFromQuoteStatus', 'Fetching quotation from server...', true);
-                match = await fetchQuotationByNumber(quoteNumber);
+                const full = await fetchQuotationByNumber(quoteNumber);
+                if (full) match = full;
             } catch (e) {
-                setStatus('enquiryFromQuoteStatus', 'Failed to fetch quotation: ' + (e.message || 'Unknown error'), false);
-                return;
+                if (!match) {
+                    setStatus('enquiryFromQuoteStatus', 'Failed to fetch quotation: ' + (e.message || 'Unknown error'), false);
+                    return;
+                }
+                // else fall through with the summary match (best effort)
             }
         }
 
