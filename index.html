@@ -279,7 +279,7 @@
         .mdk-costplus { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #6e6c65; }
         .mdk-costplus input { width: 54px; height: 30px; text-align: center; padding: 0; border: 1px solid #ccc; border-radius: 6px; }
         .mdk-note-lbl { font-size: 12px; color: #6e6c65; margin: 10px 0 4px; }
-        .mdk-note { width: 100%; box-sizing: border-box; border: 1px solid #ccc; border-radius: 6px; padding: 8px 10px; font-size: 13px; font-family: inherit; line-height: 1.5; }
+        .mdk-note { width: 100%; box-sizing: border-box; border: 1px solid #ccc; border-radius: 6px; padding: 4px 8px; font-size: 12px; font-family: inherit; line-height: 1.35; }
         .mdk-apply { background: #1D9E75; color: #fff; border: none; border-radius: 8px; padding: 7px 14px; font-size: 13px; font-weight: 500; cursor: pointer; }
         .mdk-apply:hover { background: #0F6E56; }
         .mdk-regret { background: none; color: #A32D2D; border: 1px solid #F7C1C1; border-radius: 8px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
@@ -6784,44 +6784,60 @@
             return `<div style="margin-bottom:8px;"><div style="font-size:11px; color:#9b988e; margin-bottom:3px;">ATTACHED FILES</div>${chips}${noteChips}</div>`;
         }
 
-        // Print sheet: admin message first, then the enquiry message, then the
-        // attachments (images inline; other files listed by name).
+        // Print sheet: admin message, then the enquiry AS EMAILED (formatted HTML — tables &
+        // layout preserved), then every attachment (images inline, PDFs embedded so they print).
         function printEnquirySheet(quotationId) {
             const quotation = approvedQuotations.find(function(q) { return idsMatch(q.id, quotationId); });
             if (!quotation) return;
             const adminMessage = (buildAdminMessage(quotation) || '').trim();
             const files = Array.isArray(quotation.enquiryFiles) ? quotation.enquiryFiles : [];
             const notes = Array.isArray(quotation.enquiryFileNotes) ? quotation.enquiryFileNotes : [];
-            const notesHtml = notes.map(function(n) {
-                return `<p style="margin:6px 0 2px; font-size:13px; color:#854F0B;">📄 ${escapeHtml(n.name || 'file')} — <i>${escapeHtml(n.note || 'not attached')}</i></p>`;
+
+            // The enquiry, exactly as it looked in the email (formatted, tables intact).
+            const emailHtml = buildEmailContentPreviewHTML(quotation);
+
+            // Each retained attachment on its own page: images inline, PDFs embedded to print.
+            const hasPdf = files.some(function(f) { return !isImageEnquiryAttachment(f); });
+            const attachHtml = files.map(function(f) {
+                const url = enquiryFileViewUrl(f);
+                const label = '<p class="att-name">' + (isImageEnquiryAttachment(f) ? '🖼️' : '📄') + ' ' + escapeHtml(f.name || 'file') + '</p>';
+                const body = isImageEnquiryAttachment(f)
+                    ? '<img src="' + escapeHtml(url) + '">'
+                    : '<iframe src="' + escapeHtml(url) + '"></iframe>';
+                return '<div class="attach">' + label + body + '</div>';
             }).join('');
-            const filesHtml = (files.length || notes.length)
-                ? files.map(function(f) {
-                    const label = `<p style="margin:6px 0 2px; font-size:13px; color:#555;">${isImageEnquiryAttachment(f) ? '🖼️' : '📄'} ${escapeHtml(f.name || 'file')}</p>`;
-                    return isImageEnquiryAttachment(f)
-                        ? label + `<img src="${escapeHtml(enquiryFileViewUrl(f))}" style="max-width:100%; border:1px solid #ddd; border-radius:4px;">`
-                        : label;
-                }).join('') + notesHtml
+            const notesHtml = notes.map(function(n) {
+                return '<p class="att-note">📄 ' + escapeHtml(n.name || 'file') + ' — <i>' + escapeHtml(n.note || 'not attached') + '</i></p>';
+            }).join('');
+            const attachSection = (files.length || notes.length)
+                ? (attachHtml + notesHtml)
                 : '<p style="color:#999; font-size:13px;">No files attached.</p>';
-            const section = function(title, bodyHtml) {
-                return `<div style="font-size:11px; letter-spacing:0.04em; text-transform:uppercase; color:#888; border-bottom:1px solid #ddd; padding-bottom:3px; margin:18px 0 8px;">${title}</div>${bodyHtml}`;
-            };
-            const win = window.open('', '_blank', 'width=800,height=900');
+
+            const css = 'body{font-family:Arial,Helvetica,sans-serif;padding:28px;color:#20201d;}'
+                + '.sec{font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:#888;border-bottom:1px solid #ddd;padding-bottom:3px;margin:18px 0 8px;}'
+                + '.email-html-preview{white-space:pre-wrap;font-size:13px;line-height:1.5;}'
+                + 'table,.email-html-preview table,.email-table-preview table{border-collapse:collapse;width:100%;}'
+                + 'th,td,.email-html-preview th,.email-html-preview td,.email-table-preview th,.email-table-preview td{border:1px solid #999;padding:4px 6px;text-align:left;vertical-align:top;font-size:13px;}'
+                + 'img{max-width:100%;}'
+                + '.att-name{margin:0 0 6px;font-size:13px;color:#555;font-weight:600;}'
+                + '.att-note{margin:6px 0 2px;font-size:13px;color:#854F0B;}'
+                + '.attach{margin:12px 0;}'
+                + '.attach iframe{width:100%;height:1040px;border:1px solid #ddd;}'
+                + '@media print{.attach{page-break-before:always;page-break-inside:avoid;}}';
+            const win = window.open('', '_blank', 'width=850,height=1000');
             if (!win) { alert('Please allow pop-ups to print the enquiry.'); return; }
-            win.document.write('<html><head><title>Enquiry - ' + escapeHtml(quotation.quoteNumber || '') + '</title></head>'
-                + '<body style="font-family:Arial,Helvetica,sans-serif; padding:28px; color:#20201d;">'
+            win.document.write('<html><head><title>Enquiry - ' + escapeHtml(quotation.quoteNumber || '') + '</title>'
+                + '<style>' + css + '</style></head><body>'
                 + '<h2 style="margin:0 0 2px;">Enquiry — ' + escapeHtml(quotation.companyName || quotation.projectName || '') + '</h2>'
                 + '<p style="margin:0 0 10px; color:#666; font-size:13px;">' + escapeHtml([quotation.customerName, quotation.quoteNumber, quotation.quotationDate].filter(Boolean).join(' · ')) + '</p>'
-                + section('Message from the admin', adminMessage
-                    ? '<div style="background:#FAEEDA; border-radius:6px; padding:10px 12px; font-size:14px; white-space:pre-wrap;">' + escapeHtml(adminMessage) + '</div>'
-                    : '<p style="color:#999; font-size:13px;">— none —</p>')
-                + section('Enquiry message', '<div style="font-size:13px; white-space:pre-wrap; line-height:1.6;">' + escapeHtml(quotation.emailContent || '(no enquiry text)') + '</div>')
-                + section('Attached files', filesHtml)
+                + (adminMessage ? '<div class="sec">Message from the admin</div><div style="background:#FAEEDA;border-radius:6px;padding:10px 12px;font-size:14px;white-space:pre-wrap;">' + escapeHtml(adminMessage) + '</div>' : '')
+                + '<div class="sec">Enquiry (as emailed)</div>' + emailHtml
+                + '<div class="sec">Attachments</div>' + attachSection
                 + '</body></html>');
             win.document.close();
             win.focus();
-            // Give inline images a moment to load before the print dialog.
-            setTimeout(function() { win.print(); }, files.some(isImageEnquiryAttachment) ? 800 : 150);
+            // Give inline images / embedded PDFs time to load before the print dialog.
+            setTimeout(function() { win.print(); }, hasPdf ? 2200 : (files.some(isImageEnquiryAttachment) ? 900 : 200));
         }
 
         /** headerHTML snapshots can have an empty quote input while quotation.quoteNumber is set (e.g. after data/payload merge). */
@@ -7108,7 +7124,7 @@
 
             // Note for staff
             h += '<div class="mdk-note-lbl">📝 Notes for staff <span style="color:#9b988e;">(optional — shown on the quote and the printed enquiry)</span></div>'
-                + '<textarea class="mdk-note" id="mdk-note-' + idAttr + '" rows="2" placeholder="e.g. Quote the 6&quot; ERW at Jindal list less 5%." onchange="mdkNoteChanged(\'' + idAttr + '\',this.value)">' + escapeHtml(q.adminNote || '') + '</textarea>';
+                + '<textarea class="mdk-note" id="mdk-note-' + idAttr + '" rows="1" placeholder="e.g. Quote the 6&quot; ERW at Jindal list less 5%." onchange="mdkNoteChanged(\'' + idAttr + '\',this.value)">' + escapeHtml(q.adminNote || '') + '</textarea>';
 
             // Enquiry preview (lazy): the formatted email as-is (tables & layout preserved),
             // a View-in-Gmail link, and the retained attachment chips.
