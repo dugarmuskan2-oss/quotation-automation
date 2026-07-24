@@ -142,9 +142,11 @@ function registerRangeOf(query) {
 
 function registerStatusOf(q) {
     if (q.adminStatus === 'regretted') return 'REGRET';
-    if (q.adminStatus === 'awaiting') return 'MARGIN ALLOCATION PENDING';
+    // Sent overrides "awaiting margin": a quote sent without going through the desk is Sent,
+    // not still pending margin allocation.
     if (q.sent && q.revised) return 'REVISION SENT';
     if (q.sent) return 'SENT';
+    if (q.adminStatus === 'awaiting') return 'MARGIN ALLOCATION PENDING';
     return 'PENDING';
 }
 

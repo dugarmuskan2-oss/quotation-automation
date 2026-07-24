@@ -81,8 +81,10 @@ describe('registerStatusOf — precedence of the five statuses', () => {
     test('REGRET beats everything', () => {
         expect(registerStatusOf({ adminStatus: 'regretted', sent: true, revised: true })).toBe('REGRET');
     });
-    test('MARGIN ALLOCATION PENDING beats sent', () => {
-        expect(registerStatusOf({ adminStatus: 'awaiting', sent: true })).toBe('MARGIN ALLOCATION PENDING');
+    test('sent overrides awaiting margin (a sent quote is Sent, not pending)', () => {
+        expect(registerStatusOf({ adminStatus: 'awaiting', sent: true })).toBe('SENT');
+        expect(registerStatusOf({ adminStatus: 'awaiting', sent: true, revised: true })).toBe('REVISION SENT');
+        expect(registerStatusOf({ adminStatus: 'awaiting', sent: false })).toBe('MARGIN ALLOCATION PENDING');
     });
     test('REVISION SENT needs both revised and sent', () => {
         expect(registerStatusOf({ sent: true, revised: true })).toBe('REVISION SENT');
