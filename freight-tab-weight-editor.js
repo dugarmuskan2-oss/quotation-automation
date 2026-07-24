@@ -383,6 +383,10 @@
     // case the threads ride along with the user's next explicit Save.
     function persistEnquiryThreads(q) {
         if (q.hasUnsavedEdits) return;
+        // Only persist a FULLY-LOADED quote. The reply-sweep runs over the list summary, which
+        // has no lineItems/tableHTML; saving that object PutCommand-overwrites the stored quote
+        // and WIPES its items. Guard against that.
+        if (!(q.tableHTML || (Array.isArray(q.lineItems) && q.lineItems.length))) return;
         if (typeof saveQuotationToBackend === 'function') { try { saveQuotationToBackend(q); } catch (e) { } }
     }
     // Pull a rupee amount out of a transporter's reply, e.g. "Rs 18,500", "₹18500/-",

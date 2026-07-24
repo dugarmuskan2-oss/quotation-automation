@@ -242,7 +242,10 @@ describe('POST /api/save-quotation', () => {
 
         const res = await request(app)
             .post('/api/save-quotation')
-            .send({ quotation: { id: 'x', customerName: 'Test', quoteNumber: 'Q-001', lineItems: [] } });
+            // Include a real line item so the save goes straight to the write. (An
+            // empty-body payload would trigger the item-preserving pre-read instead,
+            // which swallows errors by design — see routes/quotations.js.)
+            .send({ quotation: { id: 'x', customerName: 'Test', quoteNumber: 'Q-001', lineItems: [{ originalDescription: 'd', quantity: '1' }] } });
 
         expect(res.status).toBe(500);
     });

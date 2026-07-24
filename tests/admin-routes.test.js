@@ -161,3 +161,32 @@ describe('POST /quotations/:id/register-meta', () => {
         expect(res.status).toBe(404);
     });
 });
+
+// The reply-sweep and freight auto-check persist quotes by re-saving the in-memory
+// object. For an unopened quote that object is only the list summary (no lineItems /
+// tableHTML), and /save-quotation writes with PutCommand (full overwrite) — so saving
+// a summary would WIPE the stored items. The route guards against that by refilling
+// the body from the stored record when the incoming payload has none.
+describe('POST /save-quotation — never wipes stored items with a bodyless payload', () => {
+    test('a summary payload (no items/table) keeps the stored line items + tableHTML', async () => {
+        const store = seed();
+        store['q1'].payload.tableHTML = '<table>rows</table>';
+        store['q1'].payload.headerHTML = '<div>header</div>';
+        const res = await request(makeApp(store)).post('/api/save-quotation')
+            .send({ quotation: { id: 'q1', companyName: 'Acme', grandTotal: '999', custReplyPending: true } });
+        expect(res.status).toBe(200);
+        expect(store['q1'].payload.lineItems).toHaveLength(3);         // preserved, not wiped
+        expect(store['q1'].payload.tableHTML).toBe('<table>rows</table>');
+        expect(store['q1'].payload.headerHTML).toBe('<div>header</div>');
+        expect(store['q1'].payload.custReplyPending).toBe(true);       // the flag update still lands
+    });
+    test('a full payload overwrites the items normally', async () => {
+        const store = seed();
+        const newItems = [{ lineItemId: 'x', originalDescription: 'X', quantity: '5' }];
+        const res = await request(makeApp(store)).post('/api/save-quotation')
+            .send({ quotation: { id: 'q1', lineItems: newItems, tableHTML: '<table>new</table>', grandTotal: '5' } });
+        expect(res.status).toBe(200);
+        expect(store['q1'].payload.lineItems).toEqual(newItems);
+        expect(store['q1'].payload.tableHTML).toBe('<table>new</table>');
+    });
+});

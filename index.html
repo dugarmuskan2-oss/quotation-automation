@@ -1985,7 +1985,11 @@
                 q.custReplyPending = pending;
                 // Persist the set OR clear, using the same guard the freight path uses —
                 // never save over the user's unsaved edits.
-                if (changed && !q.hasUnsavedEdits && typeof saveQuotationToBackend === 'function') {
+                // Persist the flag — but ONLY for a fully-loaded quote. The sweep runs over the
+                // list summary (no lineItems/tableHTML); saving that PutCommand-overwrites the
+                // stored quote and WIPES its items. Guard against that data loss.
+                const isFullQuote = !!(q.tableHTML || (Array.isArray(q.lineItems) && q.lineItems.length));
+                if (changed && isFullQuote && !q.hasUnsavedEdits && typeof saveQuotationToBackend === 'function') {
                     saveQuotationToBackend(q);
                 }
                 return { newReply: pending && !wasPending, changed: changed };
@@ -7210,6 +7214,12 @@
         function mdkToggleNew(id, el) { const q = mdkQuote(id); if (!q) return; q.isNewCompany = !!el.checked; if (!q.isNewCompany) q.assignedTo = ''; renderMarginDesk(); }
         function mdkSetAssign(id, value) { const q = mdkQuote(id); if (q) q.assignedTo = value; }
         function mdkManageStaff() {
+            // The staff list lives inside the collapsible Configuration section — open it first,
+            // otherwise scrollIntoView can't reach a display:none element (the button did nothing).
+            const content = document.getElementById('configContent');
+            if (content && (content.style.display === 'none' || content.style.display === '') && typeof toggleConfigSection === 'function') {
+                toggleConfigSection();
+            }
             const chips = document.getElementById('staffListChips');
             if (chips) chips.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }

@@ -225,8 +225,27 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName })
             const { quotation } = req.body || {};
             if (!quotation || !quotation.id) return res.status(400).json({ error: 'Quotation with id is required' });
 
-            const { PutCommand } = require('@aws-sdk/lib-dynamodb');
-            const now     = new Date().toISOString();
+            const { PutCommand, GetCommand } = require('@aws-sdk/lib-dynamodb');
+            const now = new Date().toISOString();
+
+            // Safeguard against accidental item wipes: if the incoming payload has NO line items
+            // and NO tableHTML (e.g. a bare list-summary object saved by mistake) but the STORED
+            // quote has them, keep the stored heavy fields rather than overwriting them to empty.
+            // The extra read only runs in this suspicious case, so normal saves pay nothing.
+            const incomingHasBody = (Array.isArray(quotation.lineItems) && quotation.lineItems.length) || quotation.tableHTML;
+            if (!incomingHasBody) {
+                try {
+                    const existing = await ddbDocClient.send(new GetCommand({ TableName: ddbTableName, Key: { id: String(quotation.id) } }));
+                    const prev = existing && existing.Item && existing.Item.payload;
+                    if (prev && ((Array.isArray(prev.lineItems) && prev.lineItems.length) || prev.tableHTML)) {
+                        if (!(Array.isArray(quotation.lineItems) && quotation.lineItems.length)) quotation.lineItems = prev.lineItems;
+                        if (!quotation.tableHTML) quotation.tableHTML = prev.tableHTML;
+                        if (!quotation.headerHTML) quotation.headerHTML = prev.headerHTML;
+                        console.warn('save-quotation: preserved stored items/tableHTML for', quotation.id, '(incoming payload had none)');
+                    }
+                } catch (e) { /* best-effort guard — fall through and save what we have */ }
+            }
+
             const updated = { ...quotation, createdAt: quotation.createdAt || now, updatedAt: now };
 
             await ddbDocClient.send(new PutCommand({

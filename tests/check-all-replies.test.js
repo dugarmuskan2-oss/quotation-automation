@@ -127,7 +127,9 @@ describe('isAutoOrSystemMessage — auto-reply / bounce detection', () => {
 describe('source guards — reply-sweep review fixes', () => {
     test('customer checker ignores auto messages, persists on change, reports changed', () => {
         expect(html).toContain('const real = data.messages.filter(function (m) { return !m.auto; });');
-        expect(html).toContain('if (changed && !q.hasUnsavedEdits');
+        // Persist the reply flag only for a fully-loaded quote — never for a list summary,
+        // which would PutCommand-overwrite the stored quote and wipe its items.
+        expect(html).toContain('if (changed && isFullQuote && !q.hasUnsavedEdits');
         expect(html).toContain('return { newReply: pending && !wasPending, changed: changed };');
     });
     test('re-render is edit-preserving and fires on any change (set or clear)', () => {
