@@ -35,6 +35,7 @@
             return {
                 id: (li.lineItemId ? String(li.lineItemId) : ('w' + (seq++))),
                 d: liDesc(li),
+                type: String(li.identifiedPipeType || ''),
                 qty: qtyOrNull(li.quantity),
                 kgm: num(li.kgPerMeter),
                 sec: 1
@@ -52,6 +53,24 @@
     function secRows(st, sec) { return st.rows.filter(function (r) { return r.sec === sec; }); }
     function secWeight(st, sec) {
         return secRows(st, sec).filter(function (r) { return !r.removed; }).reduce(function (s, r) { return s + weightOf(r); }, 0);
+    }
+    // Weight tolerance (7% under) applies to welded pipe (ERW / GI) but NOT to seamless,
+    // which is billed at exact weight. Type comes from the line's pipe type, falling back
+    // to the description (seamless carries "SCH"/"seamless"; welded carries "-- GI"/"-- ERW").
+    function rowIsSeamless(r) {
+        var s = (String((r && r.type) || '') + ' ' + String((r && r.d) || '')).toLowerCase();
+        if (/seamless|smls/.test(s)) return true;
+        if (/--\s*(gi|erw)\b/.test(s)) return false;
+        return /\bsch\b|schedule/.test(s);
+    }
+    // Section weight with the 7% deducted from the welded part only (seamless kept whole).
+    function secToleranceWeight(st, sec) {
+        return secRows(st, sec).filter(function (r) { return !r.removed; })
+            .reduce(function (s, r) { return s + weightOf(r) * (rowIsSeamless(r) ? 1 : 0.93); }, 0);
+    }
+    // Only show a tolerance line when the section actually has welded (ERW/GI) weight.
+    function secHasTolerance(st, sec) {
+        return secRows(st, sec).some(function (r) { return !r.removed && !rowIsSeamless(r) && weightOf(r) > 0; });
     }
 
     function injectStylesOnce() {
@@ -162,7 +181,9 @@
         var secWt = secWeight(st, sec);
         var totalRow = rows.length
             ? '<div class="fwe-grid fwe-total"><div></div><div>Total weight</div><div></div><div></div><div style="text-align:right;">' + fmt(secWt) + ' kg</div><div></div></div>'
-              + '<div class="fwe-grid fwe-subtotal"><div></div><div>With tolerance (7%)</div><div></div><div></div><div style="text-align:right;">' + fmt(secWt * 0.93) + ' kg</div><div></div></div>'
+              + (secHasTolerance(st, sec)
+                  ? '<div class="fwe-grid fwe-subtotal"><div></div><div>With tolerance (7%)</div><div></div><div></div><div style="text-align:right;">' + fmt(secToleranceWeight(st, sec)) + ' kg</div><div></div></div>'
+                  : '')
             : '';
         var foot = '<div class="fwe-foot"><button class="fwe-add fwe-addbtn" data-sec="' + sec + '" title="Add item" aria-label="Add item">+</button><span style="margin-left:auto;"></span>'
             + (!st.split ? '<button class="fwe-btn fwe-split">+ Calculate other weight</button>' : '')

@@ -75,7 +75,8 @@ const fmt = loadFn(freightSrc, 'fmt');
 // DOM), bundled and executed — so the "+" add button and the tolerance row's ×0.93
 // factor are asserted against real output, not values the test itself supplies.
 function loadFreightSection() {
-    const names = ['esc', 'escTxt', 'fmt', 'weightOf', 'secRows', 'secWeight', 'gridHead', 'rowHtml', 'sectionHtml'];
+    const names = ['esc', 'escTxt', 'fmt', 'weightOf', 'secRows', 'secWeight', 'gridHead', 'rowHtml',
+        'rowIsSeamless', 'secToleranceWeight', 'secHasTolerance', 'sectionHtml'];
     const body = names.map((n) => extractFunction(freightSrc, n)).join('\n');
     // eslint-disable-next-line no-new-func
     return new Function(body + '\nreturn sectionHtml;')();
