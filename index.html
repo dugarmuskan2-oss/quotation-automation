@@ -7610,16 +7610,26 @@
         // Render a revision's line items into a read-only table (from the stored snapshot).
         function revisionItemsTableHtml(rev) {
             var items = Array.isArray(rev.lineItems) ? rev.lineItems : [];
-            var body = items.map(function (li) {
+            // Group by pipe type the same way the live quote does: emit a full-width
+            // pipe-type header row whenever the identifiedPipeType changes (all items in a
+            // group share it). Freight / untyped rows carry no type, so no header for them.
+            var body = '', lastType = null;
+            items.forEach(function (li) {
+                var type = String(li.identifiedPipeType || '').trim();
+                if (type && type !== lastType) {
+                    lastType = type;
+                    body += '<tr><td colspan="4" style="padding:8px 8px 4px;font-weight:700;'
+                        + 'background:#f6f5f1;color:#20201d;border-bottom:1px solid #999;">' + escapeHtml(type) + '</td></tr>';
+                }
                 var desc = escapeHtml(li.originalDescription || li.description || '');
                 var qty = (li.quantity != null && li.quantity !== '') ? escapeHtml(String(li.quantity)) : '';
                 var rate = (li.finalRate != null && li.finalRate !== '') ? li.finalRate : (li.unitRate != null ? li.unitRate : '');
                 var tot = (li.lineTotal != null && li.lineTotal !== '') ? li.lineTotal : '';
-                return '<tr><td style="padding:6px 8px;border-bottom:1px solid #eee;">' + desc + '</td>'
+                body += '<tr><td style="padding:6px 8px;border-bottom:1px solid #eee;">' + desc + '</td>'
                     + '<td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">' + qty + '</td>'
                     + '<td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">' + escapeHtml(String(rate)) + '</td>'
                     + '<td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">' + escapeHtml(String(tot)) + '</td></tr>';
-            }).join('');
+            });
             var gt = (rev.grandTotal != null && rev.grandTotal !== '') ? ('&#8377;' + escapeHtml(String(rev.grandTotal))) : '';
             return '<table style="width:100%;border-collapse:collapse;font-size:13px;margin:8px 0;"><thead><tr>'
                 + '<th style="text-align:left;padding:6px 8px;border-bottom:1px solid #999;">Description</th>'

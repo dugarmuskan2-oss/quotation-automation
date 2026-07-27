@@ -9,9 +9,12 @@
 const express  = require('express');
 const path     = require('path');
 const fs       = require('fs');
+const xlsx     = require('xlsx');
 const { toFile } = require('openai/uploads');
+const { buildWeightMap, parseCsv } = require('../utils/pipeWeights');
 
 const MAX_OPENAI_FILE_MB = 100;
+const SPREADSHEET_EXTS = ['.csv', '.xlsx', '.xls'];
 
 module.exports = function createRatesRouter({ openai, upload, storage, ratesDir }) {
 
@@ -77,11 +80,61 @@ module.exports = function createRatesRouter({ openai, upload, storage, ratesDir 
         return { savedFileName: multerFilename, s3Key: path.join(ratesDir, multerFilename) };
     }
 
+    /** Multer gives a buffer (cloud/memory) or a disk path (local) — read either. */
+    function readUploadedBuffer(file) {
+        if (file.buffer) return buildCleanBuffer(file.buffer);
+        if (file.path && fs.existsSync(file.path)) return fs.readFileSync(file.path);
+        throw new Error('Could not read the uploaded file.');
+    }
+
+    /** A price list's rows (array of arrays), from a .csv or .xlsx/.xls buffer. */
+    function readSheetRows(buffer, ext) {
+        if (ext === '.csv') return parseCsv(buffer.toString('utf8'));
+        const wb = xlsx.read(buffer, { type: 'buffer' });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        return xlsx.utils.sheet_to_json(sheet, { header: 1, blankrows: false, defval: '' });
+    }
+
+    /** Which price list a file is, from its name: 'gi' | 'erw' | 'seamless' | null. */
+    function pipeTypeFromName(name) {
+        const n = String(name || '').toLowerCase();
+        if (n.includes('seamless')) return 'seamless';
+        if (n.includes('erw')) return 'erw';
+        if (/\bg\.?\s?i\.?\b/.test(n) || n.includes('galvan')) return 'gi';
+        return null;
+    }
+
+    /** Parse a spreadsheet price list into the stored size -> kg/m table. */
+    async function importWeightSheet(file, buffer, ext) {
+        const pipeType = pipeTypeFromName(file.originalname);
+        if (!pipeType) {
+            throw new Error(`Could not tell which pipe type "${file.originalname}" is — include GI, ERW, or Seamless in the file name.`);
+        }
+        const map = buildWeightMap(readSheetRows(buffer, ext));
+        const count = Object.keys(map).length;
+        if (!count) {
+            throw new Error(`No kg/m values found in "${file.originalname}" — check it has a KG/MTR (kg per metre) column.`);
+        }
+        const weights = await storage.loadPipeWeights();
+        weights[pipeType] = map;
+        weights.updatedAt = Object.assign({}, weights.updatedAt, { [pipeType]: new Date().toISOString() });
+        await storage.savePipeWeights(weights);
+        return { pipeType, count };
+    }
+
     /** Process a single uploaded rate file end-to-end. */
     async function processSingleRateFile(file) {
         const fileExt = path.extname(file.originalname).toLowerCase();
+        const buffer  = readUploadedBuffer(file);
+
+        // A spreadsheet is a price list we read kg/m from — parsed + stored, not sent to OpenAI.
+        if (SPREADSHEET_EXTS.includes(fileExt)) {
+            const { pipeType, count } = await importWeightSheet(file, buffer, fileExt);
+            return { filename: file.originalname, originalName: file.originalname, size: file.size, weightImport: { pipeType, count } };
+        }
+
         if (fileExt !== '.pdf') {
-            throw new Error(`Invalid file type: ${fileExt}. Only PDF files are allowed.`);
+            throw new Error(`Invalid file type: ${fileExt}. Upload a PDF (rates) or CSV/Excel (kg/m table).`);
         }
 
         // Replace previous version of the same file if one exists
@@ -90,11 +143,10 @@ module.exports = function createRatesRouter({ openai, upload, storage, ratesDir 
             await removePreviousRateVersion(existing);
         }
 
-        const cleanBuffer = buildCleanBuffer(file.buffer);
-        const { savedFileName, s3Key } = await saveToStorage(cleanBuffer, file.originalname, file.filename);
+        const { savedFileName, s3Key } = await saveToStorage(buffer, file.originalname, file.filename);
 
         try {
-            const openaiFileId = await uploadToOpenAI(cleanBuffer, savedFileName);
+            const openaiFileId = await uploadToOpenAI(buffer, savedFileName);
             await storage.addRateMapping({
                 s3Key,
                 openaiFileId,
@@ -141,6 +193,16 @@ module.exports = function createRatesRouter({ openai, upload, storage, ratesDir 
             count:     results.length,
             errors:    errors.length > 0 ? errors : undefined,
         });
+    });
+
+    // ── Pipe weight table (size -> kg/m per pipe type) for the client to fill blanks ─
+    router.get('/pipe-weights', async (req, res) => {
+        try {
+            res.json(await storage.loadPipeWeights());
+        } catch (e) {
+            console.warn('GET /pipe-weights failed:', e.message);
+            res.json({});
+        }
     });
 
     // ── Delete a rate file ────────────────────────────────────────────────────

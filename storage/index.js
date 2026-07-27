@@ -333,6 +333,51 @@ async function getAllRateMappings() {
     return loadRateIndex();
 }
 
+// ── Pipe weight table (size -> kg/m per pipe type) parsed from the user's price
+// lists. Stored as a single JSON object { gi:{}, erw:{}, seamless:{} } — same
+// S3 / GCS / local layering as the rate index.
+async function loadPipeWeights() {
+    try {
+        if (useAWS && s3Client) {
+            try {
+                const buffer = await _s3Read('rates/pipe-weights.json');
+                const data = JSON.parse(buffer.toString('utf8'));
+                if (data && typeof data === 'object') return data;
+            } catch (error) {
+                const is404 = error.name === 'NoSuchKey' || error.$metadata?.httpStatusCode === 404;
+                if (!is404) console.warn('loadPipeWeights: parse error, returning empty:', error.message);
+            }
+            return {};
+        }
+        if (useGoogleCloud && bucket) {
+            try {
+                const buffer = await _gcsRead('rates/pipe-weights.json');
+                const data = JSON.parse(buffer.toString('utf8'));
+                if (data && typeof data === 'object') return data;
+            } catch (error) {
+                if (error.code !== 404) console.warn('loadPipeWeights: parse error, returning empty:', error.message);
+            }
+            return {};
+        }
+        const p = path.join(baseDir, 'pipe-weights.json');
+        if (fs.existsSync(p)) {
+            const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+            return (data && typeof data === 'object') ? data : {};
+        }
+        return {};
+    } catch (error) {
+        console.warn('loadPipeWeights: returning empty due to error:', error.message);
+        return {};
+    }
+}
+
+async function savePipeWeights(weights) {
+    const json = JSON.stringify(weights || {}, null, 2);
+    if (useAWS && s3Client)       return _s3Upload(Buffer.from(json, 'utf8'), 'pipe-weights.json', 'rates');
+    if (useGoogleCloud && bucket) return _gcsUpload(Buffer.from(json, 'utf8'), 'pipe-weights.json', 'rates');
+    fs.writeFileSync(path.join(baseDir, 'pipe-weights.json'), json, 'utf8');
+}
+
 /**
  * Stream a file directly into an HTTP response (efficient for large files).
  * Falls back to buffered send if streaming is not available.
@@ -389,4 +434,7 @@ module.exports = {
     addRateMapping,
     removeRateMappingByS3Key,
     getAllRateMappings,
+    // Pipe weight table
+    loadPipeWeights,
+    savePipeWeights,
 };
