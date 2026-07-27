@@ -7608,14 +7608,26 @@
         }
 
         // Render a revision's line items into a read-only table (from the stored snapshot).
+        // The pipe-type group label for a line: its stored identifiedPipeType if present,
+        // else read from the description suffix ("… -- ERW" / "-- GI") or a schedule ("Sch 40"
+        // -> Seamless). Older/AI quotes often carry the type only in the description text.
+        function revisionPipeTypeOf(li) {
+            var t = String((li && li.identifiedPipeType) || '').trim();
+            if (t) return t;
+            var d = String((li && (li.originalDescription || li.description)) || '');
+            var m = d.match(/--\s*(GI|ERW|SEAMLESS|SMLS)\b/i);
+            if (m) return /smls/i.test(m[1]) ? 'Seamless' : m[1].toUpperCase();
+            if (/\bsch\b|schedule/i.test(d)) return 'Seamless';
+            return '';
+        }
         function revisionItemsTableHtml(rev) {
             var items = Array.isArray(rev.lineItems) ? rev.lineItems : [];
             // Group by pipe type the same way the live quote does: emit a full-width
-            // pipe-type header row whenever the identifiedPipeType changes (all items in a
-            // group share it). Freight / untyped rows carry no type, so no header for them.
+            // pipe-type header row whenever the type changes (all items in a group share it).
+            // Freight / untyped rows carry no type, so no header for them.
             var body = '', lastType = null;
             items.forEach(function (li) {
-                var type = String(li.identifiedPipeType || '').trim();
+                var type = revisionPipeTypeOf(li);
                 if (type && type !== lastType) {
                     lastType = type;
                     body += '<tr><td colspan="4" style="padding:8px 8px 4px;font-weight:700;'

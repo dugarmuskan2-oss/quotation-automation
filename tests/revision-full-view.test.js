@@ -56,6 +56,7 @@ const revisionHeaderHtml = loadFns(['escapeHtml', 'revisionHeaderField', 'revisi
 const revisionFullQuoteHtml = loadFns([
     'escapeHtml',
     'revisionHeaderField',
+    'revisionPipeTypeOf',
     'revisionItemsTableHtml',
     'revisionHeaderHtml',
     'revisionFullQuoteHtml',
