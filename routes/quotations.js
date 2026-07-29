@@ -34,6 +34,8 @@ const SUMMARY_NESTED_PATHS = [
     // thread id + the transporter-reply flag, so awaiting quotes are found from the list
     // alone (these fields are small and only present on quotes that actually have them).
     'freightEnquiries', 'threadId', 'transporterReplyIn',
+    // Soft-delete flag so accidental/junk quotes stay filtered out of the lists on reload.
+    'deleted',
 ];
 const SUMMARY_PROJECTION = [
     'id', 'updatedAt', 'createdAt',
@@ -564,6 +566,26 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName })
         } catch (error) {
             console.error('Error updating regret status:', error);
             res.status(500).json({ error: 'Failed to update regret status', details: error.message });
+        }
+    });
+
+    // Soft-delete a quote — for accidental / junk entries on the desk. Recoverable:
+    // sets deleted=true and the lists filter it out; `undo:true` restores it. Only flags
+    // the payload (never touches lineItems / tableHTML), so nothing heavy is lost.
+    router.post('/quotations/:id/delete', async (req, res) => {
+        if (!requireDdb(res)) return;
+        try {
+            const { undo } = req.body || {};
+            const stored = await loadStoredQuotation(req.params.id);
+            if (!stored) return res.status(404).json({ error: 'Quotation not found' });
+            const payload = stored.payload;
+            if (undo) { delete payload.deleted; delete payload.deletedAt; }
+            else { payload.deleted = true; payload.deletedAt = new Date().toISOString(); }
+            await storeQuotationPayload(stored.item, payload);
+            res.json({ success: true });
+        } catch (error) {
+            console.error('Error soft-deleting quotation:', error);
+            res.status(500).json({ error: 'Failed to delete quotation', details: error.message });
         }
     });
 

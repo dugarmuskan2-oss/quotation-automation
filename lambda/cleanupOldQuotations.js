@@ -1,8 +1,13 @@
 /*
     ============================================
-    MONTHLY CLEANUP LAMBDA
+    SCHEDULED CLEANUP LAMBDA
     ============================================
-    Deletes quotations older than 1 year from DynamoDB.
+    Permanently deletes from DynamoDB:
+      • quotations older than 1 year, and
+      • quotations soft-deleted from the desk (deleted=true) more than 7 days ago —
+        the recovery window for accidental deletes, after which they are purged so
+        junk doesn't pile up.
+    Schedule this to run at least daily/weekly so the 7-day purge stays timely.
 */
 
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
@@ -15,9 +20,11 @@ const {
 const REGION = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1';
 const TABLE_NAME = process.env.DYNAMODB_TABLE;
 
+const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
+const SOFT_DELETE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;   // recovery window for desk deletes
+
 function getExpiryCutoffTimestamp() {
-    const oneYearMs = 365 * 24 * 60 * 60 * 1000;
-    return Date.now() - oneYearMs;
+    return Date.now() - ONE_YEAR_MS;
 }
 
 function isQuotationExpired(quotation) {
@@ -26,6 +33,15 @@ function isQuotationExpired(quotation) {
     const timestamp = dateText ? new Date(dateText).getTime() : NaN;
     if (isNaN(timestamp)) return false;
     return timestamp < getExpiryCutoffTimestamp();
+}
+
+// A quote soft-deleted from the desk is purged once its 7-day recovery window has passed.
+// Requires a valid deletedAt so a flag without a timestamp is never silently purged.
+function isSoftDeleteExpired(quotation) {
+    if (!quotation || quotation.deleted !== true) return false;
+    const timestamp = quotation.deletedAt ? new Date(quotation.deletedAt).getTime() : NaN;
+    if (isNaN(timestamp)) return false;
+    return timestamp < (Date.now() - SOFT_DELETE_RETENTION_MS);
 }
 
 function getDdbClient() {
@@ -52,7 +68,7 @@ async function scanAllItems(ddbDocClient) {
 async function deleteExpiredItems(ddbDocClient, items) {
     const expiredItems = (items || []).filter(item => {
         const quotation = item.payload || item.data || item;
-        return isQuotationExpired(quotation);
+        return isQuotationExpired(quotation) || isSoftDeleteExpired(quotation);
     });
 
     let deletedCount = 0;

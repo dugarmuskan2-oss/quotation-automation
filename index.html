@@ -1893,7 +1893,8 @@
                     const detailMsg = result.details ? ': ' + result.details : '';
                     throw new Error((result.error || 'Failed to load quotations') + detailMsg);
                 }
-                const quotations = Array.isArray(result.quotations) ? result.quotations : [];
+                const quotations = (Array.isArray(result.quotations) ? result.quotations : [])
+                    .filter(function(q) { return !q.deleted; });   // hide soft-deleted (accidental) quotes
                 if (append) {
                     approvedQuotations = approvedQuotations.concat(quotations);
                 } else {
@@ -7162,6 +7163,7 @@
             // Action buttons — inside the body, at the bottom.
             h += '<div class="mdk-line" style="margin-top:14px;">'
                 + '<button type="button" class="mdk-regret" onclick="mdkRegret(\'' + idAttr + '\')">🚫 Regret</button>'
+                + '<button type="button" onclick="mdkDelete(\'' + idAttr + '\')" title="Delete this quote — for accidental entries" style="color:#A32D2D;border-color:#F0A0A0;">🗑 Delete</button>'
                 + '<button type="button" class="mdk-apply" style="margin-left:auto;" onclick="mdkSendToApproval(\'' + idAttr + '\')">→ Send to approval</button></div>';
 
             h += '</div>';   // close .mdk-folder-body
@@ -7177,7 +7179,7 @@
             if (!section) return;
             // Awaiting margin allocation — but drop any already SENT to the customer: a quote
             // was created/sent without going through the desk, so there's nothing to allocate.
-            const waiting = approvedQuotations.filter(function(q) { return q.adminStatus === 'awaiting' && !q.sent; });
+            const waiting = approvedQuotations.filter(function(q) { return q.adminStatus === 'awaiting' && !q.sent && !q.deleted; });
             if (!waiting.length) {
                 section.style.display = 'none';
                 section.innerHTML = '';
@@ -7284,6 +7286,28 @@
             return REGRET_EMAIL_TEXT.split('\n\n').map(function(p) {
                 return '<p>' + escapeHtml(p).replace(/\n/g, '<br>') + '</p>';
             }).join('');
+        }
+
+        // Delete an accidental / junk quote from the desk. Soft-delete (recoverable): the
+        // backend flags it and every list filters it out. Confirmed first so it's not a misclick.
+        async function mdkDelete(id) {
+            const q = mdkQuote(id);
+            const label = q ? ((q.companyName || q.projectName || 'this quote') + ' ' + (q.quoteNumber || '')).trim() : 'this quote';
+            if (!confirm('Delete ' + label + '?\n\nIt is removed from the desk and all lists. Use this for accidental entries — it can be restored from the database if ever needed.')) return;
+            try {
+                const response = await fetch(`${API_BASE_URL}/quotations/${encodeURIComponent(id)}/delete`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({})
+                });
+                const result = await safeJsonParse(response);
+                if (!response.ok) throw new Error(result.error || 'Failed to delete');
+                approvedQuotations = approvedQuotations.filter(function(x) { return String(x.id) !== String(id); });
+                syncApprovedQuotationsGlobal();
+                renderMarginDesk();
+                displayAllApprovedQuotations();
+            } catch (error) {
+                console.error('Delete failed:', error);
+                alert('The quote could not be deleted (' + error.message + '). Please try again.');
+            }
         }
 
         async function mdkRegret(id) {
