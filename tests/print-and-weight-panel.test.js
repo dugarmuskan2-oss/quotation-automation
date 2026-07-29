@@ -83,6 +83,16 @@ function loadFreightSection() {
 }
 const sectionHtml = loadFreightSection();
 
+// The REAL tolerance helpers — extracted + eval'd (they are NOT on the module's
+// `_test` export, so they can't be required; bundle their pure deps and return them).
+function loadToleranceHelpers() {
+    const names = ['weightOf', 'secRows', 'rowIsSeamless', 'secToleranceWeight', 'secHasTolerance'];
+    const body = names.map((n) => extractFunction(freightSrc, n)).join('\n');
+    // eslint-disable-next-line no-new-func
+    return new Function(body + '\nreturn { rowIsSeamless, secToleranceWeight, secHasTolerance };')();
+}
+const { rowIsSeamless, secToleranceWeight, secHasTolerance } = loadToleranceHelpers();
+
 describe('buildAdminMessage — the print sheet\'s "Message from the admin" block', () => {
     test('GI/ERW margins render as "Cost + N%", joined with " · "', () => {
         const q = { adminMargins: { gi: { pct: 5 }, erw: { pct: 7 } }, itemSummary: { types: ['GI', 'ERW'] } };
@@ -248,5 +258,130 @@ describe('freight section render — total row, "With tolerance (7%)" row, and "
 describe('freight weight panel — source guard (CSS rule only; markup is covered behaviorally above)', () => {
     test('the .fwe-addbtn style rule exists (not renderable, so string-guarded)', () => {
         expect(freightSrc).toContain('.fwe-addbtn{');
+    });
+});
+
+// ── 7% weight tolerance: welded (ERW/GI) only, NEVER seamless (billed exact) ──
+// These EXECUTE the real rowIsSeamless / secToleranceWeight / secHasTolerance and
+// the real sectionHtml renderer — no inline copies of the tolerance logic.
+
+describe('rowIsSeamless — classifies a line as seamless (exact-billed) vs welded (tolerance)', () => {
+    test('true when the pipe TYPE says seamless (case-insensitive)', () => {
+        expect(rowIsSeamless({ type: 'Seamless' })).toBe(true);
+        expect(rowIsSeamless({ type: 'SEAMLESS', d: '' })).toBe(true);
+        expect(rowIsSeamless({ d: '2" NB smls' })).toBe(true); // "smls" shorthand
+    });
+    test('true when the DESCRIPTION carries a schedule size (SCH / schedule)', () => {
+        expect(rowIsSeamless({ d: '2" NB X Sch 40' })).toBe(true);
+        expect(rowIsSeamless({ d: 'Schedule 80 pipe' })).toBe(true);
+        expect(rowIsSeamless({ type: 'SCH 160', d: '3" NB' })).toBe(true);
+    });
+    test('false for welded pipe tagged "-- GI" / "-- ERW"', () => {
+        expect(rowIsSeamless({ d: '2" NB X Heavy -- GI' })).toBe(false);
+        expect(rowIsSeamless({ d: '2" NB X Medium -- ERW' })).toBe(false);
+        expect(rowIsSeamless({ type: 'ERW', d: '2" NB' })).toBe(false);
+    });
+    test('welded is the default: an untyped / plain row is NOT seamless', () => {
+        expect(rowIsSeamless({ d: 'Pipe A' })).toBe(false);
+        expect(rowIsSeamless({})).toBe(false);
+        expect(rowIsSeamless(null)).toBe(false);
+    });
+    test('a "-- ERW" tag wins over a stray "sch" so welded lines never slip into seamless', () => {
+        // GI/ERW check runs before the SCH check; this stays welded.
+        expect(rowIsSeamless({ d: 'sch-ish note -- ERW' })).toBe(false);
+    });
+});
+
+describe('secToleranceWeight — deduct 7% from welded weight only, keep seamless whole', () => {
+    test('an all-seamless section keeps its FULL weight (×1, no deduction)', () => {
+        const st = { split: false, rows: [
+            { id: 1, sec: 1, d: '2" NB X Sch 40', type: 'Seamless', qty: 10, kgm: 10 }, // 100
+            { id: 2, sec: 1, d: '3" NB seamless', type: 'Seamless', qty: 5, kgm: 10 },   // 50
+        ] };
+        expect(secWeight(st, 1)).toBe(150);
+        expect(secToleranceWeight(st, 1)).toBe(150);          // ×1, exact
+        expect(secToleranceWeight(st, 1)).toBe(secWeight(st, 1));
+        // A 7% deduction would have produced 139.5 — must NOT happen for seamless.
+        expect(secToleranceWeight(st, 1)).not.toBeCloseTo(139.5, 5);
+    });
+    test('an all-welded (ERW/GI) section is reduced to ×0.93', () => {
+        const st = { split: false, rows: [
+            { id: 1, sec: 1, d: '2" NB -- ERW', type: 'ERW', qty: 10, kgm: 10 }, // 100 -> 93
+            { id: 2, sec: 1, d: '3" NB -- GI', type: 'GI', qty: 10, kgm: 10 },   // 100 -> 93
+        ] };
+        expect(secWeight(st, 1)).toBe(200);
+        expect(secToleranceWeight(st, 1)).toBeCloseTo(186, 6); // 200 × 0.93
+        expect(secToleranceWeight(st, 1)).not.toBeCloseTo(200, 6); // not left whole
+    });
+    test('a MIXED section = seamless whole + welded ×0.93 → 193, NOT 186', () => {
+        const st = { split: false, rows: [
+            { id: 1, sec: 1, d: '2" NB seamless', type: 'Seamless', qty: 10, kgm: 10 }, // 100 seamless -> 100
+            { id: 2, sec: 1, d: '3" NB -- ERW', type: 'ERW', qty: 10, kgm: 10 },        // 100 welded   -> 93
+        ] };
+        expect(secWeight(st, 1)).toBe(200);
+        expect(secToleranceWeight(st, 1)).toBeCloseTo(193, 6); // 100 + 93
+        // If seamless were (wrongly) also ×0.93 the whole section would be 186.
+        expect(secToleranceWeight(st, 1)).not.toBeCloseTo(186, 1);
+    });
+    test('soft-deleted rows are excluded from the tolerance weight', () => {
+        const st = { split: false, rows: [
+            { id: 1, sec: 1, d: '2" NB -- ERW', qty: 10, kgm: 10 },                 // 100 -> 93
+            { id: 2, sec: 1, d: '3" NB -- ERW', qty: 10, kgm: 10, removed: true },  // excluded
+        ] };
+        expect(secToleranceWeight(st, 1)).toBeCloseTo(93, 6);
+    });
+});
+
+describe('secHasTolerance — only show the tolerance line when welded weight exists', () => {
+    test('false for an all-seamless section', () => {
+        const st = { rows: [{ id: 1, sec: 1, d: '2" NB seamless', qty: 10, kgm: 10 }] };
+        expect(secHasTolerance(st, 1)).toBe(false);
+    });
+    test('true once the section has any ERW/GI (welded) weight', () => {
+        const st = { rows: [{ id: 1, sec: 1, d: '2" NB -- ERW', qty: 10, kgm: 10 }] };
+        expect(secHasTolerance(st, 1)).toBe(true);
+    });
+    test('mixed section has tolerance (its welded part qualifies)', () => {
+        const st = { rows: [
+            { id: 1, sec: 1, d: 'seamless', qty: 10, kgm: 10 },
+            { id: 2, sec: 1, d: '-- GI', qty: 10, kgm: 10 },
+        ] };
+        expect(secHasTolerance(st, 1)).toBe(true);
+    });
+    test('welded rows with no weight (zero qty, or soft-deleted) do NOT trigger the line', () => {
+        expect(secHasTolerance({ rows: [{ id: 1, sec: 1, d: '-- ERW', qty: 0, kgm: 10 }] }, 1)).toBe(false);
+        expect(secHasTolerance({ rows: [{ id: 1, sec: 1, d: '-- ERW', qty: 10, kgm: 10, removed: true }] }, 1)).toBe(false);
+    });
+});
+
+describe('sectionHtml — the "With tolerance (7%)" row appears for welded, is omitted for seamless (real render)', () => {
+    test('an ERW section shows the tolerance row at fmt(weight × 0.93): 187 → "174 kg"', () => {
+        const st = { split: false, rows: [{ id: 1, sec: 1, d: '2" NB X Heavy -- ERW', type: 'ERW', qty: 187, kgm: 1 }] };
+        expect(secWeight(st, 1)).toBe(187);
+        const out = sectionHtml(st, 1);
+        expect(out).toContain('With tolerance (7%)');
+        expect(out).toContain('>187 kg</div>'); // total (whole)
+        expect(out).toContain('>174 kg</div>'); // fmt(187 × 0.93) = fmt(173.91)
+        // Factor guard: × 0.90 would render 168, not 174.
+        expect(out).not.toContain('>168 kg</div>');
+    });
+    test('an all-seamless section renders NO tolerance row (billed exact)', () => {
+        const st = { split: false, rows: [{ id: 1, sec: 1, d: '2" NB X Sch 40', type: 'Seamless', qty: 187, kgm: 1 }] };
+        const out = sectionHtml(st, 1);
+        expect(out).not.toContain('With tolerance');
+        expect(out).toContain('>187 kg</div>'); // total still shown, whole
+        // No deducted figure should appear anywhere.
+        expect(out).not.toContain('>174 kg</div>');
+    });
+    test('a mixed section shows a tolerance row at the 193 figure (seamless whole + welded ×0.93)', () => {
+        const st = { split: false, rows: [
+            { id: 1, sec: 1, d: '2" NB seamless', type: 'Seamless', qty: 100, kgm: 1 }, // 100 -> 100
+            { id: 2, sec: 1, d: '3" NB -- ERW', type: 'ERW', qty: 100, kgm: 1 },        // 100 -> 93
+        ] };
+        const out = sectionHtml(st, 1);
+        expect(out).toContain('With tolerance (7%)');
+        expect(out).toContain('>200 kg</div>'); // total
+        expect(out).toContain('>193 kg</div>'); // 100 + 93
+        expect(out).not.toContain('>186 kg</div>'); // would be 200 × 0.93 if seamless were deducted
     });
 });

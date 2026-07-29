@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DSC — Enquiry-in-quote prototype</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">
+<style>
+:root{
+  --color-background-primary:#ffffff;
+  --color-background-secondary:#f6f5f1;
+  --color-background-tertiary:#efeee8;
+  --color-background-info:#E6F1FB;
+  --color-text-primary:#20201d;
+  --color-text-secondary:#6e6c65;
+  --color-text-tertiary:#9b988e;
+  --color-text-info:#185FA5;
+  --color-border-tertiary:rgba(0,0,0,0.10);
+  --color-border-secondary:rgba(0,0,0,0.18);
+  --color-border-info:#85B7EB;
+  --border-radius-md:8px;
+  --border-radius-lg:12px;
+  --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--color-background-tertiary);font-family:var(--font-sans);color:var(--color-text-primary);-webkit-font-smoothing:antialiased;}
+.page{max-width:760px;margin:0 auto;padding:20px 16px 48px;}
+.proto-label{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#854F0B;background:#FAEEDA;border-radius:var(--border-radius-md);padding:5px 10px;margin-bottom:14px;}
+.proto-sub{font-size:13px;color:var(--color-text-secondary);margin:0 0 16px;line-height:1.6;}
+button{font-family:inherit;background:transparent;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);padding:6px 12px;cursor:pointer;color:var(--color-text-primary);font-size:13px;transition:background .12s,transform .06s;}
+button:hover{background:var(--color-background-secondary);}
+button:active{transform:scale(0.98);}
+button:disabled{opacity:0.45;cursor:not-allowed;}
+input,select,textarea{font-family:inherit;font-size:13px;color:var(--color-text-primary);background:var(--color-background-primary);border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);padding:6px 10px;height:34px;}
+input:focus,select:focus,textarea:focus{outline:none;box-shadow:0 0 0 2px var(--color-border-info);}
+textarea{height:auto;padding:8px 10px;line-height:1.5;width:100%;}
+a{color:inherit;}
+.fx-tab{font-size:13px;color:var(--color-text-secondary);padding-bottom:8px;cursor:pointer;border-bottom:2px solid transparent;background:none;border-top:none;border-left:none;border-right:none;border-radius:0;}
+.fx-tab:hover{background:none;}
+.fx-tab.on{color:var(--color-text-primary);font-weight:500;border-bottom:2px solid var(--color-text-primary);}
+.fx-pill{font-size:12px;padding:3px 9px;border-radius:8px;white-space:nowrap;}
+.fx-chip{font-size:12px;padding:4px 8px;border-radius:8px;background:#E6F1FB;color:#0C447C;display:inline-flex;align-items:center;gap:5px;}
+.fx-sugg{font-size:13px;padding:7px 10px;cursor:pointer;border-top:0.5px solid var(--color-border-tertiary);}
+.fx-sugg:hover{background:var(--color-background-secondary);}
+.fx-row{border:0.5px solid var(--color-border-tertiary);border-radius:8px;padding:10px 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.fx-prim{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info);}
+.fx-prim:hover{background:#d8e9fa;}
+.fx-link{cursor:pointer;color:var(--color-text-info);text-decoration:underline;font-size:13px;background:none;border:none;padding:0;}
+.attn-head{font-size:12px;color:var(--color-text-tertiary);margin:18px 0 8px;}
+.folder{display:flex;align-items:center;gap:10px;border:0.5px solid var(--color-border-tertiary);border-radius:10px;padding:10px 12px;background:var(--color-background-primary);margin-bottom:8px;}
+/* Enquiry rows: handle | Description | Qty | Unit | delete */
+.eq-grid{display:grid;grid-template-columns:22px 1fr 62px 60px 24px;gap:8px;align-items:center;}
+.eq-row{padding:5px 0;border-top:0.5px solid var(--color-border-tertiary);}
+.eq-row input{height:30px;padding:4px 7px;width:100%;}
+.eq-row.drag{opacity:.4;}
+.eq-handle{cursor:grab;color:var(--color-text-tertiary);display:flex;align-items:center;justify-content:center;font-size:16px;}
+.eq-handle:active{cursor:grabbing;}
+.drop{border:0.5px solid var(--color-border-tertiary);border-radius:8px;padding:10px 12px;}
+.drop.over{border:1px dashed var(--color-border-info);background:var(--color-background-info);}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="proto-label"><i class="ti ti-flask" aria-hidden="true"></i> Prototype — not live data</div>
+  <p class="proto-sub">A clickable mock of an <b>Enquiry</b> section inside the quote — the mirror of the Freight section. Open the folder, go to the <b>Enquiry</b> tab, and press <b>Create enquiry</b>: it builds a supplier enquiry from the quote's items. You can add / delete rows, <b>split it into two</b> enquiries (e.g. to different suppliers), and then <b>send</b> — choosing who it goes <i>to</i> and where <i>responses</i> land. Suppliers' offers come back as reply threads.</p>
+  <div id="app"></div>
+  <p style="margin:18px 0 0;font-size:12px;color:var(--color-text-tertiary);text-align:center;"><span id="bReset" style="cursor:pointer;text-decoration:underline;">Reset demo</span></p>
+</div>
+
+<script>
+(function(){
+  var seq=10;
+  // Quote line items (the enquiry is built from these). sec = which enquiry group (1 or 2).
+  var items=[
+    {id:'a',d:'2" NB Heavy -- GI',qty:300,unit:'m',sec:1},
+    {id:'b',d:'1" NB Medium -- ERW',qty:120,unit:'m',sec:1},
+    {id:'c',d:'3/4" NB Medium -- GI',qty:200,unit:'m',sec:1},
+    {id:'d',d:'2-1/2" NB X SCH 40 -- Seamless',qty:80,unit:'m',sec:1}
+  ];
+  // Suppliers you've emailed before (Gmail autocomplete), and their mock offers.
+  var SUP={
+    'Jindal Star':'sales@jindalstar.com',
+    'APL Apollo':'rfq@aplapollo.com',
+    'Surya Roshni':'orders@suryaroshni.com',
+    'Tata Structura':'enquiry@tatastructura.com'
+  };
+  var OFFER={
+    'Jindal Star':{note:'GI @ Rs 92/kg, ERW @ Rs 86/kg. Make: Jindal. Delivery 5–6 days ex-works.'},
+    'APL Apollo':{note:'Best on ERW — Rs 84/kg. GI Rs 94/kg. Apollo brand. 4 days, freight extra.'},
+    'Surya Roshni':{note:'GI @ Rs 91/kg incl. Delivery 7 days. Payment 30 days PDC.'},
+    'Tata Structura':{note:'Seamless available. GI Rs 95/kg. Tata make. 6–8 days.'}
+  };
+  var S, dragId=null;
+  function reset(){
+    S={open:true,tab:'enquiry',
+       enq:{created:false,split:false,sendFor:0,
+            recips:[],           // suppliers this enquiry goes TO
+            replyTo:['info@dscpipes.com'], // where responses are received
+            msg:'',msgEdited:false,
+            threads:[]}};         // supplier replies (offers)
+    items.forEach(function(i){i.sec=1;});
+  }
+  reset();
+  var app=document.getElementById('app');
+  function $(id){return document.getElementById(id);}
+  function num(v){return parseFloat(v)||0;}
+  function secItems(sec){return items.filter(function(i){return i.sec===sec;});}
+  function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+  // ---------- LIST ----------
+  function folderRow(){
+    var open=S.open;
+    var chev='<i class="ti ti-chevron-'+(open?'down':'right')+'" style="font-size:18px;color:var(--color-text-tertiary);" aria-hidden="true"></i>';
+    var badge=S.enq.created
+      ? (S.enq.threads.length?'<span class="fx-pill" style="background:#E1F5EE;color:#0F6E56;">Offers in</span>':'<span class="fx-pill" style="background:#FAEEDA;color:#854F0B;">Enquiry ready</span>')
+      : '<span class="fx-pill" style="background:#E6F1FB;color:#0C447C;">Approved</span>';
+    var row='<div class="folder live" id="folder" style="cursor:pointer;"><i class="ti ti-folder" style="font-size:19px;color:var(--color-text-secondary);" aria-hidden="true"></i>'
+      +'<div style="flex:1;min-width:0;"><p style="margin:0;font-size:14px;font-weight:500;">DSC-142 · Chemplast Sanmar</p>'
+      +'<p style="margin:0;font-size:12px;color:var(--color-text-secondary);">Kind attn: R. Rajan Babu · 4 items</p></div>'
+      +badge+chev+'</div>';
+    return row+(open?card():'');
+  }
+  function renderApp(){
+    app.innerHTML=folderRow();
+    bindApp();
+  }
+
+  // ---------- CARD ----------
+  function card(){
+    var edot=S.enq.created?'':'<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#EF9F27;margin-left:5px;vertical-align:1px;" title="no enquiry yet"></span>';
+    var tabs='<div style="display:flex;gap:18px;margin-top:14px;border-bottom:0.5px solid var(--color-border-tertiary);">'
+      +'<button class="fx-tab'+(S.tab==='quote'?' on':'')+'" id="t-quote">Quote</button>'
+      +'<button class="fx-tab'+(S.tab==='enquiry'?' on':'')+'" id="t-enquiry">Enquiry '+edot+'</button></div>';
+    var body=S.tab==='quote'?quoteTab():enquiryTab();
+    return '<div style="background:var(--color-background-primary);border:1px solid #EF9F27;border-radius:var(--border-radius-lg);padding:1rem 1.15rem;margin:2px 0 12px;">'
+      +'<div style="display:flex;align-items:center;gap:8px;"><span style="flex:1;font-size:12px;color:var(--color-text-tertiary);">Opened — current version</span>'
+      +'<button class="fx-link" id="cardClose">Close</button></div>'+tabs+body+'</div>';
+  }
+
+  // ---------- QUOTE TAB (context) ----------
+  function quoteTab(){
+    var rows=items.map(function(it){return '<tr style="border-top:0.5px solid var(--color-border-tertiary);"><td style="padding:6px 0;">'+esc(it.d)+'</td><td style="text-align:right;">'+it.qty+' '+it.unit+'</td></tr>';}).join('');
+    return '<table style="width:100%;font-size:13px;border-collapse:collapse;margin-top:14px;">'
+      +'<tr style="color:var(--color-text-tertiary);font-size:12px;"><td style="text-align:left;padding:4px 0;">Item</td><td style="text-align:right;">Qty</td></tr>'+rows+'</table>'
+      +'<p style="margin:14px 0 0;font-size:12px;color:var(--color-text-tertiary);">Go to the <b>Enquiry</b> tab to raise a supplier enquiry from these items.</p>';
+  }
+
+  // ---------- ENQUIRY TAB ----------
+  function enquiryTab(){
+    if(!S.enq.created){
+      return '<div style="margin-top:18px;text-align:center;padding:22px 12px;border:0.5px dashed var(--color-border-secondary);border-radius:10px;">'
+        +'<i class="ti ti-mail-forward" style="font-size:26px;color:var(--color-text-tertiary);" aria-hidden="true"></i>'
+        +'<p style="margin:8px 0 2px;font-size:14px;font-weight:500;">No enquiry yet</p>'
+        +'<p style="margin:0 0 14px;font-size:12px;color:var(--color-text-secondary);">Build a supplier enquiry from this quote’s 4 items — ask dealers for their best rates.</p>'
+        +'<button class="fx-prim" id="bCreate" style="padding:8px 15px;"><i class="ti ti-plus" style="font-size:15px;vertical-align:-2px;" aria-hidden="true"></i> Create enquiry</button></div>';
+    }
+    var h='<div style="margin-top:14px;">';
+    h+=enqSection(1);
+    if(S.enq.split)h+=enqSection(2);
+    if(S.enq.sendFor)h+=sendBox(S.enq.sendFor);
+    h+='</div>';
+    return h;
+  }
+  function eqHead(){
+    return '<div class="eq-grid" style="font-size:12px;color:var(--color-text-tertiary);padding-bottom:2px;"><div></div><div>Description</div><div style="text-align:right;">Qty</div><div style="text-align:center;">Unit</div><div></div></div>';
+  }
+  function eqRow(it){
+    var handle=S.enq.split?'<span class="eq-handle" draggable="true" data-id="'+it.id+'" title="Drag to the other enquiry" aria-label="Drag to move"><i class="ti ti-grip-vertical" aria-hidden="true"></i></span>':'<span></span>';
+    return '<div class="eq-row eq-grid" data-id="'+it.id+'">'
+      +handle
+      +'<input type="text" class="eqed" data-id="'+it.id+'" data-f="d" value="'+esc(it.d)+'">'
+      +'<input type="number" class="eqed" data-id="'+it.id+'" data-f="qty" value="'+it.qty+'" style="text-align:right;">'
+      +'<input type="text" class="eqed" data-id="'+it.id+'" data-f="unit" value="'+esc(it.unit)+'" style="text-align:center;">'
+      +'<button class="eqDel" data-id="'+it.id+'" title="Delete line" aria-label="Delete line" style="justify-self:end;background:#FCEBEB;color:#A32D2D;border:0.5px solid #F09595;border-radius:6px;width:24px;height:24px;padding:0;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-trash" style="font-size:13px;" aria-hidden="true"></i></button></div>';
+  }
+  function enqSection(sec){
+    var its=secItems(sec);
+    var title=S.enq.split?('Enquiry '+(sec===1?'A':'B')):'Enquiry';
+    var rows=its.map(eqRow).join('');
+    var empty=its.length?'':'<p style="margin:8px 0;font-size:12px;color:var(--color-text-tertiary);text-align:center;">Drag items here to enquire them separately.</p>';
+    var sentPill=S.enq.threads.some(function(t){return t.sec===sec;})?'<span class="fx-pill" style="background:#E1F5EE;color:#0F6E56;margin-left:8px;">Sent</span>':'';
+    var foot='<div style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><button class="fx-link eqAdd" data-sec="'+sec+'">+ Add item</button><span style="margin-left:auto;"></span>'
+      +(!S.enq.split?'<button id="bSplit"><i class="ti ti-arrows-split" style="font-size:14px;vertical-align:-2px;" aria-hidden="true"></i> Split into two enquiries</button>':'')
+      +'<button class="fx-prim eqSend" data-sec="'+sec+'" style="padding:5px 11px;"><i class="ti ti-send" style="font-size:14px;vertical-align:-2px;" aria-hidden="true"></i> Send enquiry</button></div>';
+    return '<div class="drop" data-sec="'+sec+'" style="margin-top:'+(sec===2?'10px':'0')+';">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;"><span style="font-size:13px;font-weight:500;color:var(--color-text-secondary);">'+title+' · '+its.length+' item'+(its.length===1?'':'s')+sentPill+'</span>'
+      +(sec===2?'<button class="fx-link" id="bMerge">Merge · items go back</button>':'<span style="font-size:12px;color:var(--color-text-tertiary);"><i class="ti ti-device-floppy" style="font-size:13px;vertical-align:-2px;" aria-hidden="true"></i> built from the quote</span>')+'</div>'
+      +eqHead()+rows+empty+foot+'</div>';
+  }
+
+  // ---------- SEND ENQUIRY BOX ----------
+  function buildMsg(sec){
+    var lines=secItems(sec).map(function(i){return '• '+i.d+' — '+i.qty+' '+i.unit;}).join('\n');
+    return 'Dear Sir,\n\nPlease share your best rates for the following requirement:\n\n'+lines
+      +'\n\nKindly include make/brand, delivery time and payment terms.\n\nRegards,\nDSC Pipes';
+  }
+  function threadsFor(sec){
+    var ts=S.enq.threads.filter(function(t){return t.sec===sec;});
+    if(!ts.length)return '';
+    var rows=ts.map(function(t,i){
+      var idx=S.enq.threads.indexOf(t);
+      var pill=t.replied?'<span class="fx-pill" style="background:#E1F5EE;color:#085041;">Offer in</span>':'<span class="fx-pill" style="background:#FAEEDA;color:#854F0B;">Awaiting reply</span>';
+      var read=t.replied?'<button class="tRead" data-i="'+idx+'" style="font-size:12px;padding:4px 9px;">'+(t.open?'Hide':'Read offer')+'</button>':'';
+      var top='<div style="display:flex;align-items:center;gap:9px;width:100%;"><i class="ti ti-building-store" style="font-size:17px;color:'+(t.replied?'#0F6E56':'var(--color-text-tertiary)')+';" aria-hidden="true"></i><span style="flex:1;font-size:13px;">'+t.name+'</span>'+pill+read+'</div>';
+      var body=(t.replied&&t.open)?'<div style="width:100%;margin-top:9px;padding:9px;border-radius:8px;background:var(--color-background-secondary);font-size:13px;color:var(--color-text-secondary);"><i class="ti ti-mail" style="font-size:14px;vertical-align:-2px;" aria-hidden="true"></i> '+esc(t.note)+'</div>':'';
+      return '<div class="fx-row">'+top+body+'</div>';
+    }).join('');
+    var anyAwait=ts.some(function(t){return !t.replied;});
+    var check=anyAwait?'<button id="bCheckReplies" style="font-size:12px;padding:5px 10px;margin-top:8px;"><i class="ti ti-refresh" style="font-size:13px;vertical-align:-1px;" aria-hidden="true"></i> Check for replies</button>':'';
+    return '<p style="margin:14px 0 6px;font-size:12px;color:var(--color-text-tertiary);">Supplier replies — read their offers</p><div style="display:flex;flex-direction:column;gap:8px;">'+rows+'</div>'+check;
+  }
+  function sendBox(sec){
+    var sendDis=S.enq.recips.length?'':' disabled';
+    var title=S.enq.split?('Enquiry '+(sec===1?'A':'B')):'this enquiry';
+    if(!S.enq.msgEdited)S.enq.msg=buildMsg(sec);
+    return '<div style="border:0.5px solid var(--color-border-secondary);border-radius:8px;padding:12px;margin-top:12px;"><div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;"><i class="ti ti-send" style="font-size:18px;color:#185FA5;" aria-hidden="true"></i><span style="font-size:14px;font-weight:500;">Send '+title+'</span><button class="fx-link" id="bSendDone" style="margin-left:auto;">Done</button></div>'
+      +'<label style="font-size:12px;color:var(--color-text-secondary);">To — suppliers / dealers</label>'
+      +'<div id="toChips" style="display:flex;flex-wrap:wrap;gap:6px;margin:5px 0;"></div>'
+      +'<input id="toInput" placeholder="Search suppliers you’ve emailed — type j, a, s, t" autocomplete="off" style="width:100%;"><div id="toSugg" style="display:none;border:0.5px solid var(--color-border-tertiary);border-radius:8px;margin-top:4px;overflow:hidden;"></div>'
+      +'<p style="margin:4px 0 0;font-size:11px;color:var(--color-text-tertiary);"><i class="ti ti-mail" style="font-size:12px;vertical-align:-1px;" aria-hidden="true"></i> Matches suppliers you’ve emailed before, from Gmail.</p>'
+      +'<label style="font-size:12px;color:var(--color-text-secondary);display:block;margin-top:12px;">Responses received at</label>'
+      +'<div id="rtChips" style="display:flex;flex-wrap:wrap;gap:6px;margin:5px 0;"></div>'
+      +'<input id="rtInput" placeholder="Add an email + Enter" autocomplete="off" style="width:100%;">'
+      +'<p style="margin:4px 0 0;font-size:11px;color:var(--color-text-tertiary);">Replies land here and are matched back to this enquiry.</p>'
+      +'<label style="font-size:12px;color:var(--color-text-secondary);display:block;margin-top:12px;">Message (editable)</label>'
+      +'<textarea id="enqMsg" rows="9" style="margin:5px 0 12px;">'+esc(S.enq.msg)+'</textarea>'
+      +'<div><button class="fx-prim" id="bSendNow"'+sendDis+' style="padding:7px 13px;"><i class="ti ti-send" style="font-size:14px;vertical-align:-2px;" aria-hidden="true"></i> Send enquiry</button></div>'
+      +threadsFor(sec)+'</div>';
+  }
+
+  // ---------- ACTIONS ----------
+  function addItem(sec){items.push({id:'n'+(seq++),d:'New item',qty:0,unit:'m',sec:sec});renderApp();}
+  function delItem(id){items=items.filter(function(i){return i.id!==id;});renderApp();}
+
+  // ---------- BIND ----------
+  function bindApp(){
+    var f=$('folder');if(f)f.onclick=function(){S.open=!S.open;renderApp();};
+    if(!S.open)return;
+    var b;
+    if(b=$('cardClose'))b.onclick=function(){S.open=false;renderApp();};
+    if(b=$('t-quote'))b.onclick=function(){S.tab='quote';renderApp();};
+    if(b=$('t-enquiry'))b.onclick=function(){S.tab='enquiry';renderApp();};
+    if(b=$('bCreate'))b.onclick=function(){S.enq.created=true;renderApp();};
+    if(b=$('bSplit'))b.onclick=function(){S.enq.split=true;renderApp();};
+    if(b=$('bMerge'))b.onclick=function(){items.forEach(function(i){if(i.sec===2)i.sec=1;});S.enq.split=false;if(S.enq.sendFor===2)S.enq.sendFor=0;renderApp();};
+    document.querySelectorAll('.eqed').forEach(function(inp){inp.onchange=function(){var it=items.filter(function(i){return i.id===inp.getAttribute('data-id');})[0];if(!it)return;var fld=inp.getAttribute('data-f');if(fld==='qty')it.qty=num(inp.value);else it[fld]=inp.value;if(!S.enq.msgEdited)renderApp();};});
+    document.querySelectorAll('.eqAdd').forEach(function(x){x.onclick=function(){addItem(parseInt(x.getAttribute('data-sec'),10));};});
+    document.querySelectorAll('.eqDel').forEach(function(x){x.onclick=function(){delItem(x.getAttribute('data-id'));};});
+    document.querySelectorAll('.eqSend').forEach(function(x){x.onclick=function(){S.enq.sendFor=parseInt(x.getAttribute('data-sec'),10);S.enq.msgEdited=false;renderApp();};});
+    if(b=$('bSendDone'))b.onclick=function(){S.enq.sendFor=0;renderApp();};
+    if(b=$('enqMsg'))$('enqMsg').oninput=function(){S.enq.msg=$('enqMsg').value;S.enq.msgEdited=true;};
+    if(b=$('bSendNow'))b.onclick=function(){
+      if(!S.enq.recips.length)return;
+      var sec=S.enq.sendFor;
+      S.enq.recips.forEach(function(n){if(!S.enq.threads.some(function(t){return t.name===n&&t.sec===sec;}))S.enq.threads.push({name:n,sec:sec,replied:false,open:false,note:(OFFER[n]||{}).note||'Rates shared — see email.'});});
+      S.enq.recips=[];renderApp();
+    };
+    if(b=$('bCheckReplies'))b.onclick=function(){S.enq.threads.forEach(function(t){t.replied=true;});renderApp();};
+    document.querySelectorAll('.tRead').forEach(function(x){x.onclick=function(){var i=parseInt(x.getAttribute('data-i'),10);S.enq.threads[i].open=!S.enq.threads[i].open;renderApp();};});
+    bindTo();bindReplyTo();bindDrag();
+  }
+  // To — supplier autocomplete (chips)
+  function bindTo(){
+    var inp=$('toInput'),sugg=$('toSugg'),chips=$('toChips');if(!inp)return;
+    function draw(){
+      chips.innerHTML=S.enq.recips.map(function(r){return '<span class="fx-chip">'+r+' <i class="ti ti-x" data-x="'+r+'" style="font-size:13px;cursor:pointer;" aria-hidden="true"></i></span>';}).join(' ');
+      chips.querySelectorAll('[data-x]').forEach(function(x){x.onclick=function(){var v=x.getAttribute('data-x');S.enq.recips=S.enq.recips.filter(function(r){return r!==v;});draw();var sb=$('bSendNow');if(sb)sb.disabled=!S.enq.recips.length;};});
+    }
+    inp.oninput=function(){
+      var q=inp.value.trim().toLowerCase();
+      var list=Object.keys(SUP).filter(function(t){return q&&t.toLowerCase().indexOf(q)>=0&&S.enq.recips.indexOf(t)<0;});
+      if(!list.length){sugg.style.display='none';sugg.innerHTML='';return;}
+      sugg.style.display='block';
+      sugg.innerHTML=list.map(function(t){return '<div class="fx-sugg" data-t="'+t+'"><i class="ti ti-building-store" style="font-size:14px;vertical-align:-2px;color:var(--color-text-tertiary);" aria-hidden="true"></i> '+t+' <span style="color:var(--color-text-tertiary);font-size:12px;">'+SUP[t]+'</span></div>';}).join('');
+      sugg.querySelectorAll('.fx-sugg').forEach(function(d){d.onclick=function(){S.enq.recips.push(d.getAttribute('data-t'));inp.value='';sugg.style.display='none';sugg.innerHTML='';draw();var sb=$('bSendNow');if(sb)sb.disabled=!S.enq.recips.length;inp.focus();};});
+    };
+    draw();
+  }
+  // Responses-to — free email chips (Enter to add)
+  function bindReplyTo(){
+    var inp=$('rtInput'),chips=$('rtChips');if(!inp)return;
+    function draw(){
+      chips.innerHTML=S.enq.replyTo.map(function(r){return '<span class="fx-chip" style="background:#EFEEE8;color:#5a5850;">'+r+' <i class="ti ti-x" data-x="'+r+'" style="font-size:13px;cursor:pointer;" aria-hidden="true"></i></span>';}).join(' ');
+      chips.querySelectorAll('[data-x]').forEach(function(x){x.onclick=function(){var v=x.getAttribute('data-x');S.enq.replyTo=S.enq.replyTo.filter(function(r){return r!==v;});draw();};});
+    }
+    inp.onkeydown=function(e){
+      if(e.key==='Enter'||e.key===','){e.preventDefault();var v=inp.value.trim().replace(/,$/,'');if(v&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)&&S.enq.replyTo.indexOf(v)<0){S.enq.replyTo.push(v);inp.value='';draw();}}
+    };
+    draw();
+  }
+  function bindDrag(){
+    document.querySelectorAll('.eq-handle').forEach(function(h){
+      h.addEventListener('dragstart',function(){dragId=h.getAttribute('data-id');var r=h.closest('.eq-row');if(r)r.classList.add('drag');});
+      h.addEventListener('dragend',function(){dragId=null;var r=h.closest('.eq-row');if(r)r.classList.remove('drag');});
+    });
+    document.querySelectorAll('.drop').forEach(function(zone){
+      zone.addEventListener('dragover',function(e){e.preventDefault();zone.classList.add('over');});
+      zone.addEventListener('dragleave',function(){zone.classList.remove('over');});
+      zone.addEventListener('drop',function(e){e.preventDefault();zone.classList.remove('over');if(!dragId)return;var it=items.filter(function(i){return i.id===dragId;})[0];if(it)it.sec=parseInt(zone.getAttribute('data-sec'),10);dragId=null;renderApp();});
+    });
+  }
+
+  var rb=$('bReset');if(rb)rb.onclick=function(){reset();renderApp();};
+  renderApp();
+})();
+</script>
+</body>
+</html>

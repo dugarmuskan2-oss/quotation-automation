@@ -62,6 +62,24 @@ const revisionFullQuoteHtml = loadFns([
     'revisionFullQuoteHtml',
 ]);
 
+// Extracted individually so the pipe-type grouping is exercised directly.
+// revisionPipeTypeOf is self-contained; revisionItemsTableHtml needs escapeHtml + it.
+const revisionPipeTypeOf = loadFns(['revisionPipeTypeOf']);
+const revisionItemsTableHtml = loadFns(['escapeHtml', 'revisionPipeTypeOf', 'revisionItemsTableHtml']);
+
+// Pull the text of every full-width pipe-type header cell (<td colspan="4" …>TYPE</td>),
+// in document order, so we can assert both the COUNT and the ORDER of group headers.
+function headerTypesOf(out) {
+    const re = /colspan="4"[^>]*>([^<]+)</g;
+    const found = [];
+    let m;
+    while ((m = re.exec(out)) !== null) found.push(m[1]);
+    return found;
+}
+function headerCount(out) {
+    return (out.match(/colspan="4"/g) || []).length;
+}
+
 describe('revisionHeaderField — snapshot header value, else the live quote', () => {
     test('uses the snapshot header value when present', () => {
         const rev = { header: { companyName: 'SnapCo' } };
@@ -239,6 +257,171 @@ describe('revisionFullQuoteHtml — the entire past version: header + items + te
         const out = revisionFullQuoteHtml({}, rev);
         expect(out).toContain('&lt;script&gt;x&lt;/script&gt;');
         expect(out).not.toContain('<script>x</script>');
+    });
+});
+
+describe('revisionPipeTypeOf — the group label for one line item', () => {
+    test('returns the stored identifiedPipeType verbatim when set', () => {
+        expect(revisionPipeTypeOf({ identifiedPipeType: 'GI' })).toBe('GI');
+        expect(revisionPipeTypeOf({ identifiedPipeType: 'Seamless' })).toBe('Seamless');
+    });
+
+    test('trims surrounding whitespace on the stored type', () => {
+        expect(revisionPipeTypeOf({ identifiedPipeType: '  ERW  ' })).toBe('ERW');
+    });
+
+    test('stored type wins over anything in the description', () => {
+        // identifiedPipeType says ERW even though the description suffix says GI.
+        expect(revisionPipeTypeOf({ identifiedPipeType: 'ERW', originalDescription: '2" NB X Heavy -- GI' })).toBe('ERW');
+    });
+
+    test('derives ERW from a "-- ERW" description suffix (no stored type)', () => {
+        expect(revisionPipeTypeOf({ originalDescription: '3/4" NB X MED -- ERW' })).toBe('ERW');
+    });
+
+    test('derives GI from a "-- GI" description suffix', () => {
+        expect(revisionPipeTypeOf({ originalDescription: '2" NB X Heavy -- GI' })).toBe('GI');
+    });
+
+    test('derives Seamless from a schedule spec ("Sch 40") with no suffix', () => {
+        expect(revisionPipeTypeOf({ originalDescription: '2" NB X Sch 40' })).toBe('Seamless');
+    });
+
+    test('SMLS suffix maps to Seamless (not the raw token)', () => {
+        expect(revisionPipeTypeOf({ originalDescription: '2" NB X Heavy -- SMLS' })).toBe('Seamless');
+    });
+
+    test('normalises the derived suffix to upper-case regardless of input case', () => {
+        expect(revisionPipeTypeOf({ originalDescription: '3/4" nb x med -- erw' })).toBe('ERW');
+    });
+
+    test('reads the suffix from a legacy `description` field too', () => {
+        expect(revisionPipeTypeOf({ description: '2" NB X Heavy -- GI' })).toBe('GI');
+    });
+
+    test('a plain "Freight" line with no type -> empty string', () => {
+        expect(revisionPipeTypeOf({ originalDescription: 'Freight' })).toBe('');
+    });
+
+    test('a bare pipe with no suffix and no schedule -> empty string', () => {
+        expect(revisionPipeTypeOf({ originalDescription: '2" NB X Heavy' })).toBe('');
+    });
+
+    test('null / empty item never throws and yields empty string', () => {
+        expect(revisionPipeTypeOf(null)).toBe('');
+        expect(revisionPipeTypeOf(undefined)).toBe('');
+        expect(revisionPipeTypeOf({})).toBe('');
+    });
+});
+
+describe('revisionItemsTableHtml — full-width pipe-type header row per group', () => {
+    test('a single-type quote emits exactly ONE header row for that type', () => {
+        const rev = {
+            lineItems: [
+                { originalDescription: '2" NB X Heavy -- GI', quantity: 100, finalRate: '250', lineTotal: '25000' },
+                { originalDescription: '3" NB X Heavy -- GI', quantity: 50, finalRate: '300', lineTotal: '15000' },
+            ],
+            grandTotal: '40000',
+        };
+        const out = revisionItemsTableHtml(rev);
+        expect(headerCount(out)).toBe(1);
+        expect(headerTypesOf(out)).toEqual(['GI']);
+    });
+
+    test('two groups (Seamless then GI) emit TWO headers, Seamless before GI', () => {
+        const rev = {
+            lineItems: [
+                { originalDescription: '2" NB X Sch 40', quantity: 10, finalRate: '500', lineTotal: '5000' },
+                { originalDescription: '4" NB X Sch 80', quantity: 20, finalRate: '600', lineTotal: '12000' },
+                { originalDescription: '2" NB X Heavy -- GI', quantity: 100, finalRate: '250', lineTotal: '25000' },
+            ],
+            grandTotal: '42000',
+        };
+        const out = revisionItemsTableHtml(rev);
+        expect(headerCount(out)).toBe(2);
+        // Order matters: the Seamless group came first in the item list.
+        expect(headerTypesOf(out)).toEqual(['Seamless', 'GI']);
+        expect(out.indexOf('>Seamless<')).toBeLessThan(out.indexOf('>GI<'));
+    });
+
+    test('consecutive same-type items share ONE header; the type re-emits when it toggles back', () => {
+        const rev = {
+            lineItems: [
+                { originalDescription: '2" NB X Heavy -- GI', quantity: 1, finalRate: '1', lineTotal: '1' },
+                { originalDescription: '2" NB X Sch 40', quantity: 1, finalRate: '1', lineTotal: '1' },
+                { originalDescription: '3" NB X Heavy -- GI', quantity: 1, finalRate: '1', lineTotal: '1' },
+            ],
+            grandTotal: '3',
+        };
+        // GI, Seamless, GI -> a fresh header each time the type changes.
+        expect(headerTypesOf(revisionItemsTableHtml(rev))).toEqual(['GI', 'Seamless', 'GI']);
+    });
+
+    test('POCL bug fix: an ERW item typed only in its description STILL gets an ERW header', () => {
+        const rev = {
+            lineItems: [
+                { originalDescription: '3/4" NB X MED -- ERW', quantity: 50, finalRate: '100', lineTotal: '5000' },
+            ],
+            grandTotal: '5000',
+        };
+        const out = revisionItemsTableHtml(rev);
+        expect(headerCount(out)).toBe(1);
+        expect(headerTypesOf(out)).toEqual(['ERW']);
+    });
+
+    test('a freight / untyped row gets NO header row before it', () => {
+        const rev = {
+            lineItems: [
+                { originalDescription: '2" NB X Heavy -- GI', quantity: 100, finalRate: '250', lineTotal: '25000' },
+                { originalDescription: 'Freight', quantity: '', unitRate: '', lineTotal: '1500' },
+            ],
+            grandTotal: '26500',
+        };
+        const out = revisionItemsTableHtml(rev);
+        // Only the GI group has a header — the freight row contributes none.
+        expect(headerCount(out)).toBe(1);
+        expect(headerTypesOf(out)).toEqual(['GI']);
+        // The freight row itself still renders as a normal cell.
+        expect(out).toContain('>Freight</td>');
+        expect(out).toContain('1500');
+    });
+
+    test('an all-untyped quote (only freight) emits ZERO header rows', () => {
+        const rev = {
+            lineItems: [{ originalDescription: 'Freight', quantity: '', unitRate: '', lineTotal: '1500' }],
+            grandTotal: '1500',
+        };
+        const out = revisionItemsTableHtml(rev);
+        expect(headerCount(out)).toBe(0);
+        expect(headerTypesOf(out)).toEqual([]);
+        // Body still present with the freight line.
+        expect(out).toContain('>Freight</td>');
+    });
+
+    test('normal item cells (desc / qty / rate / total) still render alongside the header', () => {
+        const rev = {
+            lineItems: [
+                { originalDescription: '2" NB X Heavy -- GI', quantity: 100, finalRate: '250.00', lineTotal: '25000.00' },
+            ],
+            grandTotal: '25000.00',
+        };
+        const out = revisionItemsTableHtml(rev);
+        expect(out).toContain('2&quot; NB X Heavy -- GI');   // description (escaped)
+        expect(out).toContain('>100</td>');                   // qty cell
+        expect(out).toContain('>250.00</td>');                // rate cell (finalRate)
+        expect(out).toContain('>25000.00</td>');              // total cell
+        // Header did not swallow / replace the item row.
+        expect(headerCount(out)).toBe(1);
+    });
+
+    test('header text is HTML-escaped (a crafted stored type cannot inject markup)', () => {
+        const rev = {
+            lineItems: [{ identifiedPipeType: '<b>GI</b>', originalDescription: 'x', lineTotal: '1' }],
+            grandTotal: '1',
+        };
+        const out = revisionItemsTableHtml(rev);
+        expect(out).toContain('&lt;b&gt;GI&lt;/b&gt;');
+        expect(out).not.toContain('<b>GI</b>');
     });
 });
 

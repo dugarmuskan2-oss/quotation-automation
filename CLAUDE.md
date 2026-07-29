@@ -77,6 +77,9 @@ jest tests/margin-fill-down.test.js      # margin % "fill down" button (copy mar
 jest tests/approval-no-autosave.test.js  # approval edits don't auto-save; only explicit Save/Approve persists
 jest tests/freight-suggestions.test.js   # route-aware freight memory (routes/config.js _test: sanitize/merge)
 jest tests/freight-tab.test.js           # freight module _test (parseFreightAmount, trimReplyForStorage, route ranking) + source guards
+jest tests/pipe-weights.test.js          # utils/pipeWeights.js — price-list parser (parseCsv, buildWeightMap) + size→kg/m matcher (parseDescription, lookupKgPerMeter)
+jest tests/print-and-weight-panel.test.js # print enquiry + freight weight panel; incl. ERW/GI-only 7% tolerance (rowIsSeamless, secToleranceWeight, secHasTolerance, sectionHtml)
+jest tests/revision-full-view.test.js    # History/Copy-Link full-quote render, incl. pipe-type header rows (revisionPipeTypeOf grouping)
 jest --silent                            # quieter output (add to any command)
 ```
 
@@ -244,6 +247,15 @@ When customer wants a **FOR price** (freight included, but it must not appear as
 4. Sets `freightDistributedIntoMargin = true` on the quote
 5. Fixes rounding drift (applies remainder to one row)
 6. Fully reversible via the undo snapshot
+
+### kg/m from price lists — `utils/pipeWeights.js`
+The AI drops `kgPerMeter` on some line items even when the price list has it (it's juggling too much during generation). To fill kg/m deterministically, `utils/pipeWeights.js` reads the user's own price lists into a `{ "size|class" → kg/m }` map, per pipe type. The kg/m column is the one headed KG/MTR / kg/m (else the last column); the size+class key comes from the **Inch + Light/Medium/Heavy (GI/ERW) or SCH (seamless)** columns — never the raw "Size" code, so quirks like the `1XHY` code can't cause a miss. `POST /api/upload-rates` now also accepts CSV/xlsx (`SPREADSHEET_EXTS`): a spreadsheet is parsed via `buildWeightMap` and stored (`storage.savePipeWeights` → `rates/pipe-weights.json`, mirroring the rate index); PDFs still go to OpenAI as before. `GET /api/pipe-weights` serves the map. `lookupKgPerMeter(maps, pipeType, description)` matches a quote line to its kg/m (null if the size isn't in the sheet). **Groundwork only so far — the frontend "fill blank kg/m" wiring on the Freight panel / Weight Calculator is not built yet.** Guarded by `tests/pipe-weights.test.js`.
+
+### Freight weight tolerance — ERW/GI only, not seamless
+The Freight weight panel's "With tolerance (7%)" line applies a 7% under-weight deduction to **welded pipe (ERW/GI) only** — seamless is billed at exact weight. `rowIsSeamless(r)` reads the row's pipe type (`identifiedPipeType`, falling back to the description: `SCH`/seamless → seamless, `-- GI`/`-- ERW` → welded). `secToleranceWeight` deducts 7% from the welded weight only (mixed sections keep seamless whole); `secHasTolerance` hides the tolerance line entirely for an all-seamless section. Guarded by `tests/print-and-weight-panel.test.js`.
+
+### Pipe-type header rows in History / Copy-Link — `revisionItemsTableHtml`
+The shared quote page (Copy Link) and the History "view full quote" rebuild the items table from a revision snapshot's `lineItems`. `revisionItemsTableHtml` now emits a full-width **pipe-type header row** per group (matching the live quote). The group label comes from `revisionPipeTypeOf(li)`: the item's `identifiedPipeType` if set, else derived from the description (`-- ERW`/`-- GI`, or `Sch`/seamless → Seamless) — needed because older/AI quotes often carry the type only in the description text. Guarded by `tests/revision-full-view.test.js`.
 
 ### Quote counter / numbering
 The DynamoDB table holds an atomic counter item. `POST /api/save-quotation` increments it to get the next DSC-### number. The Gmail ingest also calls this when creating a quote from an email.
