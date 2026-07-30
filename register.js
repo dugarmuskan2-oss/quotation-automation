@@ -301,9 +301,10 @@
         var h = '<table class="reg-table"><thead><tr>'
             + '<th>Quotation No</th><th>Enquiry Date</th><th>Per day</th>'
             + '<th>Status (as per App)</th><th>Status (Manual)</th>'
+            + '<th>Days: Enquiry → Quote</th>'
             + '<th>Company</th><th>Contact</th><th>Prepared By</th>'
             + '<th>Checked By</th><th>Sent By</th><th>Sent On</th>'
-            + '<th>Days: Recd → Sent</th><th class="r">Value</th>'
+            + '<th class="r">Value</th>'
             + '<th>BIGIN (Y/N)</th><th>Phone checked</th><th>Email checked</th>'
             + '</tr></thead><tbody>';
         var prevDay = null;
@@ -320,13 +321,13 @@
             }
             h += '<td>' + statusPillHtml(r.status) + '</td>'
                 + textCell(r, 'statusManual', 100)
+                + '<td class="reg-day">' + esc(daysBetween(r.enquiryDate, r.sentDate)) + '</td>'
                 + '<td>' + esc(r.company) + '</td>'
                 + '<td>' + esc(r.contact) + '</td>'
                 + '<td>' + esc(r.preparedBy) + '</td>'
                 + '<td>' + esc(r.checkedBy || '') + '</td>'
                 + textCell(r, 'sentBy', 90)
                 + '<td>' + esc(r.sentDate ? fmtDay(r.sentDate) : '') + '</td>'
-                + '<td class="reg-day">' + esc(daysBetween(r.enquiryDate, r.sentDate)) + '</td>'
                 + '<td class="r">' + esc(fmtValue(r.value)) + '</td>'
                 + ynCell(r, 'biginUploaded')
                 + ynCell(r, 'phoneCheckedInBigin')
