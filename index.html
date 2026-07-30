@@ -2004,7 +2004,7 @@
         function refreshApprovalListPreservingEdits() {
             const active = document.activeElement;
             const editing = active && typeof active.closest === 'function'
-                && active.closest('#approvedQuotationsContainer .quotation-folder-content');
+                && active.closest('#approvedQuotationsContainer .quotation-folder-content, #marginDeskSection');
             const anyDirty = Array.isArray(approvedQuotations) && approvedQuotations.some(function (q) { return q && q.hasUnsavedEdits; });
             if (editing || anyDirty) return false;
             displayAllApprovedQuotations();
@@ -7084,7 +7084,11 @@
                 .then(function(result) {
                     if (result && result.quotation) Object.assign(q, result.quotation);
                     q._deskLoaded = true;
-                    renderMarginDesk();
+                    // Don't re-render (which recreates inputs, dropping focus/typing) while
+                    // someone is editing the desk — the loaded email shows on the next render.
+                    var editingDesk = document.activeElement && document.activeElement.closest
+                        && document.activeElement.closest('#marginDeskSection');
+                    if (!editingDesk) renderMarginDesk();
                 })
                 .catch(function(err) { console.error('Desk enquiry load failed:', err); });
         }
@@ -7141,7 +7145,7 @@
 
             // Note for staff
             h += '<div class="mdk-note-lbl">📝 Notes for staff <span style="color:#9b988e;">(optional — shown on the quote and the printed enquiry)</span></div>'
-                + '<textarea class="mdk-note" id="mdk-note-' + idAttr + '" rows="1" placeholder="e.g. Quote the 6&quot; ERW at Jindal list less 5%." onchange="mdkNoteChanged(\'' + idAttr + '\',this.value)">' + escapeHtml(q.adminNote || '') + '</textarea>';
+                + '<textarea class="mdk-note" id="mdk-note-' + idAttr + '" rows="1" placeholder="e.g. Quote the 6&quot; ERW at Jindal list less 5%." oninput="mdkNoteChanged(\'' + idAttr + '\',this.value)">' + escapeHtml(q.adminNote || '') + '</textarea>';
 
             // Enquiry preview (lazy): the formatted email as-is (tables & layout preserved),
             // a View-in-Gmail link, and the retained attachment chips.
