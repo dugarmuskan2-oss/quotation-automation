@@ -234,6 +234,8 @@
             background-color: #00796b;
         }
         .needs-attention-badge { background-color: #c62828; }
+        /* Admin-note tag — solid + bold like the other header badges (was a pale pill). */
+        .admin-note-badge { display: inline-block; background-color: #B26B00; color: #fff; padding: 5px 10px; border-radius: 4px; font-size: 12px; font-weight: bold; margin-left: 10px; text-transform: uppercase; white-space: nowrap; }
         .quotation-folder.needs-attention .quotation-folder-header { background-color: #FCEBEB; }
 
         /* Status-led queue (Phase 1) */
@@ -280,6 +282,10 @@
         .mdk-costplus input { width: 54px; height: 30px; text-align: center; padding: 0; border: 1px solid #ccc; border-radius: 6px; }
         .mdk-note-lbl { font-size: 12px; color: #6e6c65; margin: 10px 0 4px; }
         .mdk-note { width: 100%; box-sizing: border-box; border: 1px solid #ccc; border-radius: 6px; padding: 4px 8px; font-size: 12px; font-family: inherit; line-height: 1.35; }
+        .mdk-note[contenteditable] { min-height: 26px; max-height: 220px; overflow: auto; cursor: text; }
+        .mdk-note[contenteditable]:empty:before { content: attr(data-ph); color: #b3b0a6; }
+        .mdk-note[contenteditable] table { border-collapse: collapse; margin: 3px 0; font-size: 12px; }
+        .mdk-note[contenteditable] td, .mdk-note[contenteditable] th { border: 1px solid #d0cec6; padding: 2px 6px; text-align: left; }
         .mdk-apply { background: #1D9E75; color: #fff; border: none; border-radius: 8px; padding: 7px 14px; font-size: 13px; font-weight: 500; cursor: pointer; }
         .mdk-apply:hover { background: #0F6E56; }
         .mdk-regret { background: none; color: #A32D2D; border: 1px solid #F7C1C1; border-radius: 8px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
@@ -6502,7 +6508,7 @@
                     ? `<span class="q-pill q-regretted">Regretted${quotation.regretSentAt ? ' · reply sent' : ''}</span> <a href="#" class="gmail-link" style="font-size:12px;" onclick="event.preventDefault(); event.stopPropagation(); mdkUndoRegret(${JSON.stringify(String(quotation.id))});">Undo</a>`
                     : (quotation.adminStatus === 'awaiting' && !quotation.sent ? '<span class="q-pill q-awaiting">Awaiting margin</span>' : '');
                 const adminNoteChipHTML = (!isRegretted && String(quotation.adminNote || '').trim())
-                    ? '<span class="mdk-pill">📝 Admin note</span>'
+                    ? '<span class="admin-note-badge">📝 Admin note</span>'
                     : '';
 
                 // Show Approve button only if not saved yet
@@ -6666,11 +6672,12 @@
 
             // "From the admin" strip — the compiled margin decisions + note left
             // on the margins desk. Shown once the quote has been through it.
-            const adminMessage = (typeof buildAdminMessage === 'function') ? buildAdminMessage(quotation) : '';
+            const adminMessage = (typeof buildAdminMessage === 'function') ? buildAdminMessage(quotation, { includeNote: false }) : '';
             const adminAssigned = (quotation.isNewCompany && quotation.assignedTo)
                 ? '\nNew company → assigned to ' + quotation.assignedTo : '';
-            const adminStripHTML = (quotation.adminStatus && quotation.adminStatus !== 'awaiting' && (adminMessage || adminAssigned))
-                ? `<div class="mdk-admin-strip"><div class="h">👤 From the admin</div><div class="b">${escapeHtml(adminMessage + adminAssigned)}</div></div>`
+            const adminNoteBlock = (typeof adminNoteHtml === 'function') ? adminNoteHtml(quotation) : '';
+            const adminStripHTML = (quotation.adminStatus && quotation.adminStatus !== 'awaiting' && (adminMessage || adminAssigned || adminNoteBlock))
+                ? `<div class="mdk-admin-strip"><div class="h">👤 From the admin</div><div class="b">${escapeHtml(adminMessage + adminAssigned)}${adminNoteBlock}</div></div>`
                 : '';
 
             return `
@@ -6806,7 +6813,8 @@
         function printEnquirySheet(quotationId) {
             const quotation = approvedQuotations.find(function(q) { return idsMatch(q.id, quotationId); });
             if (!quotation) return;
-            const adminMessage = (buildAdminMessage(quotation) || '').trim();
+            const adminMessage = (buildAdminMessage(quotation, { includeNote: false }) || '').trim();
+            const adminNoteBox = (typeof adminNoteHtml === 'function') ? adminNoteHtml(quotation, true) : '';
             const files = Array.isArray(quotation.enquiryFiles) ? quotation.enquiryFiles : [];
             const notes = Array.isArray(quotation.enquiryFileNotes) ? quotation.enquiryFileNotes : [];
 
@@ -6833,6 +6841,7 @@
             const css = 'body{font-family:Arial,Helvetica,sans-serif;padding:28px;color:#20201d;}'
                 + '.sec{font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:#888;border-bottom:1px solid #ddd;padding-bottom:3px;margin:18px 0 8px;}'
                 + '.email-html-preview{white-space:pre-wrap;font-size:13px;line-height:1.5;}'
+                + '.admin-note-body table{border-collapse:collapse;margin:4px 0;} .admin-note-body td,.admin-note-body th{border:1px solid #999;padding:3px 7px;text-align:left;}'
                 + 'table,.email-html-preview table,.email-table-preview table{border-collapse:collapse;width:100%;}'
                 + 'th,td,.email-html-preview th,.email-html-preview td,.email-table-preview th,.email-table-preview td{border:1px solid #999;padding:4px 6px;text-align:left;vertical-align:top;font-size:13px;}'
                 + 'img{max-width:100%;}'
@@ -6847,7 +6856,7 @@
                 + '<style>' + css + '</style></head><body>'
                 + '<h2 style="margin:0 0 2px;">Enquiry — ' + escapeHtml(quotation.companyName || quotation.projectName || '') + '</h2>'
                 + '<p style="margin:0 0 10px; color:#666; font-size:13px;">' + escapeHtml([quotation.customerName, quotation.quoteNumber, quotation.quotationDate].filter(Boolean).join(' · ')) + '</p>'
-                + (adminMessage ? '<div class="sec">Message from the admin</div><div style="background:#FAEEDA;border-radius:6px;padding:10px 12px;font-size:14px;white-space:pre-wrap;">' + escapeHtml(adminMessage) + '</div>' : '')
+                + ((adminMessage || adminNoteBox) ? '<div class="sec">Message from the admin</div><div style="background:#FAEEDA;border-radius:6px;padding:10px 12px;font-size:16px;white-space:pre-wrap;">' + escapeHtml(adminMessage) + adminNoteBox + '</div>' : '')
                 + '<div class="sec">Enquiry (as emailed)</div>' + emailHtml
                 + '<div class="sec">Attachments</div>' + attachSection
                 + '</body></html>');
@@ -7055,7 +7064,7 @@
         }
 
         // "Seamless: Cost + 5% · ERW: Cost + 3%" + the free-text note below it.
-        function buildAdminMessage(q) {
+        function buildAdminMessage(q, opts) {
             const m = (q.adminMargins && typeof q.adminMargins === 'object') ? q.adminMargins : null;
             const types = (q.itemSummary && Array.isArray(q.itemSummary.types)) ? q.itemSummary.types : [];
             const parts = [];
@@ -7071,9 +7080,23 @@
                 });
             }
             let msg = parts.join(' · ');
-            const note = String(q.adminNote || '').trim();
-            if (note) msg += (msg ? '\n' : '') + note;
+            // The note can be rich (a pasted table) — callers that render HTML pass
+            // {includeNote:false} and render adminNoteHtml() separately. Default keeps the
+            // plain-text note appended (back-compat for text contexts + tests).
+            if (!opts || opts.includeNote !== false) {
+                const note = String(q.adminNote || '').trim();
+                if (note) msg += (msg ? '\n' : '') + note;
+            }
             return msg;
+        }
+
+        // The admin note as safe HTML (a pasted table survives; scripts/handlers are stripped).
+        // `big` bumps the font for the printed enquiry. Empty string when there's no note.
+        function adminNoteHtml(q, big) {
+            const clean = sanitizeEmailHtmlForPreview((q && q.adminNote) || '');
+            if (!clean || !clean.replace(/<br\s*\/?>|&nbsp;|\s/gi, '')) return '';
+            return '<div class="admin-note-body" style="white-space:pre-wrap;margin-top:6px;'
+                + (big ? 'font-size:16px;' : '') + '">' + clean + '</div>';
         }
 
         // Desk rows need the enquiry text, which the list summary doesn't carry —
@@ -7153,8 +7176,8 @@
             h += '</div>';
 
             // Note for staff
-            h += '<div class="mdk-note-lbl">📝 Notes for staff <span style="color:#9b988e;">(optional — shown on the quote and the printed enquiry)</span></div>'
-                + '<textarea class="mdk-note" id="mdk-note-' + idAttr + '" rows="1" placeholder="e.g. Quote the 6&quot; ERW at Jindal list less 5%." oninput="mdkNoteChanged(\'' + idAttr + '\',this.value)">' + escapeHtml(q.adminNote || '') + '</textarea>';
+            h += '<div class="mdk-note-lbl">📝 Notes for staff <span style="color:#9b988e;">(optional — shown on the quote card and the printed enquiry; you can paste a table)</span></div>'
+                + '<div class="mdk-note" id="mdk-note-' + idAttr + '" contenteditable="true" data-ph="e.g. Quote the 6&quot; ERW at Jindal list less 5%." oninput="mdkNoteChanged(\'' + idAttr + '\',this.innerHTML)" onpaste="mdkNotePaste(event,\'' + idAttr + '\')">' + (typeof sanitizeEmailHtmlForPreview === 'function' ? sanitizeEmailHtmlForPreview(q.adminNote || '') : escapeHtml(q.adminNote || '')) + '</div>';
 
             // Enquiry preview (lazy): the formatted email as-is (tables & layout preserved),
             // a View-in-Gmail link, and the retained attachment chips.
@@ -7227,6 +7250,19 @@
         function mdkToggleInclude(id, key, on) { const q = mdkQuote(id); if (!q) return; const m = adminMarginsOf(q); if (m[key]) m[key].include = !!on; renderMarginDesk(); }
         function mdkSetPct(id, key, value) { const q = mdkQuote(id); if (!q) return; adminMarginsOf(q)[key].pct = String(value || '').trim(); }
         function mdkNoteChanged(id, value) { const q = mdkQuote(id); if (q) q.adminNote = value; }
+        // Paste into the notes box: keep a real (cleaned) table when the clipboard has HTML;
+        // otherwise fall through to the normal plain-text paste.
+        function mdkNotePaste(e, id) {
+            const cd = e.clipboardData || window.clipboardData;
+            const html = cd && cd.getData && cd.getData('text/html');
+            if (!html) return;   // plain text — let the browser paste it normally
+            e.preventDefault();
+            const clean = sanitizeEmailHtmlForPreview(html);
+            if (clean) document.execCommand('insertHTML', false, clean);
+            else document.execCommand('insertText', false, (cd.getData('text/plain') || ''));
+            const el = document.getElementById('mdk-note-' + id);
+            if (el) mdkNoteChanged(id, el.innerHTML);
+        }
         function mdkToggleNew(id, el) { const q = mdkQuote(id); if (!q) return; q.isNewCompany = !!el.checked; if (!q.isNewCompany) q.assignedTo = ''; renderMarginDesk(); }
         function mdkSetAssign(id, value) { const q = mdkQuote(id); if (q) q.assignedTo = value; }
         function mdkManageStaff() {
@@ -7244,7 +7280,7 @@
             const q = mdkQuote(id);
             if (!q) return;
             const noteEl = document.getElementById('mdk-note-' + id);
-            if (noteEl) q.adminNote = noteEl.value;
+            if (noteEl) q.adminNote = noteEl.innerHTML;
             const draft = adminMarginsOf(q);
             try {
                 const response = await fetch(`${API_BASE_URL}/quotations/${encodeURIComponent(q.id)}/apply-admin-margins`, {
