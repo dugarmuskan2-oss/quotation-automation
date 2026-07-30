@@ -144,6 +144,11 @@ function stampAdminMargins(lineItems, adminMargins) {
     return (Array.isArray(lineItems) ? lineItems : []).map(item => {
         const bucket = pipeTypeBucket(item && item.identifiedPipeType);
         const next = { ...item };
+        // A pipe type unticked on the desk (include===false) is left out — don't stamp a
+        // margin; the line keeps its rate and the admin note carries the instruction.
+        const bucketKey = bucket === 'Seamless' ? 'seamless'
+            : (bucket === 'ERW' || bucket === 'GI') ? bucket.toLowerCase() : null;
+        if (bucketKey && margins[bucketKey] && margins[bucketKey].include === false) return next;
         if (bucket === 'Seamless') {
             const cfg = margins.seamless || {};
             if (cfg.mode === 'cost') {

@@ -7043,10 +7043,12 @@
         function adminMarginsOf(q) {
             if (!q._adminMarginsDraft) {
                 const saved = (q.adminMargins && typeof q.adminMargins === 'object') ? q.adminMargins : {};
+                // `include` gates whether a pipe type's margin is sent + stamped. On by default;
+                // untick to leave a type out (you cover it in the admin note instead).
                 q._adminMarginsDraft = {
-                    seamless: { mode: (saved.seamless && saved.seamless.mode) || 'price', pct: (saved.seamless && saved.seamless.pct) || defaultMarginsByPipeType.seamless || '' },
-                    erw: { pct: (saved.erw && saved.erw.pct) || defaultMarginsByPipeType.erw || '' },
-                    gi: { pct: (saved.gi && saved.gi.pct) || defaultMarginsByPipeType.gi || '' }
+                    seamless: { mode: (saved.seamless && saved.seamless.mode) || 'price', pct: (saved.seamless && saved.seamless.pct) || defaultMarginsByPipeType.seamless || '', include: saved.seamless ? saved.seamless.include !== false : true },
+                    erw: { pct: (saved.erw && saved.erw.pct) || defaultMarginsByPipeType.erw || '', include: saved.erw ? saved.erw.include !== false : true },
+                    gi: { pct: (saved.gi && saved.gi.pct) || defaultMarginsByPipeType.gi || '', include: saved.gi ? saved.gi.include !== false : true }
                 };
             }
             return q._adminMarginsDraft;
@@ -7059,11 +7061,11 @@
             const parts = [];
             if (m) {
                 types.forEach(function(ty) {
+                    const cfg = (ty === 'Seamless' ? m.seamless : m[ty.toLowerCase()]) || {};
+                    if (cfg.include === false) return;   // unticked — left out; covered by the note
                     if (ty === 'Seamless') {
-                        const cfg = m.seamless || {};
                         parts.push(cfg.mode === 'cost' ? ('Seamless: Cost + ' + (cfg.pct || '0') + '%') : 'Seamless: Price list');
                     } else {
-                        const cfg = m[ty.toLowerCase()] || {};
                         parts.push(ty + ': Cost + ' + (cfg.pct || '0') + '%');
                     }
                 });
@@ -7114,7 +7116,15 @@
             // Per-type margin controls
             h += '<div class="mdk-ctrl">';
             s.types.forEach(function(ty) {
-                h += '<div class="mdk-mgrow"><span class="mdk-mglabel">' + escapeHtml(ty) + '</span>';
+                const mkey = ty === 'Seamless' ? 'seamless' : ty.toLowerCase();
+                const on = !(m[mkey] && m[mkey].include === false);
+                // Tick gates this pipe type: ticked -> its margin is sent + stamped; unticked ->
+                // left out of both (you cover it in the admin note). On by default.
+                h += '<div class="mdk-mgrow">'
+                    + '<label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;" title="Include this pipe type\'s margin — untick to leave it out and use the note instead">'
+                    + '<input type="checkbox" style="width:14px;height:14px;" ' + (on ? 'checked' : '') + ' onchange="mdkToggleInclude(\'' + idAttr + '\',\'' + mkey + '\',this.checked)">'
+                    + '<span class="mdk-mglabel">' + escapeHtml(ty) + '</span></label>'
+                    + '<span style="display:inline-flex;align-items:center;gap:6px;' + (on ? '' : 'opacity:.4;pointer-events:none;') + '">';
                 if (ty === 'Seamless') {
                     h += '<span class="mdk-seg">'
                         + '<button type="button" class="' + (m.seamless.mode !== 'cost' ? 'on' : '') + '" onclick="mdkSetMode(\'' + idAttr + '\',\'price\')">Price list</button>'
@@ -7123,10 +7133,9 @@
                         h += '<span class="mdk-costplus"><input type="text" value="' + escapeHtml(String(m.seamless.pct)) + '" placeholder="0" onchange="mdkSetPct(\'' + idAttr + '\',\'seamless\',this.value)"> %</span>';
                     }
                 } else {
-                    const key = ty.toLowerCase();
-                    h += '<span class="mdk-costplus">Cost + <input type="text" value="' + escapeHtml(String(m[key].pct)) + '" placeholder="0" onchange="mdkSetPct(\'' + idAttr + '\',\'' + key + '\',this.value)"> %</span>';
+                    h += '<span class="mdk-costplus">Cost + <input type="text" value="' + escapeHtml(String(m[mkey].pct)) + '" placeholder="0" onchange="mdkSetPct(\'' + idAttr + '\',\'' + mkey + '\',this.value)"> %</span>';
                 }
-                h += '</div>';
+                h += '</span></div>';
             });
             h += '</div>';
 
@@ -7215,6 +7224,7 @@
         // ── Desk event handlers ────────────────────────────────────────────────
         function mdkQuote(id) { return approvedQuotations.find(function(q) { return idsMatch(q.id, id); }); }
         function mdkSetMode(id, mode) { const q = mdkQuote(id); if (!q) return; adminMarginsOf(q).seamless.mode = mode; renderMarginDesk(); }
+        function mdkToggleInclude(id, key, on) { const q = mdkQuote(id); if (!q) return; const m = adminMarginsOf(q); if (m[key]) m[key].include = !!on; renderMarginDesk(); }
         function mdkSetPct(id, key, value) { const q = mdkQuote(id); if (!q) return; adminMarginsOf(q)[key].pct = String(value || '').trim(); }
         function mdkNoteChanged(id, value) { const q = mdkQuote(id); if (q) q.adminNote = value; }
         function mdkToggleNew(id, el) { const q = mdkQuote(id); if (!q) return; q.isNewCompany = !!el.checked; if (!q.isNewCompany) q.assignedTo = ''; renderMarginDesk(); }
