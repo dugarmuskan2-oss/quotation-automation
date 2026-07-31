@@ -207,6 +207,11 @@ function quoteMonth(x) {
 // barely 1,300 of ~1,900 quotes, silently hiding the oldest from every filter. Sized for ~6,600
 // quotes; both endpoints report `truncated` rather than quietly returning a short list.
 const FULL_SCAN_MAX_PAGES = 200;
+// One path segment of a storage key. Anything outside [A-Za-z0-9._-] becomes '_', so a value
+// taken from the URL can never contain '/' or '..' and walk out of its intended prefix.
+function safeStorageSegment(v) {
+    return String(v == null ? '' : v).replace(/[^a-zA-Z0-9._-]/g, '_');
+}
 // Has freight activity — a transporter enquiry was SENT for this quote, whether or not it still
 // needs attention. Entries are only ever pushed for emails that actually sent, so any entry counts.
 // Deliberately does not require threadId: a genuinely sent enquiry stores '' when the send response
@@ -526,6 +531,10 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
                 (page.Items || []).forEach(item => {
                     const q = quotationFromItem(item);
                     if (!q) return;
+                    // Soft-deleted quotes are hidden everywhere else; the register was the one
+                    // place a junk/accidental entry stayed visible — counted in the monthly
+                    // headline and mirrored into the Google Sheet.
+                    if (q.deleted) return;
                     if ((q.updatedAt || '') < cutoff) { reachedCutoff = true; return; }
                     const created = q.createdAt || q.updatedAt || '';
                     if (created >= cutoff && (!cutoffEnd || created < cutoffEnd)) rows.push(registerRowOf(q));
@@ -736,7 +745,10 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
             const { base64, versionKey } = req.body || {};
             if (!base64 || !versionKey) return res.status(400).json({ error: 'base64 and versionKey are required' });
             const name = String(versionKey).replace(/[^a-zA-Z0-9._-]/g, '_') + '.pdf';
-            const prefix = 'quote-pdfs/' + String(req.params.id);
+            // Sanitise the id the same way as the version. Unsanitised it let "../../.." in the URL
+            // walk the composed key out of quote-pdfs/ entirely and write arbitrary bytes anywhere
+            // the process could reach (nothing under /api is auth-gated).
+            const prefix = 'quote-pdfs/' + safeStorageSegment(req.params.id);
             await storage.upload(Buffer.from(base64, 'base64'), name, prefix);
             res.json({ success: true, key: prefix + '/' + name });
         } catch (error) {
@@ -749,8 +761,10 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
     // version was never archived — the caller then falls back to the rebuilt view.
     router.get('/quotations/:id/pdf', async (req, res) => {
         if (!storage || !storage.streamToResponse) return res.status(404).end();
-        const version = String(req.query.version || 'current').replace(/[^a-zA-Z0-9._-]/g, '_');
-        const key = 'quote-pdfs/' + String(req.params.id) + '/' + version + '.pdf';
+        const version = safeStorageSegment(req.query.version || 'current');
+        // Same sanitising as the write path — an unsanitised id here could read any file the
+        // process can reach and stream it back as a PDF.
+        const key = 'quote-pdfs/' + safeStorageSegment(req.params.id) + '/' + version + '.pdf';
         try {
             res.setHeader('Content-Type', 'application/pdf');
             await storage.streamToResponse(key, res);
