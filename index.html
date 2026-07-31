@@ -311,6 +311,15 @@
         .sq-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
         .sq-tbl th, .sq-tbl td { border-bottom: 1px solid #eee; padding: 5px 8px; text-align: left; }
         .sq-tbl th { border-bottom: 1px solid #999; }
+        /* A dated enquiry event sitting between version cards on the shared page — deliberately
+           slim, so the quote versions stay the substance of the timeline. */
+        .sq-ev { display: flex; align-items: baseline; gap: 9px; background: #fff; border: 1px solid rgba(0,0,0,0.10);
+            border-left: 3px solid #185FA5; border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; font-size: 13px; }
+        .sq-ev-icon { flex: 0 0 auto; }
+        .sq-ev-body { flex: 1 1 auto; min-width: 0; }
+        .sq-ev-detail { color: #6e6c65; margin-left: 7px; word-break: break-word; }
+        .sq-ev-when { flex: 0 0 auto; color: #9b988e; font-size: 12px; white-space: nowrap; }
+
         /* The original enquiry email. Capped and scrollable so a long thread can't dominate the
            page, and images/tables from the customer's own mail are kept inside the card. */
         .sq-enq { font-size: 13px; line-height: 1.55; max-height: 420px; overflow: auto; }
@@ -11659,6 +11668,42 @@
             return gmail + files
                 + (files ? '' : '<p style="color:#999;">No enquiry email stored for this quote.</p>');
         }
+        // Enquiry activity as dated timeline entries, so each one lands next to the version it
+        // actually influenced. Both moments are recorded: when the enquiry went out, and when the
+        // reply came back — a rate that arrives between two revisions is usually WHY the second
+        // revision exists, and that is only visible if the reply has its own place in the order.
+        function buildSharedEnquiryEvents(quotation) {
+            const out = [];
+            const row = function(when, icon, tint, title, detail) {
+                return '<div class="sq-ev" style="border-left-color:' + tint + ';">'
+                    + '<span class="sq-ev-icon">' + icon + '</span>'
+                    + '<span class="sq-ev-body"><b>' + escapeHtml(title) + '</b>'
+                    + (detail ? '<span class="sq-ev-detail">' + escapeHtml(detail) + '</span>' : '') + '</span>'
+                    + '<span class="sq-ev-when">' + escapeHtml(when ? formatRevisionDate(when) : '') + '</span></div>';
+            };
+
+            const freight = Array.isArray(quotation.freightEnquiries) ? quotation.freightEnquiries : [];
+            freight.forEach(function(t) {
+                if (!t) return;
+                if (t.sentAt) out.push({ when: t.sentAt, sort: 1,
+                    html: row(t.sentAt, '&#128666;', '#185FA5', 'Freight enquiry sent', t.email || '') });
+                if (t.replied) out.push({ when: t.replyAt || t.sentAt || '', sort: 1,
+                    html: row(t.replyAt || t.sentAt, '&#128666;', '#0F6E56', 'Freight rate received',
+                        (t.email || '') + (t.amount ? ' — ₹' + Math.round(t.amount).toLocaleString('en-IN') : '')) });
+            });
+
+            const suppliers = Array.isArray(quotation.supplierEnquiries) ? quotation.supplierEnquiries : [];
+            suppliers.forEach(function(t) {
+                if (!t) return;
+                if (t.sentAt) out.push({ when: t.sentAt, sort: 1,
+                    html: row(t.sentAt, '&#128233;', '#6B3FA0', 'Supplier enquiry sent', t.email || '') });
+                if (t.replied) out.push({ when: t.replyAt || t.sentAt || '', sort: 1,
+                    html: row(t.replyAt || t.sentAt, '&#128233;', '#0F6E56', 'Supplier offer received',
+                        (t.email || '') + (t.rate ? ' — ₹' + Math.round(t.rate).toLocaleString('en-IN') : '')) });
+            });
+            return out;
+        }
+
         function renderSharedQuotePage(quotation) {
             const rev = currentRevisionNumber(quotation);
             document.title = (quotation.quoteNumber || 'Quotation') + (rev > 0 ? ' (Rev ' + rev + ')' : '');
@@ -11668,9 +11713,18 @@
             const archived = Array.isArray(quotation.archivedPdfVersions) ? quotation.archivedPdfVersions : [];
             const base = (typeof API_BASE_URL === 'string' ? API_BASE_URL : '') || '';
             const pdfFrame = function(src, id) { return '<iframe' + (id ? ' id="' + id + '"' : '') + ' class="sq-pdf" src="' + src + '" style="width:100%;height:80vh;border:1px solid #ddd;border-radius:6px;background:#fff;"></iframe>'; };
+            // One timeline: versions AND enquiry activity, ordered by when each happened, so an
+            // enquiry that came in between two revisions appears between them. Newest first, the
+            // same direction the Versions list has always run.
+            const entries = [];
+
             // Current version renders LIVE (the exact current PDF); loaded into its frame after paint.
-            let versions = '<div class="sq-card"><span class="sq-badge sq-cur">Current &middot; ' + revisionLabel(buildCurrentVersionRev(quotation), revs.length) + '</span>'
-                + pdfFrame('about:blank', 'sq-pdf-current') + '</div>';
+            entries.push({
+                when: quotation.updatedAt || quotation.sentAt || '',
+                sort: 2,   // ties: the version outranks an event stamped the same second
+                html: '<div class="sq-card"><span class="sq-badge sq-cur">Current &middot; ' + revisionLabel(buildCurrentVersionRev(quotation), revs.length) + '</span>'
+                    + pdfFrame('about:blank', 'sq-pdf-current') + '</div>'
+            });
             // Past versions: the archived original PDF (exactly what was sent) when we have it,
             // otherwise fall back to the rebuilt full-quote view.
             for (let i = revs.length - 1; i >= 0; i--) {
@@ -11679,8 +11733,22 @@
                 const body = (archived.indexOf(vkey) >= 0)
                     ? pdfFrame(base + '/quotations/' + encodeURIComponent(String(quotation.id)) + '/pdf?version=' + encodeURIComponent(vkey))
                     : revisionFullQuoteHtml(quotation, r);
-                versions += '<div class="sq-card"><span class="sq-badge">' + revisionLabel(r, i) + (r.createdAt ? ' &middot; ' + formatRevisionDate(r.createdAt) : '') + '</span>' + body + '</div>';
+                entries.push({
+                    when: r.createdAt || '', sort: 2,
+                    html: '<div class="sq-card"><span class="sq-badge">' + revisionLabel(r, i) + (r.createdAt ? ' &middot; ' + formatRevisionDate(r.createdAt) : '') + '</span>' + body + '</div>'
+                });
             }
+            buildSharedEnquiryEvents(quotation).forEach(function(e) { entries.push(e); });
+
+            // Undated entries sink to the bottom rather than jumping to the top.
+            entries.sort(function(a, b) {
+                if (!a.when && !b.when) return 0;
+                if (!a.when) return 1;
+                if (!b.when) return -1;
+                const d = new Date(b.when) - new Date(a.when);
+                return d !== 0 ? d : (a.sort - b.sort);
+            });
+            const versions = entries.map(function(e) { return e.html; }).join('');
             const prevNote = revs.length ? '' : '<p style="color:#9b988e;font-size:13px;margin:0 0 4px;">No previous versions &mdash; this is the only one.</p>';
             const marginMsg = (typeof buildAdminMessage === 'function') ? buildAdminMessage(quotation, { includeNote: false }) : '';
             const noteBlock = (typeof adminNoteHtml === 'function') ? adminNoteHtml(quotation) : '';
