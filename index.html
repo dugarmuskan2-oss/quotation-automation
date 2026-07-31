@@ -1418,7 +1418,7 @@
                 <select id="approvalMonthSelect" onchange="approvalPickMonthYear()" style="height:32px; font-size:13px; padding:2px 6px; border:1px solid #ddd; border-radius:5px;"></select>
                 <select id="approvalYearSelect" onchange="approvalPickMonthYear()" style="height:32px; font-size:13px; padding:2px 6px; border:1px solid #ddd; border-radius:5px;"></select>
                 <button id="approvalAllMonthsBtn" class="upload-btn" type="button" onclick="approvalShowAllMonths()" style="width:auto; padding:6px 12px;" title="Show quotes from every month">All months</button>
-                <button id="approvalFreightBtn" class="upload-btn" type="button" onclick="approvalToggleFreight()" style="width:auto; padding:6px 12px;" title="Show quotes awaiting a freight rate or with one received">&#128666; Freight</button>
+                <button id="approvalFreightBtn" class="upload-btn" type="button" onclick="approvalToggleFreight()" style="width:auto; padding:6px 12px;" title="Show every quote a freight enquiry was sent for, replied or not">&#128666; Freight</button>
             </div>
             <!-- Global sweep: check every quote awaiting a transporter/customer reply in one go. -->
             <div style="margin-bottom: 10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
@@ -6703,7 +6703,7 @@
                     + 'onclick="applyApprovalServerFilter()">Try again</button></p>';
             }
             const what = approvalFreightFilter
-                ? 'quotes awaiting or with a freight rate'
+                ? 'quotes with a freight enquiry'
                 : ('quotes for ' + escapeHtml(approvalFilterLabel()));
             return '<p style="text-align:center; color:#999; padding:20px;">No ' + what + '.</p>';
         }
@@ -6729,9 +6729,14 @@
             // otherwise the quote you just made is invisible while a month is picked.
             return approvalMonthOf(q.createdAt) || approvalMonthOf(q.quotationDate) || approvalMonthOf(q.updatedAt);
         }
+        // "A freight enquiry was sent for this quote" — every quote the feature was used on, whether or
+        // not it still needs attention. An entry is only ever pushed for an email that actually sent
+        // (freight-tab-weight-editor.js), so any entry counts. Deliberately does NOT require threadId:
+        // a genuinely sent enquiry stores '' when the send response carries no thread id, and those
+        // quotes were invisible here before. Replied/awaiting is not considered at all.
         function quoteHasFreightActivityClient(q) {
             if (q && q.transporterReplyIn) return true;
-            return !!(q && Array.isArray(q.freightEnquiries) && q.freightEnquiries.some(function(t){ return t && t.threadId; }));
+            return !!(q && Array.isArray(q.freightEnquiries) && q.freightEnquiries.length > 0);
         }
         function updateApprovalFilterButtons() {
             const fb = document.getElementById('approvalFreightBtn');

@@ -199,10 +199,13 @@ function quoteMonth(x) {
     const t = d ? new Date(d) : null;
     return (t && !isNaN(t.getTime())) ? t.toISOString().slice(0, 7) : '';
 }
-// Has freight activity — a sent transporter enquiry (awaiting a reply) or a reply received.
+// Has freight activity — a transporter enquiry was SENT for this quote, whether or not it still
+// needs attention. Entries are only ever pushed for emails that actually sent, so any entry counts.
+// Deliberately does not require threadId: a genuinely sent enquiry stores '' when the send response
+// carries no thread id. Mirrors quoteHasFreightActivityClient in index.html.
 function quoteHasFreightActivity(x) {
     if (x && x.transporterReplyIn) return true;
-    return !!(x && Array.isArray(x.freightEnquiries) && x.freightEnquiries.some(function (t) { return t && t.threadId; }));
+    return !!(x && Array.isArray(x.freightEnquiries) && x.freightEnquiries.length > 0);
 }
 
 module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, storage }) {
