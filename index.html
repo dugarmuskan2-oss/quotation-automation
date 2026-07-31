@@ -10915,8 +10915,10 @@
                 versions += '<div class="sq-card"><span class="sq-badge">' + revisionLabel(r, i) + (r.createdAt ? ' &middot; ' + formatRevisionDate(r.createdAt) : '') + '</span>' + body + '</div>';
             }
             const prevNote = revs.length ? '' : '<p style="color:#9b988e;font-size:13px;margin:0 0 4px;">No previous versions &mdash; this is the only one.</p>';
+            const marginMsg = (typeof buildAdminMessage === 'function') ? buildAdminMessage(quotation, { includeNote: false }) : '';
             const noteBlock = (typeof adminNoteHtml === 'function') ? adminNoteHtml(quotation) : '';
-            const noteSection = noteBlock ? '<div class="sq-sec-h">Note from the admin (internal)</div><div class="sq-card">' + noteBlock + '</div>' : '';
+            const adminInner = (marginMsg ? '<div style="white-space:pre-wrap;">' + escapeHtml(marginMsg) + '</div>' : '') + noteBlock;
+            const noteSection = adminInner ? '<div class="sq-sec-h">From the admin (internal)</div><div class="sq-card">' + adminInner + '</div>' : '';
             overlay.innerHTML = '<div class="sq-wrap">'
                 + '<div class="sq-head"><h1>' + escapeHtml(quotation.quoteNumber || 'Quotation') + (rev > 0 ? ' (Rev ' + rev + ')' : '') + '</h1>'
                 + '<div class="sq-sub">' + escapeHtml([quotation.companyName, quotation.customerName, quotation.quotationDate].filter(Boolean).join(' · ')) + '</div>'
