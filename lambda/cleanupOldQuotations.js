@@ -105,3 +105,14 @@ exports.handler = async () => {
         })
     };
 };
+
+// Test-only export (see tests/cleanup-lambda.test.js). Appended to the same
+// module.exports object that already carries `handler`, so it doesn't clobber it.
+module.exports._test = {
+    isQuotationExpired,
+    isSoftDeleteExpired,
+    getExpiryCutoffTimestamp,
+    deleteExpiredItems,
+    ONE_YEAR_MS,
+    SOFT_DELETE_RETENTION_MS
+};
