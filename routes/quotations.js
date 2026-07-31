@@ -186,6 +186,14 @@ function cacheSet(key, id) {
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 
+// Text search over a quote summary's visible fields (company / bill-to / contact / quote
+// number) — mirrors the client's matchesApprovalSearch so results feel consistent.
+function normalizeSearchQuery(v) { return String(v == null ? '' : v).toLowerCase().replace(/\s+/g, ' ').trim(); }
+function quoteSummaryMatches(x, q) {
+    const hay = normalizeSearchQuery([x.companyName, x.projectName, x.customerName, x.quoteNumber].filter(Boolean).join(' '));
+    return hay.indexOf(q) >= 0;
+}
+
 module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, storage }) {
 
     const router = express.Router();   // fresh router per call — a factory must not share module-level state
@@ -619,6 +627,42 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
             await storage.streamToResponse(key, res);
         } catch (error) {
             if (!res.headersSent) res.status(404).json({ error: 'No archived PDF for this version' });
+        }
+    });
+
+    // Search ALL quotes (not just the loaded pages) by company / bill-to / contact / number.
+    // Summary-only projection + capped, so it stays light; the client calls it debounced and
+    // only when the user is actually searching. Scans the table (fine for user-initiated search
+    // at this scale) — reach for a search index only at tens of thousands of quotes.
+    router.get('/quotations-search', async (req, res) => {
+        if (!requireDdb(res)) return;
+        const q = normalizeSearchQuery(req.query.q);
+        if (!q) return res.json({ quotations: [] });
+        try {
+            const { ScanCommand } = require('@aws-sdk/lib-dynamodb');
+            let items = [], scanKey = null, pages = 0;
+            do {
+                const params = {
+                    TableName: ddbTableName,
+                    ProjectionExpression: SUMMARY_PROJECTION,
+                    ExpressionAttributeNames: { ...SUMMARY_EXPR_NAMES, '#ent': '_entity' },
+                    FilterExpression: '#ent = :ent',
+                    ExpressionAttributeValues: { ':ent': ENTITY_QUOTATION },
+                };
+                if (scanKey) params.ExclusiveStartKey = scanKey;
+                const result = await ddbDocClient.send(new ScanCommand(params));
+                items = items.concat(result.Items || []);
+                scanKey = result.LastEvaluatedKey || null;
+                pages++;
+            } while (scanKey && pages < 40);
+            const matches = items.map(quotationFromItem).filter(Boolean)
+                .filter(function (x) { return quoteSummaryMatches(x, q); })
+                .sort(function (a, b) { return new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0); })
+                .slice(0, 100);
+            res.json({ quotations: matches });
+        } catch (error) {
+            console.error('Quote search failed:', error);
+            res.status(500).json({ error: 'Search failed', details: error.message });
         }
     });
 

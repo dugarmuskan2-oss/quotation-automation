@@ -6657,10 +6657,36 @@
                 if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
                 searchDebounceTimer = setTimeout(function() {
                     searchDebounceTimer = null;
-                    displayAllApprovedQuotations();
-                }, 150);
+                    displayAllApprovedQuotations();                       // instant: filter the loaded quotes
+                    serverSearchApprovedQuotations(approvalSearchQuery);  // then pull in older matches from the server
+                }, 200);
             });
             searchInput.dataset.bound = 'true';
+        }
+
+        // Reach beyond the loaded pages: search ALL quotes on the server (company / contact /
+        // bill-to / number) and merge any not-yet-loaded matches so they appear in the list.
+        // Client-first — this only fills in older matches a beat after the instant local filter.
+        let _lastServerSearchQ = '';
+        async function serverSearchApprovedQuotations(query) {
+            const q = String(query || '').trim();
+            if (q.length < 2) return;   // don't scan the whole table for a single character
+            _lastServerSearchQ = q;
+            try {
+                const res = await fetch(`${API_BASE_URL}/quotations-search?q=${encodeURIComponent(q)}`);
+                if (!res.ok) return;
+                const data = await safeJsonParse(res);
+                if (_lastServerSearchQ !== q) return;   // a newer keystroke superseded this result
+                const found = Array.isArray(data.quotations) ? data.quotations : [];
+                let added = 0;
+                found.forEach(function(f) {
+                    if (f && f.id != null && !approvedQuotations.some(function(x) { return idsMatch(x.id, f.id); })) {
+                        approvedQuotations.push(f);
+                        added++;
+                    }
+                });
+                if (added) { syncApprovedQuotationsGlobal(); displayAllApprovedQuotations(); }
+            } catch (e) { /* search is best-effort */ }
         }
 
         function buildApprovalSplitLayout({ quotation, termsText, approveButtonHTML, saveButtonHTML, printButtonHTML, downloadButtonHTML, sendButtonHTML, copyLinkButtonHTML }) {
