@@ -1922,7 +1922,13 @@
                 const quotations = (Array.isArray(result.quotations) ? result.quotations : [])
                     .filter(function(q) { return !q.deleted; });   // hide soft-deleted (accidental) quotes
                 if (append) {
-                    approvedQuotations = approvedQuotations.concat(quotations);
+                    // Drop ids we already hold. A month/freight filter or a search can merge older
+                    // quotes straight into the array, and paging the feed down to those same quotes
+                    // would otherwise append a second copy — two identical cards sharing one DOM id.
+                    const alreadyHave = new Set(approvedQuotations.map(function(x) { return String(x.id); }));
+                    approvedQuotations = approvedQuotations.concat(
+                        quotations.filter(function(q) { return !alreadyHave.has(String(q.id)); })
+                    );
                 } else {
                     approvedQuotations = quotations;
                 }
@@ -6688,16 +6694,40 @@
             if (approvalFilterLoading) {
                 return '<p style="text-align:center; color:#999; padding:20px;">Loading ' + escapeHtml(approvalFilterLabel()) + ' quotes…</p>';
             }
+            // The lookup failed, so we never got an answer — don't state as fact that there is nothing here.
+            // Needs its own Try-again button: re-picking the month in the dropdown fires no onchange.
+            if (approvalFilterFetchFailed) {
+                return '<p style="text-align:center; color:#999; padding:20px;">Could not load '
+                    + escapeHtml(approvalFilterLabel()) + ' quotes just now. '
+                    + '<button type="button" class="upload-btn" style="width:auto; padding:4px 12px; margin-left:6px;" '
+                    + 'onclick="applyApprovalServerFilter()">Try again</button></p>';
+            }
             const what = approvalFreightFilter
                 ? 'quotes awaiting or with a freight rate'
                 : ('quotes for ' + escapeHtml(approvalFilterLabel()));
             return '<p style="text-align:center; color:#999; padding:20px;">No ' + what + '.</p>';
         }
 
+        // One date value -> 'YYYY-MM'. Handles ISO timestamps AND the app's own DD.MM.YY /
+        // DD.MM.YYYY quotation-date format, which new Date() cannot parse.
+        function approvalMonthOf(value) {
+            if (!value) return '';
+            const dmy = String(value).trim().match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})$/);
+            if (dmy) {
+                const month = Number(dmy[2]);
+                if (month < 1 || month > 12) return '';
+                const year = dmy[3].length === 2 ? '20' + dmy[3] : dmy[3];
+                return year + '-' + String(month).padStart(2, '0');
+            }
+            const t = new Date(value);
+            return isNaN(t.getTime()) ? '' : t.toISOString().slice(0, 7);
+        }
         function quoteMonthClient(q) {
-            const d = q && (q.createdAt || q.quotationDate || q.updatedAt);
-            const t = d ? new Date(d) : null;
-            return (t && !isNaN(t.getTime())) ? t.toISOString().slice(0, 7) : '';
+            if (!q) return '';
+            // First candidate that yields a real month wins. A quote created in this session has no
+            // createdAt yet — only a DD.MM.YY quotationDate — so it must not stop at an unparseable one,
+            // otherwise the quote you just made is invisible while a month is picked.
+            return approvalMonthOf(q.createdAt) || approvalMonthOf(q.quotationDate) || approvalMonthOf(q.updatedAt);
         }
         function quoteHasFreightActivityClient(q) {
             if (q && q.transporterReplyIn) return true;
@@ -6737,7 +6767,9 @@
         // Instant local filter, then pull any not-yet-loaded matches from the server for that month
         // (older quotes aren't in the loaded feed). Shows a "Loading…" state so the user waits for the
         // fetch instead of reaching for "Load more"; always re-renders at the end (results or empty state).
+        let _approvalFilterSeq = 0;   // only the newest filter request may touch shared state
         async function applyApprovalServerFilter() {
+            const mySeq = ++_approvalFilterSeq;
             approvalFilterFetchFailed = false;
             const params = approvalFreightFilter ? 'freight=1' : (approvalMonthFilter ? 'month=' + encodeURIComponent(approvalMonthFilter) : '');
             approvalFilterLoading = !!params;   // only show a loading note when we're actually fetching
@@ -6747,16 +6779,23 @@
                 const res = await fetch(`${API_BASE_URL}/quotations-filter?${params}`);
                 if (!res.ok) throw new Error('filter fetch failed (' + res.status + ')');
                 const data = await safeJsonParse(res);
+                if (mySeq !== _approvalFilterSeq) return;   // a newer month/freight pick superseded this
                 const found = Array.isArray(data.quotations) ? data.quotations : [];
                 found.forEach(function(f) {
-                    if (f && f.id != null && !approvedQuotations.some(function(x){ return idsMatch(x.id, f.id); })) { approvedQuotations.push(f); }
+                    // Skip soft-deleted (accidental) quotes the way the feed loader does — this endpoint
+                    // still returns them, and without the guard a deleted quote reappears as a live card.
+                    if (f && f.id != null && !f.deleted && !approvedQuotations.some(function(x){ return idsMatch(x.id, f.id); })) { approvedQuotations.push(f); }
                 });
                 syncApprovedQuotationsGlobal();
             } catch (e) {
+                if (mySeq !== _approvalFilterSeq) return;   // an abandoned request's failure isn't ours to report
                 approvalFilterFetchFailed = true;   // let the feed "Load more" reappear as a fallback
             } finally {
-                approvalFilterLoading = false;
-                displayAllApprovedQuotations();      // clears the loading note; shows results or a clean empty state
+                // A superseded request must not clear the newer one's loading state or re-render over it.
+                if (mySeq === _approvalFilterSeq) {
+                    approvalFilterLoading = false;
+                    displayAllApprovedQuotations();  // clears the loading note; shows results or a clean empty state
+                }
             }
         }
         function approvalPickMonthYear() {
@@ -6821,7 +6860,9 @@
                 const found = Array.isArray(data.quotations) ? data.quotations : [];
                 let added = 0;
                 found.forEach(function(f) {
-                    if (f && f.id != null && !approvedQuotations.some(function(x) { return idsMatch(x.id, f.id); })) {
+                    // !f.deleted: search returns soft-deleted quotes too; without this a deleted
+                    // quote is resurrected into the list by a search that happens to match it.
+                    if (f && f.id != null && !f.deleted && !approvedQuotations.some(function(x) { return idsMatch(x.id, f.id); })) {
                         approvedQuotations.push(f);
                         added++;
                     }
