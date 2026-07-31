@@ -107,7 +107,12 @@ function buildRawMessage({ to, subject, bodyHtml, pdfBase64, pdfFilename, inRepl
     content = multipartEntity('mixed', [content, pdfEntity(pdfBase64, pdfFilename)]);
   }
 
-  const headers = [`To: ${to}`];
+  // A Bcc-only message (the supplier enquiry) has no To. Emitting an empty `To:` makes the
+  // message malformed, so use the standard placeholder instead — the Bcc still receives it.
+  const headers = [];
+  if (to) headers.push(`To: ${to}`);
+  else if (bcc) headers.push('To: undisclosed-recipients:;');
+  else headers.push(`To: ${to}`);
   if (cc) headers.push(`Cc: ${cc}`);
   if (bcc) headers.push(`Bcc: ${bcc}`);
   headers.push(`Subject: =?UTF-8?B?${Buffer.from(subject || '', 'utf8').toString('base64')}?=`);

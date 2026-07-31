@@ -62,7 +62,11 @@ function createGmailRouter() {
     let { to, subject, bodyHtml, pdfBase64, pdfFilename, replyToMessageId, threadId, inReplyTo, references, cc, bcc } = req.body;
 
     if (!bodyHtml) return res.status(400).json({ error: 'bodyHtml is required' });
-    if (!to && !replyToMessageId) return res.status(400).json({ error: 'to or replyToMessageId is required' });
+    // A BCC-only message is legitimate — the supplier enquiry sends one email per supplier with
+    // that supplier on Bcc, so nobody's address is exposed. Requiring `to` rejected those outright.
+    if (!to && !bcc && !cc && !replyToMessageId) {
+      return res.status(400).json({ error: 'to, cc, bcc or replyToMessageId is required' });
+    }
 
     if (replyToMessageId && (!to || !threadId)) {
       try {
@@ -77,12 +81,13 @@ function createGmailRouter() {
       }
     }
 
-    if (!to) return res.status(400).json({ error: 'Could not determine recipient' });
+    // A Bcc (or Cc) alone is a real recipient — only complain when there is nobody at all.
+    if (!to && !bcc && !cc) return res.status(400).json({ error: 'Could not determine recipient' });
     if (!subject) return res.status(400).json({ error: 'subject is required' });
 
     try {
       const result = await sendEmail({ to, subject, bodyHtml, pdfBase64, pdfFilename, threadId, inReplyTo, references, cc, bcc });
-      res.json({ success: true, messageId: result.messageId, threadId: result.threadId, sentTo: to });
+      res.json({ success: true, messageId: result.messageId, threadId: result.threadId, sentTo: to || bcc || cc });
     } catch (err) {
       console.error('Gmail send error:', err.message);
       res.status(500).json({ error: 'Failed to send email: ' + err.message });

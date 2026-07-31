@@ -116,40 +116,105 @@
         return items.filter(function (li) { return li && !isFreightRow(li); }).map(rowFromLineItem);
     }
 
-    // ── the emailed table: OUR REQUIREMENT / YOUR OFFER, as the preparer builds it ────
-    var OUR_COLS = ['Product / Spec', 'Size', 'Qty', 'UOM', 'Length req.', 'Make required'];
-    var OFFER_COLS = ['Rate', 'UOM', 'Make offered'];
-
-    function enquiryTableHtml(rows) {
-        var head = '<tr>'
-            + '<th colspan="' + OUR_COLS.length + '" style="background:#1f3864;color:#fff;padding:6px 8px;border:1px solid #999;">OUR REQUIREMENT (ENQUIRY)</th>'
-            + '<th colspan="' + OFFER_COLS.length + '" style="background:#375623;color:#fff;padding:6px 8px;border:1px solid #999;">YOUR OFFER</th>'
-            + '</tr><tr>'
-            + OUR_COLS.concat(OFFER_COLS).map(function (c) {
-                return '<th style="background:#f2f2f2;padding:5px 8px;border:1px solid #999;text-align:left;">' + escTxt(c) + '</th>';
-            }).join('')
-            + '</tr>';
-        var body = rows.map(function (r, i) {
-            var cells = [r.productSpec, r.size, r.qty, r.uom, r.lengthReqByUs, r.makeRequiredByUs, r.rate, r.offerUom, r.makeOfferedByYou];
-            return '<tr>' + cells.map(function (c) {
-                return '<td style="padding:5px 8px;border:1px solid #999;">' + escTxt(c) + '</td>';
-            }).join('') + '</tr>';
-        }).join('');
-        return '<table style="border-collapse:collapse;font-family:Arial,sans-serif;font-size:13px;">'
-            + head + body + '</table>';
+    // ── the emailed table: byte-for-byte the Enquiry Preparer's layout ────────
+    // Colours, borders, zebra striping, column names and the S.NO column all match
+    // buildEnquiryHtmlForCopy in enquiry-preparer.js — a supplier must not be able to tell
+    // which screen the enquiry was sent from.
+    var BORDER = 'border:1px solid #000;';
+    function th(text, bg, color) {
+        return '<th style="background:' + bg + ';color:' + color + ';' + BORDER + 'padding:8px;text-align:center;">' + escTxt(text) + '</th>';
+    }
+    function thGroup(text, colspan, bg, color) {
+        return '<th colspan="' + colspan + '" style="background:' + bg + ';color:' + color + ';' + BORDER + 'padding:8px;text-align:center;font-weight:700;">' + escTxt(text) + '</th>';
     }
 
+    function enquiryTableHtml(rows) {
+        var reqA = { bg: '#ffffff', color: '#0b4aa2' };
+        var reqB = { bg: '#0b4aa2', color: '#ffffff' };
+        var offA = { bg: '#2e7d32', color: '#ffffff' };
+        var offB = { bg: '#ffffff', color: '#2e7d32' };
+        var colHeaderRow = [
+            th('S. NO', reqA.bg, reqA.color),
+            th('PRODUCT & SPECIFICATION', reqB.bg, reqB.color),
+            th('SIZE', reqA.bg, reqA.color),
+            th('QTY', reqB.bg, reqB.color),
+            th('UOM', reqA.bg, reqA.color),
+            th('LENGTH REQ BY US', reqB.bg, reqB.color),
+            th('MAKE REQUIRED BY US', reqA.bg, reqA.color),
+            th('RATE', offA.bg, offA.color),
+            th('UOM', offB.bg, offB.color),
+            th('MAKE OFFERED BY YOU', offA.bg, offA.color)
+        ].join('');
+
+        var tableRows = rows.map(function (r, idx) {
+            var bg = (idx % 2 === 0) ? '#ffffff' : '#eef5ff';
+            var cellBase = BORDER + 'padding:8px;background-color:' + bg + ';';
+            function td(v, align) {
+                return '<td bgcolor="' + bg + '" style="' + cellBase + (align ? 'text-align:' + align + ';' : '') + '">' + escTxt(v) + '</td>';
+            }
+            return '<tr>'
+                + td(idx + 1, 'center')
+                + td(r.productSpec)
+                + td(r.size)
+                + td(r.qty, 'right')
+                + td(r.uom, 'center')
+                + td(r.lengthReqByUs, 'center')
+                + td(r.makeRequiredByUs, 'center')
+                + td(r.rate, 'center')
+                + td(r.offerUom, 'center')
+                + td(r.makeOfferedByYou, 'center')
+                + '</tr>';
+        }).join('');
+
+        return '<table cellpadding="0" cellspacing="0" border="0" style="width:100%; border-collapse:collapse; mso-table-lspace:0pt; mso-table-rspace:0pt;">'
+            + '<thead><tr>'
+            + thGroup('OUR REQUIREMENT (ENQUIRY)', 7, '#0b4aa2', '#fff')
+            + thGroup('YOUR OFFER', 3, '#2e7d32', '#fff')
+            + '</tr><tr>' + colHeaderRow + '</tr></thead>'
+            + '<tbody>' + tableRows + '</tbody></table>';
+    }
+
+    // The Enquiry Preparer's default message, word for word (resetEnquiryDefaults).
     function buildDraft(quotation) {
-        return 'Dear Sir,\n\n'
-            + 'Please share your best rate for the requirement below.\n\n'
-            + '[TABLE]\n\n'
-            + 'Kindly confirm availability and delivery time.\n\n'
-            + 'Regards,\nDSC Pipes';
+        return "Dear Sir/Ma'am,\n\n"
+            + 'KINDLY QUOTE YOUR BEST RATE WITH MINIMUM DELIVERY PERIOD.\n\n'
+            + 'NOTE: PLEASE MENTION UOM (MTR /KG /MT - METRIC TON) CLEARLY.\n\n'
+            + '[TABLE]';
+    }
+
+    // Header lines are rendered the way the preparer renders them: each line its own div, and
+    // the greeting bolder than the rest.
+    function headerLinesHtml(text) {
+        return String(text || '').split(/\r?\n/).map(function (l) {
+            var weight = l.trim().toUpperCase() === 'DEAR SIR' || /^dear sir\/ma'am,?$/i.test(l.trim()) ? '700' : '600';
+            return '<div style="font-weight:' + weight + '; margin:2px 0;">' + escTxt(l) + '</div>';
+        }).join('');
+    }
+
+    // The signature the app already sends with quotations (Settings → Default Email Signature).
+    // Cached after the first fetch; empty string when none is configured.
+    var _signatureHtml = null;
+    function loadSignature(then) {
+        if (_signatureHtml !== null) { then && then(); return; }
+        fetch(apiBase() + '/get-default-signature')
+            .then(function (r) { return r.json(); })
+            .then(function (d) { _signatureHtml = (d && d.content) || ''; })
+            .catch(function () { _signatureHtml = ''; })
+            .then(function () { then && then(); });
     }
 
     function messageToHtml(text, rows) {
-        var safe = escTxt(text).replace(/\n/g, '<br>');
-        return safe.replace('[TABLE]', enquiryTableHtml(rows));
+        var parts = String(text || '').split('[TABLE]');
+        var before = headerLinesHtml(parts[0].replace(/\n+$/, ''));
+        var after = parts.length > 1 ? headerLinesHtml(parts[1].replace(/^\n+/, '')) : '';
+        var sig = _signatureHtml ? '<div style="height:14px;"></div>' + _signatureHtml : '';
+        return '<div style="font-family: Arial, sans-serif; color:#111; font-size:13px;">'
+            + before
+            + '<div style="height:10px;"></div>'
+            + enquiryTableHtml(rows)
+            + (after ? '<div style="height:10px;"></div>' + after : '')
+            + sig
+            + '</div>';
     }
 
     // ── threads on the quotation ──────────────────────────────────────────────
@@ -250,7 +315,7 @@
                 + cell('uom', r.uom, '70px')
                 + cell('lengthReqByUs', r.lengthReqByUs, '90px')
                 + cell('makeRequiredByUs', r.makeRequiredByUs, '110px')
-                + '<td><button class="qet-del" data-i="' + i + '" title="Remove this row">&#128465;</button></td>'
+                + '<td><button class="qet-del" data-i="' + i + '" title="Remove this row" aria-label="Remove this row">&times;</button></td>'
                 + '</tr>';
         }).join('');
         return '<table class="qet-tbl">' + head + body + '</table>';
@@ -303,7 +368,7 @@
             + '<input class="qet-input" type="text" placeholder="Type a supplier name or email" autocomplete="off"></div>'
             + '<div class="qet-suggest"></div>'
             + '<p class="qet-note">Suggests suppliers you&rsquo;ve emailed before &mdash; the ones you use for this quote&rsquo;s pipe types come first. Each supplier gets their own email and is BCC&rsquo;d, so nobody sees anyone else.</p>'
-            + '<label class="qet-lbl">Message (editable) &mdash; [TABLE] is replaced by the enquiry table</label>'
+            + '<label class="qet-lbl">Message (editable) &mdash; [TABLE] is replaced by the enquiry table, and your standard signature is added below it</label>'
             + '<textarea class="qet-msg">' + escTxt(st.message) + '</textarea>'
             + '<div class="qet-sendrow"><button class="qet-btn qet-send"' + (canSend ? '' : ' disabled') + '>&#9993; Send enquiry</button></div>'
             + status
@@ -398,10 +463,16 @@
         if (!st.to.every(isEmail)) { st.sent = 'err:Check the highlighted email addresses.'; render(quotation, mountEl); return; }
 
         var subject = 'Enquiry' + (quotation.quoteNumber ? ' — ' + quotation.quoteNumber : '');
-        var bodyHtml = messageToHtml(st.message, st.rows);
         var recipients = st.to.slice();
         st.sending = true; st.sent = '';
         render(quotation, mountEl);
+        // Make sure the standard signature is in hand before building the body, so the enquiry
+        // is signed the same way a quotation is.
+        loadSignature(function () { doSend(quotation, mountEl, st, subject, recipients); });
+    }
+
+    function doSend(quotation, mountEl, st, subject, recipients) {
+        var bodyHtml = messageToHtml(st.message, st.rows);
 
         Promise.all(recipients.map(function (addr) {
             return fetch(apiBase() + '/send-email', {

@@ -434,9 +434,23 @@
             + 'Kindly include transit time and whether door delivery is covered.\n\n'
             + 'Regards,\nDSC Pipes';
     }
+    // The standard signature (Settings → Default Email Signature) — the same one quotations are
+    // sent with. Freight enquiries used to go out unsigned. Cached after the first fetch.
+    var _freightSignatureHtml = null;
+    function loadFreightSignature(then) {
+        if (_freightSignatureHtml !== null) { then && then(); return; }
+        fetch(apiBase() + '/get-default-signature')
+            .then(function (r) { return r.json(); })
+            .then(function (d) { _freightSignatureHtml = (d && d.content) || ''; })
+            .catch(function () { _freightSignatureHtml = ''; })
+            .then(function () { then && then(); });
+    }
     function enqTextToHtml(text) {
         var safe = (typeof escapeHtml === 'function') ? escapeHtml(text) : escTxt(text);
-        return safe.replace(/\n/g, '<br>');
+        var body = safe.replace(/\n/g, '<br>');
+        return _freightSignatureHtml
+            ? body + '<div style="height:14px;"></div>' + _freightSignatureHtml
+            : body;
     }
     function apiBase() {
         return (typeof API_BASE_URL !== 'undefined' && API_BASE_URL) ? API_BASE_URL : '/api';
@@ -604,6 +618,10 @@
         var recipients = enq.to.slice();
         enq.sending = true; enq.sent = ''; enq.checkResult = '';
         render(q, mountEl);
+        loadFreightSignature(function () { freightSendAll(q, st, mountEl, enq, recipients, subject, bodyText, scopeSec); });
+    }
+
+    function freightSendAll(q, st, mountEl, enq, recipients, subject, bodyText, scopeSec) {
         Promise.all(recipients.map(function (addr) {
             return fetch(apiBase() + '/send-email', {
                 method: 'POST',

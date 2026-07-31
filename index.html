@@ -355,8 +355,11 @@
         .qet-in { width: 100%; border: 1px solid transparent; background: transparent; padding: 3px 5px;
             border-radius: 4px; font-size: 12px; font-family: inherit; }
         .qet-in:focus { border-color: #185FA5; background: #fff; outline: none; }
-        .qet-del { background: none; border: none; cursor: pointer; opacity: 0.55; font-size: 13px; }
-        .qet-del:hover { opacity: 1; }
+        /* A plain × in a red pill — the old trash glyph rendered as an unclear blob at this size. */
+        .qet-del { background: #FCEBEB; color: #A32D2D; border: 1px solid #F09595; border-radius: 5px;
+            width: 22px; height: 22px; line-height: 1; padding: 0; cursor: pointer; font-size: 15px;
+            display: flex; align-items: center; justify-content: center; }
+        .qet-del:hover { background: #A32D2D; color: #fff; border-color: #A32D2D; }
         .qet-rowbtns { margin-bottom: 12px; }
         .qet-lbl { display: block; font-size: 12px; font-weight: 600; color: #4A4A46; margin: 10px 0 4px; }
         .qet-field { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; border: 1px solid rgba(0,0,0,.2);
