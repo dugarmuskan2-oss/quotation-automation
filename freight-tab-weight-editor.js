@@ -666,7 +666,8 @@
             return fetch(apiBase() + '/send-email', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ to: addr, subject: subject, bodyHtml: enqTextToHtml(bodyText, st) })
+                // label tags the thread Quotation Automation/Freight Enquiry in Gmail.
+                body: JSON.stringify({ to: addr, subject: subject, bodyHtml: enqTextToHtml(bodyText, st), label: 'freight' })
             }).then(function (res) {
                 return res.json().catch(function () { return {}; }).then(function (d) { return { addr: addr, ok: res.ok && d && d.success, d: d }; });
             }).catch(function (e) {

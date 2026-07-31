@@ -509,7 +509,60 @@ function dailyLabelReport() {
     buildEnquiryAcknowledger_()
   );
 
+  // Label the enquiries WE sent out, so they are findable in Gmail. Done here rather than from the
+  // app because GmailApp already has full Gmail access — the app's OAuth token would need the
+  // gmail.modify scope and a re-consent. The trade-off is timing: labels appear when this report
+  // runs, not the instant an enquiry is sent.
+  labelSentEnquiries_(dateStrings.startDateStr, dateStrings.endDatePlusOneStr);
+
   return created;
+}
+
+/***** LABEL THE ENQUIRIES WE SENT *****/
+const SENT_ENQUIRY_LABELS = [
+  {
+    // Freight enquiries to transporters — subject: "Freight enquiry — DSC-123 (to Hyderabad)".
+    label: 'Quotation Automation/Freight Enquiry',
+    query: 'from:me subject:"Freight enquiry"'
+  },
+  {
+    // Supplier/dealer enquiries from the quote card's Enquiry tab — subject: "Enquiry — DSC-123".
+    // The freight subject also begins with "Freight enquiry", so that is excluded explicitly.
+    label: 'Quotation Automation/Enquiry Sent by us',
+    query: 'from:me subject:"Enquiry" -subject:"Freight enquiry"'
+  }
+  // Regret replies are NOT listed here. They go out as "Re: <the customer's own subject>" with
+  // wording that is editable in Settings, so there is nothing dependable to search on. The app
+  // labels those itself the moment you click Regret (GMAIL_SENT_LABELS in utils/constants.js).
+];
+
+/**
+ * Apply the sent-enquiry labels to threads we sent in this report's window.
+ * Idempotent: a thread that already carries the label is skipped, so repeat runs are cheap.
+ * Fails soft — a labelling problem must never abort the report or the ingest that ran before it.
+ * @param {string} startDateStr - yyyy/MM/dd, inclusive
+ * @param {string} endDatePlusOneStr - yyyy/MM/dd, exclusive
+ */
+function labelSentEnquiries_(startDateStr, endDatePlusOneStr) {
+  SENT_ENQUIRY_LABELS.forEach(function (spec) {
+    try {
+      const labelObj = GmailApp.getUserLabelByName(spec.label) || GmailApp.createLabel(spec.label);
+      const window = (startDateStr && endDatePlusOneStr)
+        ? ' after:' + startDateStr + ' before:' + endDatePlusOneStr
+        : '';
+      const threads = GmailApp.search(spec.query + window, 0, 200);
+      let applied = 0;
+      threads.forEach(function (thread) {
+        const already = thread.getLabels().some(function (l) { return l.getName() === spec.label; });
+        if (already) return;
+        thread.addLabel(labelObj);
+        applied++;
+      });
+      Logger.log('Labelled ' + applied + ' thread(s) as "' + spec.label + '" (' + threads.length + ' matched)');
+    } catch (e) {
+      Logger.log('Could not apply "' + spec.label + '": ' + e.toString());
+    }
+  });
 }
 
 /***** BUTTON FUNCTIONS *****/

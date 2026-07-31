@@ -21,6 +21,10 @@ const SCOPES = [
   // thread message bodies for the in-card Conversation panel. Re-run this script after
   // changing scopes to regenerate the refresh token with the new consent.
   'https://www.googleapis.com/auth/gmail.readonly',
+  // gmail.modify lets the app tag a thread right after it sends into it (Freight Enquiry /
+  // Enquiry Sent by us / Regret). Gmail offers no narrower "labels only" scope for applying
+  // a label to a message — gmail.labels covers managing the label list, not attaching it.
+  'https://www.googleapis.com/auth/gmail.modify',
   // People API — powers the real-time recipient autocomplete (people you've emailed +
   // saved contacts). Requires the People API to be enabled in the Google Cloud project.
   'https://www.googleapis.com/auth/contacts.readonly',

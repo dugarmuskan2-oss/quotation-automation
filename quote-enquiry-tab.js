@@ -528,7 +528,8 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 // bcc carries the supplier; `to` is our own account so the message is well-formed.
-                body: JSON.stringify({ to: '', bcc: addr, subject: subject, bodyHtml: bodyHtml })
+                // label tags the thread Quotation Automation/Enquiry Sent by us in Gmail.
+                body: JSON.stringify({ to: '', bcc: addr, subject: subject, bodyHtml: bodyHtml, label: 'supplier' })
             }).then(function (res) {
                 return res.json().catch(function () { return {}; }).then(function (d) {
                     return { addr: addr, ok: res.ok && d && d.success, d: d };

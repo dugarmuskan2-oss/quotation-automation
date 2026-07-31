@@ -137,6 +137,58 @@ async function sendEmail({ to, subject, bodyHtml, pdfBase64, pdfFilename, thread
   return { messageId: res.data.id, threadId: res.data.threadId };
 }
 
+// ── Labelling what we send (needs the gmail.modify scope) ──────────────────────
+//
+// Gmail has no "label this" option on send, so labelling is a second call made
+// straight after. Nesting is by name: "Quotation Automation/Regret" shows up as
+// Regret sitting inside the Quotation Automation group, and Gmail creates the
+// parent implicitly, so there is nothing to set up by hand.
+
+// Label ids are stable for the life of the mailbox, so one lookup per name is enough.
+const _labelIdCache = new Map();
+
+async function listLabelId(gmail, name) {
+  const res = await gmail.users.labels.list({ userId: 'me' });
+  const wanted = String(name).toLowerCase();
+  const hit = (res.data.labels || []).find(l => String(l.name || '').toLowerCase() === wanted);
+  return hit ? hit.id : null;
+}
+
+async function findOrCreateLabelId(gmail, name) {
+  if (_labelIdCache.has(name)) return _labelIdCache.get(name);
+
+  let id = await listLabelId(gmail, name);
+  if (!id) {
+    try {
+      const created = await gmail.users.labels.create({
+        userId: 'me',
+        requestBody: { name, labelListVisibility: 'labelShow', messageListVisibility: 'show' },
+      });
+      id = created.data.id;
+    } catch (err) {
+      // Two sends racing to create the same label: Gmail rejects the loser with 409.
+      // The winner's label is what we wanted anyway, so re-read rather than fail.
+      if (err.code !== 409 && err.status !== 409) throw err;
+      id = await listLabelId(gmail, name);
+      if (!id) throw err;
+    }
+  }
+  _labelIdCache.set(name, id);
+  return id;
+}
+
+/**
+ * Add a label to a thread we have just sent into.
+ * Labelling a thread labels the conversation, which is what shows in the Gmail list.
+ */
+async function applyLabelToThread(threadId, labelName) {
+  if (!threadId || !labelName) return false;
+  const gmail = createGmailClient();
+  const labelId = await findOrCreateLabelId(gmail, labelName);
+  await gmail.users.threads.modify({ userId: 'me', id: threadId, requestBody: { addLabelIds: [labelId] } });
+  return true;
+}
+
 async function lookupMessageThread(messageId) {
   const gmail = createGmailClient();
   const msg = await gmail.users.messages.get({
@@ -265,6 +317,6 @@ async function searchContactSuggestions(query) {
   return out.slice(0, 12);
 }
 
-module.exports = { sendEmail, lookupMessageThread, fetchThreadMessages, searchContactSuggestions };
+module.exports = { sendEmail, lookupMessageThread, fetchThreadMessages, searchContactSuggestions, applyLabelToThread };
 // Pure helpers exposed for unit testing (MIME structure, inline-image CID rewrite, body parse).
-module.exports._test = { buildRawMessage, extractInlineImages, wrapBase64, extractBodyText, stripHtmlToText, isAutoOrSystemMessage };
+module.exports._test = { buildRawMessage, extractInlineImages, wrapBase64, extractBodyText, stripHtmlToText, isAutoOrSystemMessage, findOrCreateLabelId, _labelIdCache };

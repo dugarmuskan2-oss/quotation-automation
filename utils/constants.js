@@ -24,6 +24,16 @@ const ENTITY_GMAIL_MSG_MARKER = 'GMAIL_MSG_MARKER';
  *  given message wins — this is the atomic duplicate guard. */
 const GMAIL_MSG_MARKER_PREFIX = 'GMAILMSG#';
 
+/** Gmail labels the app puts on threads it sends into, keyed by a short tag the
+ *  client sends. The client passes the KEY, never the label name — otherwise a
+ *  stray request could create arbitrary labels in the mailbox. "/" nests them, so
+ *  all three appear inside the Quotation Automation group in Gmail. */
+const GMAIL_SENT_LABELS = {
+  freight: 'Quotation Automation/Freight Enquiry',
+  supplier: 'Quotation Automation/Enquiry Sent by us',
+  regret: 'Quotation Automation/Regret',
+};
+
 /** Counter starts here so the first real quote number is QUOTE_COUNTER_START + 1. */
 const QUOTE_COUNTER_START = 107;
 
@@ -54,6 +64,7 @@ module.exports = {
     ENTITY_QUOTATION,
     ENTITY_GMAIL_MSG_MARKER,
     GMAIL_MSG_MARKER_PREFIX,
+    GMAIL_SENT_LABELS,
     QUOTE_COUNTER_ID,
     QUOTE_COUNTER_START,
     QUOTATIONS_GSI_INDEX,

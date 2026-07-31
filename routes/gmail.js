@@ -1,12 +1,31 @@
 'use strict';
 
 const express = require('express');
-const { sendEmail, lookupMessageThread, fetchThreadMessages, searchContactSuggestions } = require('../utils/gmail');
+const { sendEmail, lookupMessageThread, fetchThreadMessages, searchContactSuggestions, applyLabelToThread } = require('../utils/gmail');
+const { GMAIL_SENT_LABELS } = require('../utils/constants');
 
 // Prefix a subject with "Re:" unless it already has one (avoids "Re: Re: ...").
 function replySubject(original) {
   const s = String(original || '').trim();
   return /^re:/i.test(s) ? s : `Re: ${s}`;
+}
+
+/**
+ * Tag the thread we just sent into, e.g. "Regret".
+ * Deliberately swallows its own errors: the mail is already gone, so a labelling
+ * problem (most likely the gmail.modify scope missing until the owner re-runs
+ * tools/gmail-auth.js) must not report the send as failed. The Gmail Report's
+ * labelSentEnquiries_ sweeps up anything missed here.
+ */
+async function labelSentThread(threadId, labelKey) {
+  const name = GMAIL_SENT_LABELS[String(labelKey || '').toLowerCase()];
+  if (!name || !threadId) return false;
+  try {
+    return await applyLabelToThread(threadId, name);
+  } catch (err) {
+    console.error(`Gmail labelling failed (${name}):`, err.message);
+    return false;
+  }
 }
 
 function createGmailRouter() {
@@ -59,7 +78,7 @@ function createGmailRouter() {
   // (same jsPDF used for Download/Print) and sends its base64 here. If
   // replyToMessageId is provided, the original sender/subject/thread are auto-filled.
   router.post('/send-email', async (req, res) => {
-    let { to, subject, bodyHtml, pdfBase64, pdfFilename, replyToMessageId, threadId, inReplyTo, references, cc, bcc } = req.body;
+    let { to, subject, bodyHtml, pdfBase64, pdfFilename, replyToMessageId, threadId, inReplyTo, references, cc, bcc, label } = req.body;
 
     if (!bodyHtml) return res.status(400).json({ error: 'bodyHtml is required' });
     // A BCC-only message is legitimate — the supplier enquiry sends one email per supplier with
@@ -87,7 +106,8 @@ function createGmailRouter() {
 
     try {
       const result = await sendEmail({ to, subject, bodyHtml, pdfBase64, pdfFilename, threadId, inReplyTo, references, cc, bcc });
-      res.json({ success: true, messageId: result.messageId, threadId: result.threadId, sentTo: to || bcc || cc });
+      const labelled = await labelSentThread(result.threadId, label);
+      res.json({ success: true, messageId: result.messageId, threadId: result.threadId, sentTo: to || bcc || cc, labelled });
     } catch (err) {
       console.error('Gmail send error:', err.message);
       res.status(500).json({ error: 'Failed to send email: ' + err.message });
@@ -99,3 +119,4 @@ function createGmailRouter() {
 
 module.exports = createGmailRouter;
 module.exports.replySubject = replySubject;
+module.exports._test = { labelSentThread };

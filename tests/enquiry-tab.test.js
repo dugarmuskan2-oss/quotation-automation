@@ -1087,7 +1087,9 @@ describe('POST /send-email — a Bcc-only supplier enquiry is accepted', () => {
 
     test('the tab really posts one bcc recipient per email, with an empty To', () => {
         // Source guard: the send loop in quote-enquiry-tab.js is what depends on the two rules above.
-        expect(tabSrc).toContain("body: JSON.stringify({ to: '', bcc: addr, subject: subject, bodyHtml: bodyHtml })");
+        // Asserted piecewise rather than as one literal so that adding a field to the payload
+        // (the Gmail `label`, say) doesn't fail a test that is really about To/Bcc.
+        expect(tabSrc).toMatch(/JSON\.stringify\(\{ to: '', bcc: addr,/);
         expect(tabSrc).toContain('Promise.all(recipients.map(function (addr) {');
     });
 });
