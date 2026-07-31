@@ -16,6 +16,7 @@ const {
     CONFIG_KEY_DEFAULT_EMAIL_MESSAGE,
     CONFIG_KEY_DEFAULT_SIGNATURE,
     CONFIG_KEY_FREIGHT_SUGGESTIONS,
+    CONFIG_KEY_SUPPLIER_SUGGESTIONS,
     CONFIG_KEY_STAFF_LIST,
 } = require('../utils/constants');
 
@@ -93,6 +94,49 @@ function sanitizeFreightSuggestions(input) {
         .filter(Boolean)
         .slice(0, FREIGHT_MAX_PLACES);
     return { transporters, routes, pickups: places(source.pickups), drops: places(source.drops) };
+}
+
+// ── Supplier suggestions, keyed by PIPE TYPE ──────────────────────────────────
+// The buying-side mirror of the freight memory above: which supplier/dealer emails were used
+// for GI, ERW and Seamless. Kept to the three canonical types so a typo can never invent a
+// fourth bucket that then suggests nothing.
+const SUPPLIER_PIPE_TYPES = ['gi', 'erw', 'seamless'];
+
+// Bucket any pipe-type-ish string to one of the three. Mirrors how the app reads a line item's
+// type elsewhere: the explicit type first, else the description (SCH/seamless => seamless).
+function normalizePipeType(v) {
+    const s = String(v == null ? '' : v).toLowerCase();
+    if (!s.trim()) return '';
+    if (s.includes('seamless') || /\bsch\b/.test(s)) return 'seamless';
+    if (s.includes('erw')) return 'erw';
+    if (s.includes('gi') || s.includes('galvan')) return 'gi';
+    return '';
+}
+
+function sanitizeSupplierSuggestions(input) {
+    const source = (input && typeof input === 'object') ? input : {};
+    const byType = {};
+    SUPPLIER_PIPE_TYPES.forEach(function (t) {
+        byType[t] = sanitizeTransporterList(source.byType && source.byType[t]);
+    });
+    return { suppliers: sanitizeTransporterList(source.suppliers), byType };
+}
+
+// Record one enquiry: bump the global supplier list and each pipe type it covered.
+function mergeSupplierUsage(existing, usage) {
+    const now = new Date().toISOString();
+    const base = sanitizeSupplierSuggestions(existing);
+    const recipients = (Array.isArray(usage && usage.recipients) ? usage.recipients : [])
+        .map(e => String(e || '').trim()).filter(Boolean);
+    if (!recipients.length) return base;
+
+    base.suppliers = bumpTransporters(base.suppliers, recipients, now);
+    const types = (Array.isArray(usage && usage.pipeTypes) ? usage.pipeTypes : [usage && usage.pipeType])
+        .map(normalizePipeType).filter(Boolean);
+    Array.from(new Set(types)).forEach(function (t) {
+        base.byType[t] = bumpTransporters(base.byType[t], recipients, now);
+    });
+    return base;
 }
 
 // Bump each recipient's usage count in a transporter list, most-used first.
@@ -323,8 +367,43 @@ module.exports = function createConfigRouter({ storage }) {
         }
     });
 
+    // ── Supplier suggestions (Enquiry tab) ────────────────────────────────────
+    router.get('/get-supplier-suggestions', async (req, res) => {
+        try {
+            const content = await storage.readText(CONFIG_KEY_SUPPLIER_SUGGESTIONS);
+            let parsed = {};
+            if (content) {
+                try { parsed = JSON.parse(content); } catch { parsed = {}; }
+            }
+            res.json({ hasFile: content !== null, suggestions: sanitizeSupplierSuggestions(parsed) });
+        } catch (error) {
+            console.error('Error getting supplier suggestions:', error);
+            res.status(500).json({ error: 'Failed to get supplier suggestions', details: error.message });
+        }
+    });
+
+    // Record one enquiry's usage: { recipients: [emails], pipeTypes: ['gi','erw',...] }
+    router.post('/save-supplier-suggestions', express.json(), async (req, res) => {
+        try {
+            const content = await storage.readText(CONFIG_KEY_SUPPLIER_SUGGESTIONS);
+            let existing = {};
+            if (content) {
+                try { existing = JSON.parse(content); } catch { existing = {}; }
+            }
+            const merged = mergeSupplierUsage(existing, req.body || {});
+            await storage.saveText(CONFIG_KEY_SUPPLIER_SUGGESTIONS, JSON.stringify(merged));
+            res.json({ success: true, suggestions: merged });
+        } catch (error) {
+            console.error('Error saving supplier suggestions:', error);
+            res.status(500).json({ error: 'Failed to save supplier suggestions', details: error.message });
+        }
+    });
+
     return router;
 };
 
 // Pure helpers exposed for unit testing (see tests/freight-suggestions.test.js).
-module.exports._test = { sanitizeFreightSuggestions, mergeFreightUsage, bumpTransporters, normalizePlace, sanitizeStaffList };
+module.exports._test = {
+    sanitizeFreightSuggestions, mergeFreightUsage, bumpTransporters, normalizePlace, sanitizeStaffList,
+    sanitizeSupplierSuggestions, mergeSupplierUsage, normalizePipeType,
+};

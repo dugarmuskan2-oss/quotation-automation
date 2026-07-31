@@ -343,6 +343,46 @@
         .rev-ask-btn:hover { background: #F7F6F4; border-color: #C0392B; color: #C0392B; }
         .rev-ask-btn-note:hover { border-color: #185FA5; color: #185FA5; }
 
+        /* ── Enquiry tab (quote card) — the buying-side mirror of the Freight tab ── */
+        .qet { font-size: 13px; color: #20201d; }
+        .qet-h { font-size: 13px; font-weight: 700; margin: 2px 0 8px; }
+        .qet-sub { font-weight: 400; color: #9b988e; font-size: 12px; }
+        .qet-empty { text-align: center; padding: 26px 16px; color: #6e6c65; }
+        .qet-empty-h { font-size: 14px; font-weight: 700; color: #20201d; margin-bottom: 4px; }
+        .qet-tbl { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 8px; }
+        .qet-tbl th { background: #1f3864; color: #fff; padding: 5px 7px; text-align: left; font-weight: 600; }
+        .qet-tbl td { border-bottom: 1px solid #eee; padding: 3px 4px; }
+        .qet-in { width: 100%; border: 1px solid transparent; background: transparent; padding: 3px 5px;
+            border-radius: 4px; font-size: 12px; font-family: inherit; }
+        .qet-in:focus { border-color: #185FA5; background: #fff; outline: none; }
+        .qet-del { background: none; border: none; cursor: pointer; opacity: 0.55; font-size: 13px; }
+        .qet-del:hover { opacity: 1; }
+        .qet-rowbtns { margin-bottom: 12px; }
+        .qet-lbl { display: block; font-size: 12px; font-weight: 600; color: #4A4A46; margin: 10px 0 4px; }
+        .qet-field { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; border: 1px solid rgba(0,0,0,.2);
+            border-radius: 6px; padding: 5px 7px; background: #fff; }
+        .qet-input { flex: 1 1 190px; border: none; outline: none; font-size: 13px; font-family: inherit; padding: 3px; }
+        .qet-chip { display: inline-flex; align-items: center; gap: 4px; background: #EAF1FA; color: #14487F;
+            border-radius: 12px; padding: 2px 6px 2px 9px; font-size: 12px; }
+        .qet-chip-bad { background: #FDECEC; color: #A32D2D; }
+        .qet-chip-x { background: none; border: none; cursor: pointer; font-size: 14px; line-height: 1; color: inherit; }
+        .qet-suggest { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+        .qet-sg { background: #F4F3F1; border: 1px solid #E4E2DE; border-radius: 11px; padding: 2px 9px;
+            font-size: 12px; cursor: pointer; color: #4A4A46; }
+        .qet-sg:hover { border-color: #185FA5; color: #185FA5; }
+        .qet-note { font-size: 11px; color: #9b988e; margin: 5px 0 0; }
+        .qet-msg { width: 100%; min-height: 120px; border: 1px solid rgba(0,0,0,.2); border-radius: 6px;
+            padding: 7px 9px; font-size: 12px; font-family: inherit; resize: vertical; }
+        .qet-sendrow { margin-top: 12px; }
+        .qet-btn { background: #185FA5; color: #fff; border: none; border-radius: 6px; padding: 7px 14px;
+            font-size: 13px; font-weight: 600; cursor: pointer; }
+        .qet-btn:disabled { opacity: 0.45; cursor: default; }
+        .qet-status { margin-top: 8px; font-size: 12px; font-weight: 600; }
+        .qet-threads { margin-top: 14px; border-top: 1px solid #eee; padding-top: 10px; }
+        .qet-thread { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 12px; }
+        .qet-th-email { flex: 1 1 auto; }
+        .qet-reply { background: #F7F6F4; border-radius: 6px; padding: 7px 9px; font-size: 12px; margin: 3px 0 7px; }
+
         /* Red count circle on the Revision filter button. */
         .rev-count { display: inline-block; min-width: 18px; height: 18px; line-height: 18px; padding: 0 5px;
             margin-left: 6px; border-radius: 9px; background: #C0392B; color: #fff; font-size: 11px;
@@ -1465,6 +1505,7 @@
                 <button id="approvalAllMonthsBtn" class="upload-btn" type="button" onclick="approvalShowAllMonths()" style="width:auto; padding:6px 12px;" title="Show quotes from every month">All months</button>
                 <button id="approvalFreightBtn" class="upload-btn" type="button" onclick="approvalToggleFreight()" style="width:auto; padding:6px 12px;" title="Show every quote a freight enquiry was sent for, replied or not">&#128666; Freight</button>
                 <button id="approvalRevisionBtn" class="upload-btn" type="button" onclick="approvalToggleRevision()" style="width:auto; padding:6px 12px;" title="Show every quote the admin has asked for a revision on">&#128221; Revision<span id="approvalRevisionCount" class="rev-count" style="display:none;">0</span></button>
+                <button id="approvalEnquiryBtn" class="upload-btn" type="button" onclick="approvalToggleEnquiry()" style="width:auto; padding:6px 12px;" title="Show every quote a supplier enquiry was sent for">&#128233; Enquiry</button>
             </div>
             <!-- Global sweep: check every quote awaiting a transporter/customer reply in one go. -->
             <div style="margin-bottom: 10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
@@ -1938,7 +1979,7 @@
             // decides completeness — so hide the feed "Load more" to avoid the confusing case where an
             // older month looks empty next to a tempting button. If that fetch errored, we fall back to
             // feed paging so older quotes stay reachable.
-            const filterActive = !!(approvalMonthFilter || approvalFreightFilter || approvalRevisionFilter);
+            const filterActive = !!(approvalMonthFilter || approvalFreightFilter || approvalRevisionFilter || approvalEnquiryFilter);
             if (filterActive && !approvalFilterFetchFailed) {
                 loadMoreBtn.style.display = 'none';
                 return;
@@ -6741,7 +6782,10 @@
 
         function getFilteredApprovedQuotations(query) {
             let list = approvedQuotations.slice();
-            if (approvalRevisionFilter) {
+            if (approvalEnquiryFilter) {
+                // supplier enquiries span all months too
+                list = list.filter(function(q) { return typeof quoteHasSupplierEnquiry === 'function' && quoteHasSupplierEnquiry(q); });
+            } else if (approvalRevisionFilter) {
                 list = list.filter(quoteNeedsRevisionClient);                 // revisions span all months
             } else if (approvalFreightFilter) {
                 list = list.filter(quoteHasFreightActivityClient);            // freight spans all months
@@ -6757,6 +6801,7 @@
         let approvalMonthFilter = '';       // 'YYYY-MM' or '' (all months)
         let approvalFreightFilter = false;
         let approvalRevisionFilter = false;
+        let approvalEnquiryFilter = false;
         let approvalFilterLoading = false;     // server filter fetch is in flight
         let approvalFilterFetchFailed = false; // last server filter fetch errored → fall back to feed paging
         const APPROVAL_MONTHS = ['01','02','03','04','05','06','07','08','09','10','11','12'];
@@ -6764,6 +6809,7 @@
 
         // Human label for the active filter, e.g. "July 2026" or "freight".
         function approvalFilterLabel() {
+            if (approvalEnquiryFilter) return 'enquiry';
             if (approvalRevisionFilter) return 'revision';
             if (approvalFreightFilter) return 'freight';
             if (approvalMonthFilter) {
@@ -6791,16 +6837,19 @@
             const q = (approvalSearchQuery || '').trim();
             if (q) {
                 return '<p style="text-align:center; color:#999; padding:20px;">No '
-                    + (approvalRevisionFilter ? 'quotes waiting on a revision'
-                        : (approvalFreightFilter ? 'quotes with a freight enquiry'
-                            : ('quotes for ' + escapeHtml(approvalFilterLabel()))))
+                    + (approvalEnquiryFilter ? 'quotes with a supplier enquiry'
+                        : (approvalRevisionFilter ? 'quotes waiting on a revision'
+                            : (approvalFreightFilter ? 'quotes with a freight enquiry'
+                                : ('quotes for ' + escapeHtml(approvalFilterLabel())))))
                     + ' matching &ldquo;' + escapeHtml(q) + '&rdquo;.</p>';
             }
-            const what = approvalRevisionFilter
-                ? 'quotes waiting on a revision'
-                : (approvalFreightFilter
-                    ? 'quotes with a freight enquiry'
-                    : ('quotes for ' + escapeHtml(approvalFilterLabel())));
+            const what = approvalEnquiryFilter
+                ? 'quotes with a supplier enquiry'
+                : (approvalRevisionFilter
+                    ? 'quotes waiting on a revision'
+                    : (approvalFreightFilter
+                        ? 'quotes with a freight enquiry'
+                        : ('quotes for ' + escapeHtml(approvalFilterLabel()))));
             return '<p style="text-align:center; color:#999; padding:20px;">No ' + what + '.</p>';
         }
 
@@ -6937,10 +6986,12 @@
             if (fb) { fb.style.background = approvalFreightFilter ? '#185FA5' : ''; fb.style.color = approvalFreightFilter ? '#fff' : ''; }
             const rb = document.getElementById('approvalRevisionBtn');
             if (rb) { rb.style.background = approvalRevisionFilter ? '#C0392B' : ''; rb.style.color = approvalRevisionFilter ? '#fff' : ''; }
+            const eb = document.getElementById('approvalEnquiryBtn');
+            if (eb) { eb.style.background = approvalEnquiryFilter ? '#6B3FA0' : ''; eb.style.color = approvalEnquiryFilter ? '#fff' : ''; }
             updateApprovalRevisionCount();
-            // Freight and Revision both override the month pick, so either greys the dropdowns.
-            // (No month picked is now the normal opening state — it must not look disabled.)
-            const dim = approvalFreightFilter || approvalRevisionFilter;
+            // Freight, Revision and Enquiry each override the month pick, so any of them greys the
+            // dropdowns. (No month picked is now the normal opening state — it must not look disabled.)
+            const dim = approvalFreightFilter || approvalRevisionFilter || approvalEnquiryFilter;
             ['approvalMonthSelect','approvalYearSelect'].forEach(function(id){ const el = document.getElementById(id); if (el) el.style.opacity = dim ? '0.5' : ''; });
         }
         // Red circle on the Revision button. Hidden at zero — a "0" badge reads as a nag.
@@ -6985,9 +7036,10 @@
         async function applyApprovalServerFilter() {
             const mySeq = ++_approvalFilterSeq;
             approvalFilterFetchFailed = false;
-            const params = approvalRevisionFilter ? 'revision=1'
+            const params = approvalEnquiryFilter ? 'enquiry=1'
+                : (approvalRevisionFilter ? 'revision=1'
                 : (approvalFreightFilter ? 'freight=1'
-                    : (approvalMonthFilter ? 'month=' + encodeURIComponent(approvalMonthFilter) : ''));
+                    : (approvalMonthFilter ? 'month=' + encodeURIComponent(approvalMonthFilter) : '')));
             approvalFilterLoading = !!params;   // only show a loading note when we're actually fetching
             displayAllApprovedQuotations();     // instant: loaded matches, or the loading note if none yet
             if (!params) return;
@@ -7019,6 +7071,7 @@
             if (!m || !y) return;
             approvalFreightFilter = false;
             approvalRevisionFilter = false;
+            approvalEnquiryFilter = false;
             // Blank month ("All months", or only the year was changed) → back to the latest-quotes feed.
             if (!m.value) { approvalShowAllMonths(); return; }
             approvalMonthFilter = y.value + '-' + m.value;
@@ -7026,7 +7079,7 @@
             applyApprovalServerFilter();
         }
         function approvalShowAllMonths() {
-            approvalMonthFilter = ''; approvalFreightFilter = false; approvalRevisionFilter = false;
+            approvalMonthFilter = ''; approvalFreightFilter = false; approvalRevisionFilter = false; approvalEnquiryFilter = false;
             approvalResetMonthSelect();
             updateApprovalFilterButtons();
             displayAllApprovedQuotations();   // just the loaded feed, no server call
@@ -7041,7 +7094,14 @@
         function approvalToggleRevision() {
             approvalRevisionFilter = !approvalRevisionFilter;
             // Revisions span every month too, and the three filters are mutually exclusive.
-            if (approvalRevisionFilter) { approvalMonthFilter = ''; approvalFreightFilter = false; approvalResetMonthSelect(); }
+            if (approvalRevisionFilter) { approvalMonthFilter = ''; approvalFreightFilter = false; approvalEnquiryFilter = false; approvalResetMonthSelect(); }
+            updateApprovalFilterButtons();
+            applyApprovalServerFilter();
+        }
+        function approvalToggleEnquiry() {
+            approvalEnquiryFilter = !approvalEnquiryFilter;
+            // Supplier enquiries span every month, and the four filters are mutually exclusive.
+            if (approvalEnquiryFilter) { approvalMonthFilter = ''; approvalFreightFilter = false; approvalRevisionFilter = false; approvalResetMonthSelect(); }
             updateApprovalFilterButtons();
             applyApprovalServerFilter();
         }
@@ -7172,6 +7232,7 @@
                 <div class="qtab-bar">
                     <button class="qtab" type="button" data-tab="quote">Quote</button>
                     <button class="qtab" type="button" data-tab="freight">Freight</button>
+                    <button class="qtab" type="button" data-tab="enquiry">Enquiry</button>
                     <button class="qtab" type="button" data-tab="history">History</button>
                 </div>
                 <div class="qtab-content" data-tab="quote">
@@ -7204,6 +7265,9 @@
                 </div>
                 <div class="qtab-content" data-tab="freight" style="display:none;">
                     <div class="qtab-placeholder">Freight tools — weight, transporter enquiry &amp; add-freight — will live here (Phase 3).</div>
+                </div>
+                <div class="qtab-content" data-tab="enquiry" style="display:none;">
+                    <div class="qtab-placeholder">Supplier enquiry loading&hellip;</div>
                 </div>
                 <div class="qtab-content" data-tab="history" style="display:none;">
                     <div class="qtab-placeholder">Revision history will live here (Phase 4).</div>
@@ -7916,7 +7980,7 @@
             const filteredQuotations = getFilteredApprovedQuotations(approvalSearchQuery);
             // A month/freight filter with nothing to show yet: render a loading note (fetch in flight)
             // or a clean "no quotes for {month}" message — instead of a blank list beside a Load-more button.
-            if (filteredQuotations.length === 0 && (approvalMonthFilter || approvalFreightFilter || approvalRevisionFilter)) {
+            if (filteredQuotations.length === 0 && (approvalMonthFilter || approvalFreightFilter || approvalRevisionFilter || approvalEnquiryFilter)) {
                 renderApprovedQuotationsHTML(container, approvalFilteredEmptyHtml());
                 updateApprovalContainerScrollLimit(container);
                 return;
@@ -8358,6 +8422,10 @@
                 const freightTabEl = folderContentEl.querySelector('.qtab-content[data-tab="freight"]');
                 if (freightTabEl && window.renderFreightWeightEditor) {
                     window.renderFreightWeightEditor(quotation, freightTabEl);
+                }
+                const enquiryTabEl = folderContentEl.querySelector('.qtab-content[data-tab="enquiry"]');
+                if (enquiryTabEl && window.renderQuoteEnquiryTab) {
+                    window.renderQuoteEnquiryTab(quotation, enquiryTabEl);
                 }
                 const historyTabEl = folderContentEl.querySelector('.qtab-content[data-tab="history"]');
                 if (historyTabEl) historyTabEl.innerHTML = buildHistoryTabContent(quotation);
@@ -11617,6 +11685,7 @@
     <script src="weight-calculator.js?v=20260529-1"></script>
     <script src="enquiry-preparer.js?v=20260529-1"></script>
     <script src="freight-tab-weight-editor.js?v=20260624-4"></script>
+    <script src="quote-enquiry-tab.js?v=20260731-1"></script>
     <script src="register.js?v=20260722-5"></script>
 </body>
 </html>

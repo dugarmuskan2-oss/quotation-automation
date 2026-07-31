@@ -39,6 +39,8 @@ const SUMMARY_NESTED_PATHS = [
     // Revision asks + plain notes added from a quote card. revisionRequests must be here so the
     // Revision filter and its count badge work from the list alone, without fetching every quote.
     'revisionRequests', 'extraNotes',
+    // Supplier enquiries sent from the quote card's Enquiry tab — powers the Enquiry filter.
+    'supplierEnquiries',
 ];
 const SUMMARY_PROJECTION = [
     'id', 'updatedAt', 'createdAt',
@@ -236,6 +238,11 @@ function quoteHasFreightActivity(x) {
     if (x && x.transporterReplyIn) return true;
     return !!(x && Array.isArray(x.freightEnquiries) && x.freightEnquiries.length > 0);
 }
+// A supplier enquiry was sent for this quote (the Enquiry tab). Mirrors quoteHasSupplierEnquiry
+// in quote-enquiry-tab.js — entries only ever exist for emails that actually sent.
+function quoteHasSupplierEnquiry(x) {
+    return !!(x && Array.isArray(x.supplierEnquiries) && x.supplierEnquiries.length > 0);
+}
 // Needs a revision — the admin asked for a change that has not been sent to the customer yet.
 // Done asks are KEPT (History shows what was asked), so this counts only the open ones.
 // Mirrors quoteNeedsRevisionClient in index.html.
@@ -315,7 +322,7 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
             // pressed Save/Approve/Send or ran the reply sweep, taking the wording with it. The same
             // overwrite un-deleted soft-deleted quotes and dropped freight enquiry records.
             // Always take the stored values; ignore whatever the client sent.
-            const SERVER_OWNED = ['revisionRequests', 'extraNotes', 'deleted', 'deletedAt', 'freightEnquiries', 'transporterReplyIn'];
+            const SERVER_OWNED = ['revisionRequests', 'extraNotes', 'deleted', 'deletedAt', 'freightEnquiries', 'transporterReplyIn', 'supplierEnquiries'];
             if (stored) {
                 SERVER_OWNED.forEach(function (field) {
                     if (Object.prototype.hasOwnProperty.call(stored, field)) quotation[field] = stored[field];
@@ -761,6 +768,35 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
         }
     });
 
+    // Persist the SUPPLIER-enquiry records (the quote card's Enquiry tab). Same field-only merge
+    // as the freight route below, for the same reason: the client posting its own view must never
+    // erase an enquiry a colleague sent moments earlier.
+    router.post('/quotations/:id/supplier-enquiries', async (req, res) => {
+        if (!requireDdb(res)) return;
+        try {
+            const { supplierEnquiries } = req.body || {};
+            if (!Array.isArray(supplierEnquiries)) {
+                return res.status(400).json({ error: 'supplierEnquiries must be an array' });
+            }
+            const saved = await mutateStoredQuotation(req.params.id, function (payload) {
+                const keyOf = (t) => (t && t.threadId)
+                    ? 'tid:' + t.threadId
+                    : 'es:' + String((t && t.email) || '').toLowerCase() + '|' + String((t && t.sentAt) || '');
+                const merged = new Map();
+                (Array.isArray(payload.supplierEnquiries) ? payload.supplierEnquiries : []).forEach(function (t) {
+                    if (t) merged.set(keyOf(t), t);
+                });
+                supplierEnquiries.forEach(function (t) { if (t) merged.set(keyOf(t), t); });
+                payload.supplierEnquiries = Array.from(merged.values());
+            });
+            if (!saved) return res.status(404).json({ error: 'Quotation not found' });
+            res.json({ success: true, count: (saved.supplierEnquiries || []).length });
+        } catch (error) {
+            console.error('Error saving supplier enquiries:', error);
+            res.status(500).json({ error: 'Failed to save supplier enquiries', details: error.message });
+        }
+    });
+
     // Persist the transporter-enquiry records for a quote. Field-only merge into the STORED
     // payload, so it is safe to call at any time: it cannot save the user's in-progress edits
     // (no-autosave rule) and cannot clobber lineItems/tableHTML when the client only holds a
@@ -901,7 +937,8 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
         const month = /^\d{4}-\d{2}$/.test(String(req.query.month || '')) ? String(req.query.month) : '';
         const freight = String(req.query.freight || '') === '1';
         const revision = String(req.query.revision || '') === '1';
-        if (!month && !freight && !revision) return res.json({ quotations: [] });
+        const enquiry = String(req.query.enquiry || '') === '1';
+        if (!month && !freight && !revision && !enquiry) return res.json({ quotations: [] });
         try {
             const { ScanCommand } = require('@aws-sdk/lib-dynamodb');
             let items = [], scanKey = null, pages = 0;
@@ -924,6 +961,7 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
             if (month)    list = list.filter(function (x) { return quoteMonth(x) === month; });
             if (freight)  list = list.filter(quoteHasFreightActivity);
             if (revision) list = list.filter(quoteNeedsRevision);
+            if (enquiry)  list = list.filter(quoteHasSupplierEnquiry);
             list.sort(function (a, b) { return new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0); });
             const RESULT_CAP = 1000;
             if (list.length > RESULT_CAP) console.warn('Quote filter: ' + list.length + ' matches, returning the newest ' + RESULT_CAP);

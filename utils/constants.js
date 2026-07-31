@@ -39,6 +39,9 @@ const CONFIG_KEY_DEFAULT_EMAIL_MESSAGE = 'default-email-message.txt';
 const CONFIG_KEY_DEFAULT_SIGNATURE    = 'default-signature.txt';
 /** Remembered freight-enquiry recipients + pickup/drop points (for instant suggestions). */
 const CONFIG_KEY_FREIGHT_SUGGESTIONS  = 'freight-suggestions.json';
+// Suppliers/dealers remembered per PIPE TYPE (GI / ERW / Seamless) for the quote card's
+// Enquiry tab — the buying-side mirror of the route-keyed freight transporter memory.
+const CONFIG_KEY_SUPPLIER_SUGGESTIONS = 'supplier-suggestions.json';
 /** Editable staff-name list (admin desk "Assign to" + Bigin owner later). */
 const CONFIG_KEY_STAFF_LIST           = 'staff-list.json';
 
@@ -57,5 +60,6 @@ module.exports = {
     CONFIG_KEY_DEFAULT_EMAIL_MESSAGE,
     CONFIG_KEY_DEFAULT_SIGNATURE,
     CONFIG_KEY_FREIGHT_SUGGESTIONS,
+    CONFIG_KEY_SUPPLIER_SUGGESTIONS,
     CONFIG_KEY_STAFF_LIST,
 };

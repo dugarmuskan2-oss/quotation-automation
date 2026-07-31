@@ -250,6 +250,7 @@ describe('soft-deleted quotes never reach approvedQuotations', () => {
                 fetch: jsonFetch({ quotations: [LIVE, DELETED] }),
                 approvedQuotations: list,
                 approvalRevisionFilter: false,
+                approvalEnquiryFilter: false,
                 approvalFreightFilter: false,
                 approvalMonthFilter: '2026-01',
                 syncApprovedQuotationsGlobal: noop,

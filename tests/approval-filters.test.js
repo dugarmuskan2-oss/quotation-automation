@@ -97,6 +97,7 @@ function loadFilters(st, fakeDocument) {
         'var approvalMonthFilter = st.approvalMonthFilter || "";',
         'var approvalFreightFilter = !!st.approvalFreightFilter;',
         'var approvalRevisionFilter = !!st.approvalRevisionFilter;',
+        'var approvalEnquiryFilter = !!st.approvalEnquiryFilter;',
         // The empty-state message names the search term when one is active, so it must be seeded.
         'var approvalSearchQuery = st.approvalSearchQuery || "";',
         'var approvalFilterLoading = !!st.approvalFilterLoading;',
@@ -444,7 +445,7 @@ describe('index.html source guards — filter-aware "Load more" and merges', () 
     const initFiltersFn = extractFunction(html, 'initApprovalFilters');
 
     test('updateLoadMoreApprovedButton hides the feed button while a filter is active', () => {
-        expect(loadMoreFn).toContain('!!(approvalMonthFilter || approvalFreightFilter || approvalRevisionFilter)');
+        expect(loadMoreFn).toContain('!!(approvalMonthFilter || approvalFreightFilter || approvalRevisionFilter || approvalEnquiryFilter)');
         expect(loadMoreFn).toContain('if (filterActive && !approvalFilterFetchFailed)');
         const hideIdx = loadMoreFn.indexOf("loadMoreBtn.style.display = 'none';");
         const feedIdx = loadMoreFn.indexOf('approvedQuotationsHasMore ?');
