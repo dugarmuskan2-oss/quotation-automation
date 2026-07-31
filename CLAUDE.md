@@ -4,8 +4,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Standing rules
 
+- **NEVER `git push` to `main` or `Testing-other-features` without the user's explicit permission, no matter what.**
+  This one is absolute and overrides everything else:
+  - It is **not** covered by "allow everything", "no need to ask for permissions", `bypassPermissions`, or any
+    earlier "commit and push" — permission is **per push**, never standing. Those phrases are about tool
+    permission prompts, not about publishing code.
+  - `main` **deploys to production** (Vercel) the moment it is pushed. A push is outward-facing and affects a
+    live business, so it always needs a fresh yes.
+  - Committing locally is fine without asking. **Pushing is not.** When work is ready, say so and ask:
+    "Ready to push — want me to?" Then wait for a clear yes.
+  - Never promote `Testing-other-features` → `main` on your own initiative, even when the tests are green and
+    the work was requested.
 - **Begin every chat response with the word "flamingo".** (Standing request from the user.)
 - **Never update CLAUDE.md or write tests for a feature without explicit user approval first.** When a feature is complete, ask in chat: "This looks done — want me to update CLAUDE.md and add tests?" Then wait for a clear yes before doing either.
+- **Prototypes are not the app.** When the user asks for changes to a prototype (`prototypes/*.html`), change
+  only that file. Do not implement it in `index.html` or the routes unless they ask for it in the app.
 
 ## Active project — unified per-quote flow (read `SESSION-HANDOFF.md` first)
 
