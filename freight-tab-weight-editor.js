@@ -409,16 +409,24 @@
         if (!Array.isArray(q.freightEnquiries)) q.freightEnquiries = [];
         return q.freightEnquiries;
     }
-    // Persist enquiry threads right away, like sending a quote does — but never when the
-    // user has unsaved edits (that would silently save them; no-autosave rule). In that
-    // case the threads ride along with the user's next explicit Save.
+    // Persist enquiry threads right away, through a field-only route that merges into the STORED
+    // payload. It writes freightEnquiries (and the reply flag) and nothing else, so it can neither
+    // save the user's in-progress edits (no-autosave rule) nor wipe lineItems/tableHTML when this
+    // object is only a list summary — the two cases the old whole-object save had to refuse.
+    // Those refusals were silent, so an enquiry that had genuinely been emailed left no record and
+    // vanished on reload; the quote then never appeared under the Freight filter.
     function persistEnquiryThreads(q) {
-        if (q.hasUnsavedEdits) return;
-        // Only persist a FULLY-LOADED quote. The reply-sweep runs over the list summary, which
-        // has no lineItems/tableHTML; saving that object PutCommand-overwrites the stored quote
-        // and WIPES its items. Guard against that.
-        if (!(q.tableHTML || (Array.isArray(q.lineItems) && q.lineItems.length))) return;
-        if (typeof saveQuotationToBackend === 'function') { try { saveQuotationToBackend(q); } catch (e) { } }
+        if (!q || q.id == null) return;
+        var threads = getEnquiryThreads(q);
+        fetch(apiBase() + '/quotations/' + encodeURIComponent(q.id) + '/freight-enquiries', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ freightEnquiries: threads, transporterReplyIn: !!q.transporterReplyIn })
+        }).then(function (res) {
+            if (!res.ok) console.error('Freight enquiries not saved (' + res.status + ') for quote ' + q.id);
+        }).catch(function (e) {
+            console.error('Freight enquiries not saved for quote ' + q.id + ':', e.message);
+        });
     }
     // Pull a rupee amount out of a transporter's reply, e.g. "Rs 18,500", "₹18500/-",
     // "INR 18,500.00" or a bare "18,500/-". Returns 0 if none found.

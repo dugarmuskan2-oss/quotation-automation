@@ -199,6 +199,11 @@ function quoteMonth(x) {
     const t = d ? new Date(d) : null;
     return (t && !isNaN(t.getTime())) ? t.toISOString().slice(0, 7) : '';
 }
+// Page cap for the whole-table scans behind search and the month/freight filters. Items carry
+// tableHTML, so they average ~31 KB and a 1 MB scan page holds only ~33 of them — 40 pages reached
+// barely 1,300 of ~1,900 quotes, silently hiding the oldest from every filter. Sized for ~6,600
+// quotes; both endpoints report `truncated` rather than quietly returning a short list.
+const FULL_SCAN_MAX_PAGES = 200;
 // Has freight activity — a transporter enquiry was SENT for this quote, whether or not it still
 // needs attention. Entries are only ever pushed for emails that actually sent, so any entry counts.
 // Deliberately does not require threadId: a genuinely sent enquiry stores '' when the send response
@@ -591,6 +596,32 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
         }
     });
 
+    // Persist the transporter-enquiry records for a quote. Field-only merge into the STORED
+    // payload, so it is safe to call at any time: it cannot save the user's in-progress edits
+    // (no-autosave rule) and cannot clobber lineItems/tableHTML when the client only holds a
+    // list summary. The client used to do this with a whole-object save, which had to bail out
+    // in both those cases — silently losing the record of enquiries that had really been emailed.
+    router.post('/quotations/:id/freight-enquiries', async (req, res) => {
+        if (!requireDdb(res)) return;
+        try {
+            const { freightEnquiries, transporterReplyIn } = req.body || {};
+            if (!Array.isArray(freightEnquiries)) {
+                return res.status(400).json({ error: 'freightEnquiries must be an array' });
+            }
+            const stored = await loadStoredQuotation(req.params.id);
+            if (!stored) return res.status(404).json({ error: 'Quotation not found' });
+
+            const payload = stored.payload;
+            payload.freightEnquiries = freightEnquiries;
+            if (typeof transporterReplyIn === 'boolean') payload.transporterReplyIn = transporterReplyIn;
+            await storeQuotationPayload(stored.item, payload);
+            res.json({ success: true, count: freightEnquiries.length });
+        } catch (error) {
+            console.error('Error saving freight enquiries:', error);
+            res.status(500).json({ error: 'Failed to save freight enquiries', details: error.message });
+        }
+    });
+
     // Soft-delete a quote — for accidental / junk entries on the desk. Recoverable:
     // sets deleted=true and the lists filter it out; `undo:true` restores it. Only flags
     // the payload (never touches lineItems / tableHTML), so nothing heavy is lost.
@@ -668,12 +699,13 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
                 items = items.concat(result.Items || []);
                 scanKey = result.LastEvaluatedKey || null;
                 pages++;
-            } while (scanKey && pages < 40);
+            } while (scanKey && pages < FULL_SCAN_MAX_PAGES);
+            if (scanKey) console.warn('Quote search: scan hit the page cap — older quotes were not searched');
             const matches = items.map(quotationFromItem).filter(Boolean)
                 .filter(function (x) { return quoteSummaryMatches(x, q); })
                 .sort(function (a, b) { return new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0); })
                 .slice(0, 100);
-            res.json({ quotations: matches });
+            res.json({ quotations: matches, truncated: !!scanKey });
         } catch (error) {
             console.error('Quote search failed:', error);
             res.status(500).json({ error: 'Search failed', details: error.message });
@@ -703,12 +735,15 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
                 items = items.concat(result.Items || []);
                 scanKey = result.LastEvaluatedKey || null;
                 pages++;
-            } while (scanKey && pages < 40);
+            } while (scanKey && pages < FULL_SCAN_MAX_PAGES);
+            if (scanKey) console.warn('Quote filter: scan hit the page cap — older quotes were not considered');
             let list = items.map(quotationFromItem).filter(Boolean);
             if (month)   list = list.filter(function (x) { return quoteMonth(x) === month; });
             if (freight) list = list.filter(quoteHasFreightActivity);
             list.sort(function (a, b) { return new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0); });
-            res.json({ quotations: list.slice(0, 500) });
+            const RESULT_CAP = 1000;
+            if (list.length > RESULT_CAP) console.warn('Quote filter: ' + list.length + ' matches, returning the newest ' + RESULT_CAP);
+            res.json({ quotations: list.slice(0, RESULT_CAP), truncated: !!scanKey || list.length > RESULT_CAP });
         } catch (error) {
             console.error('Quote filter failed:', error);
             res.status(500).json({ error: 'Filter failed', details: error.message });
