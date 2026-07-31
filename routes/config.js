@@ -14,6 +14,7 @@ const {
     CONFIG_KEY_DEFAULT_TERMS,
     CONFIG_KEY_DEFAULT_MARGINS,
     CONFIG_KEY_DEFAULT_EMAIL_MESSAGE,
+    CONFIG_KEY_REGRET_MESSAGE,
     CONFIG_KEY_DEFAULT_SIGNATURE,
     CONFIG_KEY_FREIGHT_SUGGESTIONS,
     CONFIG_KEY_SUPPLIER_SUGGESTIONS,
@@ -307,6 +308,31 @@ module.exports = function createConfigRouter({ storage }) {
         } catch (error) {
             console.error('Error getting default email message:', error);
             res.status(500).json({ error: 'Failed to get default email message', details: error.message });
+        }
+    });
+
+    // ── Regret message ────────────────────────────────────────────────────────
+    router.post('/save-regret-message', express.json(), async (req, res) => {
+        try {
+            const { regretMessage } = req.body;
+            if (regretMessage === undefined || regretMessage === null) {
+                return res.status(400).json({ error: 'regretMessage is required' });
+            }
+            await storage.saveText(CONFIG_KEY_REGRET_MESSAGE, String(regretMessage));
+            res.json({ success: true });
+        } catch (error) {
+            console.error('Error saving regret message:', error);
+            res.status(500).json({ error: 'Failed to save regret message', details: error.message });
+        }
+    });
+
+    router.get('/get-regret-message', async (req, res) => {
+        try {
+            const content = await storage.readText(CONFIG_KEY_REGRET_MESSAGE);
+            res.json({ hasFile: content !== null, content: content || '' });
+        } catch (error) {
+            console.error('Error getting regret message:', error);
+            res.status(500).json({ error: 'Failed to get regret message', details: error.message });
         }
     });
 

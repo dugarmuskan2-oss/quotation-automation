@@ -36,6 +36,9 @@ const CONFIG_KEY_INSTRUCTIONS         = 'instructions.txt';
 const CONFIG_KEY_DEFAULT_TERMS        = 'default-terms.txt';
 const CONFIG_KEY_DEFAULT_MARGINS      = 'default-margins.json';
 const CONFIG_KEY_DEFAULT_EMAIL_MESSAGE = 'default-email-message.txt';
+// The reply sent when an enquiry is regretted. Editable in Settings like the two above —
+// it used to be hardcoded, so changing a word needed a code change.
+const CONFIG_KEY_REGRET_MESSAGE       = 'regret-message.txt';
 const CONFIG_KEY_DEFAULT_SIGNATURE    = 'default-signature.txt';
 /** Remembered freight-enquiry recipients + pickup/drop points (for instant suggestions). */
 const CONFIG_KEY_FREIGHT_SUGGESTIONS  = 'freight-suggestions.json';
@@ -58,6 +61,7 @@ module.exports = {
     CONFIG_KEY_DEFAULT_TERMS,
     CONFIG_KEY_DEFAULT_MARGINS,
     CONFIG_KEY_DEFAULT_EMAIL_MESSAGE,
+    CONFIG_KEY_REGRET_MESSAGE,
     CONFIG_KEY_DEFAULT_SIGNATURE,
     CONFIG_KEY_FREIGHT_SUGGESTIONS,
     CONFIG_KEY_SUPPLIER_SUGGESTIONS,

@@ -1186,10 +1186,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
-    <!-- Thin progress bar pinned to the very top edge: today's quotes sent ÷ today's total. -->
-    <div id="dailyProgressTrack" style="position:fixed;top:0;left:0;right:0;height:3px;background:transparent;z-index:9999;display:none;pointer-events:none;">
-        <div id="dailyProgressBar" style="height:100%;width:0%;background:#1D9E75;transition:width .5s cubic-bezier(.2,.8,.2,1);"></div>
-    </div>
     <!--
         ============================================
         HTML BODY - This is what users see on screen
@@ -1296,6 +1292,17 @@
                         💾 Save Default Message
                     </button>
                     <p id="defaultEmailMessageStatus" style="margin-top: 8px; font-size: 12px; color: #666;"></p>
+                </div>
+
+                <!-- Regret message -->
+                <div style="margin-top: 20px;">
+                    <label for="regretMessageConfig">Regret Message (sent when you regret an enquiry):</label>
+                    <p style="font-size:12px; color:#888; margin: 4px 0 6px;">The reply sent when you click Regret on the margins desk. Your standard signature is added automatically. You can still edit it for a particular customer in the send window before it goes.</p>
+                    <textarea id="regretMessageConfig" placeholder="Leave blank to use the built-in wording." style="width: 100%; min-height: 120px; padding: 8px; margin-top: 4px; border: 2px solid #ddd; border-radius: 4px; font-family: inherit;"></textarea>
+                    <button type="button" class="upload-btn" onclick="saveRegretMessage()" style="margin-top: 10px; width: 100%;">
+                        💾 Save Regret Message
+                    </button>
+                    <p id="regretMessageStatus" style="margin-top: 8px; font-size: 12px; color: #666;"></p>
                 </div>
 
                 <!-- Default Email Signature -->
@@ -2752,6 +2759,49 @@
             } catch (error) {
                 statusEl.textContent = `Error: ${error.message}`;
                 statusEl.style.color = '#f44336';
+            }
+        }
+
+        async function saveRegretMessage() {
+            const textarea = document.getElementById('regretMessageConfig');
+            const statusEl = document.getElementById('regretMessageStatus');
+            if (!textarea || !statusEl) return;
+            try {
+                statusEl.textContent = 'Saving...';
+                statusEl.style.color = '#666';
+                const response = await fetch(`${API_BASE_URL}/save-regret-message`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ regretMessage: textarea.value })
+                });
+                const result = await safeJsonParse(response);
+                if (!response.ok) throw new Error(result.error || 'Failed to save');
+                // Drop the cache so the next Regret uses the new wording without a reload.
+                regretMessageText = textarea.value.trim() ? textarea.value : null;
+                statusEl.textContent = textarea.value.trim() ? '✓ Regret message saved' : '✓ Cleared — the built-in wording will be used';
+                statusEl.style.color = '#4CAF50';
+            } catch (error) {
+                statusEl.textContent = `Error: ${error.message}`;
+                statusEl.style.color = '#f44336';
+            }
+        }
+
+        async function loadRegretMessage_Settings() {
+            const textarea = document.getElementById('regretMessageConfig');
+            const statusEl = document.getElementById('regretMessageStatus');
+            try {
+                const response = await fetch(`${API_BASE_URL}/get-regret-message`);
+                const result = await safeJsonParse(response);
+                const saved = (response.ok && result.content) ? result.content : '';
+                // Show the wording that will actually be sent — the built-in text when none is saved,
+                // so the box is never a confusing blank.
+                if (textarea) textarea.value = saved || REGRET_EMAIL_TEXT;
+                if (statusEl) {
+                    statusEl.textContent = saved ? '✓ Loaded from server' : 'Using the built-in wording — edit and save to change it';
+                    statusEl.style.color = saved ? '#4CAF50' : '#666';
+                }
+            } catch (error) {
+                if (textarea && !textarea.value) textarea.value = REGRET_EMAIL_TEXT;
             }
         }
 
@@ -7979,10 +8029,23 @@
             return /^re:/i.test(s) ? s : ('Re: ' + s);
         }
 
+        // The wording saved in Settings, falling back to the built-in text when nothing is saved.
+        let regretMessageText = null;
+        async function loadRegretMessage() {
+            if (regretMessageText !== null) return regretMessageText;
+            try {
+                const r = await fetch(`${API_BASE_URL}/get-regret-message`);
+                const d = await r.json();
+                regretMessageText = (d && d.content && d.content.trim()) ? d.content : REGRET_EMAIL_TEXT;
+            } catch (e) { regretMessageText = REGRET_EMAIL_TEXT; }
+            return regretMessageText;
+        }
+
         // The regret reply, ending with the standard signature — it used to stop at
         // "Yours Sincerely" with nothing after it: no name, no company, no logo.
         async function regretEmailBodyHtml() {
-            const body = REGRET_EMAIL_TEXT.split('\n\n').map(function(p) {
+            const text = await loadRegretMessage();
+            const body = text.split('\n\n').map(function(p) {
                 return '<p>' + escapeHtml(p).replace(/\n/g, '<br>') + '</p>';
             }).join('');
             let signature = '';
@@ -8064,10 +8127,10 @@
 
         /*
             ── "All today's quotes sent" celebration ──────────────────────────────
-            A thin top-edge bar shows today's sent ÷ today's total; the moment the last
-            quote that ARRIVED today is sent, a dramatic confetti burst fires and a
-            self-clearing "N of N — all quotes sent today" message shows. "Today" = the
-            quote's createdAt in local time. To change the rule, edit todaysQuoteStats().
+            The moment the last quote that ARRIVED today is sent, a dramatic confetti
+            burst fires and a self-clearing "N of N — all quotes sent today" message
+            shows. "Today" = the quote's createdAt in local time. To change the rule,
+            edit todaysQuoteStats().
         */
         let _dailyCelebratedDate = null;
         function _localDay(d) { try { return new Date(d).toLocaleDateString(); } catch (e) { return ''; } }
@@ -8082,17 +8145,7 @@
             });
             return { sent, total };
         }
-        function updateDailyBar() {
-            const track = document.getElementById('dailyProgressTrack');
-            const bar = document.getElementById('dailyProgressBar');
-            if (!track || !bar) return;
-            const s = todaysQuoteStats();
-            if (s.total === 0) { track.style.display = 'none'; return; }
-            track.style.display = 'block';
-            bar.style.width = Math.round(s.sent / s.total * 100) + '%';
-        }
         function maybeDailyCelebrate() {
-            updateDailyBar();
             const s = todaysQuoteStats();
             const key = new Date().toLocaleDateString();
             if (s.total > 0 && s.sent >= s.total) {
@@ -8143,7 +8196,6 @@
                 This function loops through all approved quotations
                 and displays them in the Approval section.
             */
-            updateDailyBar();
             const container = getApprovedQuotationsContainer();
             const previousScrollTop = container ? container.scrollTop : 0;
             const expandedFolderIds = container
@@ -11061,7 +11113,7 @@
                     saveQuotationToBackend(quotation);
                     updateApprovalBadge(quotationId, quotation);
                     updateSentBadge(quotationId);
-                    maybeDailyCelebrate();   // top-edge bar + confetti when the day's last quote is sent
+                    maybeDailyCelebrate();   // confetti when the day's last quote is sent
                     // The card's revision strip needs a real re-render to drop the satisfied asks —
                     // the badge updates above are targeted DOM writes and would leave it stale.
                     if (revisionsCleared) refreshApprovalListPreservingEdits();
@@ -11866,7 +11918,11 @@
                 if (!a.when) return 1;
                 if (!b.when) return -1;
                 const d = new Date(b.when) - new Date(a.when);
-                return d !== 0 ? d : (a.sort - b.sort);
+                // Same timestamp: the VERSION goes above the event. An enquiry reply stamped the
+                // same second as a revision is what prompted it, so it belongs below — the thing
+                // that came first reads lower in a newest-first list. (Descending on `sort`, so
+                // the version's 2 beats the event's 1.)
+                return d !== 0 ? d : (b.sort - a.sort);
             });
             const versions = entries.map(function(e) { return e.html; }).join('');
             const prevNote = revs.length ? '' : '<p style="color:#9b988e;font-size:13px;margin:0 0 4px;">No previous versions &mdash; this is the only one.</p>';
@@ -11948,6 +12004,7 @@
             loadDefaultTerms();
             loadDefaultMargins();
             loadDefaultEmailMessage();
+            loadRegretMessage_Settings();
             loadDefaultSignature();
             loadStaffList();
 
