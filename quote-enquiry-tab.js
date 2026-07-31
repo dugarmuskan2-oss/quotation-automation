@@ -81,39 +81,36 @@
         return String((li && (li.originalDescription || li.description)) || '').trim().toLowerCase() === 'freight';
     }
 
-    // ── rows: same shape and derivation as the standalone Enquiry Preparer ────
-    // Reuse its builder when it is loaded, so the two views cannot drift apart.
-    function rowFromLineItem(li) {
-        var preparer = (typeof module !== 'undefined' && module.exports)
-            ? null
-            : (window.enquiryPreparerModel || null);
-        var mapped = {
-            description: li.originalDescription || li.description || '',
-            quantity: li.quantity || '',
-            unit: li.unit || li.uom || '',
-            size: li.size || '',
-            productSpec: li.productSpec || '',
-        };
-        if (preparer && typeof preparer.buildEnquiryRowModel === 'function') {
-            try { return preparer.buildEnquiryRowModel(mapped); } catch (e) { /* fall through */ }
-        }
-        // Fallback with the same field names, so the emailed table is identical either way.
-        return {
-            productSpec: mapped.productSpec || mapped.description,
-            size: mapped.size || mapped.description,
-            qty: mapped.quantity,
-            uom: mapped.unit || 'Mtrs',
-            lengthReqByUs: '',
-            makeRequiredByUs: '',
-            rate: '',
-            offerUom: '',
-            makeOfferedByYou: '',
-        };
+    // ── rows: built by the Enquiry Preparer's OWN code, not a lookalike ───────
+    // The whole chain is the preparer's: normalizeQuotation maps the quote's line items to its
+    // intermediate shape, then buildEnquiryRowModel derives each column — size via
+    // extractSizeFromDescription, product/spec via inferProductSpecFromText, UOM from the item.
+    // Re-implementing any of that is how the two drifted before (the Size column ended up holding
+    // the whole description, and the UOM defaulted differently).
+    function preparerModel() {
+        return (typeof window !== 'undefined' && window.enquiryPreparerModel) ? window.enquiryPreparerModel : null;
     }
 
     function buildRowsFromQuote(quotation) {
         var items = Array.isArray(quotation && quotation.lineItems) ? quotation.lineItems : [];
-        return items.filter(function (li) { return li && !isFreightRow(li); }).map(rowFromLineItem);
+        var live = items.filter(function (li) { return li && !isFreightRow(li); });
+        var model = preparerModel();
+        if (model && model.normalizeQuotation && model.buildEnquiryRowModel) {
+            var normalized = model.normalizeQuotation({ lineItems: live });
+            return (normalized ? normalized.lineItems : []).map(model.buildEnquiryRowModel);
+        }
+        // enquiry-preparer.js not loaded (it initialises on DOMContentLoaded). Same field names so
+        // the table still renders; the tab re-renders once the model is available.
+        return live.map(function (li) {
+            var desc = li.originalDescription || li.description || '';
+            return {
+                productSpec: String(li.productSpec || li.identifiedPipeType || '').trim() || desc,
+                size: String(li.size || '').trim(),
+                qty: String(li.quantity || li.qty || '').trim(),
+                uom: String(li.unit || li.uom || '').trim(),
+                lengthReqByUs: '', makeRequiredByUs: '', rate: '', offerUom: '', makeOfferedByYou: '',
+            };
+        });
     }
 
     // ── the emailed table: byte-for-byte the Enquiry Preparer's layout ────────
@@ -174,12 +171,14 @@
             + '<tbody>' + tableRows + '</tbody></table>';
     }
 
-    // The Enquiry Preparer's default message, word for word (resetEnquiryDefaults).
+    // The Enquiry Preparer's default message — taken from IT, not copied, so editing the wording
+    // there changes it here too.
     function buildDraft(quotation) {
-        return "Dear Sir/Ma'am,\n\n"
-            + 'KINDLY QUOTE YOUR BEST RATE WITH MINIMUM DELIVERY PERIOD.\n\n'
-            + 'NOTE: PLEASE MENTION UOM (MTR /KG /MT - METRIC TON) CLEARLY.\n\n'
-            + '[TABLE]';
+        var model = preparerModel();
+        var header = (model && model.defaultHeaderText)
+            ? model.defaultHeaderText()
+            : "Dear Sir/Ma'am,\n\nKINDLY QUOTE YOUR BEST RATE WITH MINIMUM DELIVERY PERIOD.\n\nNOTE: PLEASE MENTION UOM (MTR /KG /MT - METRIC TON) CLEARLY.";
+        return header + '\n\n[TABLE]';
     }
 
     // Header lines are rendered the way the preparer renders them: each line its own div, and
@@ -532,7 +531,6 @@
             pipeTypeOf: pipeTypeOf,
             quotePipeTypes: quotePipeTypes,
             isFreightRow: isFreightRow,
-            rowFromLineItem: rowFromLineItem,
             buildRowsFromQuote: buildRowsFromQuote,
             enquiryTableHtml: enquiryTableHtml,
             messageToHtml: messageToHtml,

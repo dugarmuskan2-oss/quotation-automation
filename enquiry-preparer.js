@@ -891,6 +891,26 @@
             addManualRow: addManualRow,
             getEnquiryHtml: function() { ensureEnquiryTableHasRow(); return buildEnquiryHtmlForCopy(); }
         };
+
+        // The PURE quote -> enquiry-row logic, exposed so the quote card's Enquiry tab builds its
+        // rows with exactly this code rather than a lookalike. Without it the two drifted: the tab
+        // put the whole description in Size and defaulted the UOM differently. Same functions,
+        // same output, one place to change them.
+        window.enquiryPreparerModel = {
+            normalizeQuotation: normalizeQuotation,
+            buildEnquiryRowModel: buildEnquiryRowModel,
+            extractSizeFromDescription: extractSizeFromDescription,
+            inferProductSpecFromText: inferProductSpecFromText,
+            defaultHeaderText: function () {
+                return [
+                    "Dear Sir/Ma'am,",
+                    '',
+                    'KINDLY QUOTE YOUR BEST RATE WITH MINIMUM DELIVERY PERIOD.',
+                    '',
+                    'NOTE: PLEASE MENTION UOM (MTR /KG /MT - METRIC TON) CLEARLY.'
+                ].join('\n');
+            }
+        };
     }
 
     if (typeof document !== 'undefined') {
