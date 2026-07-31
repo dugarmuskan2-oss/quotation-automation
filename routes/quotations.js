@@ -266,22 +266,38 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
             const { PutCommand, GetCommand } = require('@aws-sdk/lib-dynamodb');
             const now = new Date().toISOString();
 
-            // Safeguard against accidental item wipes: if the incoming payload has NO line items
-            // and NO tableHTML (e.g. a bare list-summary object saved by mistake) but the STORED
-            // quote has them, keep the stored heavy fields rather than overwriting them to empty.
-            // The extra read only runs in this suspicious case, so normal saves pay nothing.
+            // One read of the stored quote, serving two guards below. Best-effort: a read failure
+            // just means we save what the client sent, exactly as before.
+            let stored = null;
+            try {
+                const existing = await ddbDocClient.send(new GetCommand({ TableName: ddbTableName, Key: { id: String(quotation.id) } }));
+                stored = (existing && existing.Item && existing.Item.payload) || null;
+            } catch (e) { /* first save, or a read blip — fall through and save what we have */ }
+
+            // Guard 1 — accidental item wipes: if the incoming payload has NO line items and NO
+            // tableHTML (e.g. a bare list-summary object saved by mistake) but the STORED quote has
+            // them, keep the stored heavy fields rather than overwriting them to empty.
             const incomingHasBody = (Array.isArray(quotation.lineItems) && quotation.lineItems.length) || quotation.tableHTML;
-            if (!incomingHasBody) {
-                try {
-                    const existing = await ddbDocClient.send(new GetCommand({ TableName: ddbTableName, Key: { id: String(quotation.id) } }));
-                    const prev = existing && existing.Item && existing.Item.payload;
-                    if (prev && ((Array.isArray(prev.lineItems) && prev.lineItems.length) || prev.tableHTML)) {
-                        if (!(Array.isArray(quotation.lineItems) && quotation.lineItems.length)) quotation.lineItems = prev.lineItems;
-                        if (!quotation.tableHTML) quotation.tableHTML = prev.tableHTML;
-                        if (!quotation.headerHTML) quotation.headerHTML = prev.headerHTML;
-                        console.warn('save-quotation: preserved stored items/tableHTML for', quotation.id, '(incoming payload had none)');
-                    }
-                } catch (e) { /* best-effort guard — fall through and save what we have */ }
+            if (!incomingHasBody && stored && ((Array.isArray(stored.lineItems) && stored.lineItems.length) || stored.tableHTML)) {
+                if (!(Array.isArray(quotation.lineItems) && quotation.lineItems.length)) quotation.lineItems = stored.lineItems;
+                if (!quotation.tableHTML) quotation.tableHTML = stored.tableHTML;
+                if (!quotation.headerHTML) quotation.headerHTML = stored.headerHTML;
+                console.warn('save-quotation: preserved stored items/tableHTML for', quotation.id, '(incoming payload had none)');
+            }
+
+            // Guard 2 — fields the SERVER owns. Each is written only by its own field-merge route, so
+            // a whole-object save must never carry them: a browser that loaded the quote before the
+            // value existed holds `undefined` and would silently erase it. That really happened — a
+            // revision the admin asked for was deleted (not marked done) the moment any stale tab
+            // pressed Save/Approve/Send or ran the reply sweep, taking the wording with it. The same
+            // overwrite un-deleted soft-deleted quotes and dropped freight enquiry records.
+            // Always take the stored values; ignore whatever the client sent.
+            const SERVER_OWNED = ['revisionRequests', 'extraNotes', 'deleted', 'deletedAt', 'freightEnquiries', 'transporterReplyIn'];
+            if (stored) {
+                SERVER_OWNED.forEach(function (field) {
+                    if (Object.prototype.hasOwnProperty.call(stored, field)) quotation[field] = stored[field];
+                    else delete quotation[field];
+                });
             }
 
             const updated = { ...quotation, createdAt: quotation.createdAt || now, updatedAt: now };

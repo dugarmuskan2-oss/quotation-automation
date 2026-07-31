@@ -311,6 +311,12 @@
         .sq-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
         .sq-tbl th, .sq-tbl td { border-bottom: 1px solid #eee; padding: 5px 8px; text-align: left; }
         .sq-tbl th { border-bottom: 1px solid #999; }
+        /* The original enquiry email. Capped and scrollable so a long thread can't dominate the
+           page, and images/tables from the customer's own mail are kept inside the card. */
+        .sq-enq { font-size: 13px; line-height: 1.55; max-height: 420px; overflow: auto; }
+        .sq-enq img { max-width: 100%; height: auto; }
+        .sq-enq table { max-width: 100%; border-collapse: collapse; }
+        .sq-enq td, .sq-enq th { border: 1px solid #ddd; padding: 4px 7px; }
         .mdk-manage { background: none; border: none; padding: 0; font-size: 12px; color: #0C447C; text-decoration: underline; cursor: pointer; }
         .mdk-admin-strip { background: #FAEEDA; border-radius: 8px; padding: 9px 12px; margin-bottom: 12px; }
         .mdk-admin-strip .h { font-size: 12px; font-weight: 600; color: #633806; margin-bottom: 3px; }
@@ -6827,6 +6833,17 @@
             return cleared;
         }
 
+        // Close the asks server-side, on the STORED record. Must go through this route rather than
+        // the whole-object save: this tab may not even know about an ask a colleague added, and the
+        // save deliberately ignores client-sent revision data so it can never be wiped.
+        async function clearRevisionRequestsOnServer(quotationId) {
+            try {
+                await fetch(`${API_BASE_URL}/quotations/${encodeURIComponent(quotationId)}/revision-requests-done`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({})
+                });
+            } catch (e) { console.error('Could not clear the revision asks for quote ' + quotationId + ':', e.message); }
+        }
+
         // "Add revision" / "Add note" on a quote card. A revision ask puts the quote in the Revision
         // list until the revised quote is sent; a note is only ever a note.
         async function addRevisionRequest(quotationId, kind) {
@@ -10632,7 +10649,11 @@
                     // The customer now has the new version, so any revision the admin asked for is
                     // satisfied and the quote drops off the Revision list. Marked before the save
                     // below so it rides along on that same write.
+                    // Clear the asks through their own route, not the whole-object save below:
+                    // revisionRequests is server-owned, so the save deliberately ignores whatever
+                    // this tab holds. markRevisionRequestsDone only updates what is on screen.
                     const revisionsCleared = markRevisionRequestsDone(quotation);
+                    clearRevisionRequestsOnServer(quotation.id);
                     archiveQuotationPdf(quotation, pdfResult.base64);   // stash the exact PDF the customer got
                     saveQuotationToBackend(quotation);
                     updateApprovalBadge(quotationId, quotation);
@@ -11332,6 +11353,30 @@
             }
             return html || '<p style="color:#999;">No freight details for this quote.</p>';
         }
+        // The original customer enquiry this quote came from. Internal, like the rest of this page.
+        // Prefers the HTML version (keeps the enquiry's own tables/formatting) run through the same
+        // sanitizer the approval card uses; falls back to the plain text, escaped. A pasted or
+        // manually-built quote has neither, so it gets a plain empty state rather than a blank card.
+        function buildSharedEnquiryHtml(quotation) {
+            const q = quotation || {};
+            // String(): these come off a stored record and are not guaranteed to be strings —
+            // a numeric emailContent used to throw here and blank the whole section.
+            const link = String(q.emailLink || '').trim();
+            // Only http(s) becomes a link. A stored "javascript:" value would otherwise render as a
+            // clickable script href on a page that already shows internal margin data.
+            const gmail = /^https?:\/\//i.test(link)
+                ? '<p style="margin:0 0 8px;"><a href="' + escapeHtml(link) + '" target="_blank" rel="noopener noreferrer">&#128231; View in Gmail</a></p>'
+                : '';
+            const rawHtml = String(q.emailContentHtml || '').trim();
+            if (rawHtml) {
+                const safe = (typeof sanitizeEmailHtmlForPreview === 'function')
+                    ? sanitizeEmailHtmlForPreview(rawHtml) : escapeHtml(rawHtml);
+                return gmail + '<div class="sq-enq">' + safe + '</div>';
+            }
+            const text = String(q.emailContent || '').trim();
+            if (text) return gmail + '<div class="sq-enq" style="white-space:pre-wrap;">' + escapeHtml(text) + '</div>';
+            return gmail + '<p style="color:#999;">No enquiry email stored for this quote.</p>';
+        }
         function renderSharedQuotePage(quotation) {
             const rev = currentRevisionNumber(quotation);
             document.title = (quotation.quoteNumber || 'Quotation') + (rev > 0 ? ' (Rev ' + rev + ')' : '');
@@ -11367,6 +11412,7 @@
                 + '<div class="sq-sec-h">Versions (newest first)</div>' + prevNote + versions
                 + '<div class="sq-sec-h">Weight</div><div class="sq-card">' + buildSharedWeightHtml(quotation) + '</div>'
                 + '<div class="sq-sec-h">Freight</div><div class="sq-card">' + buildSharedFreightHtml(quotation) + '</div>'
+                + '<div class="sq-sec-h">Enquiry (what the customer asked for)</div><div class="sq-card">' + buildSharedEnquiryHtml(quotation) + '</div>'
                 + '</div>';
             // Load the current version's live PDF into its frame (the exact current customer PDF).
             (async function() {

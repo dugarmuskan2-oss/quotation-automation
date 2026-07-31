@@ -238,16 +238,18 @@ describe('POST /api/save-quotation', () => {
     });
 
     test('returns 500 when DynamoDB throws an error', async () => {
-        mockDdbSend.mockRejectedValueOnce(new Error('Write failed'));
+        // The route now ALWAYS pre-reads the stored quote (one Get serving the item-wipe guard and
+        // the server-owned-field guard), and that read swallows errors by design. So reject every
+        // send, not just the first — otherwise the swallowed Get absorbs the only rejection and the
+        // write succeeds. See routes/quotations.js.
+        mockDdbSend.mockRejectedValue(new Error('Write failed'));
 
         const res = await request(app)
             .post('/api/save-quotation')
-            // Include a real line item so the save goes straight to the write. (An
-            // empty-body payload would trigger the item-preserving pre-read instead,
-            // which swallows errors by design — see routes/quotations.js.)
             .send({ quotation: { id: 'x', customerName: 'Test', quoteNumber: 'Q-001', lineItems: [{ originalDescription: 'd', quantity: '1' }] } });
 
         expect(res.status).toBe(500);
+        mockDdbSend.mockReset();
     });
 });
 
