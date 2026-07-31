@@ -60,6 +60,17 @@
         var rows = secRows(st, sec).filter(function (r) { return !r.removed; });
         return rows.length > 0 && rows.every(function (r) { return r.kgm && r.qty != null; });
     }
+    // Name what is actually missing. Saying "fill in every kg/m" when every kg/m IS filled and the
+    // gap is a quantity sends the user hunting for a value that is already there.
+    function missingWeightFieldsLabel(st, sec) {
+        var rows = secRows(st, sec).filter(function (r) { return !r.removed; });
+        var noKg = rows.filter(function (r) { return !r.kgm; }).length;
+        var noQty = rows.filter(function (r) { return r.qty == null; }).length;
+        if (!rows.length) return 'Add an item to see the total weight';
+        if (noKg && noQty) return 'Fill in the missing kg/m and quantity to see the total weight';
+        if (noQty) return 'Fill in the missing quantity to see the total weight';
+        return 'Fill in every kg/m to see the total weight';
+    }
     // Weight tolerance (7% under) applies to welded pipe (ERW / GI) but NOT to seamless,
     // which is billed at exact weight. Type comes from the line's pipe type, falling back
     // to the description (seamless carries "SCH"/"seamless"; welded carries "-- GI"/"-- ERW").
@@ -194,7 +205,8 @@
                   + (secHasTolerance(st, sec)
                       ? '<div class="fwe-grid fwe-subtotal"><div></div><div>With tolerance (7%)</div><div></div><div></div><div style="text-align:right;">' + fmt(secToleranceWeight(st, sec)) + ' kg</div><div></div></div>'
                       : '')
-                : '<div class="fwe-grid fwe-subtotal"><div></div><div style="color:#9b988e;font-size:12px;">Fill in every kg/m to see the total weight</div><div></div><div></div><div></div><div></div></div>');
+                : '<div class="fwe-grid fwe-subtotal"><div></div><div style="color:#9b988e;font-size:12px;">'
+                  + missingWeightFieldsLabel(st, sec) + '</div><div></div><div></div><div></div><div></div></div>');
         var foot = '<div class="fwe-foot"><button class="fwe-add fwe-addbtn" data-sec="' + sec + '" title="Add item" aria-label="Add item">+</button><span style="margin-left:auto;"></span>'
             + (!st.split ? '<button class="fwe-btn fwe-split">+ Calculate other weight</button>' : '')
             + '<button class="fwe-btn fwe-print" data-sec="' + sec + '">&#128424; Print</button>'
@@ -316,11 +328,30 @@
     function enqScopeWeight(st) {
         return enqScopeRows(st).reduce(function (s, r) { return s + weightOf(r); }, 0);
     }
+    // Rows in scope that contribute nothing because they have no kg/m or no quantity.
+    // The calculated weight silently omits them, so it is too LOW — and this weight is what
+    // transporters are quoted. The on-screen section total already refuses to show a partial
+    // figure (secComplete); the enquiry must not be more trusting than the panel itself.
+    function enqUncountedRows(st) {
+        return enqScopeRows(st).filter(function (r) { return !(r.kgm && r.qty != null); });
+    }
+    function enqScopeComplete(st) {
+        var rows = enqScopeRows(st);
+        return rows.length > 0 && enqUncountedRows(st).length === 0;
+    }
+    // True when we have a weight we are willing to put in front of a transporter: either every
+    // row counted, or the user typed the number themselves.
+    function enqWeightUsable(st) {
+        var o = st.enquiry.weightOverride;
+        return (o != null && o > 0) || enqScopeComplete(st);
+    }
     // The weight the enquiry quotes: calculated from the rows, unless the user typed
-    // their own number over it (enq.weightOverride).
+    // their own number over it (enq.weightOverride). Returns 0 when the calculation would be
+    // partial and no override was given — callers must check enqWeightUsable first.
     function enqEffectiveWeight(st) {
         var o = st.enquiry.weightOverride;
-        return (o != null && o > 0) ? o : enqScopeWeight(st);
+        if (o != null && o > 0) return o;
+        return enqScopeComplete(st) ? enqScopeWeight(st) : 0;
     }
 
     // ── Remembered transporters (per route) + pickup/drop (loaded once, saved on send) ──
@@ -392,7 +423,10 @@
             + 'Please share your best freight rate for the consignment below:\n\n'
             + '• Pickup: ' + (enq.pickup || '—') + '\n'
             + '• Drop: ' + (enq.drop || '—') + '\n'
-            + '• Weight: ' + fmt(enqEffectiveWeight(st)) + ' kg (' + rows.length + ' item' + (rows.length === 1 ? '' : 's') + ')\n'
+            // Placeholder rather than a partial figure when the weight cannot be calculated —
+            // the draft is only a draft, and sending is blocked until a real weight exists.
+            + '• Weight: ' + (enqWeightUsable(st) ? (fmt(enqEffectiveWeight(st)) + ' kg') : '____ kg')
+            + ' (' + rows.length + ' item' + (rows.length === 1 ? '' : 's') + ')\n'
             + '• Material: MS pipes\n\n'
             + 'Kindly include transit time and whether door delivery is covered.\n\n'
             + 'Regards,\nDSC Pipes';
@@ -520,13 +554,22 @@
             + '<p style="margin:4px 0 0;font-size:11px;color:#9b988e;">Suggests transporters you’ve used for this route (fill pickup/drop first), plus Gmail matches. Each transporter gets their own email — they can’t see each other.</p>'
             + '<div class="fwe-enq-wt"><i class="ti ti-weight" style="font-size:16px;" aria-hidden="true"></i>'
             + ((st.split && enq.forSec) ? '<span>Shipment ' + enq.forSec + ' ·</span>' : '')
-            + '<input type="number" class="fwe-enq-kg" value="' + Math.round(enqEffectiveWeight(st)) + '" style="width:90px;height:28px;padding:2px 6px;text-align:right;border:1px solid rgba(0,0,0,.2);border-radius:6px;" title="Edit to override the calculated weight — clear to go back to calculated">'
+            // Left EMPTY when the calculation would be partial: prefilling the low number is how a
+            // 51%-light weight reached transporters unnoticed. Typing one here is the way forward.
+            + '<input type="number" class="fwe-enq-kg" value="' + (enqWeightUsable(st) ? Math.round(enqEffectiveWeight(st)) : '') + '"'
+            + (enqWeightUsable(st) ? '' : ' placeholder="enter kg"')
+            + ' style="width:90px;height:28px;padding:2px 6px;text-align:right;border:1px solid ' + (enqWeightUsable(st) ? 'rgba(0,0,0,.2)' : '#C0392B') + ';border-radius:6px;" title="Edit to override the calculated weight — clear to go back to calculated">'
             + '<span>kg · ' + enqScopeRows(st).length + ' item' + (enqScopeRows(st).length === 1 ? '' : 's') + '</span>'
             + (enq.weightOverride != null ? '<button type="button" class="fwe-kg-reset fwe-link" style="font-size:11px;">&#8634; use calculated</button>' : '')
             + '</div>'
+            + (enqWeightUsable(st) ? '' :
+                '<p class="fwe-enq-wt-warn" style="margin:4px 0 0;font-size:12px;color:#A32D2D;font-weight:600;">&#9888; '
+                + enqUncountedRows(st).length + ' of ' + enqScopeRows(st).length
+                + ' item' + (enqScopeRows(st).length === 1 ? '' : 's') + ' ha' + (enqUncountedRows(st).length === 1 ? 's' : 've')
+                + ' no kg/m or quantity, so the weight cannot be calculated. Fill those in on the panel above, or type the weight here — the enquiry will not send without it.</p>')
             + '<label class="fwe-enq-lbl">Message to transporters (editable)</label>'
             + '<textarea class="fwe-enq-msg">' + escTxt(draft) + '</textarea>'
-            + '<div style="margin-top:12px;"><button type="button" class="fwe-enq-send"' + (enq.to.length && !enq.sending && !hasBadRecipient(enq) ? '' : ' disabled') + '>'
+            + '<div style="margin-top:12px;"><button type="button" class="fwe-enq-send"' + (enq.to.length && !enq.sending && !hasBadRecipient(enq) && enqWeightUsable(st) ? '' : ' disabled') + '>'
             + '<i class="ti ti-send" style="font-size:14px;vertical-align:-2px;" aria-hidden="true"></i> Send request</button></div>'
             + statusHtml
             + enquiryThreadsHtml(q, st)
@@ -539,6 +582,13 @@
     function sendFreightEnquiry(q, st, mountEl) {
         var enq = st.enquiry;
         if (!enq.to.length || enq.sending || hasBadRecipient(enq)) return;
+        // Never quote a transporter a weight that silently omits rows — the rate comes back priced
+        // on it. The button is already disabled in this state; this is the guard behind it.
+        if (!enqWeightUsable(st)) {
+            enq.sent = 'err:' + enqUncountedRows(st).length + ' item(s) have no kg/m or quantity, so the weight is incomplete. Fill them in, or type the weight, before sending.';
+            render(q, mountEl);
+            return;
+        }
         var msgEl = mountEl.querySelector('.fwe-enq-msg');
         var bodyText = msgEl ? msgEl.value : enq.message;
         enq.message = bodyText; enq.messageEdited = true;
@@ -959,6 +1009,15 @@
             rememberedTransportersForRoute: rememberedTransportersForRoute,
             weightOf: weightOf,
             secWeight: secWeight,
+            secComplete: secComplete,
+            // The enquiry weight gate — what stops a partial weight reaching transporters.
+            enqScopeRows: enqScopeRows,
+            enqScopeWeight: enqScopeWeight,
+            enqUncountedRows: enqUncountedRows,
+            enqScopeComplete: enqScopeComplete,
+            enqWeightUsable: enqWeightUsable,
+            enqEffectiveWeight: enqEffectiveWeight,
+            buildEnquiryDraft: buildEnquiryDraft,
             checkFreightRepliesForQuote: checkFreightRepliesForQuote,
             _setSuggest: function (s) { _freightSuggest = s; }
         };
