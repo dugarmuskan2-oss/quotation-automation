@@ -338,14 +338,42 @@ describe('POST /quotations/:id/freight-enquiries', () => {
         expect(store['q1'].payload.companyName).toBe('Acme');
     });
 
-    test('an empty array is a legitimate save (clears the records)', async () => {
+    // The route MERGES rather than replaces: the client posts its own view of the list, which
+    // will not include an enquiry a colleague sent moments earlier. A straight replace made the
+    // app forget an email that had really gone out. Entries are only ever appended (and mutated
+    // in place when a reply lands), so nothing legitimately needs to remove one.
+    test('an empty array does NOT wipe records the sender simply had not loaded', async () => {
         const store = seed({ freightEnquiries: ENQUIRIES });
         const res = await request(makeApp(store)).post('/api/quotations/q1/freight-enquiries')
             .send({ freightEnquiries: [] });
         expect(res.status).toBe(200);
-        expect(res.body.count).toBe(0);
-        expect(store['q1'].payload.freightEnquiries).toEqual([]);
+        expect(store['q1'].payload.freightEnquiries).toEqual(ENQUIRIES);
+        expect(res.body.count).toBe(ENQUIRIES.length);
         expect(store['q1'].payload.lineItems).toEqual(LINE_ITEMS);
+    });
+
+    test('a second sender adds to the first sender\'s record instead of replacing it', async () => {
+        const first = { email: 'bharat@roadways.com', threadId: 't-A', sentAt: '2026-07-31T09:00:00Z', replied: false };
+        const second = { email: 'vrl@vrl.com', threadId: 't-B', sentAt: '2026-07-31T09:00:01Z', replied: false };
+        const store = seed({ freightEnquiries: [first] });
+        // Client B never saw A's enquiry, so it posts only its own.
+        const res = await request(makeApp(store)).post('/api/quotations/q1/freight-enquiries')
+            .send({ freightEnquiries: [second] });
+        expect(res.status).toBe(200);
+        const saved = store['q1'].payload.freightEnquiries;
+        expect(saved).toHaveLength(2);
+        expect(saved.map((t) => t.email).sort()).toEqual(['bharat@roadways.com', 'vrl@vrl.com']);
+    });
+
+    test('an update to an existing thread replaces that entry rather than duplicating it', async () => {
+        const sent = { email: 'a@b.com', threadId: 't-A', sentAt: '2026-07-31T09:00:00Z', replied: false, amount: 0 };
+        const store = seed({ freightEnquiries: [sent] });
+        await request(makeApp(store)).post('/api/quotations/q1/freight-enquiries')
+            .send({ freightEnquiries: [{ ...sent, replied: true, amount: 9000 }] });
+        const saved = store['q1'].payload.freightEnquiries;
+        expect(saved).toHaveLength(1);
+        expect(saved[0].replied).toBe(true);
+        expect(saved[0].amount).toBe(9000);
     });
 
     test('persists transporterReplyIn when true', async () => {

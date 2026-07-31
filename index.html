@@ -6773,6 +6773,16 @@
                     + '<button type="button" class="upload-btn" style="width:auto; padding:4px 12px; margin-left:6px;" '
                     + 'onclick="applyApprovalServerFilter()">Try again</button></p>';
             }
+            // A search term narrows the list too, so blame the search rather than declaring the
+            // whole month empty — "No quotes for July 2026." is simply false when July is full.
+            const q = (approvalSearchQuery || '').trim();
+            if (q) {
+                return '<p style="text-align:center; color:#999; padding:20px;">No '
+                    + (approvalRevisionFilter ? 'quotes waiting on a revision'
+                        : (approvalFreightFilter ? 'quotes with a freight enquiry'
+                            : ('quotes for ' + escapeHtml(approvalFilterLabel()))))
+                    + ' matching &ldquo;' + escapeHtml(q) + '&rdquo;.</p>';
+            }
             const what = approvalRevisionFilter
                 ? 'quotes waiting on a revision'
                 : (approvalFreightFilter
@@ -7115,10 +7125,11 @@
 
         function buildApprovalSplitLayout({ quotation, termsText, approveButtonHTML, saveButtonHTML, printButtonHTML, downloadButtonHTML, sendButtonHTML, copyLinkButtonHTML }) {
             const sidePanelHTML = buildApprovalSidePanelHTML(quotation);
-            // "Save as Revision" appears once the quote has been committed at least once —
-            // saved (a baseline is captured), approved, or sent. Before that there's no prior
-            // version to preserve. Distinct colour so it's hard to miss.
-            const canRevise = quotation.everApproved || quotation.sent || !!quotation.revisionBaseline;
+            // "Save as Revision" only once the quote has actually been SENT — a revision exists to
+            // preserve the version the customer already has, so there is nothing to preserve before
+            // that. This matches the gate inside saveAsRevision; the button used to appear on every
+            // saved-but-unsent quote (most of the list) and did nothing but scold when clicked.
+            const canRevise = !!quotation.sent;
             const saveRevisionButtonHTML = canRevise
                 ? `<button class="save-btn save-rev-btn" type="button" onclick="event.stopPropagation(); saveAsRevision(${JSON.stringify(quotation.id)})">🔖 Save as Revision</button>`
                 : '';

@@ -573,6 +573,42 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
         }));
     }
 
+    // Read-modify-write that cannot lose a concurrent update. `mutate(payload)` is applied to a
+    // FRESH read each attempt and the write only lands if the record has not changed underneath
+    // (conditional on updatedAt); otherwise it re-reads and re-applies. Without this, two people
+    // adding a revision note — or sending a freight enquiry — within the same moment each read the
+    // same record and the second write silently discarded the first one's entry, while both were
+    // told it succeeded. Returns the stored payload, or null if the quote does not exist.
+    async function mutateStoredQuotation(id, mutate, attempts) {
+        const { PutCommand } = require('@aws-sdk/lib-dynamodb');
+        const tries = attempts || 5;
+        for (let i = 0; i < tries; i++) {
+            const stored = await loadStoredQuotation(id);
+            if (!stored) return null;
+            const prevUpdatedAt = stored.item.updatedAt;
+            mutate(stored.payload);
+            const now = new Date().toISOString();
+            stored.payload.updatedAt = now;
+            try {
+                await ddbDocClient.send(new PutCommand({
+                    TableName: ddbTableName,
+                    Item: { ...stored.item, updatedAt: now, payload: stored.payload },
+                    // Only write if nobody else has written since our read.
+                    ...(prevUpdatedAt
+                        ? { ConditionExpression: 'updatedAt = :prev', ExpressionAttributeValues: { ':prev': prevUpdatedAt } }
+                        : { ConditionExpression: 'attribute_not_exists(id) OR attribute_not_exists(updatedAt)' }),
+                }));
+                return stored.payload;
+            } catch (err) {
+                const clash = err && (err.name === 'ConditionalCheckFailedException'
+                    || (err.__type || '').indexOf('ConditionalCheckFailed') >= 0);
+                if (!clash || i === tries - 1) throw err;
+                // Someone else won the race — loop and re-apply on top of their version.
+            }
+        }
+        return null;
+    }
+
     // Apply the admin's margins + note: stamp line items, rebuild the table
     // snapshot with the same builder ingest uses, move the quote to 'ready'.
     router.post('/quotations/:id/apply-admin-margins', async (req, res) => {
@@ -644,21 +680,20 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
             const addedBy = String((req.body && req.body.addedBy) || '').trim();
             if (!text) return res.status(400).json({ error: 'text is required' });
 
-            const stored = await loadStoredQuotation(req.params.id);
-            if (!stored) return res.status(404).json({ error: 'Quotation not found' });
-
-            const payload = stored.payload;
             const entry = { id: 'rr_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8), text, addedAt: new Date().toISOString() };
             if (addedBy) entry.addedBy = addedBy;
-            if (kind === 'note') {
-                if (!Array.isArray(payload.extraNotes)) payload.extraNotes = [];
-                payload.extraNotes.push(entry);
-            } else {
-                entry.done = false;
-                if (!Array.isArray(payload.revisionRequests)) payload.revisionRequests = [];
-                payload.revisionRequests.push(entry);
-            }
-            await storeQuotationPayload(stored.item, payload);
+            if (kind !== 'note') entry.done = false;
+            // Conditional retry: two people adding an ask at the same moment must BOTH keep theirs.
+            const saved = await mutateStoredQuotation(req.params.id, function (payload) {
+                if (kind === 'note') {
+                    if (!Array.isArray(payload.extraNotes)) payload.extraNotes = [];
+                    payload.extraNotes.push(entry);
+                } else {
+                    if (!Array.isArray(payload.revisionRequests)) payload.revisionRequests = [];
+                    payload.revisionRequests.push(entry);
+                }
+            });
+            if (!saved) return res.status(404).json({ error: 'Quotation not found' });
             res.json({ success: true, kind, entry });
         } catch (error) {
             console.error('Error adding revision request:', error);
@@ -701,14 +736,26 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
             if (!Array.isArray(freightEnquiries)) {
                 return res.status(400).json({ error: 'freightEnquiries must be an array' });
             }
-            const stored = await loadStoredQuotation(req.params.id);
-            if (!stored) return res.status(404).json({ error: 'Quotation not found' });
-
-            const payload = stored.payload;
-            payload.freightEnquiries = freightEnquiries;
-            if (typeof transporterReplyIn === 'boolean') payload.transporterReplyIn = transporterReplyIn;
-            await storeQuotationPayload(stored.item, payload);
-            res.json({ success: true, count: freightEnquiries.length });
+            // MERGE, don't replace. The client posts its own view of the list, which will not
+            // include an enquiry a colleague sent moments earlier — a straight replace made the
+            // app forget an email that really went out: it stopped watching that thread for a
+            // reply and the quote dropped off the Freight list. Entries are keyed by threadId
+            // where there is one, else by transporter + send time. Incoming wins on a match, so
+            // reply/amount updates still land.
+            const saved = await mutateStoredQuotation(req.params.id, function (payload) {
+                const keyOf = (t) => (t && t.threadId)
+                    ? 'tid:' + t.threadId
+                    : 'es:' + String((t && t.email) || '').toLowerCase() + '|' + String((t && t.sentAt) || '');
+                const merged = new Map();
+                (Array.isArray(payload.freightEnquiries) ? payload.freightEnquiries : []).forEach(function (t) {
+                    if (t) merged.set(keyOf(t), t);
+                });
+                freightEnquiries.forEach(function (t) { if (t) merged.set(keyOf(t), t); });
+                payload.freightEnquiries = Array.from(merged.values());
+                if (typeof transporterReplyIn === 'boolean') payload.transporterReplyIn = transporterReplyIn;
+            });
+            if (!saved) return res.status(404).json({ error: 'Quotation not found' });
+            res.json({ success: true, count: (saved.freightEnquiries || []).length });
         } catch (error) {
             console.error('Error saving freight enquiries:', error);
             res.status(500).json({ error: 'Failed to save freight enquiries', details: error.message });

@@ -178,12 +178,13 @@ describe('source guards — the contract that made the records disappear', () =>
 describe('source guards — server side', () => {
     test('the field-merge route exists and writes only the freight fields', () => {
         expect(routesSrc).toContain("router.post('/quotations/:id/freight-enquiries'");
-        expect(routesSrc).toContain('payload.freightEnquiries = freightEnquiries;');
+        // Merges into the stored list rather than replacing it, so a sender who never loaded a
+        // colleague's enquiry cannot erase it. Written through the conditional-retry helper so a
+        // simultaneous send cannot be lost either.
+        expect(routesSrc).toContain('payload.freightEnquiries = Array.from(merged.values());');
+        expect(routesSrc).toContain('await mutateStoredQuotation(req.params.id, function (payload) {');
         // Guarded so an omitted flag is left alone rather than being coerced to false.
         expect(routesSrc).toContain("if (typeof transporterReplyIn === 'boolean') payload.transporterReplyIn = transporterReplyIn;");
-        // Must go through the shared load/store helpers that merge into the STORED payload.
-        expect(routesSrc).toContain('await loadStoredQuotation(req.params.id)');
-        expect(routesSrc).toContain('await storeQuotationPayload(stored.item, payload)');
     });
 
     test('the route never assigns lineItems or tableHTML', () => {

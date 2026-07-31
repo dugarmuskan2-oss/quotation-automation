@@ -97,6 +97,8 @@ function loadFilters(st, fakeDocument) {
         'var approvalMonthFilter = st.approvalMonthFilter || "";',
         'var approvalFreightFilter = !!st.approvalFreightFilter;',
         'var approvalRevisionFilter = !!st.approvalRevisionFilter;',
+        // The empty-state message names the search term when one is active, so it must be seeded.
+        'var approvalSearchQuery = st.approvalSearchQuery || "";',
         'var approvalFilterLoading = !!st.approvalFilterLoading;',
         'var approvalFilterFetchFailed = !!st.approvalFilterFetchFailed;',
         extractConst(html, 'APPROVAL_MONTHS'),

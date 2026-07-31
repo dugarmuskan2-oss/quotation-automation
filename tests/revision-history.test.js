@@ -229,8 +229,11 @@ describe('buildHistoryTabContent — empty state', () => {
 });
 
 describe('source guard — Save-as-Revision button-after-save + baseline wiring', () => {
-    test('the button shows once approved, sent, or a baseline exists', () => {
-        expect(html).toContain('const canRevise = quotation.everApproved || quotation.sent || !!quotation.revisionBaseline;');
+    // The button now shows ONLY once the quote has been sent, matching the gate inside
+    // saveAsRevision. It used to appear on every saved-but-unsent quote — most of the list —
+    // where clicking it could do nothing but scold.
+    test('the button shows only once the quote has been sent', () => {
+        expect(html).toContain('const canRevise = !!quotation.sent;');
         expect(html).toContain('🔖 Save as Revision');
         expect(html).toContain('saveQuotationChanges(quotationId, { asRevision: true });');
     });
