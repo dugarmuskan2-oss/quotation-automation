@@ -343,7 +343,10 @@
     // row counted, or the user typed the number themselves.
     function enqWeightUsable(st) {
         var o = st.enquiry.weightOverride;
-        return (o != null && o > 0) || enqScopeComplete(st);
+        if (o != null && o > 0) return true;
+        // A complete scope that still totals zero (every row quantity 0) is not a usable weight —
+        // "Weight: 0 kg" tells a transporter nothing and cannot be priced.
+        return enqScopeComplete(st) && enqScopeWeight(st) > 0;
     }
     // The weight the enquiry quotes: calculated from the rows, unless the user typed
     // their own number over it (enq.weightOverride). Returns 0 when the calculation would be

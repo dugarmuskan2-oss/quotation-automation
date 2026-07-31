@@ -290,9 +290,11 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
             // One read of the stored quote, serving two guards below. Best-effort: a read failure
             // just means we save what the client sent, exactly as before.
             let stored = null;
+            let storedItemRev = null;   // optimistic-lock counter, carried through the write below
             try {
                 const existing = await ddbDocClient.send(new GetCommand({ TableName: ddbTableName, Key: { id: String(quotation.id) } }));
                 stored = (existing && existing.Item && existing.Item.payload) || null;
+                storedItemRev = existing && existing.Item ? existing.Item._rev : null;
             } catch (e) { /* first save, or a read blip — fall through and save what we have */ }
 
             // Guard 1 — accidental item wipes: if the incoming payload has NO line items and NO
@@ -330,6 +332,11 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
                     _entity:   ENTITY_QUOTATION,
                     updatedAt: updated.updatedAt,
                     createdAt: updated.createdAt,
+                    // Advance the optimistic-lock counter here too. This Item is built from scratch
+                    // rather than spread from the stored one, so without this a plain save silently
+                    // DROPPED _rev — resetting the lock a conditional writer relies on to notice
+                    // that the record moved underneath it.
+                    _rev:      (Number.isFinite(Number(storedItemRev)) ? Number(storedItemRev) : 0) + 1,
                     payload:   updated,
                 },
             }));
@@ -585,34 +592,48 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
         payload.updatedAt = now;
         await ddbDocClient.send(new PutCommand({
             TableName: ddbTableName,
-            Item: { ...item, updatedAt: now, payload },
+            // Every write advances _rev, so a conditional writer notices this one even when it
+            // lands inside the same millisecond.
+            Item: { ...item, updatedAt: now, _rev: nextRev(item), payload },
         }));
+    }
+
+    // Optimistic-lock token. A counter, NOT the updatedAt timestamp: ISO strings only resolve to
+    // the millisecond, and an in-process retry (re-read, mutate, write) finishes well inside one —
+    // so a retry could stamp the very timestamp it had just replaced, and a third writer still
+    // holding the pre-race value would pass its condition and clobber the second writer's entry,
+    // with all three callers getting 200. A counter cannot collide that way.
+    function nextRev(item) {
+        const cur = item && Number(item._rev);
+        return (Number.isFinite(cur) ? cur : 0) + 1;
     }
 
     // Read-modify-write that cannot lose a concurrent update. `mutate(payload)` is applied to a
     // FRESH read each attempt and the write only lands if the record has not changed underneath
-    // (conditional on updatedAt); otherwise it re-reads and re-applies. Without this, two people
-    // adding a revision note — or sending a freight enquiry — within the same moment each read the
-    // same record and the second write silently discarded the first one's entry, while both were
-    // told it succeeded. Returns the stored payload, or null if the quote does not exist.
+    // (conditional on the _rev counter); otherwise it re-reads and re-applies. Without this, two
+    // people adding a revision note — or sending a freight enquiry — within the same moment each
+    // read the same record and the second write silently discarded the first one's entry, while
+    // both were told it succeeded. Returns the stored payload, or null if the quote does not exist.
     async function mutateStoredQuotation(id, mutate, attempts) {
         const { PutCommand } = require('@aws-sdk/lib-dynamodb');
         const tries = attempts || 5;
         for (let i = 0; i < tries; i++) {
             const stored = await loadStoredQuotation(id);
             if (!stored) return null;
-            const prevUpdatedAt = stored.item.updatedAt;
+            const prevRev = Number(stored.item._rev);
+            const hasRev = Number.isFinite(prevRev);
             mutate(stored.payload);
             const now = new Date().toISOString();
             stored.payload.updatedAt = now;
             try {
                 await ddbDocClient.send(new PutCommand({
                     TableName: ddbTableName,
-                    Item: { ...stored.item, updatedAt: now, payload: stored.payload },
-                    // Only write if nobody else has written since our read.
-                    ...(prevUpdatedAt
-                        ? { ConditionExpression: 'updatedAt = :prev', ExpressionAttributeValues: { ':prev': prevUpdatedAt } }
-                        : { ConditionExpression: 'attribute_not_exists(id) OR attribute_not_exists(updatedAt)' }),
+                    Item: { ...stored.item, updatedAt: now, _rev: nextRev(stored.item), payload: stored.payload },
+                    // Only write if nobody else has written since our read. Records written before
+                    // _rev existed simply have none yet, so require its absence for those.
+                    ...(hasRev
+                        ? { ConditionExpression: '#r = :prev', ExpressionAttributeNames: { '#r': '_rev' }, ExpressionAttributeValues: { ':prev': prevRev } }
+                        : { ConditionExpression: 'attribute_not_exists(#r)', ExpressionAttributeNames: { '#r': '_rev' } }),
                 }));
                 return stored.payload;
             } catch (err) {
