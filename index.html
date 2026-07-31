@@ -9742,7 +9742,15 @@
                 quotation.revisionBaseline = buildRevisionSnapshotData(quotation, 'Original');
             }
             quotation.updatedAt = new Date().toISOString();
-            quotation.saved = false;  // Save = persist changes only; Approve = mark as approved
+            // Save = persist changes only; Approve = mark as approved. But clearing `saved` must
+            // not make an already-approved quote unsendable: the send gate accepts saved OR
+            // everApproved, and the edit handler always sets everApproved when it clears saved.
+            // Saving used to skip that pairing, so on a quote whose everApproved was never set
+            // (anything from before the flag existed) Save — and Save as Revision, which routes
+            // through here — left saved:false with no everApproved, and sending then demanded
+            // an approval the user had already given.
+            if (quotation.saved === true || quotation.sent === true) quotation.everApproved = true;
+            quotation.saved = false;
             quotation.hasUnsavedEdits = false;
             if (typeof window._cancelApprovalAutosave === 'function') {
                 window._cancelApprovalAutosave(quotationId);
