@@ -54,6 +54,12 @@
     function secWeight(st, sec) {
         return secRows(st, sec).filter(function (r) { return !r.removed; }).reduce(function (s, r) { return s + weightOf(r); }, 0);
     }
+    // The section total is only meaningful once every row has a kg/m AND a quantity — a
+    // partial total (with "not counted" rows) would mislead, so we hide it until then.
+    function secComplete(st, sec) {
+        var rows = secRows(st, sec).filter(function (r) { return !r.removed; });
+        return rows.length > 0 && rows.every(function (r) { return r.kgm && r.qty != null; });
+    }
     // Weight tolerance (7% under) applies to welded pipe (ERW / GI) but NOT to seamless,
     // which is billed at exact weight. Type comes from the line's pipe type, falling back
     // to the description (seamless carries "SCH"/"seamless"; welded carries "-- GI"/"-- ERW").
@@ -172,19 +178,23 @@
     function sectionHtml(st, sec) {
         var rows = secRows(st, sec);
         var title = st.split ? ('Shipment ' + sec) : 'Weight';
+        var complete = secComplete(st, sec);
         var header = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'
-            + '<span style="font-size:13px;font-weight:600;color:#444;">' + title + ' &middot; ' + fmt(secWeight(st, sec)) + ' kg</span>'
+            + '<span style="font-size:13px;font-weight:600;color:#444;">' + title + (complete ? ' &middot; ' + fmt(secWeight(st, sec)) + ' kg' : '') + '</span>'
             + (sec === 2 ? '<button class="fwe-link fwe-merge">Remove &middot; items go back</button>'
                 : '<span style="font-size:11px;color:#9b988e;">&#128190; saved with quote</span>') + '</div>';
         var body = rows.length ? rows.map(function (r) { return rowHtml(st, r); }).join('')
             : '<p style="margin:8px 0;font-size:12px;color:#9b988e;text-align:center;">Drag items here to weigh them separately.</p>';
         var secWt = secWeight(st, sec);
-        var totalRow = rows.length
-            ? '<div class="fwe-grid fwe-total"><div></div><div>Total weight</div><div></div><div></div><div style="text-align:right;">' + fmt(secWt) + ' kg</div><div></div></div>'
-              + (secHasTolerance(st, sec)
-                  ? '<div class="fwe-grid fwe-subtotal"><div></div><div>With tolerance (7%)</div><div></div><div></div><div style="text-align:right;">' + fmt(secToleranceWeight(st, sec)) + ' kg</div><div></div></div>'
-                  : '')
-            : '';
+        // Total (and the 7% tolerance) only once every row has its kg/m + qty. Until then,
+        // a prompt instead of a misleading partial total.
+        var totalRow = !rows.length ? ''
+            : (complete
+                ? '<div class="fwe-grid fwe-total"><div></div><div>Total weight</div><div></div><div></div><div style="text-align:right;">' + fmt(secWt) + ' kg</div><div></div></div>'
+                  + (secHasTolerance(st, sec)
+                      ? '<div class="fwe-grid fwe-subtotal"><div></div><div>With tolerance (7%)</div><div></div><div></div><div style="text-align:right;">' + fmt(secToleranceWeight(st, sec)) + ' kg</div><div></div></div>'
+                      : '')
+                : '<div class="fwe-grid fwe-subtotal"><div></div><div style="color:#9b988e;font-size:12px;">Fill in every kg/m to see the total weight</div><div></div><div></div><div></div><div></div></div>');
         var foot = '<div class="fwe-foot"><button class="fwe-add fwe-addbtn" data-sec="' + sec + '" title="Add item" aria-label="Add item">+</button><span style="margin-left:auto;"></span>'
             + (!st.split ? '<button class="fwe-btn fwe-split">+ Calculate other weight</button>' : '')
             + '<button class="fwe-btn fwe-print" data-sec="' + sec + '">&#128424; Print</button>'
