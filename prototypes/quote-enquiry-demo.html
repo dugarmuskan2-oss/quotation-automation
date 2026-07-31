@@ -49,7 +49,7 @@ a{color:inherit;}
 .attn-head{font-size:12px;color:var(--color-text-tertiary);margin:18px 0 8px;}
 .folder{display:flex;align-items:center;gap:10px;border:0.5px solid var(--color-border-tertiary);border-radius:10px;padding:10px 12px;background:var(--color-background-primary);margin-bottom:8px;}
 /* Enquiry rows: handle | Description | Qty | Unit | delete */
-.eq-grid{display:grid;grid-template-columns:22px 1fr 62px 60px 24px;gap:8px;align-items:center;}
+.eq-grid{display:grid;grid-template-columns:22px 1.4fr 90px 58px 52px 66px 62px 24px;gap:6px;align-items:center;}
 .eq-row{padding:5px 0;border-top:0.5px solid var(--color-border-tertiary);}
 .eq-row input{height:30px;padding:4px 7px;width:100%;}
 .eq-row.drag{opacity:.4;}
@@ -62,7 +62,7 @@ a{color:inherit;}
 <body>
 <div class="page">
   <div class="proto-label"><i class="ti ti-flask" aria-hidden="true"></i> Prototype — not live data</div>
-  <p class="proto-sub">A clickable mock of an <b>Enquiry</b> section inside the quote — the mirror of the Freight section. Open the folder, go to the <b>Enquiry</b> tab, and press <b>Create enquiry</b>: it builds a supplier enquiry from the quote's items. You can add / delete rows, <b>split it into two</b> enquiries (e.g. to different suppliers), and then <b>send</b> — choosing who it goes <i>to</i> and where <i>responses</i> land. Suppliers' offers come back as reply threads.</p>
+  <p class="proto-sub">A clickable mock of an <b>Enquiry</b> section inside the quote — the mirror of the Freight section. Open the folder, go to the <b>Enquiry</b> tab, and press <b>Create enquiry</b>: it builds a supplier enquiry from the quote's items. You can add / delete rows, <b>split it into two</b> enquiries (e.g. to different suppliers), and then <b>send</b>. Each supplier gets their <b>own email and is BCC'd</b>, so nobody sees anyone else, and their offers come back as reply threads.</p>
   <div id="app"></div>
   <p style="margin:18px 0 0;font-size:12px;color:var(--color-text-tertiary);text-align:center;"><span id="bReset" style="cursor:pointer;text-decoration:underline;">Reset demo</span></p>
 </div>
@@ -84,6 +84,14 @@ a{color:inherit;}
     'Surya Roshni':'orders@suryaroshni.com',
     'Tata Structura':'enquiry@tatastructura.com'
   };
+  // Remembered against the PIPE TYPES you have used each supplier for. Suggestions show
+  // everyone, with the types in this quote floated to the top.
+  var SUP_TYPES={
+    'Jindal Star':['GI','ERW'],
+    'APL Apollo':['ERW'],
+    'Surya Roshni':['GI'],
+    'Tata Structura':['Seamless','GI']
+  };
   var OFFER={
     'Jindal Star':{note:'GI @ Rs 92/kg, ERW @ Rs 86/kg. Make: Jindal. Delivery 5–6 days ex-works.'},
     'APL Apollo':{note:'Best on ERW — Rs 84/kg. GI Rs 94/kg. Apollo brand. 4 days, freight extra.'},
@@ -92,10 +100,9 @@ a{color:inherit;}
   };
   var S, dragId=null;
   function reset(){
-    S={open:true,tab:'enquiry',
+    S={open:true,tab:'enquiry',enqFilter:false,
        enq:{created:false,split:false,sendFor:0,
-            recips:[],           // suppliers this enquiry goes TO
-            replyTo:['info@dscpipes.com'], // where responses are received
+            recips:[],           // suppliers this enquiry goes to (each BCC'd, own email)
             msg:'',msgEdited:false,
             threads:[]}};         // supplier replies (offers)
     items.forEach(function(i){i.sec=1;});
@@ -120,9 +127,28 @@ a{color:inherit;}
       +badge+chev+'</div>';
     return row+(open?card():'');
   }
+  // Filter bar above the list — an Enquiry button beside Freight, the same way the real app
+  // has Freight and Revision. Toggling it narrows the list to quotes an enquiry was sent for.
+  function filterBar(){
+    var on=S.enqFilter;
+    var sent=S.enq.threads.length>0;
+    var badge=sent?'<span class="fx-pill" style="background:#6B3FA0;color:#fff;margin-left:6px;font-size:11px;">1</span>':'';
+    return '<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">'
+      +'<button id="bFreightFilter"><i class="ti ti-truck" style="font-size:14px;vertical-align:-2px;" aria-hidden="true"></i> Freight</button>'
+      +'<button id="bEnquiryFilter" style="'+(on?'background:#6B3FA0;color:#fff;border-color:#6B3FA0;':'')+'">'
+      +'<i class="ti ti-mail-forward" style="font-size:14px;vertical-align:-2px;" aria-hidden="true"></i> Enquiry'+badge+'</button>'
+      +'<span style="font-size:11px;color:var(--color-text-tertiary);">'
+      +(on?'Showing quotes an enquiry was sent for':'Filter the list to quotes with a supplier enquiry')+'</span></div>';
+  }
   function renderApp(){
-    app.innerHTML=folderRow();
+    var hidden = S.enqFilter && !S.enq.threads.length;
+    app.innerHTML=filterBar()
+      +(hidden
+        ? '<p style="text-align:center;color:var(--color-text-tertiary);font-size:13px;padding:18px;">No quotes with a supplier enquiry.</p>'
+        : folderRow());
     bindApp();
+    var fb=$('bEnquiryFilter');
+    if(fb)fb.onclick=function(){S.enqFilter=!S.enqFilter;renderApp();};
   }
 
   // ---------- CARD ----------
@@ -161,17 +187,48 @@ a{color:inherit;}
     h+='</div>';
     return h;
   }
+  // Same columns as the existing Enquiry Preparer: OUR REQUIREMENT (what we ask for) and
+  // YOUR OFFER (what the supplier fills in). The offer columns are shown greyed here because
+  // the supplier fills them in on their side, not us.
   function eqHead(){
-    return '<div class="eq-grid" style="font-size:12px;color:var(--color-text-tertiary);padding-bottom:2px;"><div></div><div>Description</div><div style="text-align:right;">Qty</div><div style="text-align:center;">Unit</div><div></div></div>';
+    return '<div class="eq-grid" style="font-size:11px;font-weight:600;padding-bottom:3px;">'
+      +'<div></div>'
+      +'<div style="grid-column:span 4;background:#1f3864;color:#fff;border-radius:5px;padding:3px 7px;">OUR REQUIREMENT (ENQUIRY)</div>'
+      +'<div style="grid-column:span 2;background:#375623;color:#fff;border-radius:5px;padding:3px 7px;">YOUR OFFER</div>'
+      +'<div></div></div>'
+      +'<div class="eq-grid" style="font-size:12px;color:var(--color-text-tertiary);padding-bottom:2px;">'
+      +'<div></div><div>Product / Spec</div><div>Size</div><div style="text-align:right;">Qty</div><div style="text-align:center;">UOM</div>'
+      +'<div style="text-align:right;">Rate</div><div style="text-align:center;">Make</div><div></div></div>';
   }
   function eqRow(it){
     var handle=S.enq.split?'<span class="eq-handle" draggable="true" data-id="'+it.id+'" title="Drag to the other enquiry" aria-label="Drag to move"><i class="ti ti-grip-vertical" aria-hidden="true"></i></span>':'<span></span>';
+    var offerCell='<input type="text" disabled placeholder="—" style="text-align:right;background:var(--color-background-tertiary);">';
     return '<div class="eq-row eq-grid" data-id="'+it.id+'">'
       +handle
       +'<input type="text" class="eqed" data-id="'+it.id+'" data-f="d" value="'+esc(it.d)+'">'
+      +'<input type="text" class="eqed" data-id="'+it.id+'" data-f="size" value="'+esc(it.size||'')+'">'
       +'<input type="number" class="eqed" data-id="'+it.id+'" data-f="qty" value="'+it.qty+'" style="text-align:right;">'
       +'<input type="text" class="eqed" data-id="'+it.id+'" data-f="unit" value="'+esc(it.unit)+'" style="text-align:center;">'
+      +offerCell
+      +'<input type="text" disabled placeholder="—" style="text-align:center;background:var(--color-background-tertiary);">'
       +'<button class="eqDel" data-id="'+it.id+'" title="Delete line" aria-label="Delete line" style="justify-self:end;background:#FCEBEB;color:#A32D2D;border:0.5px solid #F09595;border-radius:6px;width:24px;height:24px;padding:0;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ti ti-trash" style="font-size:13px;" aria-hidden="true"></i></button></div>';
+  }
+
+  // Which pipe types this quote covers — drives the supplier suggestions.
+  function pipeTypeOf(d){
+    var s=String(d||'').toLowerCase();
+    if(s.indexOf('seamless')>=0||s.indexOf('sch')>=0)return 'Seamless';
+    if(s.indexOf('erw')>=0)return 'ERW';
+    if(s.indexOf('gi')>=0)return 'GI';
+    return '';
+  }
+  function quotePipeTypes(){
+    var seen={};items.forEach(function(i){var t=pipeTypeOf(i.d);if(t)seen[t]=1;});
+    return Object.keys(seen);
+  }
+  function quotePipeTypeLabel(){
+    var t=quotePipeTypes();
+    return t.length?t.join(' / '):'these pipe types';
   }
   function enqSection(sec){
     var its=secItems(sec);
@@ -214,14 +271,10 @@ a{color:inherit;}
     var title=S.enq.split?('Enquiry '+(sec===1?'A':'B')):'this enquiry';
     if(!S.enq.msgEdited)S.enq.msg=buildMsg(sec);
     return '<div style="border:0.5px solid var(--color-border-secondary);border-radius:8px;padding:12px;margin-top:12px;"><div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;"><i class="ti ti-send" style="font-size:18px;color:#185FA5;" aria-hidden="true"></i><span style="font-size:14px;font-weight:500;">Send '+title+'</span><button class="fx-link" id="bSendDone" style="margin-left:auto;">Done</button></div>'
-      +'<label style="font-size:12px;color:var(--color-text-secondary);">To — suppliers / dealers</label>'
+      +'<label style="font-size:12px;color:var(--color-text-secondary);">To — suppliers / dealers <span style="color:var(--color-text-tertiary);font-weight:400;">(sent on BCC, one email each)</span></label>'
       +'<div id="toChips" style="display:flex;flex-wrap:wrap;gap:6px;margin:5px 0;"></div>'
       +'<input id="toInput" placeholder="Search suppliers you’ve emailed — type j, a, s, t" autocomplete="off" style="width:100%;"><div id="toSugg" style="display:none;border:0.5px solid var(--color-border-tertiary);border-radius:8px;margin-top:4px;overflow:hidden;"></div>'
-      +'<p style="margin:4px 0 0;font-size:11px;color:var(--color-text-tertiary);"><i class="ti ti-mail" style="font-size:12px;vertical-align:-1px;" aria-hidden="true"></i> Matches suppliers you’ve emailed before, from Gmail.</p>'
-      +'<label style="font-size:12px;color:var(--color-text-secondary);display:block;margin-top:12px;">Responses received at</label>'
-      +'<div id="rtChips" style="display:flex;flex-wrap:wrap;gap:6px;margin:5px 0;"></div>'
-      +'<input id="rtInput" placeholder="Add an email + Enter" autocomplete="off" style="width:100%;">'
-      +'<p style="margin:4px 0 0;font-size:11px;color:var(--color-text-tertiary);">Replies land here and are matched back to this enquiry.</p>'
+      +'<p style="margin:4px 0 0;font-size:11px;color:var(--color-text-tertiary);"><i class="ti ti-mail" style="font-size:12px;vertical-align:-1px;" aria-hidden="true"></i> Suggests suppliers you’ve emailed before — the ones you use for <b>'+esc(quotePipeTypeLabel())+'</b> come first. Each supplier gets their own email and is BCC’d, so nobody sees anyone else.</p>'
       +'<label style="font-size:12px;color:var(--color-text-secondary);display:block;margin-top:12px;">Message (editable)</label>'
       +'<textarea id="enqMsg" rows="9" style="margin:5px 0 12px;">'+esc(S.enq.msg)+'</textarea>'
       +'<div><button class="fx-prim" id="bSendNow"'+sendDis+' style="padding:7px 13px;"><i class="ti ti-send" style="font-size:14px;vertical-align:-2px;" aria-hidden="true"></i> Send enquiry</button></div>'
@@ -257,7 +310,7 @@ a{color:inherit;}
     };
     if(b=$('bCheckReplies'))b.onclick=function(){S.enq.threads.forEach(function(t){t.replied=true;});renderApp();};
     document.querySelectorAll('.tRead').forEach(function(x){x.onclick=function(){var i=parseInt(x.getAttribute('data-i'),10);S.enq.threads[i].open=!S.enq.threads[i].open;renderApp();};});
-    bindTo();bindReplyTo();bindDrag();
+    bindTo();bindDrag();
   }
   // To — supplier autocomplete (chips)
   function bindTo(){
@@ -268,26 +321,25 @@ a{color:inherit;}
     }
     inp.oninput=function(){
       var q=inp.value.trim().toLowerCase();
-      var list=Object.keys(SUP).filter(function(t){return q&&t.toLowerCase().indexOf(q)>=0&&S.enq.recips.indexOf(t)<0;});
+      var here=quotePipeTypes();
+      // Everyone we've emailed, but the suppliers used for THIS quote's pipe types come first.
+      var matchesHere=function(t){return (SUP_TYPES[t]||[]).some(function(x){return here.indexOf(x)>=0;});};
+      var list=Object.keys(SUP)
+        .filter(function(t){return q&&t.toLowerCase().indexOf(q)>=0&&S.enq.recips.indexOf(t)<0;})
+        .sort(function(a,b){return (matchesHere(b)?1:0)-(matchesHere(a)?1:0);});
       if(!list.length){sugg.style.display='none';sugg.innerHTML='';return;}
       sugg.style.display='block';
-      sugg.innerHTML=list.map(function(t){return '<div class="fx-sugg" data-t="'+t+'"><i class="ti ti-building-store" style="font-size:14px;vertical-align:-2px;color:var(--color-text-tertiary);" aria-hidden="true"></i> '+t+' <span style="color:var(--color-text-tertiary);font-size:12px;">'+SUP[t]+'</span></div>';}).join('');
+      sugg.innerHTML=list.map(function(t){
+        var types=(SUP_TYPES[t]||[]);
+        var tag=types.length?'<span class="fx-pill" style="background:'+(matchesHere(t)?'#E1F5EE;color:#0F6E56':'#EFEEE8;color:#6e6c65')+';margin-left:6px;font-size:11px;">'+types.join(' · ')+'</span>':'';
+        return '<div class="fx-sugg" data-t="'+t+'"><i class="ti ti-building-store" style="font-size:14px;vertical-align:-2px;color:var(--color-text-tertiary);" aria-hidden="true"></i> '+t+' <span style="color:var(--color-text-tertiary);font-size:12px;">'+SUP[t]+'</span>'+tag+'</div>';
+      }).join('');
       sugg.querySelectorAll('.fx-sugg').forEach(function(d){d.onclick=function(){S.enq.recips.push(d.getAttribute('data-t'));inp.value='';sugg.style.display='none';sugg.innerHTML='';draw();var sb=$('bSendNow');if(sb)sb.disabled=!S.enq.recips.length;inp.focus();};});
     };
     draw();
   }
-  // Responses-to — free email chips (Enter to add)
-  function bindReplyTo(){
-    var inp=$('rtInput'),chips=$('rtChips');if(!inp)return;
-    function draw(){
-      chips.innerHTML=S.enq.replyTo.map(function(r){return '<span class="fx-chip" style="background:#EFEEE8;color:#5a5850;">'+r+' <i class="ti ti-x" data-x="'+r+'" style="font-size:13px;cursor:pointer;" aria-hidden="true"></i></span>';}).join(' ');
-      chips.querySelectorAll('[data-x]').forEach(function(x){x.onclick=function(){var v=x.getAttribute('data-x');S.enq.replyTo=S.enq.replyTo.filter(function(r){return r!==v;});draw();};});
-    }
-    inp.onkeydown=function(e){
-      if(e.key==='Enter'||e.key===','){e.preventDefault();var v=inp.value.trim().replace(/,$/,'');if(v&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)&&S.enq.replyTo.indexOf(v)<0){S.enq.replyTo.push(v);inp.value='';draw();}}
-    };
-    draw();
-  }
+  // (The "Responses received at" box was removed — replies simply come back to the sending
+  // account, so there is nothing to configure.)
   function bindDrag(){
     document.querySelectorAll('.eq-handle').forEach(function(h){
       h.addEventListener('dragstart',function(){dragId=h.getAttribute('data-id');var r=h.closest('.eq-row');if(r)r.classList.add('drag');});
