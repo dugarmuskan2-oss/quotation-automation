@@ -1186,7 +1186,11 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
-    <!-- 
+    <!-- Thin progress bar pinned to the very top edge: today's quotes sent ÷ today's total. -->
+    <div id="dailyProgressTrack" style="position:fixed;top:0;left:0;right:0;height:3px;background:transparent;z-index:9999;display:none;pointer-events:none;">
+        <div id="dailyProgressBar" style="height:100%;width:0%;background:#1D9E75;transition:width .5s cubic-bezier(.2,.8,.2,1);"></div>
+    </div>
+    <!--
         ============================================
         HTML BODY - This is what users see on screen
         ============================================
@@ -8024,12 +8028,88 @@
             }
         }
 
+        /*
+            ── "All today's quotes sent" celebration ──────────────────────────────
+            A thin top-edge bar shows today's sent ÷ today's total; the moment the last
+            quote that ARRIVED today is sent, a dramatic confetti burst fires and a
+            self-clearing "N of N — all quotes sent today" message shows. "Today" = the
+            quote's createdAt in local time. To change the rule, edit todaysQuoteStats().
+        */
+        let _dailyCelebratedDate = null;
+        function _localDay(d) { try { return new Date(d).toLocaleDateString(); } catch (e) { return ''; } }
+        function todaysQuoteStats() {
+            const today = new Date().toLocaleDateString();
+            let total = 0, sent = 0;
+            (Array.isArray(approvedQuotations) ? approvedQuotations : []).forEach(function (q) {
+                if (!q || q.deleted) return;
+                if (_localDay(q.createdAt || q.quotationDate) !== today) return;
+                total++;
+                if (q.sent === true) sent++;
+            });
+            return { sent, total };
+        }
+        function updateDailyBar() {
+            const track = document.getElementById('dailyProgressTrack');
+            const bar = document.getElementById('dailyProgressBar');
+            if (!track || !bar) return;
+            const s = todaysQuoteStats();
+            if (s.total === 0) { track.style.display = 'none'; return; }
+            track.style.display = 'block';
+            bar.style.width = Math.round(s.sent / s.total * 100) + '%';
+        }
+        function maybeDailyCelebrate() {
+            updateDailyBar();
+            const s = todaysQuoteStats();
+            const key = new Date().toLocaleDateString();
+            if (s.total > 0 && s.sent >= s.total) {
+                if (_dailyCelebratedDate !== key) { _dailyCelebratedDate = key; runDailyCelebration(s.total); }
+            } else if (_dailyCelebratedDate === key) {
+                _dailyCelebratedDate = null;   // a new unsent quote arrived — allow it to fire again when re-cleared
+            }
+        }
+        function runDailyCelebration(count) {
+            fireDailyConfetti();
+            const msg = document.createElement('div');
+            msg.style.cssText = 'position:fixed;inset:0;display:flex;align-items:flex-start;justify-content:center;z-index:100000;pointer-events:none;';
+            msg.innerHTML = '<div style="margin-top:16vh;background:#EAF3DE;border:1px solid #C0DD97;border-radius:14px;padding:22px 30px;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,0.12);opacity:0;transform:scale(.92);transition:opacity .4s,transform .4s;">'
+                + '<div style="font-size:30px;">&#127881;</div>'
+                + '<div style="font-size:19px;font-weight:600;color:#27500A;margin-top:6px;">' + count + ' of ' + count + ' &mdash; all quotes sent today</div>'
+                + '<div style="font-size:13px;color:#3B6D11;margin-top:3px;">Nice. You&#39;re all caught up.</div></div>';
+            document.body.appendChild(msg);
+            const card = msg.firstChild;
+            requestAnimationFrame(function () { card.style.opacity = '1'; card.style.transform = 'scale(1)'; });
+            setTimeout(function () { card.style.opacity = '0'; card.style.transform = 'scale(.98)'; setTimeout(function () { msg.remove(); }, 450); }, 3200);
+        }
+        function fireDailyConfetti() {
+            let cv = document.getElementById('dailyConfetti');
+            if (!cv) {
+                cv = document.createElement('canvas');
+                cv.id = 'dailyConfetti';
+                cv.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:99999;';
+                document.body.appendChild(cv);
+            }
+            const ctx = cv.getContext('2d');
+            const W = cv.width = window.innerWidth, H = cv.height = window.innerHeight;
+            const cols = ['#1D9E75', '#EF9F27', '#378ADD', '#D85A30', '#7F77DD', '#639922', '#D4537E'];
+            const P = [];
+            function add(ox, oy, ang, spread, n, speed) { for (let i = 0; i < n; i++) { const a = ang + (Math.random() - 0.5) * spread, sp = Math.random() * speed + speed * 0.5; P.push({ x: ox, y: oy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, w: Math.random() * 9 + 5, h: Math.random() * 7 + 4, c: cols[(Math.random() * cols.length) | 0], a: 1, rot: Math.random() * 6, vr: (Math.random() - 0.5) * 0.6 }); } }
+            function cannons() { add(0, H, -Math.PI / 3, 0.7, 140, 19); add(W, H, -Math.PI * 2 / 3, 0.7, 140, 19); add(0, H * 0.6, -0.15, 0.6, 80, 16); add(W, H * 0.6, Math.PI + 0.15, 0.6, 80, 16); }
+            cannons(); setTimeout(cannons, 320); setTimeout(function () { add(W / 2, H, -Math.PI / 2, 1.5, 170, 20); }, 660);
+            const t0 = Date.now(); let rainT = 0;
+            (function f() {
+                const el = Date.now() - t0; ctx.clearRect(0, 0, W, H);
+                if (el < 1500 && el - rainT > 35) { rainT = el; for (let i = 0; i < 14; i++) P.push({ x: Math.random() * W, y: -10, vx: (Math.random() - 0.5) * 2.5, vy: Math.random() * 3 + 2, w: Math.random() * 9 + 5, h: Math.random() * 7 + 4, c: cols[(Math.random() * cols.length) | 0], a: 1, rot: Math.random() * 6, vr: (Math.random() - 0.5) * 0.5 }); }
+                for (let i = 0; i < P.length; i++) { const p = P[i]; p.vy += 0.22; p.vx *= 0.99; p.x += p.vx; p.y += p.vy; p.rot += p.vr; if (el > 1700) p.a -= 0.014; ctx.globalAlpha = Math.max(0, p.a); ctx.fillStyle = p.c; ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); ctx.restore(); }
+                ctx.globalAlpha = 1; if (el < 3500) requestAnimationFrame(f); else { ctx.clearRect(0, 0, W, H); cv.remove(); }
+            })();
+        }
+
         function displayAllApprovedQuotations() {
             /*
                 This function loops through all approved quotations
                 and displays them in the Approval section.
             */
-            
+            updateDailyBar();
             const container = getApprovedQuotationsContainer();
             const previousScrollTop = container ? container.scrollTop : 0;
             const expandedFolderIds = container
@@ -10616,8 +10696,8 @@
                 overlay.className = 'email-modal-overlay';
                 overlay.innerHTML = `
                     <div class="email-modal email-modal--compose">
-                        <h3 class="email-modal-title">Send quotation to customer</h3>
-                        <p class="email-modal-sub">Review and edit the email below, then send. The quotation PDF is attached.</p>
+                        <h3 class="email-modal-title">${escapeHtml(prefill.title || 'Send quotation to customer')}</h3>
+                        <p class="email-modal-sub">${escapeHtml(prefill.subtitle || 'Review and edit the email below, then send. The quotation PDF is attached.')}</p>
                         <div class="email-thread-note"></div>
                         <label class="email-modal-label">To</label>
                         <div class="chips-field" data-field="to"><input type="text" placeholder="name@email.com"></div>
@@ -10942,6 +11022,7 @@
                     saveQuotationToBackend(quotation);
                     updateApprovalBadge(quotationId, quotation);
                     updateSentBadge(quotationId);
+                    maybeDailyCelebrate();   // top-edge bar + confetti when the day's last quote is sent
                     // The card's revision strip needs a real re-render to drop the satisfied asks —
                     // the badge updates above are targeted DOM writes and would leave it stale.
                     if (revisionsCleared) refreshApprovalListPreservingEdits();
