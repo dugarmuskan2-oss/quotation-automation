@@ -186,7 +186,7 @@ function cacheSet(key, id) {
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 
-module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName }) {
+module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, storage }) {
 
     const router = express.Router();   // fresh router per call — a factory must not share module-level state
 
@@ -586,6 +586,39 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName })
         } catch (error) {
             console.error('Error soft-deleting quotation:', error);
             res.status(500).json({ error: 'Failed to delete quotation', details: error.message });
+        }
+    });
+
+    // ── Archive a version's PDF, and serve it back ─────────────────────────────
+    // The client generates the exact PDF (the same one it emails the customer) and posts
+    // its base64 here; we stash it in file storage keyed by quote + version, so History
+    // and the shared link can show the real original later instead of rebuilding it.
+    router.post('/quotations/:id/archive-pdf', async (req, res) => {
+        if (!storage || !storage.upload) return res.status(501).json({ error: 'File storage not configured' });
+        try {
+            const { base64, versionKey } = req.body || {};
+            if (!base64 || !versionKey) return res.status(400).json({ error: 'base64 and versionKey are required' });
+            const name = String(versionKey).replace(/[^a-zA-Z0-9._-]/g, '_') + '.pdf';
+            const prefix = 'quote-pdfs/' + String(req.params.id);
+            await storage.upload(Buffer.from(base64, 'base64'), name, prefix);
+            res.json({ success: true, key: prefix + '/' + name });
+        } catch (error) {
+            console.error('Error archiving quote PDF:', error);
+            res.status(500).json({ error: 'Failed to archive PDF', details: error.message });
+        }
+    });
+
+    // Serve an archived version PDF (embedded by History / the shared link). 404 when a
+    // version was never archived — the caller then falls back to the rebuilt view.
+    router.get('/quotations/:id/pdf', async (req, res) => {
+        if (!storage || !storage.streamToResponse) return res.status(404).end();
+        const version = String(req.query.version || 'current').replace(/[^a-zA-Z0-9._-]/g, '_');
+        const key = 'quote-pdfs/' + String(req.params.id) + '/' + version + '.pdf';
+        try {
+            res.setHeader('Content-Type', 'application/pdf');
+            await storage.streamToResponse(key, res);
+        } catch (error) {
+            if (!res.headersSent) res.status(404).json({ error: 'No archived PDF for this version' });
         }
     });
 

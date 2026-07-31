@@ -241,9 +241,12 @@ describe('buildSharedFreightHtml — Freight section HTML', () => {
 describe('source guard — renderSharedQuotePage stacks all versions + Weight/Freight sections', () => {
     const src = extractFunction(html, 'renderSharedQuotePage');
 
-    test('renders the current version via the History renderer', () => {
+    test('current version renders as a live PDF; past versions use the archived PDF or the rebuilt view', () => {
         expect(src).toContain('buildCurrentVersionRev(quotation)');
-        expect(src).toContain('revisionFullQuoteHtml(quotation, currentRev)');
+        expect(src).toContain('sq-pdf-current');                                 // current = live PDF frame
+        expect(src).toContain('downloadQuotationPdf(quotation.id, { preview: true })');
+        expect(src).toContain('archivedPdfVersions');                            // gate past-version archived PDFs
+        expect(src).toContain('revisionFullQuoteHtml(quotation, r)');            // rebuilt fallback for un-archived
     });
 
     test('loops over EVERY stored revision (newest first)', () => {

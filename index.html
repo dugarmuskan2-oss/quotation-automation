@@ -10193,6 +10193,7 @@
                     // History entry the next "Save as Revision" archives.
                     quotation.revisionBaseline = buildRevisionSnapshotData(quotation, 'Sent version');
                     delete quotation.lastSentSnapshot;
+                    archiveQuotationPdf(quotation, pdfResult.base64);   // stash the exact PDF the customer got
                     saveQuotationToBackend(quotation);
                     updateApprovalBadge(quotationId, quotation);
                     updateSentBadge(quotationId);
@@ -10613,6 +10614,26 @@
                 doc.save(filename);
             }
         }
+
+        // Archive a version's exact PDF to file storage so History + the shared link can show
+        // the real original later. Best-effort — never blocks the send. Records the version key
+        // on the quote (archivedPdfVersions) so the viewers know which versions are available.
+        async function archiveQuotationPdf(quotation, base64) {
+            if (!quotation || !base64) return;
+            const versionKey = 'v' + currentRevisionNumber(quotation);
+            try {
+                const res = await fetch(`${API_BASE_URL}/quotations/${encodeURIComponent(quotation.id)}/archive-pdf`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ base64: base64, versionKey: versionKey })
+                });
+                if (!res.ok) return;
+                if (!Array.isArray(quotation.archivedPdfVersions)) quotation.archivedPdfVersions = [];
+                if (quotation.archivedPdfVersions.indexOf(versionKey) < 0) {
+                    quotation.archivedPdfVersions.push(versionKey);
+                    if (typeof saveQuotationToBackend === 'function') saveQuotationToBackend(quotation);
+                }
+            } catch (e) { /* best-effort archive */ }
+        }
         
         /*
             ============================================
@@ -10874,21 +10895,42 @@
             const overlay = getPreviewOverlay();
             overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#f4f3ef;overflow:auto;font-family:Arial,Helvetica,sans-serif;color:#20201d;';
             const revs = Array.isArray(quotation.revisions) ? quotation.revisions : [];
-            const currentRev = buildCurrentVersionRev(quotation);
-            let versions = '<div class="sq-card"><span class="sq-badge sq-cur">Current &middot; ' + revisionLabel(currentRev, revs.length) + '</span>' + revisionFullQuoteHtml(quotation, currentRev) + '</div>';
+            const archived = Array.isArray(quotation.archivedPdfVersions) ? quotation.archivedPdfVersions : [];
+            const base = (typeof API_BASE_URL === 'string' ? API_BASE_URL : '') || '';
+            const pdfFrame = function(src, id) { return '<iframe' + (id ? ' id="' + id + '"' : '') + ' class="sq-pdf" src="' + src + '" style="width:100%;height:80vh;border:1px solid #ddd;border-radius:6px;background:#fff;"></iframe>'; };
+            // Current version renders LIVE (the exact current PDF); loaded into its frame after paint.
+            let versions = '<div class="sq-card"><span class="sq-badge sq-cur">Current &middot; ' + revisionLabel(buildCurrentVersionRev(quotation), revs.length) + '</span>'
+                + pdfFrame('about:blank', 'sq-pdf-current') + '</div>';
+            // Past versions: the archived original PDF (exactly what was sent) when we have it,
+            // otherwise fall back to the rebuilt full-quote view.
             for (let i = revs.length - 1; i >= 0; i--) {
                 const r = revs[i];
-                versions += '<div class="sq-card"><span class="sq-badge">' + revisionLabel(r, i) + (r.createdAt ? ' &middot; ' + formatRevisionDate(r.createdAt) : '') + '</span>' + revisionFullQuoteHtml(quotation, r) + '</div>';
+                const vkey = 'v' + (r.revNo != null ? r.revNo : i);
+                const body = (archived.indexOf(vkey) >= 0)
+                    ? pdfFrame(base + '/quotations/' + encodeURIComponent(String(quotation.id)) + '/pdf?version=' + encodeURIComponent(vkey))
+                    : revisionFullQuoteHtml(quotation, r);
+                versions += '<div class="sq-card"><span class="sq-badge">' + revisionLabel(r, i) + (r.createdAt ? ' &middot; ' + formatRevisionDate(r.createdAt) : '') + '</span>' + body + '</div>';
             }
             const prevNote = revs.length ? '' : '<p style="color:#9b988e;font-size:13px;margin:0 0 4px;">No previous versions &mdash; this is the only one.</p>';
+            const noteBlock = (typeof adminNoteHtml === 'function') ? adminNoteHtml(quotation) : '';
+            const noteSection = noteBlock ? '<div class="sq-sec-h">Note from the admin (internal)</div><div class="sq-card">' + noteBlock + '</div>' : '';
             overlay.innerHTML = '<div class="sq-wrap">'
                 + '<div class="sq-head"><h1>' + escapeHtml(quotation.quoteNumber || 'Quotation') + (rev > 0 ? ' (Rev ' + rev + ')' : '') + '</h1>'
                 + '<div class="sq-sub">' + escapeHtml([quotation.companyName, quotation.customerName, quotation.quotationDate].filter(Boolean).join(' · ')) + '</div>'
                 + '<button class="sq-dl" onclick="downloadQuotationPdf(' + JSON.stringify(String(quotation.id)) + ')">&#11015;&#65039; Download current quote (PDF)</button></div>'
+                + noteSection
                 + '<div class="sq-sec-h">Versions (newest first)</div>' + prevNote + versions
                 + '<div class="sq-sec-h">Weight</div><div class="sq-card">' + buildSharedWeightHtml(quotation) + '</div>'
                 + '<div class="sq-sec-h">Freight</div><div class="sq-card">' + buildSharedFreightHtml(quotation) + '</div>'
                 + '</div>';
+            // Load the current version's live PDF into its frame (the exact current customer PDF).
+            (async function() {
+                try {
+                    const r = await downloadQuotationPdf(quotation.id, { preview: true });
+                    const frame = document.getElementById('sq-pdf-current');
+                    if (frame && r && r.blobUrl) frame.src = r.blobUrl;
+                } catch (e) { console.warn('Live current-version PDF failed:', e); }
+            })();
         }
 
         // When opened via a shared link (?quote=..&view=pdf), take over the page and show that
