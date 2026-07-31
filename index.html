@@ -9732,7 +9732,11 @@
             const sno = pick(/S\.?\s*NO/i) || def[0];
             const items = pick(/ITEMS.*DESCRIPTION|DESCRIPTION.*ITEMS/i) || def[1];
             const qty = pick(/QTY/i) || def[2];
-            const rate = pick(/RATE\s*PER\s*(MTR|MTRS|METER|KG|UNIT|\w+)/i) || def[3];
+            // Match any rate label, whatever unit the user typed. The old pattern demanded a WORD
+            // right after "RATE PER", so a bracketed unit like "Rate per (KGS)" did not match and
+            // silently fell back to def[3] — printing "Rate per Mtr" over kg rates. BASE RATE is
+            // already dropped from candidates above, so a bare /RATE/ cannot pick the wrong column.
+            const rate = pick(/RATE/i) || def[3];
             const amount = pick(/AMOUNT/i) || def[4];
             return [sno, items, qty, rate, amount];
         }
