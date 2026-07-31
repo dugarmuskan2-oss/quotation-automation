@@ -347,6 +347,19 @@
         .rev-count { display: inline-block; min-width: 18px; height: 18px; line-height: 18px; padding: 0 5px;
             margin-left: 6px; border-radius: 9px; background: #C0392B; color: #fff; font-size: 11px;
             font-weight: 700; text-align: center; vertical-align: middle; }
+        /* A small hop while revisions are waiting, to catch the eye in a toolbar you look at all
+           day. Only the button moves, never the list. Stops once the Revision list is open — you
+           are already looking at them — and never runs for a viewer who prefers reduced motion. */
+        @keyframes revNudge {
+            0%, 62%, 100% { transform: translateY(0); }
+            70%           { transform: translateY(-4px); }
+            80%           { transform: translateY(0); }
+            88%           { transform: translateY(-2px); }
+        }
+        .rev-nudge { animation: revNudge 2.2s ease-in-out infinite; }
+        @media (prefers-reduced-motion: reduce) {
+            .rev-nudge { animation: none; }
+        }
         .thread-messages { max-height: 320px; overflow-y: auto; }
         /* Real-time recipient autocomplete (Gmail-style) */
         .contact-dd { position: absolute; top: 100%; left: 0; right: 0; z-index: 10; background: #fff; border: 1px solid #ddd; border-radius: 6px; margin-top: 2px; max-height: 220px; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
@@ -6931,12 +6944,16 @@
             ['approvalMonthSelect','approvalYearSelect'].forEach(function(id){ const el = document.getElementById(id); if (el) el.style.opacity = dim ? '0.5' : ''; });
         }
         // Red circle on the Revision button. Hidden at zero — a "0" badge reads as a nag.
+        // The button also hops gently while revisions are waiting, but not once the Revision list
+        // is open (the user is already looking at them).
         function updateApprovalRevisionCount() {
             const el = document.getElementById('approvalRevisionCount');
             if (!el) return;
             const n = approvalRevisionCount();
             el.textContent = String(n);
             el.style.display = n > 0 ? 'inline-block' : 'none';
+            const btn = document.getElementById('approvalRevisionBtn');
+            if (btn) btn.classList.toggle('rev-nudge', n > 0 && !approvalRevisionFilter);
         }
         // Builds the month/year dropdowns. The app opens UNFILTERED (latest quotes, as before) —
         // the month select starts on a blank "All months" option, so picking any real month always
