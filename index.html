@@ -11642,15 +11642,22 @@
             const gmail = /^https?:\/\//i.test(link)
                 ? '<p style="margin:0 0 8px;"><a href="' + escapeHtml(link) + '" target="_blank" rel="noopener noreferrer">&#128231; View in Gmail</a></p>'
                 : '';
+            // The original attachments, rendered by the SAME builder the margins desk uses —
+            // clickable chips through /view-enquiry-file, plus the amber "not attached" notes for
+            // originals that were never forwarded. One builder, so the two can't diverge.
+            const files = (typeof buildEnquiryFilesChipsHTML === 'function')
+                ? buildEnquiryFilesChipsHTML(q) : '';
+
             const rawHtml = String(q.emailContentHtml || '').trim();
             if (rawHtml) {
                 const safe = (typeof sanitizeEmailHtmlForPreview === 'function')
                     ? sanitizeEmailHtmlForPreview(rawHtml) : escapeHtml(rawHtml);
-                return gmail + '<div class="sq-enq">' + safe + '</div>';
+                return gmail + files + '<div class="sq-enq">' + safe + '</div>';
             }
             const text = String(q.emailContent || '').trim();
-            if (text) return gmail + '<div class="sq-enq" style="white-space:pre-wrap;">' + escapeHtml(text) + '</div>';
-            return gmail + '<p style="color:#999;">No enquiry email stored for this quote.</p>';
+            if (text) return gmail + files + '<div class="sq-enq" style="white-space:pre-wrap;">' + escapeHtml(text) + '</div>';
+            return gmail + files
+                + (files ? '' : '<p style="color:#999;">No enquiry email stored for this quote.</p>');
         }
         function renderSharedQuotePage(quotation) {
             const rev = currentRevisionNumber(quotation);
@@ -11684,10 +11691,12 @@
                 + '<div class="sq-sub">' + escapeHtml([quotation.companyName, quotation.customerName, quotation.quotationDate].filter(Boolean).join(' · ')) + '</div>'
                 + '<button class="sq-dl" onclick="downloadQuotationPdf(' + JSON.stringify(String(quotation.id)) + ')">&#11015;&#65039; Download current quote (PDF)</button></div>'
                 + noteSection
+                // The enquiry sits straight after the admin's note: what was asked for, then what
+                // the admin decided, then the quote itself.
+                + '<div class="sq-sec-h">Enquiry (what the customer asked for)</div><div class="sq-card">' + buildSharedEnquiryHtml(quotation) + '</div>'
                 + '<div class="sq-sec-h">Versions (newest first)</div>' + prevNote + versions
                 + '<div class="sq-sec-h">Weight</div><div class="sq-card">' + buildSharedWeightHtml(quotation) + '</div>'
                 + '<div class="sq-sec-h">Freight</div><div class="sq-card">' + buildSharedFreightHtml(quotation) + '</div>'
-                + '<div class="sq-sec-h">Enquiry (what the customer asked for)</div><div class="sq-card">' + buildSharedEnquiryHtml(quotation) + '</div>'
                 + '</div>';
             // Load the current version's live PDF into its frame (the exact current customer PDF).
             (async function() {
