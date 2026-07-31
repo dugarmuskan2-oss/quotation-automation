@@ -79,6 +79,12 @@ const FILTER_FNS = [
     'updateApprovalFilterButtons',
     'approvalResetMonthSelect',
     'initApprovalFilters',
+    // Revision asks: the filter reads these, and updateApprovalFilterButtons refreshes the count.
+    'revisionRequestsOf',
+    'openRevisionRequests',
+    'quoteNeedsRevisionClient',
+    'approvalRevisionCount',
+    'updateApprovalRevisionCount',
 ];
 
 /**
@@ -90,6 +96,7 @@ function loadFilters(st, fakeDocument) {
         'var approvedQuotations = st.approvedQuotations || [];',
         'var approvalMonthFilter = st.approvalMonthFilter || "";',
         'var approvalFreightFilter = !!st.approvalFreightFilter;',
+        'var approvalRevisionFilter = !!st.approvalRevisionFilter;',
         'var approvalFilterLoading = !!st.approvalFilterLoading;',
         'var approvalFilterFetchFailed = !!st.approvalFilterFetchFailed;',
         extractConst(html, 'APPROVAL_MONTHS'),
@@ -104,6 +111,8 @@ function loadFilters(st, fakeDocument) {
         + 'approvalFilteredEmptyHtml: approvalFilteredEmptyHtml,'
         + 'getFilteredApprovedQuotations: getFilteredApprovedQuotations,'
         + 'initApprovalFilters: initApprovalFilters,'
+        + 'quoteNeedsRevisionClient: quoteNeedsRevisionClient,'
+        + 'approvalRevisionCount: approvalRevisionCount,'
         + 'state: function () { return { approvalMonthFilter: approvalMonthFilter, approvalFreightFilter: approvalFreightFilter }; }'
         + '};';
     // eslint-disable-next-line no-new-func
@@ -423,7 +432,7 @@ describe('index.html source guards — filter-aware "Load more" and merges', () 
     const initFiltersFn = extractFunction(html, 'initApprovalFilters');
 
     test('updateLoadMoreApprovedButton hides the feed button while a filter is active', () => {
-        expect(loadMoreFn).toContain('!!(approvalMonthFilter || approvalFreightFilter)');
+        expect(loadMoreFn).toContain('!!(approvalMonthFilter || approvalFreightFilter || approvalRevisionFilter)');
         expect(loadMoreFn).toContain('if (filterActive && !approvalFilterFetchFailed)');
         const hideIdx = loadMoreFn.indexOf("loadMoreBtn.style.display = 'none';");
         const feedIdx = loadMoreFn.indexOf('approvedQuotationsHasMore ?');

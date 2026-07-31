@@ -36,6 +36,9 @@ const SUMMARY_NESTED_PATHS = [
     'freightEnquiries', 'threadId', 'transporterReplyIn',
     // Soft-delete flag so accidental/junk quotes stay filtered out of the lists on reload.
     'deleted',
+    // Revision asks + plain notes added from a quote card. revisionRequests must be here so the
+    // Revision filter and its count badge work from the list alone, without fetching every quote.
+    'revisionRequests', 'extraNotes',
 ];
 const SUMMARY_PROJECTION = [
     'id', 'updatedAt', 'createdAt',
@@ -211,6 +214,12 @@ const FULL_SCAN_MAX_PAGES = 200;
 function quoteHasFreightActivity(x) {
     if (x && x.transporterReplyIn) return true;
     return !!(x && Array.isArray(x.freightEnquiries) && x.freightEnquiries.length > 0);
+}
+// Needs a revision — the admin asked for a change that has not been sent to the customer yet.
+// Done asks are KEPT (History shows what was asked), so this counts only the open ones.
+// Mirrors quoteNeedsRevisionClient in index.html.
+function quoteNeedsRevision(x) {
+    return !!(x && Array.isArray(x.revisionRequests) && x.revisionRequests.some(function (r) { return r && !r.done; }));
 }
 
 module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, storage }) {
@@ -596,6 +605,65 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
         }
     });
 
+    // Add a revision ask, or a plain note, from a quote card. Field-only merge into the STORED
+    // payload (same reasoning as the freight route below), so it can be used on a quote the client
+    // holds only as a list summary and can never smuggle in the user's in-progress edits.
+    //
+    // Two separate arrays on purpose: only revisionRequests drives the Revision filter and its
+    // count badge, so a note can never put a quote into the revision list by accident.
+    router.post('/quotations/:id/revision-request', async (req, res) => {
+        if (!requireDdb(res)) return;
+        try {
+            const text = String((req.body && req.body.text) || '').trim();
+            const kind = (req.body && req.body.kind) === 'note' ? 'note' : 'revision';
+            const addedBy = String((req.body && req.body.addedBy) || '').trim();
+            if (!text) return res.status(400).json({ error: 'text is required' });
+
+            const stored = await loadStoredQuotation(req.params.id);
+            if (!stored) return res.status(404).json({ error: 'Quotation not found' });
+
+            const payload = stored.payload;
+            const entry = { id: 'rr_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8), text, addedAt: new Date().toISOString() };
+            if (addedBy) entry.addedBy = addedBy;
+            if (kind === 'note') {
+                if (!Array.isArray(payload.extraNotes)) payload.extraNotes = [];
+                payload.extraNotes.push(entry);
+            } else {
+                entry.done = false;
+                if (!Array.isArray(payload.revisionRequests)) payload.revisionRequests = [];
+                payload.revisionRequests.push(entry);
+            }
+            await storeQuotationPayload(stored.item, payload);
+            res.json({ success: true, kind, entry });
+        } catch (error) {
+            console.error('Error adding revision request:', error);
+            res.status(500).json({ error: 'Failed to add', details: error.message });
+        }
+    });
+
+    // Mark every open revision ask on a quote as done. Called when the revised quote is SENT to the
+    // customer — the ask is only satisfied once the customer actually has the new version. Done asks
+    // are kept, not deleted, so History still shows what was asked and when.
+    router.post('/quotations/:id/revision-requests-done', async (req, res) => {
+        if (!requireDdb(res)) return;
+        try {
+            const stored = await loadStoredQuotation(req.params.id);
+            if (!stored) return res.status(404).json({ error: 'Quotation not found' });
+
+            const payload = stored.payload;
+            const now = new Date().toISOString();
+            let cleared = 0;
+            (Array.isArray(payload.revisionRequests) ? payload.revisionRequests : []).forEach(function (r) {
+                if (r && !r.done) { r.done = true; r.doneAt = now; cleared++; }
+            });
+            if (cleared) await storeQuotationPayload(stored.item, payload);
+            res.json({ success: true, cleared });
+        } catch (error) {
+            console.error('Error clearing revision requests:', error);
+            res.status(500).json({ error: 'Failed to clear', details: error.message });
+        }
+    });
+
     // Persist the transporter-enquiry records for a quote. Field-only merge into the STORED
     // payload, so it is safe to call at any time: it cannot save the user's in-progress edits
     // (no-autosave rule) and cannot clobber lineItems/tableHTML when the client only holds a
@@ -718,7 +786,8 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
         if (!requireDdb(res)) return;
         const month = /^\d{4}-\d{2}$/.test(String(req.query.month || '')) ? String(req.query.month) : '';
         const freight = String(req.query.freight || '') === '1';
-        if (!month && !freight) return res.json({ quotations: [] });
+        const revision = String(req.query.revision || '') === '1';
+        if (!month && !freight && !revision) return res.json({ quotations: [] });
         try {
             const { ScanCommand } = require('@aws-sdk/lib-dynamodb');
             let items = [], scanKey = null, pages = 0;
@@ -738,8 +807,9 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
             } while (scanKey && pages < FULL_SCAN_MAX_PAGES);
             if (scanKey) console.warn('Quote filter: scan hit the page cap — older quotes were not considered');
             let list = items.map(quotationFromItem).filter(Boolean);
-            if (month)   list = list.filter(function (x) { return quoteMonth(x) === month; });
-            if (freight) list = list.filter(quoteHasFreightActivity);
+            if (month)    list = list.filter(function (x) { return quoteMonth(x) === month; });
+            if (freight)  list = list.filter(quoteHasFreightActivity);
+            if (revision) list = list.filter(quoteNeedsRevision);
             list.sort(function (a, b) { return new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0); });
             const RESULT_CAP = 1000;
             if (list.length > RESULT_CAP) console.warn('Quote filter: ' + list.length + ' matches, returning the newest ' + RESULT_CAP);

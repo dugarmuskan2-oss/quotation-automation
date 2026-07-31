@@ -315,6 +315,32 @@
         .mdk-admin-strip { background: #FAEEDA; border-radius: 8px; padding: 9px 12px; margin-bottom: 12px; }
         .mdk-admin-strip .h { font-size: 12px; font-weight: 600; color: #633806; margin-bottom: 3px; }
         .mdk-admin-strip .b { font-size: 12px; color: #854F0B; line-height: 1.6; white-space: pre-wrap; }
+
+        /* Revision asks + notes on a quote card (sits under the admin strip). Red only while a
+           revision is outstanding; plain grey when it is just the two Add buttons or notes. */
+        .rev-ask-strip { border-radius: 8px; padding: 9px 12px; margin-bottom: 12px; background: #F4F3F1; border: 1px solid #E4E2DE; }
+        .rev-ask-strip.is-open { background: #FDECEC; border-color: #F3C9C9; }
+        .rev-ask-strip.is-empty { background: transparent; border: none; padding: 0 0 4px; }
+        .rev-ask-h { font-size: 12px; font-weight: 600; color: #8A2B2B; margin: 2px 0 4px; }
+        .rev-ask-strip:not(.is-open) .rev-ask-h { color: #6e6c65; }
+        .rev-ask-line { display: flex; gap: 7px; align-items: baseline; font-size: 12px; color: #4A4A46; line-height: 1.55; padding: 1px 0; }
+        .rev-ask-line.is-done { color: #9b988e; text-decoration: line-through; }
+        .rev-ask-dot { flex: 0 0 auto; font-size: 10px; color: #C0392B; }
+        .rev-ask-line.is-done .rev-ask-dot { color: #9b988e; text-decoration: none; }
+        .rev-ask-text { flex: 1 1 auto; white-space: pre-wrap; word-break: break-word; }
+        .rev-ask-meta { flex: 0 0 auto; font-size: 11px; color: #9b988e; }
+        .rev-ask-hint { font-size: 11px; color: #9b988e; margin: 4px 0 2px; }
+        .rev-ask-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+        .rev-ask-strip.is-empty .rev-ask-actions { margin-top: 0; }
+        .rev-ask-btn { background: #fff; border: 1px solid #D8D5D0; color: #4A4A46; border-radius: 6px;
+            padding: 5px 11px; font-size: 12px; font-weight: 600; cursor: pointer; }
+        .rev-ask-btn:hover { background: #F7F6F4; border-color: #C0392B; color: #C0392B; }
+        .rev-ask-btn-note:hover { border-color: #185FA5; color: #185FA5; }
+
+        /* Red count circle on the Revision filter button. */
+        .rev-count { display: inline-block; min-width: 18px; height: 18px; line-height: 18px; padding: 0 5px;
+            margin-left: 6px; border-radius: 9px; background: #C0392B; color: #fff; font-size: 11px;
+            font-weight: 700; text-align: center; vertical-align: middle; }
         .thread-messages { max-height: 320px; overflow-y: auto; }
         /* Real-time recipient autocomplete (Gmail-style) */
         .contact-dd { position: absolute; top: 100%; left: 0; right: 0; z-index: 10; background: #fff; border: 1px solid #ddd; border-radius: 6px; margin-top: 2px; max-height: 220px; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
@@ -1419,6 +1445,7 @@
                 <select id="approvalYearSelect" onchange="approvalPickMonthYear()" style="height:32px; font-size:13px; padding:2px 6px; border:1px solid #ddd; border-radius:5px;"></select>
                 <button id="approvalAllMonthsBtn" class="upload-btn" type="button" onclick="approvalShowAllMonths()" style="width:auto; padding:6px 12px;" title="Show quotes from every month">All months</button>
                 <button id="approvalFreightBtn" class="upload-btn" type="button" onclick="approvalToggleFreight()" style="width:auto; padding:6px 12px;" title="Show every quote a freight enquiry was sent for, replied or not">&#128666; Freight</button>
+                <button id="approvalRevisionBtn" class="upload-btn" type="button" onclick="approvalToggleRevision()" style="width:auto; padding:6px 12px;" title="Show every quote the admin has asked for a revision on">&#128221; Revision<span id="approvalRevisionCount" class="rev-count" style="display:none;">0</span></button>
             </div>
             <!-- Global sweep: check every quote awaiting a transporter/customer reply in one go. -->
             <div style="margin-bottom: 10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
@@ -1892,7 +1919,7 @@
             // decides completeness — so hide the feed "Load more" to avoid the confusing case where an
             // older month looks empty next to a tempting button. If that fetch errored, we fall back to
             // feed paging so older quotes stay reachable.
-            const filterActive = !!(approvalMonthFilter || approvalFreightFilter);
+            const filterActive = !!(approvalMonthFilter || approvalFreightFilter || approvalRevisionFilter);
             if (filterActive && !approvalFilterFetchFailed) {
                 loadMoreBtn.style.display = 'none';
                 return;
@@ -1952,9 +1979,32 @@
             approvedQuotationsHasMore = false;
             // Opens unfiltered on the latest quotes. A month is only fetched when the user picks one.
             await loadQuotationsFromBackend(false);
+            // Quotes awaiting a revision can be older than the loaded feed, so pull them in the
+            // background — otherwise the red count would under-report until the user clicked through.
+            loadRevisionQuotesForCount();
             // Quietly check freight-awaiting quotes for new replies once the list has rendered.
             // Background (non-blocking) + freight-only, so the app opens instantly.
             setTimeout(function () { checkAllReplies({ background: true }); }, 0);
+        }
+
+        // Merge every quote awaiting a revision into the loaded list so the red count is the real
+        // total, not just what happens to be on the first page. Best-effort and non-blocking: a
+        // failure only means the count stays low until the user opens the Revision list.
+        async function loadRevisionQuotesForCount() {
+            try {
+                const res = await fetch(`${API_BASE_URL}/quotations-filter?revision=1`);
+                if (!res.ok) return;
+                const data = await safeJsonParse(res);
+                const found = Array.isArray(data.quotations) ? data.quotations : [];
+                let added = 0;
+                found.forEach(function(f) {
+                    if (f && f.id != null && !f.deleted && !approvedQuotations.some(function(x){ return idsMatch(x.id, f.id); })) {
+                        approvedQuotations.push(f); added++;
+                    }
+                });
+                if (added) syncApprovedQuotationsGlobal();
+                if (added) displayAllApprovedQuotations(); else updateApprovalRevisionCount();
+            } catch (e) { /* best-effort */ }
         }
 
         async function loadMoreApprovedQuotations() {
@@ -6661,7 +6711,9 @@
 
         function getFilteredApprovedQuotations(query) {
             let list = approvedQuotations.slice();
-            if (approvalFreightFilter) {
+            if (approvalRevisionFilter) {
+                list = list.filter(quoteNeedsRevisionClient);                 // revisions span all months
+            } else if (approvalFreightFilter) {
                 list = list.filter(quoteHasFreightActivityClient);            // freight spans all months
             } else if (approvalMonthFilter) {
                 list = list.filter(function(q) { return quoteMonthClient(q) === approvalMonthFilter; });
@@ -6674,6 +6726,7 @@
         // ── Approval list month/freight filters ─────────────────────────────────────
         let approvalMonthFilter = '';       // 'YYYY-MM' or '' (all months)
         let approvalFreightFilter = false;
+        let approvalRevisionFilter = false;
         let approvalFilterLoading = false;     // server filter fetch is in flight
         let approvalFilterFetchFailed = false; // last server filter fetch errored → fall back to feed paging
         const APPROVAL_MONTHS = ['01','02','03','04','05','06','07','08','09','10','11','12'];
@@ -6681,6 +6734,7 @@
 
         // Human label for the active filter, e.g. "July 2026" or "freight".
         function approvalFilterLabel() {
+            if (approvalRevisionFilter) return 'revision';
             if (approvalFreightFilter) return 'freight';
             if (approvalMonthFilter) {
                 const parts = String(approvalMonthFilter).split('-');
@@ -6702,9 +6756,11 @@
                     + '<button type="button" class="upload-btn" style="width:auto; padding:4px 12px; margin-left:6px;" '
                     + 'onclick="applyApprovalServerFilter()">Try again</button></p>';
             }
-            const what = approvalFreightFilter
-                ? 'quotes with a freight enquiry'
-                : ('quotes for ' + escapeHtml(approvalFilterLabel()));
+            const what = approvalRevisionFilter
+                ? 'quotes waiting on a revision'
+                : (approvalFreightFilter
+                    ? 'quotes with a freight enquiry'
+                    : ('quotes for ' + escapeHtml(approvalFilterLabel())));
             return '<p style="text-align:center; color:#999; padding:20px;">No ' + what + '.</p>';
         }
 
@@ -6738,13 +6794,91 @@
             if (q && q.transporterReplyIn) return true;
             return !!(q && Array.isArray(q.freightEnquiries) && q.freightEnquiries.length > 0);
         }
+
+        // ── Revision asks + plain notes (added from a quote card) ────────────────────
+        // Two separate lists: only revisionRequests puts a quote in the Revision list, so
+        // "Add note" can never flag a quote for revision. Done asks are kept for History.
+        function revisionRequestsOf(q) {
+            return (q && Array.isArray(q.revisionRequests)) ? q.revisionRequests : [];
+        }
+        function openRevisionRequests(q) {
+            return revisionRequestsOf(q).filter(function(r) { return r && !r.done; });
+        }
+        function extraNotesOf(q) {
+            return (q && Array.isArray(q.extraNotes)) ? q.extraNotes : [];
+        }
+        function quoteNeedsRevisionClient(q) {
+            return openRevisionRequests(q).length > 0;
+        }
+        // How many quotes are waiting on a revision — drives the red count on the Revision button.
+        function approvalRevisionCount() {
+            return approvedQuotations.filter(quoteNeedsRevisionClient).length;
+        }
+        // Close every open ask on a quote. Kept (not deleted) so History still shows what was asked.
+        // Refreshes the red count here rather than at the call site, so the badge can never be left
+        // stale by a caller that forgets — the send flow only does targeted DOM updates.
+        function markRevisionRequestsDone(quotation) {
+            const now = new Date().toISOString();
+            let cleared = 0;
+            revisionRequestsOf(quotation).forEach(function(r) {
+                if (r && !r.done) { r.done = true; r.doneAt = now; cleared++; }
+            });
+            if (cleared && typeof updateApprovalRevisionCount === 'function') updateApprovalRevisionCount();
+            return cleared;
+        }
+
+        // "Add revision" / "Add note" on a quote card. A revision ask puts the quote in the Revision
+        // list until the revised quote is sent; a note is only ever a note.
+        async function addRevisionRequest(quotationId, kind) {
+            const quotation = approvedQuotations.find(function(q) { return idsMatch(q.id, quotationId); });
+            if (!quotation) { alert('Quotation not found!'); return; }
+            const isNote = kind === 'note';
+            const text = prompt(isNote
+                ? 'Add a note for this quote.\n\nThis is internal and does NOT put the quote in the revision list.'
+                : 'What needs to be revised?\n\nThe quote stays in the revision list until the revised version is sent to the customer.');
+            if (text === null) return;                       // cancelled
+            if (!text.trim()) { alert('Please type something first.'); return; }
+            try {
+                const response = await fetch(`${API_BASE_URL}/quotations/${encodeURIComponent(quotationId)}/revision-request`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: text.trim(), kind: isNote ? 'note' : 'revision' })
+                });
+                const result = await safeJsonParse(response);
+                if (!response.ok || !result.success) throw new Error(result.error || 'Failed to save');
+                // Mirror the server's entry locally so the card and the count update immediately.
+                if (isNote) {
+                    if (!Array.isArray(quotation.extraNotes)) quotation.extraNotes = [];
+                    quotation.extraNotes.push(result.entry);
+                } else {
+                    if (!Array.isArray(quotation.revisionRequests)) quotation.revisionRequests = [];
+                    quotation.revisionRequests.push(result.entry);
+                }
+                syncApprovedQuotationsGlobal();
+                refreshApprovalListPreservingEdits();
+            } catch (error) {
+                console.error('Add revision/note failed:', error);
+                alert('Could not save that (' + error.message + '). Please try again.');
+            }
+        }
         function updateApprovalFilterButtons() {
             const fb = document.getElementById('approvalFreightBtn');
             if (fb) { fb.style.background = approvalFreightFilter ? '#185FA5' : ''; fb.style.color = approvalFreightFilter ? '#fff' : ''; }
-            // Only the freight filter overrides the month pick, so only it greys the dropdowns.
+            const rb = document.getElementById('approvalRevisionBtn');
+            if (rb) { rb.style.background = approvalRevisionFilter ? '#C0392B' : ''; rb.style.color = approvalRevisionFilter ? '#fff' : ''; }
+            updateApprovalRevisionCount();
+            // Freight and Revision both override the month pick, so either greys the dropdowns.
             // (No month picked is now the normal opening state — it must not look disabled.)
-            const dim = approvalFreightFilter;
+            const dim = approvalFreightFilter || approvalRevisionFilter;
             ['approvalMonthSelect','approvalYearSelect'].forEach(function(id){ const el = document.getElementById(id); if (el) el.style.opacity = dim ? '0.5' : ''; });
+        }
+        // Red circle on the Revision button. Hidden at zero — a "0" badge reads as a nag.
+        function updateApprovalRevisionCount() {
+            const el = document.getElementById('approvalRevisionCount');
+            if (!el) return;
+            const n = approvalRevisionCount();
+            el.textContent = String(n);
+            el.style.display = n > 0 ? 'inline-block' : 'none';
         }
         // Builds the month/year dropdowns. The app opens UNFILTERED (latest quotes, as before) —
         // the month select starts on a blank "All months" option, so picking any real month always
@@ -6776,7 +6910,9 @@
         async function applyApprovalServerFilter() {
             const mySeq = ++_approvalFilterSeq;
             approvalFilterFetchFailed = false;
-            const params = approvalFreightFilter ? 'freight=1' : (approvalMonthFilter ? 'month=' + encodeURIComponent(approvalMonthFilter) : '');
+            const params = approvalRevisionFilter ? 'revision=1'
+                : (approvalFreightFilter ? 'freight=1'
+                    : (approvalMonthFilter ? 'month=' + encodeURIComponent(approvalMonthFilter) : ''));
             approvalFilterLoading = !!params;   // only show a loading note when we're actually fetching
             displayAllApprovedQuotations();     // instant: loaded matches, or the loading note if none yet
             if (!params) return;
@@ -6807,6 +6943,7 @@
             const m = document.getElementById('approvalMonthSelect'), y = document.getElementById('approvalYearSelect');
             if (!m || !y) return;
             approvalFreightFilter = false;
+            approvalRevisionFilter = false;
             // Blank month ("All months", or only the year was changed) → back to the latest-quotes feed.
             if (!m.value) { approvalShowAllMonths(); return; }
             approvalMonthFilter = y.value + '-' + m.value;
@@ -6814,7 +6951,7 @@
             applyApprovalServerFilter();
         }
         function approvalShowAllMonths() {
-            approvalMonthFilter = ''; approvalFreightFilter = false;
+            approvalMonthFilter = ''; approvalFreightFilter = false; approvalRevisionFilter = false;
             approvalResetMonthSelect();
             updateApprovalFilterButtons();
             displayAllApprovedQuotations();   // just the loaded feed, no server call
@@ -6822,7 +6959,14 @@
         function approvalToggleFreight() {
             approvalFreightFilter = !approvalFreightFilter;
             // Freight spans every month, so it clears the month pick (dropdown included).
-            if (approvalFreightFilter) { approvalMonthFilter = ''; approvalResetMonthSelect(); }
+            if (approvalFreightFilter) { approvalMonthFilter = ''; approvalRevisionFilter = false; approvalResetMonthSelect(); }
+            updateApprovalFilterButtons();
+            applyApprovalServerFilter();
+        }
+        function approvalToggleRevision() {
+            approvalRevisionFilter = !approvalRevisionFilter;
+            // Revisions span every month too, and the three filters are mutually exclusive.
+            if (approvalRevisionFilter) { approvalMonthFilter = ''; approvalFreightFilter = false; approvalResetMonthSelect(); }
             updateApprovalFilterButtons();
             applyApprovalServerFilter();
         }
@@ -6876,6 +7020,53 @@
             } catch (e) { /* search is best-effort */ }
         }
 
+        // One dated line per ask/note. Open revision asks are listed first and marked; done ones are
+        // kept but greyed, so the card still shows what was asked after it has been dealt with.
+        function revisionEntryLineHTML(entry, opts) {
+            const when = entry && entry.addedAt ? new Date(entry.addedAt) : null;
+            const stamp = (when && !isNaN(when.getTime()))
+                ? when.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '';
+            const who = entry && entry.addedBy ? ' · ' + escapeHtml(entry.addedBy) : '';
+            const done = !!(entry && entry.done);
+            return '<div class="rev-ask-line' + (done ? ' is-done' : '') + '">'
+                + '<span class="rev-ask-dot">' + (opts && opts.note ? '🗒️' : (done ? '✓' : '●')) + '</span>'
+                + '<span class="rev-ask-text">' + escapeHtml((entry && entry.text) || '') + '</span>'
+                + '<span class="rev-ask-meta">' + escapeHtml(stamp) + who + (done ? ' · done' : '') + '</span>'
+                + '</div>';
+        }
+
+        function buildRevisionStripHTML(quotation) {
+            const id = JSON.stringify(quotation.id);
+            const asks = revisionRequestsOf(quotation);
+            const open = asks.filter(function(r) { return r && !r.done; });
+            const doneAsks = asks.filter(function(r) { return r && r.done; });
+            const notes = extraNotesOf(quotation);
+
+            const buttons = '<div class="rev-ask-actions">'
+                + '<button class="rev-ask-btn" type="button" onclick="event.stopPropagation(); addRevisionRequest(' + id + ', \'revision\')">📝 Add revision</button>'
+                + '<button class="rev-ask-btn rev-ask-btn-note" type="button" onclick="event.stopPropagation(); addRevisionRequest(' + id + ', \'note\')">🗒️ Add another note</button>'
+                + '</div>';
+
+            if (!open.length && !doneAsks.length && !notes.length) {
+                return '<div class="rev-ask-strip is-empty">' + buttons + '</div>';
+            }
+            let body = '';
+            if (open.length) {
+                body += '<div class="rev-ask-h">📝 Needs revision</div>'
+                    + open.map(function(r) { return revisionEntryLineHTML(r, {}); }).join('')
+                    + '<div class="rev-ask-hint">Clears once the revised quote is sent to the customer.</div>';
+            }
+            if (notes.length) {
+                body += '<div class="rev-ask-h">🗒️ Notes</div>'
+                    + notes.map(function(r) { return revisionEntryLineHTML(r, { note: true }); }).join('');
+            }
+            if (doneAsks.length) {
+                body += '<div class="rev-ask-h">Revisions done</div>'
+                    + doneAsks.map(function(r) { return revisionEntryLineHTML(r, {}); }).join('');
+            }
+            return '<div class="rev-ask-strip' + (open.length ? ' is-open' : '') + '">' + body + buttons + '</div>';
+        }
+
         function buildApprovalSplitLayout({ quotation, termsText, approveButtonHTML, saveButtonHTML, printButtonHTML, downloadButtonHTML, sendButtonHTML, copyLinkButtonHTML }) {
             const sidePanelHTML = buildApprovalSidePanelHTML(quotation);
             // "Save as Revision" appears once the quote has been committed at least once —
@@ -6896,6 +7087,11 @@
                 ? `<div class="mdk-admin-strip"><div class="h">👤 From the admin</div><div class="b">${escapeHtml(adminMessage + adminAssigned)}${adminNoteBlock}</div></div>`
                 : '';
 
+            // Revision asks + notes, with the two Add buttons. Always rendered (unlike the admin
+            // strip, which only appears once the quote has been through the margins desk) so a
+            // revision can be asked for on any quote at any time.
+            const revisionStripHTML = buildRevisionStripHTML(quotation);
+
             return `
                 <div class="qtab-bar">
                     <button class="qtab" type="button" data-tab="quote">Quote</button>
@@ -6906,6 +7102,7 @@
                 <div class="approval-layout">
                     <div class="approval-quotation">
                             ${adminStripHTML}
+                            ${revisionStripHTML}
                             ${quotation.headerHTML || ''}
                             ${quotation.tableHTML || ''}
                         <div class="freight-summary" style="display:none; margin-top: 6px; font-weight: bold; font-size: 14px;">
@@ -7627,6 +7824,7 @@
             // Filter state decides whether the feed's "Load more" belongs on screen, so recompute it on
             // every render — the filter functions change that state without touching the feed loader.
             updateLoadMoreApprovedButton();
+            updateApprovalRevisionCount();   // the red count tracks the list, so refresh it here too
 
             // If no quotations, show message
             if (approvedQuotations.length === 0) {
@@ -7642,7 +7840,7 @@
             const filteredQuotations = getFilteredApprovedQuotations(approvalSearchQuery);
             // A month/freight filter with nothing to show yet: render a loading note (fetch in flight)
             // or a clean "no quotes for {month}" message — instead of a blank list beside a Load-more button.
-            if (filteredQuotations.length === 0 && (approvalMonthFilter || approvalFreightFilter)) {
+            if (filteredQuotations.length === 0 && (approvalMonthFilter || approvalFreightFilter || approvalRevisionFilter)) {
                 renderApprovedQuotationsHTML(container, approvalFilteredEmptyHtml());
                 updateApprovalContainerScrollLimit(container);
                 return;
@@ -10423,10 +10621,17 @@
                     // History entry the next "Save as Revision" archives.
                     quotation.revisionBaseline = buildRevisionSnapshotData(quotation, 'Sent version');
                     delete quotation.lastSentSnapshot;
+                    // The customer now has the new version, so any revision the admin asked for is
+                    // satisfied and the quote drops off the Revision list. Marked before the save
+                    // below so it rides along on that same write.
+                    const revisionsCleared = markRevisionRequestsDone(quotation);
                     archiveQuotationPdf(quotation, pdfResult.base64);   // stash the exact PDF the customer got
                     saveQuotationToBackend(quotation);
                     updateApprovalBadge(quotationId, quotation);
                     updateSentBadge(quotationId);
+                    // The card's revision strip needs a real re-render to drop the satisfied asks —
+                    // the badge updates above are targeted DOM writes and would leave it stale.
+                    if (revisionsCleared) refreshApprovalListPreservingEdits();
                     // Reflect the send in the conversation thread (if the panel is open).
                     const sentThreadEl = document.getElementById('thread-' + quotationId);
                     if (sentThreadEl) {
