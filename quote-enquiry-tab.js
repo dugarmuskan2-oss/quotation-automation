@@ -300,24 +300,61 @@
         return '<div class="qet-threads"><div class="qet-h">Sent to</div>' + rows + '</div>';
     }
 
+    // The on-screen editor, matching the standalone Enquiry Preparer's table exactly: the same two
+    // header rows (blue OUR REQUIREMENT / green YOUR OFFER), the same eleven columns in the same
+    // order with the same alternating header colours, per-row add/delete buttons, and a bordered
+    // input in every cell so it is obvious what can be typed in.
+    // An empty row in the same shape the Preparer produces.
+    function blankRow() {
+        return { productSpec: '', size: '', qty: '', uom: '', lengthReqByUs: '', makeRequiredByUs: '', rate: '', offerUom: '', makeOfferedByYou: '' };
+    }
+
     function rowsTableHtml(st) {
-        var head = '<tr><th>Product / Spec</th><th>Size</th><th>Qty</th><th>UOM</th><th>Length req.</th><th>Make required</th><th></th></tr>';
+        var head = '<thead>'
+            + '<tr>'
+            + '<th class="qet-group" colspan="2"></th>'
+            + '<th class="qet-group" colspan="6">OUR REQUIREMENT (ENQUIRY)</th>'
+            + '<th class="qet-group-offer" colspan="3">YOUR OFFER</th>'
+            + '</tr><tr>'
+            + '<th class="qet-req-a" style="width:72px;">ACTIONS</th>'
+            + '<th class="qet-req-b" style="width:64px;">S. NO</th>'
+            + '<th class="qet-req-a">PRODUCT &amp; SPECIFICATION</th>'
+            + '<th class="qet-req-b" style="width:140px;">SIZE</th>'
+            + '<th class="qet-req-a" style="width:90px;">QTY</th>'
+            + '<th class="qet-req-b" style="width:90px;">UOM</th>'
+            + '<th class="qet-req-a" style="width:150px;">LENGTH REQ BY US</th>'
+            + '<th class="qet-req-b" style="width:150px;">MAKE REQUIRED BY US</th>'
+            + '<th class="qet-offer-a" style="width:110px;">RATE</th>'
+            + '<th class="qet-offer-b" style="width:90px;">UOM</th>'
+            + '<th class="qet-offer-a" style="width:150px;">MAKE OFFERED BY YOU</th>'
+            + '</tr></thead>';
+
         var body = st.rows.map(function (r, i) {
-            function cell(field, value, width) {
-                return '<td><input class="qet-in" data-i="' + i + '" data-f="' + field + '" value="' + esc(value) + '"'
-                    + (width ? ' style="width:' + width + ';"' : '') + '></td>';
+            function cell(field, value) {
+                // textarea, not input: an input clips a long value ('8" NB X 6.0mm thk' was cut
+                // mid-word). rows=1 plus autosize keeps it one line until it genuinely needs two.
+                return '<td><textarea class="qet-in" rows="1" data-i="' + i + '" data-f="' + field + '">' + esc(value) + '</textarea></td>';
             }
             return '<tr>'
+                + '<td><div class="qet-actions-cell">'
+                + '<button class="qet-add-row qet-act qet-act-add" data-i="' + i + '" title="Add a row below" aria-label="Add a row below">+</button>'
+                + '<button class="qet-del qet-act qet-act-del" data-i="' + i + '" title="Remove this row" aria-label="Remove this row">&minus;</button>'
+                + '</div></td>'
+                + '<td class="qet-sno">' + (i + 1) + '</td>'
                 + cell('productSpec', r.productSpec)
-                + cell('size', r.size, '110px')
-                + cell('qty', r.qty, '70px')
-                + cell('uom', r.uom, '70px')
-                + cell('lengthReqByUs', r.lengthReqByUs, '90px')
-                + cell('makeRequiredByUs', r.makeRequiredByUs, '110px')
-                + '<td><button class="qet-del" data-i="' + i + '" title="Remove this row" aria-label="Remove this row">&times;</button></td>'
+                + cell('size', r.size)
+                + cell('qty', r.qty)
+                + cell('uom', r.uom)
+                + cell('lengthReqByUs', r.lengthReqByUs)
+                + cell('makeRequiredByUs', r.makeRequiredByUs)
+                + cell('rate', r.rate)
+                + cell('offerUom', r.offerUom)
+                + cell('makeOfferedByYou', r.makeOfferedByYou)
                 + '</tr>';
         }).join('');
-        return '<table class="qet-tbl">' + head + body + '</table>';
+
+        // Wrapped so a wide table scrolls sideways inside the card rather than stretching it.
+        return '<div class="qet-tbl-wrap"><table class="qet-tbl">' + head + '<tbody>' + body + '</tbody></table></div>';
     }
 
     function chipsHtml(st) {
@@ -390,18 +427,31 @@
             render(quotation, mountEl);
         };
 
+        // Grow each cell to fit its content, so nothing is clipped and long values wrap.
+        function autosize(el) {
+            el.style.height = 'auto';
+            el.style.height = Math.max(el.scrollHeight, 20) + 'px';
+        }
         $$('.qet-in').forEach(function (el) {
+            autosize(el);
             el.oninput = function () {
                 var r = st.rows[Number(el.dataset.i)];
                 if (r) r[el.dataset.f] = el.value;
+                autosize(el);
             };
         });
         $$('.qet-del').forEach(function (el) {
             el.onclick = function () { st.rows.splice(Number(el.dataset.i), 1); render(quotation, mountEl); };
         });
+        $$('.qet-add-row').forEach(function (el) {
+            el.onclick = function () {
+                st.rows.splice(Number(el.dataset.i) + 1, 0, blankRow());
+                render(quotation, mountEl);
+            };
+        });
         var add = $('.qet-add');
         if (add) add.onclick = function () {
-            st.rows.push({ productSpec: '', size: '', qty: '', uom: 'Mtrs', lengthReqByUs: '', makeRequiredByUs: '', rate: '', offerUom: '', makeOfferedByYou: '' });
+            st.rows.push(blankRow());
             render(quotation, mountEl);
         };
 

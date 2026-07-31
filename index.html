@@ -360,17 +360,38 @@
         .qet-sub { font-weight: 400; color: #9b988e; font-size: 12px; }
         .qet-empty { text-align: center; padding: 26px 16px; color: #6e6c65; }
         .qet-empty-h { font-size: 14px; font-weight: 700; color: #20201d; margin-bottom: 4px; }
-        .qet-tbl { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 8px; }
-        .qet-tbl th { background: #1f3864; color: #fff; padding: 5px 7px; text-align: left; font-weight: 600; }
-        .qet-tbl td { border-bottom: 1px solid #eee; padding: 3px 4px; }
-        .qet-in { width: 100%; border: 1px solid transparent; background: transparent; padding: 3px 5px;
-            border-radius: 4px; font-size: 12px; font-family: inherit; }
-        .qet-in:focus { border-color: #185FA5; background: #fff; outline: none; }
+        /* Matches #enquiryTable in the Enquiry Preparer: same colours, borders, striping and the
+           blue OUR REQUIREMENT / green YOUR OFFER header bands. */
+        .qet-tbl-wrap { overflow-x: auto; margin-bottom: 8px; }
+        .qet-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .qet-tbl th, .qet-tbl td { border: 1px solid #000; padding: 8px; vertical-align: top; }
+        .qet-tbl thead th { text-align: center; font-weight: 700; }
+        .qet-tbl thead th.qet-group { background: #0b4aa2; color: #fff; }
+        .qet-tbl thead th.qet-group-offer { background: #2e7d32; color: #fff; }
+        .qet-tbl thead th.qet-req-a { background: #ffffff; color: #0b4aa2; }
+        .qet-tbl thead th.qet-req-b { background: #0b4aa2; color: #ffffff; }
+        .qet-tbl thead th.qet-offer-a { background: #2e7d32; color: #ffffff; }
+        .qet-tbl thead th.qet-offer-b { background: #ffffff; color: #2e7d32; }
+        .qet-tbl tbody tr:nth-child(odd) { background: #ffffff; }
+        .qet-tbl tbody tr:nth-child(even) { background: #eef5ff; }
+        .qet-sno { text-align: center; }
+        /* A visible bordered box in every editable cell, so it reads as a field you can type in.
+           A textarea rather than an input so a long value WRAPS instead of being clipped mid-word;
+           JS grows it to fit, and resize is left on in case the user wants more room. */
+        .qet-in { width: 100%; padding: 6px 8px; border: 1px solid #c7d5ee; border-radius: 4px;
+            font-family: inherit; font-size: 13px; background: rgba(255,255,255,0.92);
+            display: block; overflow: hidden; resize: vertical; line-height: 1.35;
+            white-space: pre-wrap; word-break: break-word; }
+        .qet-in:focus { border-color: #185FA5; outline: none; background: #fff; }
+        .qet-actions-cell { display: flex; flex-direction: column; gap: 6px; align-items: center; justify-content: center; }
+        .qet-act { width: 28px; height: 28px; border: none; border-radius: 4px; cursor: pointer; color: #fff;
+            display: flex; align-items: center; justify-content: center; font-size: 14px; padding: 0; }
+        .qet-act-add { background: #2e7d32; }
+        .qet-act-del { background: #c62828; }
         /* A plain × in a red pill — the old trash glyph rendered as an unclear blob at this size. */
-        .qet-del { background: #FCEBEB; color: #A32D2D; border: 1px solid #F09595; border-radius: 5px;
-            width: 22px; height: 22px; line-height: 1; padding: 0; cursor: pointer; font-size: 15px;
-            display: flex; align-items: center; justify-content: center; }
-        .qet-del:hover { background: #A32D2D; color: #fff; border-color: #A32D2D; }
+        /* Row add/delete now use .qet-act-add / .qet-act-del, matching the Preparer's green + and
+           red − buttons. (The old standalone .qet-del pill rule was removed so it can't override.) */
+        .qet-act:hover { filter: brightness(1.1); }
         .qet-rowbtns { margin-bottom: 12px; }
         .qet-lbl { display: block; font-size: 12px; font-weight: 600; color: #4A4A46; margin: 10px 0 4px; }
         .qet-field { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; border: 1px solid rgba(0,0,0,.2);
