@@ -6632,8 +6632,12 @@
             return buildAllApprovedQuotationsHTMLForList(approvedQuotations);
         }
 
+        // Must match normalizeSearchQuery in routes/quotations.js exactly — including collapsing
+        // runs of whitespace. When they disagreed, the server found a quote and merged it in but
+        // this filter then hid it again, leaving a blank panel and no message: the user concluded
+        // the quote had never been made.
         function normalizeSearchText(value) {
-            return String(value || '').toLowerCase().trim();
+            return String(value == null ? '' : value).toLowerCase().replace(/\s+/g, ' ').trim();
         }
 
         function idsMatch(a, b) {
@@ -6663,9 +6667,13 @@
             if (monthIndexByName !== -1) {
                 return monthIndexByName;
             }
-            const parsedDate = new Date(dateText);
-            if (!isNaN(parsedDate.getTime())) {
-                return parsedDate.getMonth();
+            // Read the app's own DD.MM.YY dates with approvalMonthOf, the same reader the Month
+            // dropdown uses. new Date('05.03.26') is parsed as MM.DD.YY by V8, so searching
+            // "March" used to return May's quotes and miss March's entirely; anything dated after
+            // the 12th (15.03.26, 31.07.26) was Invalid Date and matched no month at all.
+            const isoMonth = (typeof approvalMonthOf === 'function') ? approvalMonthOf(dateText) : '';
+            if (isoMonth) {
+                return Number(isoMonth.slice(5, 7)) - 1;   // 'YYYY-MM' -> 0-based month
             }
             return -1;
         }
@@ -6708,7 +6716,10 @@
             const billTo = normalizeSearchText(quotation.projectName);
             const kindAttn = normalizeSearchText(quotation.customerName);
             const quoteNumber = normalizeSearchText(quotation.quoteNumber);
-            const combined = `${companyName} ${billTo} ${kindAttn} ${quoteNumber}`;
+            // Drop empty fields before joining, like the server's .filter(Boolean).join(' ') — else
+            // a missing bill-to leaves a double space here that the server's haystack never has,
+            // so a query spanning two fields matches on the server and misses on the client.
+            const combined = [companyName, billTo, kindAttn, quoteNumber].filter(Boolean).join(' ');
             if (combined.includes(normalizedQuery)) {
                 return true;
             }
@@ -6833,6 +6844,19 @@
             return cleared;
         }
 
+        // Repaint just this card's revision strip, for when a full list re-render is suppressed
+        // (unsaved edits elsewhere, or the user typing in a field). Touches only the strip, so it
+        // cannot disturb what they are editing.
+        function rerenderRevisionStrip(quotationId, quotation) {
+            const content = document.getElementById('folder-content-' + quotationId);
+            const strip = content && content.querySelector('.rev-ask-strip');
+            if (!strip) return;
+            const holder = document.createElement('div');
+            holder.innerHTML = buildRevisionStripHTML(quotation);
+            const fresh = holder.firstElementChild;
+            if (fresh) strip.replaceWith(fresh);
+        }
+
         // Close the asks server-side, on the STORED record. Must go through this route rather than
         // the whole-object save: this tab may not even know about an ask a colleague added, and the
         // save deliberately ignores client-sent revision data so it can never be wiped.
@@ -6872,7 +6896,12 @@
                     quotation.revisionRequests.push(result.entry);
                 }
                 syncApprovedQuotationsGlobal();
-                refreshApprovalListPreservingEdits();
+                // Update the count directly: refreshApprovalListPreservingEdits deliberately does
+                // nothing while any quote has unsaved edits or a field is focused, which would
+                // otherwise leave the click with no visible effect at all — and the natural response
+                // to that is to click again and add a duplicate.
+                updateApprovalRevisionCount();
+                if (!refreshApprovalListPreservingEdits()) rerenderRevisionStrip(quotationId, quotation);
             } catch (error) {
                 console.error('Add revision/note failed:', error);
                 alert('Could not save that (' + error.message + '). Please try again.');
@@ -9749,6 +9778,18 @@
             // this Rev N (with the model now synced from the DOM above). Explicit — no prompt.
             var madeRevision = false;
             var askedForRevision = !!(options && options.asRevision);
+            // Snapshot the revision state so a failed write can be undone. Without this the
+            // revision was committed in memory before the save was attempted, so clicking
+            // "Save as Revision" again after a failure — the obvious response — archived the NEW
+            // version as if it were a previous one, leaving the quote permanently a revision ahead
+            // of reality with a duplicate History entry.
+            var revisionUndo = askedForRevision ? {
+                revisions: Array.isArray(quotation.revisions) ? quotation.revisions.slice() : undefined,
+                revisionCount: quotation.revisionCount,
+                revised: quotation.revised,
+                revisionBaseline: quotation.revisionBaseline,
+                lastSentSnapshot: quotation.lastSentSnapshot,
+            } : null;
             if (askedForRevision) {
                 madeRevision = createRevisionFromBaseline(quotation);   // always makes a revision now
             } else if (!quotation.revisionBaseline) {
@@ -9776,7 +9817,26 @@
             setTimeout(function() { displayAllApprovedQuotations(); }, 0);
             (async function() {
                 const ok = await saveQuotationToBackend(quotation);
-                if (!ok) return;
+                if (!ok) {
+                    // Put the revision state back, so retrying makes ONE revision, not a second.
+                    if (revisionUndo) {
+                        if (revisionUndo.revisions === undefined) delete quotation.revisions;
+                        else quotation.revisions = revisionUndo.revisions;
+                        if (revisionUndo.revisionCount === undefined) delete quotation.revisionCount;
+                        else quotation.revisionCount = revisionUndo.revisionCount;
+                        if (revisionUndo.revised === undefined) delete quotation.revised;
+                        else quotation.revised = revisionUndo.revised;
+                        if (revisionUndo.revisionBaseline === undefined) delete quotation.revisionBaseline;
+                        else quotation.revisionBaseline = revisionUndo.revisionBaseline;
+                        if (revisionUndo.lastSentSnapshot === undefined) delete quotation.lastSentSnapshot;
+                        else quotation.lastSentSnapshot = revisionUndo.lastSentSnapshot;
+                        quotation.hasUnsavedEdits = true;   // nothing was persisted
+                        refreshHistoryTab(quotation.id);
+                        displayAllApprovedQuotations();
+                        alert('The revision was NOT saved — the server did not accept it.\n\nNothing has changed; your edits are still on screen. Please try again.');
+                    }
+                    return;
+                }
                 if (madeRevision) {
                     alert('Saved as Revision ' + currentRevisionNumber(quotation) + '. The version the customer has is kept in History.');
                 } else {
@@ -9897,7 +9957,10 @@
                 }
             }
             
-            // Mark quotation as saved (now it's approved)
+            // Mark quotation as saved (now it's approved). Remember the prior flags so a failed
+            // write can be rolled back to exactly what was true before this click.
+            const priorEverApproved = quotation.everApproved;
+            const priorBaseline = quotation.revisionBaseline;
             quotation.saved = true;
             quotation.everApproved = true;   // sticky: approved at least once
             quotation.hasUnsavedEdits = false;
@@ -9909,18 +9972,39 @@
             }
             // Save all quotations to backend (including this newly approved one with all updates)
             saveToLocalStorage();
-            saveQuotationToBackend(quotation);
-            
+
             var q = approvedQuotations[quotationIndex];
             var filename = getFolderDisplayName(q);
-            setTimeout(function() {
-            displayAllApprovedQuotations();
+            // Only claim success once the write actually landed, the way saveQuotationChanges does.
+            // This used to alert "Quotation saved as file: …" unconditionally — alongside a second,
+            // contradictory "Failed to save" box — while leaving the quote flagged approved and
+            // sendable, so a quote the database never received could be emailed to the customer and
+            // the approval then vanished on reload.
+            (async function() {
+                const ok = await saveQuotationToBackend(quotation);
+                if (!ok) {
+                    // Roll the approval back so the badge and the send gate tell the truth.
+                    // everApproved/baseline go back to what they were, not blindly to false — the
+                    // quote may well have been approved before this attempt.
+                    quotation.saved = false;
+                    quotation.hasUnsavedEdits = true;
+                    if (priorEverApproved === undefined) delete quotation.everApproved;
+                    else quotation.everApproved = priorEverApproved;
+                    if (priorBaseline === undefined) delete quotation.revisionBaseline;
+                    else quotation.revisionBaseline = priorBaseline;
+                    displayAllApprovedQuotations();
+                    alert('Could not approve "' + filename + '" — the server did not accept the save.\n\nYour changes are still on screen. Please try Approve again.');
+                    return;
+                }
+                displayAllApprovedQuotations();
                 var folderElement = document.getElementById('folder-' + quotationId);
-            if (folderElement) {
+                if (folderElement) {
                     folderElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 }
                 alert('Quotation saved as file: ' + filename);
-            }, 0);
+            })().catch(function(e) {
+                console.error('saveQuotation async error:', e);
+            });
         }
 
         function getPdfColLabelsFromTable(tableEl) {
