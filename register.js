@@ -310,6 +310,10 @@
         var prevDay = null;
         rows.forEach(function (r) {
             var day = fmtDay(r.enquiryDate);
+            // Blank blue divider row between one date group and the next.
+            if (prevDay !== null && day !== prevDay) {
+                h += '<tr class="reg-daysep"><td colspan="16"></td></tr>';
+            }
             h += '<tr>'
                 + '<td><b>' + esc(r.quoteNumber || '—') + '</b></td>';
             // Merge the Enquiry Date + Per day cells across rows of the same day
