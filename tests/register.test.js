@@ -124,9 +124,20 @@ describe('daysBetween — Recd → Sent difference', () => {
     test('same local calendar day is 0 even across hours', () => {
         expect(daysBetween('2026-07-21T09:00:00', '2026-07-21T18:00:00')).toBe('0');
     });
-    test('counts calendar days, not 24h blocks', () => {
-        // 23:00 to 01:00 next day = 2 hours but 1 calendar day
-        expect(daysBetween('2026-07-21T23:00:00', '2026-07-22T01:00:00')).toBe('1');
+    // Whole 24-HOUR periods, not calendar days — the user asked for elapsed time, so an enquiry
+    // answered overnight is 0 days rather than the 1 a calendar comparison reported.
+    test('counts whole 24h blocks, not calendar days', () => {
+        // 23:00 to 01:00 next day = 2 hours: a new calendar day, but nowhere near a day elapsed
+        expect(daysBetween('2026-07-21T23:00:00', '2026-07-22T01:00:00')).toBe('0');
+        // 17:00 Monday to 09:00 Tuesday = 16 hours
+        expect(daysBetween('2026-07-27T17:00:00', '2026-07-28T09:00:00')).toBe('0');
+        // 25 hours is the first full day
+        expect(daysBetween('2026-07-27T09:00:00', '2026-07-28T10:00:00')).toBe('1');
+    });
+
+    test('Sundays are NOT skipped — this is raw elapsed time', () => {
+        // Friday 09:00 -> Monday 09:00 is 72 hours across a Sunday
+        expect(daysBetween('2026-07-31T09:00:00', '2026-08-03T09:00:00')).toBe('3');
     });
     test('spans month and year boundaries', () => {
         expect(daysBetween('2026-06-29T10:00:00', '2026-07-02T10:00:00')).toBe('3');

@@ -196,14 +196,16 @@
     }
 
     // Whole days between enquiry received and quote sent ('' until sent).
+    // Whole 24-HOUR periods elapsed, not calendar days. An enquiry at 5pm Monday quoted at 9am
+    // Tuesday is 16 hours — that is 0 days, not the 1 a calendar comparison would report. Sundays
+    // and holidays are not skipped: this is raw elapsed time.
     function daysBetween(enquiryIso, sentIso) {
         if (!enquiryIso || !sentIso) return '';
         var a = new Date(enquiryIso), b = new Date(sentIso);
         if (isNaN(a.getTime()) || isNaN(b.getTime())) return '';
-        // Compare calendar days, not raw hours, so same-day sends show 0.
-        var dayA = new Date(a.getFullYear(), a.getMonth(), a.getDate());
-        var dayB = new Date(b.getFullYear(), b.getMonth(), b.getDate());
-        return String(Math.round((dayB - dayA) / 86400000));
+        // Math.floor keeps a sent-before-received anomaly NEGATIVE and therefore visible, rather
+        // than blanking it — bad data you can see beats bad data you cannot.
+        return String(Math.floor((b - a) / 3600000 / 24));
     }
 
     function statusPillHtml(status) {
@@ -325,7 +327,7 @@
             }
             h += '<td>' + statusPillHtml(r.status) + '</td>'
                 + textCell(r, 'statusManual', 100)
-                + '<td class="reg-day">' + esc(daysBetween(r.enquiryDate, r.sentDate)) + '</td>'
+                + '<td class="reg-gap">' + esc(daysBetween(r.enquiryDate, r.sentDate)) + '</td>'
                 + '<td>' + esc(r.company) + '</td>'
                 + '<td>' + esc(r.contact) + '</td>'
                 + '<td>' + esc(r.preparedBy) + '</td>'

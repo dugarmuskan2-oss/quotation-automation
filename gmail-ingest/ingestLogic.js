@@ -67,7 +67,17 @@ async function persistEnquiryAttachments(ctx, attachments, emailId) {
     return files;
 }
 
-function buildQuotationToSave({ aiResult, quoteNumber, termsText, emailContent, emailContentHtml, gmailMessageId, emailLink, enquiryFiles, enquiryFileNotes }) {
+// When the customer's email actually arrived, from the Gmail date Apps Script sends with each
+// message. createdAt is when WE processed it, which can be hours or days later (the script polls),
+// so the register's enquiry date and its Days-to-quote figure must not be based on that.
+// Returns '' for a missing or unparseable date, and callers fall back to createdAt.
+function enquiryReceivedAtFrom(emailDate) {
+    if (!emailDate) return '';
+    const t = new Date(emailDate);
+    return isNaN(t.getTime()) ? '' : t.toISOString();
+}
+
+function buildQuotationToSave({ aiResult, quoteNumber, termsText, emailContent, emailContentHtml, gmailMessageId, emailLink, enquiryFiles, enquiryFileNotes, emailDate }) {
     const { tableHTML, grandTotalFormatted } = buildTableHTMLFromLineItems(aiResult.lineItems || []);
     const headerHTML = buildHeaderHTMLFromQuotation({
         ...aiResult,
@@ -81,6 +91,9 @@ function buildQuotationToSave({ aiResult, quoteNumber, termsText, emailContent, 
         id,
         createdAt: now,
         updatedAt: now,
+        // When the customer emailed, as opposed to when we ingested it. Empty for a manually
+        // pasted enquiry or an email with no usable date — the register falls back to createdAt.
+        enquiryReceivedAt: enquiryReceivedAtFrom(emailDate),
         customerName: aiResult.customerName,
         companyName: aiResult.companyName,
         projectName: aiResult.projectName,
@@ -289,7 +302,8 @@ async function generateAndSaveQuotation(ctx, email, emailId) {
         gmailMessageId: emailId,
         emailLink,
         enquiryFiles: enquiryFiles.concat(preUploaded),
-        enquiryFileNotes: Array.isArray(email.attachmentNotes) ? email.attachmentNotes : []
+        enquiryFileNotes: Array.isArray(email.attachmentNotes) ? email.attachmentNotes : [],
+        emailDate: email.date        // the Gmail received date Apps Script sends with each message
     });
 
     if (ctx.saveQuotation) {

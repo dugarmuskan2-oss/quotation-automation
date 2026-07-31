@@ -41,6 +41,8 @@ const SUMMARY_NESTED_PATHS = [
     'revisionRequests', 'extraNotes',
     // Supplier enquiries sent from the quote card's Enquiry tab — powers the Enquiry filter.
     'supplierEnquiries',
+    // When the customer's enquiry email actually arrived (register date + Days-to-quote).
+    'enquiryReceivedAt',
 ];
 const SUMMARY_PROJECTION = [
     'id', 'updatedAt', 'createdAt',
@@ -161,7 +163,9 @@ function registerRowOf(q) {
     return {
         id: q.id != null ? String(q.id) : '',
         quoteNumber: q.quoteNumber || '',
-        enquiryDate: q.createdAt || q.updatedAt || '',
+        // The customer's own email time when we have it — createdAt is when WE ingested, which
+        // can be hours or days later and made both this date and the Days figure wrong.
+        enquiryDate: q.enquiryReceivedAt || q.createdAt || q.updatedAt || '',
         status: registerStatusOf(q),
         company: q.companyName || q.projectName || '',
         contact: q.customerName || '',
