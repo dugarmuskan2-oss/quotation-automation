@@ -7973,10 +7973,25 @@
         // Fixed regret reply (admin-approved wording — sent verbatim, in-thread).
         const REGRET_EMAIL_TEXT = "Dear Sir/Ma'am,\n\nThank you for your enquiry. We, however, regret to inform you that we will not be able to quote for your requirement either because of lack of availability at the moment or because we do not deal in the specific items.(We deal in all kinds of MS and CS Pipes)\n\nThank you.\n\nYours Sincerely";
 
-        function regretEmailBodyHtml() {
-            return REGRET_EMAIL_TEXT.split('\n\n').map(function(p) {
+        // "Re: ..." without stacking a second Re: when the subject already has one.
+        function replySubjectLocal(subject) {
+            const s = String(subject || '').trim();
+            return /^re:/i.test(s) ? s : ('Re: ' + s);
+        }
+
+        // The regret reply, ending with the standard signature — it used to stop at
+        // "Yours Sincerely" with nothing after it: no name, no company, no logo.
+        async function regretEmailBodyHtml() {
+            const body = REGRET_EMAIL_TEXT.split('\n\n').map(function(p) {
                 return '<p>' + escapeHtml(p).replace(/\n/g, '<br>') + '</p>';
             }).join('');
+            let signature = '';
+            try {
+                const r = await fetch(`${API_BASE_URL}/get-default-signature`);
+                const d = await r.json();
+                signature = (d && d.content) || '';
+            } catch (e) { /* send unsigned rather than failing */ }
+            return signature ? body + '<div style="height:10px;"></div>' + signature : body;
         }
 
         // Delete an accidental / junk quote from the desk. Soft-delete (recoverable): the
@@ -8006,13 +8021,32 @@
             if (!q) return;
             const company = q.companyName || q.projectName || 'this customer';
             if (q.gmailMessageId) {
-                const ok = confirm('Regret this enquiry?\n\nThis sends the reply below to ' + company + ' in the same email thread, and moves the quote out of the active list:\n\n' + REGRET_EMAIL_TEXT);
-                if (!ok) return;
+                // Same review-and-edit window a quotation gets. This used to be a browser confirm
+                // that fired a real email to the customer the instant you clicked OK — no preview,
+                // no way to soften a word for a particular customer.
+                const thread = await fetch(`${API_BASE_URL}/resolve-thread?messageId=${encodeURIComponent(q.gmailMessageId)}`)
+                    .then(function(r) { return r.json(); }).catch(function() { return null; });
+                const composed = await composeQuotationEmail({
+                    title: 'Send regret to ' + company,
+                    subtitle: 'Review and edit the reply below, then send. It goes back in the original email thread.',
+                    noAttachment: true,
+                    to: (thread && thread.fromEmail) ? [thread.fromEmail] : [],
+                    subject: (thread && thread.subject) ? replySubjectLocal(thread.subject) : 'Re: Your enquiry',
+                    bodyHtml: await regretEmailBodyHtml(),
+                    threadNote: (thread && thread.fromEmail)
+                        ? 'Replies in the original thread with ' + thread.fromEmail
+                        : 'Could not read the original thread — check the recipient below.'
+                });
+                if (!composed) return;   // cancelled
                 try {
                     const response = await fetch(`${API_BASE_URL}/send-email`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ replyToMessageId: q.gmailMessageId, bodyHtml: regretEmailBodyHtml() })
+                        body: JSON.stringify({
+                            replyToMessageId: q.gmailMessageId,
+                            to: composed.to, cc: composed.cc, bcc: composed.bcc,
+                            subject: composed.subject, bodyHtml: composed.bodyHtml
+                        })
                     });
                     const result = await safeJsonParse(response);
                     if (!response.ok) throw new Error(result.error || 'Failed to send the regret email');
@@ -10719,7 +10753,12 @@
 
                 overlay.querySelector('.email-modal-subject').value = prefill.subject || '';
                 overlay.querySelector('.email-msg-editor').innerHTML = prefill.bodyHtml || '';
-                overlay.querySelector('.email-attach-name').textContent = prefill.pdfFilename || 'quotation.pdf';
+                // No attachment row for emails that carry no file (e.g. the regret reply).
+                if (prefill.noAttachment) {
+                    overlay.querySelector('.email-attach').style.display = 'none';
+                } else {
+                    overlay.querySelector('.email-attach-name').textContent = prefill.pdfFilename || 'quotation.pdf';
+                }
                 const threadNoteEl = overlay.querySelector('.email-thread-note');
                 if (prefill.threadNote) {
                     threadNoteEl.textContent = prefill.threadNote;
