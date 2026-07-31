@@ -330,9 +330,11 @@
         .rev-ask-h { font-size: 12px; font-weight: 600; color: #8A2B2B; margin: 2px 0 4px; }
         .rev-ask-strip:not(.is-open) .rev-ask-h { color: #6e6c65; }
         .rev-ask-line { display: flex; gap: 7px; align-items: baseline; font-size: 12px; color: #4A4A46; line-height: 1.55; padding: 1px 0; }
-        .rev-ask-line.is-done { color: #9b988e; text-decoration: line-through; }
+        /* Greyed, but NOT struck through — a done ask is the record of what was asked, and
+           History depends on it staying readable. The ✓ and the "· done" meta mark it as closed. */
+        .rev-ask-line.is-done { color: #9b988e; }
         .rev-ask-dot { flex: 0 0 auto; font-size: 10px; color: #C0392B; }
-        .rev-ask-line.is-done .rev-ask-dot { color: #9b988e; text-decoration: none; }
+        .rev-ask-line.is-done .rev-ask-dot { color: #9b988e; }
         .rev-ask-text { flex: 1 1 auto; white-space: pre-wrap; word-break: break-word; }
         .rev-ask-meta { flex: 0 0 auto; font-size: 11px; color: #9b988e; }
         .rev-ask-hint { font-size: 11px; color: #9b988e; margin: 4px 0 2px; }
@@ -385,6 +387,10 @@
         .qet-thread { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 12px; }
         .qet-th-email { flex: 1 1 auto; }
         .qet-reply { background: #F7F6F4; border-radius: 6px; padding: 7px 9px; font-size: 12px; margin: 3px 0 7px; }
+
+        /* A paste box while a file is being dragged over it. */
+        .drop-hover { outline: 2px dashed #185FA5 !important; outline-offset: 2px;
+            background: #F2F8FF !important; }
 
         /* Red count circle on the Revision filter button. */
         .rev-count { display: inline-block; min-width: 18px; height: 18px; line-height: 18px; padding: 0 5px;
@@ -1505,7 +1511,7 @@
                 <label style="font-size:13px; color:#6e6c65;">Month</label>
                 <select id="approvalMonthSelect" onchange="approvalPickMonthYear()" style="height:32px; font-size:13px; padding:2px 6px; border:1px solid #ddd; border-radius:5px;"></select>
                 <select id="approvalYearSelect" onchange="approvalPickMonthYear()" style="height:32px; font-size:13px; padding:2px 6px; border:1px solid #ddd; border-radius:5px;"></select>
-                <button id="approvalAllMonthsBtn" class="upload-btn" type="button" onclick="approvalShowAllMonths()" style="width:auto; padding:6px 12px;" title="Show quotes from every month">All months</button>
+                <button id="approvalAllMonthsBtn" class="upload-btn" type="button" onclick="approvalShowAllMonths()" style="width:auto; padding:6px 12px;" title="Clear every filter and show the latest quotes">All Quotes</button>
                 <button id="approvalFreightBtn" class="upload-btn" type="button" onclick="approvalToggleFreight()" style="width:auto; padding:6px 12px;" title="Show every quote a freight enquiry was sent for, replied or not">&#128666; Freight</button>
                 <button id="approvalRevisionBtn" class="upload-btn" type="button" onclick="approvalToggleRevision()" style="width:auto; padding:6px 12px;" title="Show every quote the admin has asked for a revision on">&#128221; Revision<span id="approvalRevisionCount" class="rev-count" style="display:none;">0</span></button>
                 <button id="approvalEnquiryBtn" class="upload-btn" type="button" onclick="approvalToggleEnquiry()" style="width:auto; padding:6px 12px;" title="Show every quote a supplier enquiry was sent for">&#128233; Enquiry</button>
@@ -2036,7 +2042,73 @@
             }
         }
 
+        /*
+            ============================================
+            DRAG & DROP ONTO THE PASTE BOXES
+            ============================================
+            Every "paste content here" box also accepts a dropped file — it lands in that box's own
+            file input, so the existing upload path runs unchanged. Dropped TEXT goes into the
+            textarea. One helper rather than a copy per box.
+
+            dragover must preventDefault or the browser navigates away to the dropped file, losing
+            whatever the user had typed.
+        */
+        const DROP_ACCEPT = /\.(pdf|docx?|xlsx?|txt|png|jpe?g|gif|webp)$/i;
+
+        function attachDropTarget(boxId, fileInputId) {
+            const box = document.getElementById(boxId);
+            if (!box || box.dataset.dropBound === 'true') return;
+            const fileInput = fileInputId ? document.getElementById(fileInputId) : null;
+            box.dataset.dropBound = 'true';
+
+            const highlight = (on) => box.classList.toggle('drop-hover', on);
+            ['dragenter', 'dragover'].forEach(function(ev) {
+                box.addEventListener(ev, function(e) { e.preventDefault(); e.stopPropagation(); highlight(true); });
+            });
+            ['dragleave', 'dragend'].forEach(function(ev) {
+                box.addEventListener(ev, function() { highlight(false); });
+            });
+            box.addEventListener('drop', function(e) {
+                e.preventDefault(); e.stopPropagation(); highlight(false);
+                const dt = e.dataTransfer;
+                if (!dt) return;
+                const file = dt.files && dt.files[0];
+                if (file) {
+                    if (!DROP_ACCEPT.test(file.name)) {
+                        alert('"' + file.name + '" is not a file type this box accepts.\n\nAllowed: PDF, Word, Excel, text or an image.');
+                        return;
+                    }
+                    if (!fileInput) { alert('This box does not take files — paste the text instead.'); return; }
+                    // Hand the file to the real input so the existing upload/generate path runs.
+                    try {
+                        const dts = new DataTransfer();
+                        dts.items.add(file);
+                        fileInput.files = dts.files;
+                        fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    } catch (err) {
+                        console.error('Could not attach the dropped file:', err);
+                        alert('Could not read that file — please use the Choose File button.');
+                    }
+                    return;
+                }
+                // A dragged selection rather than a file.
+                const text = dt.getData('text/plain');
+                if (text && box.tagName === 'TEXTAREA') {
+                    box.value = box.value ? (box.value + '\n' + text) : text;
+                    box.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            });
+        }
+
+        // Every paste box in the app, with the file input each one feeds.
+        function initDropTargets() {
+            attachDropTarget('emailContent', 'fileUpload');                 // Quotation — paste email
+            attachDropTarget('enquiryInputText', 'enquiryInputFile');       // Enquiry Preparer — AI extract
+            attachDropTarget('weightExtractionText', 'weightExtractionFile'); // Weight Calculator
+        }
+
         async function initQuotations() {
+            initDropTargets();                     // paste boxes also accept a dropped file
             initApprovalFilters();                 // build the month/year dropdowns (no filter applied yet)
             approvedQuotationsCursor = null;
             approvedQuotationsHasMore = false;
@@ -10852,7 +10924,11 @@
                     // revisionRequests is server-owned, so the save deliberately ignores whatever
                     // this tab holds. markRevisionRequestsDone only updates what is on screen.
                     const revisionsCleared = markRevisionRequestsDone(quotation);
-                    clearRevisionRequestsOnServer(quotation.id);
+                    // AWAIT the clear before the whole-object save. /save-quotation re-reads the
+                    // server-owned fields (revisionRequests among them) and writes them straight
+                    // back, so if its read lands before this write the asks are restored and the
+                    // quote pops back onto the Revision list, still bouncing, after a successful send.
+                    await clearRevisionRequestsOnServer(quotation.id);
                     archiveQuotationPdf(quotation, pdfResult.base64);   // stash the exact PDF the customer got
                     saveQuotationToBackend(quotation);
                     updateApprovalBadge(quotationId, quotation);

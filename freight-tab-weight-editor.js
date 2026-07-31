@@ -431,8 +431,39 @@
             + '• Weight: ' + (enqWeightUsable(st) ? (fmt(enqEffectiveWeight(st)) + ' kg') : '____ kg')
             + ' (' + rows.length + ' item' + (rows.length === 1 ? '' : 's') + ')\n'
             + '• Material: MS pipes\n\n'
-            + 'Kindly include transit time and whether door delivery is covered.\n\n'
+            + '[TABLE]\n\n'
+            + 'Please include transit time.\n\n'
             + 'Regards,\nDSC Pipes';
+    }
+
+    // The consignment broken down by size, so a transporter can see WHAT they are carrying rather
+    // than just a total weight. Substituted for [TABLE] at send time, so the user can still move
+    // it around (or delete it) in the editable message.
+    function freightItemsTableHtml(st) {
+        var rows = enqScopeRows(st);
+        if (!rows.length) return '';
+        var head = ['Item', 'Qty', 'kg/m', 'Weight']
+            .map(function (h, i) {
+                return '<th style="border:1px solid #000;padding:6px 8px;background:#0b4aa2;color:#fff;'
+                    + 'text-align:' + (i === 0 ? 'left' : 'right') + ';">' + escTxt(h) + '</th>';
+            }).join('');
+        var body = rows.map(function (r, i) {
+            var bg = (i % 2 === 0) ? '#ffffff' : '#eef5ff';
+            var cell = 'border:1px solid #000;padding:6px 8px;background-color:' + bg + ';';
+            var w = (r.qty != null && r.kgm) ? fmt(weightOf(r)) + ' kg' : '—';
+            return '<tr>'
+                + '<td bgcolor="' + bg + '" style="' + cell + '">' + escTxt(r.d || '') + '</td>'
+                + '<td bgcolor="' + bg + '" style="' + cell + 'text-align:right;">' + escTxt(r.qty != null ? r.qty : '') + '</td>'
+                + '<td bgcolor="' + bg + '" style="' + cell + 'text-align:right;">' + escTxt(r.kgm || '') + '</td>'
+                + '<td bgcolor="' + bg + '" style="' + cell + 'text-align:right;">' + w + '</td>'
+                + '</tr>';
+        }).join('');
+        var total = enqWeightUsable(st)
+            ? '<tr><td colspan="3" style="border:1px solid #000;padding:6px 8px;text-align:right;font-weight:700;">Total</td>'
+              + '<td style="border:1px solid #000;padding:6px 8px;text-align:right;font-weight:700;">' + fmt(enqEffectiveWeight(st)) + ' kg</td></tr>'
+            : '';
+        return '<table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:Arial,sans-serif;font-size:13px;">'
+            + '<thead><tr>' + head + '</tr></thead><tbody>' + body + total + '</tbody></table>';
     }
     // The standard signature (Settings → Default Email Signature) — the same one quotations are
     // sent with. Freight enquiries used to go out unsigned. Cached after the first fetch.
@@ -445,9 +476,18 @@
             .catch(function () { _freightSignatureHtml = ''; })
             .then(function () { then && then(); });
     }
-    function enqTextToHtml(text) {
+    // `st` is optional — when given, [TABLE] in the message is replaced by the item breakdown.
+    // The text is escaped FIRST and the table injected after, so a transporter's name or a typed
+    // description can never smuggle markup in.
+    function enqTextToHtml(text, st) {
         var safe = (typeof escapeHtml === 'function') ? escapeHtml(text) : escTxt(text);
         var body = safe.replace(/\n/g, '<br>');
+        if (st) {
+            var table = freightItemsTableHtml(st);
+            body = body.replace(/\[TABLE\]/g, table ? '<div style="height:6px;"></div>' + table + '<div style="height:6px;"></div>' : '');
+        } else {
+            body = body.replace(/\[TABLE\]/g, '');
+        }
         return _freightSignatureHtml
             ? body + '<div style="height:14px;"></div>' + _freightSignatureHtml
             : body;
@@ -626,7 +666,7 @@
             return fetch(apiBase() + '/send-email', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ to: addr, subject: subject, bodyHtml: enqTextToHtml(bodyText) })
+                body: JSON.stringify({ to: addr, subject: subject, bodyHtml: enqTextToHtml(bodyText, st) })
             }).then(function (res) {
                 return res.json().catch(function () { return {}; }).then(function (d) { return { addr: addr, ok: res.ok && d && d.success, d: d }; });
             }).catch(function (e) {
@@ -1039,6 +1079,8 @@
             enqWeightUsable: enqWeightUsable,
             enqEffectiveWeight: enqEffectiveWeight,
             buildEnquiryDraft: buildEnquiryDraft,
+            freightItemsTableHtml: freightItemsTableHtml,
+            enqTextToHtml: enqTextToHtml,
             checkFreightRepliesForQuote: checkFreightRepliesForQuote,
             _setSuggest: function (s) { _freightSuggest = s; }
         };
