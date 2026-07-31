@@ -193,6 +193,17 @@ function quoteSummaryMatches(x, q) {
     const hay = normalizeSearchQuery([x.companyName, x.projectName, x.customerName, x.quoteNumber].filter(Boolean).join(' '));
     return hay.indexOf(q) >= 0;
 }
+// A quote's calendar month ('YYYY-MM', UTC) from when it was created.
+function quoteMonth(x) {
+    const d = x && (x.createdAt || x.quotationDate || x.updatedAt);
+    const t = d ? new Date(d) : null;
+    return (t && !isNaN(t.getTime())) ? t.toISOString().slice(0, 7) : '';
+}
+// Has freight activity — a sent transporter enquiry (awaiting a reply) or a reply received.
+function quoteHasFreightActivity(x) {
+    if (x && x.transporterReplyIn) return true;
+    return !!(x && Array.isArray(x.freightEnquiries) && x.freightEnquiries.some(function (t) { return t && t.threadId; }));
+}
 
 module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, storage }) {
 
@@ -663,6 +674,41 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
         } catch (error) {
             console.error('Quote search failed:', error);
             res.status(500).json({ error: 'Search failed', details: error.message });
+        }
+    });
+
+    // Filter ALL quotes (not just loaded pages) by month (created) and/or freight activity —
+    // powers the approval list's month dropdown + freight button. Summary-only, capped.
+    router.get('/quotations-filter', async (req, res) => {
+        if (!requireDdb(res)) return;
+        const month = /^\d{4}-\d{2}$/.test(String(req.query.month || '')) ? String(req.query.month) : '';
+        const freight = String(req.query.freight || '') === '1';
+        if (!month && !freight) return res.json({ quotations: [] });
+        try {
+            const { ScanCommand } = require('@aws-sdk/lib-dynamodb');
+            let items = [], scanKey = null, pages = 0;
+            do {
+                const params = {
+                    TableName: ddbTableName,
+                    ProjectionExpression: SUMMARY_PROJECTION,
+                    ExpressionAttributeNames: { ...SUMMARY_EXPR_NAMES, '#ent': '_entity' },
+                    FilterExpression: '#ent = :ent',
+                    ExpressionAttributeValues: { ':ent': ENTITY_QUOTATION },
+                };
+                if (scanKey) params.ExclusiveStartKey = scanKey;
+                const result = await ddbDocClient.send(new ScanCommand(params));
+                items = items.concat(result.Items || []);
+                scanKey = result.LastEvaluatedKey || null;
+                pages++;
+            } while (scanKey && pages < 40);
+            let list = items.map(quotationFromItem).filter(Boolean);
+            if (month)   list = list.filter(function (x) { return quoteMonth(x) === month; });
+            if (freight) list = list.filter(quoteHasFreightActivity);
+            list.sort(function (a, b) { return new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0); });
+            res.json({ quotations: list.slice(0, 500) });
+        } catch (error) {
+            console.error('Quote filter failed:', error);
+            res.status(500).json({ error: 'Filter failed', details: error.message });
         }
     });
 

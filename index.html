@@ -1412,6 +1412,14 @@
                     style="width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 4px;"
                 >
             </div>
+            <!-- Month/year filter (defaults to the current month) + a Freight filter. -->
+            <div style="margin-bottom: 10px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <label style="font-size:13px; color:#6e6c65;">Month</label>
+                <select id="approvalMonthSelect" onchange="approvalPickMonthYear()" style="height:32px; font-size:13px; padding:2px 6px; border:1px solid #ddd; border-radius:5px;"></select>
+                <select id="approvalYearSelect" onchange="approvalPickMonthYear()" style="height:32px; font-size:13px; padding:2px 6px; border:1px solid #ddd; border-radius:5px;"></select>
+                <button id="approvalAllMonthsBtn" class="upload-btn" type="button" onclick="approvalShowAllMonths()" style="width:auto; padding:6px 12px;" title="Show quotes from every month">All months</button>
+                <button id="approvalFreightBtn" class="upload-btn" type="button" onclick="approvalToggleFreight()" style="width:auto; padding:6px 12px;" title="Show quotes awaiting a freight rate or with one received">&#128666; Freight</button>
+            </div>
             <!-- Global sweep: check every quote awaiting a transporter/customer reply in one go. -->
             <div style="margin-bottom: 10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                 <button id="checkAllRepliesBtn" class="upload-btn" type="button" onclick="checkAllReplies()" style="width:auto; padding:7px 14px;" title="Check every quote waiting on a transporter or customer reply">&#8635; Check all replies</button>
@@ -1924,9 +1932,11 @@
         }
 
         async function initQuotations() {
+            initApprovalFilters();                 // default the month filter to the current month
             approvedQuotationsCursor = null;
             approvedQuotationsHasMore = false;
             await loadQuotationsFromBackend(false);
+            applyApprovalServerFilter();           // pull the current month's quotes (fills in older ones)
             // Quietly check freight-awaiting quotes for new replies once the list has rendered.
             // Background (non-blocking) + freight-only, so the app opens instantly.
             setTimeout(function () { checkAllReplies({ background: true }); }, 0);
@@ -6635,11 +6645,86 @@
         }
 
         function getFilteredApprovedQuotations(query) {
-            const normalizedQuery = normalizeSearchText(query);
-            if (!normalizedQuery) {
-                return approvedQuotations.slice();
+            let list = approvedQuotations.slice();
+            if (approvalFreightFilter) {
+                list = list.filter(quoteHasFreightActivityClient);            // freight spans all months
+            } else if (approvalMonthFilter) {
+                list = list.filter(function(q) { return quoteMonthClient(q) === approvalMonthFilter; });
             }
-            return approvedQuotations.filter(quotation => matchesApprovalSearch(quotation, normalizedQuery));
+            const normalizedQuery = normalizeSearchText(query);
+            if (normalizedQuery) list = list.filter(function(q) { return matchesApprovalSearch(q, normalizedQuery); });
+            return list;
+        }
+
+        // ── Approval list month/freight filters ─────────────────────────────────────
+        let approvalMonthFilter = '';       // 'YYYY-MM' or '' (all months)
+        let approvalFreightFilter = false;
+        const APPROVAL_MONTHS = ['01','02','03','04','05','06','07','08','09','10','11','12'];
+        const APPROVAL_MNAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+        function quoteMonthClient(q) {
+            const d = q && (q.createdAt || q.quotationDate || q.updatedAt);
+            const t = d ? new Date(d) : null;
+            return (t && !isNaN(t.getTime())) ? t.toISOString().slice(0, 7) : '';
+        }
+        function quoteHasFreightActivityClient(q) {
+            if (q && q.transporterReplyIn) return true;
+            return !!(q && Array.isArray(q.freightEnquiries) && q.freightEnquiries.some(function(t){ return t && t.threadId; }));
+        }
+        function updateApprovalFilterButtons() {
+            const fb = document.getElementById('approvalFreightBtn');
+            if (fb) { fb.style.background = approvalFreightFilter ? '#185FA5' : ''; fb.style.color = approvalFreightFilter ? '#fff' : ''; }
+            const dim = approvalFreightFilter || !approvalMonthFilter;
+            ['approvalMonthSelect','approvalYearSelect'].forEach(function(id){ const el = document.getElementById(id); if (el) el.style.opacity = dim ? '0.5' : ''; });
+        }
+        function initApprovalFilters() {
+            const m = document.getElementById('approvalMonthSelect'), y = document.getElementById('approvalYearSelect');
+            if (!m || !y || m.dataset.built === 'true') return;
+            const now = new Date(), curY = now.getFullYear(), curM = now.getMonth();
+            m.innerHTML = APPROVAL_MONTHS.map(function(mm, i){ return '<option value="'+mm+'">'+APPROVAL_MNAMES[i]+'</option>'; }).join('');
+            let years = ''; for (let yy = curY; yy >= curY - 6; yy--) years += '<option value="'+yy+'">'+yy+'</option>';
+            y.innerHTML = years;
+            m.value = APPROVAL_MONTHS[curM]; y.value = String(curY);
+            m.dataset.built = 'true';
+            approvalMonthFilter = curY + '-' + APPROVAL_MONTHS[curM];   // default: current month
+            approvalFreightFilter = false;
+            updateApprovalFilterButtons();
+        }
+        // Instant local filter, then pull any not-yet-loaded matches from the server (best-effort).
+        async function applyApprovalServerFilter() {
+            displayAllApprovedQuotations();
+            const params = approvalFreightFilter ? 'freight=1' : (approvalMonthFilter ? 'month=' + encodeURIComponent(approvalMonthFilter) : '');
+            if (!params) return;
+            try {
+                const res = await fetch(`${API_BASE_URL}/quotations-filter?${params}`);
+                if (!res.ok) return;
+                const data = await safeJsonParse(res);
+                const found = Array.isArray(data.quotations) ? data.quotations : [];
+                let added = 0;
+                found.forEach(function(f) {
+                    if (f && f.id != null && !approvedQuotations.some(function(x){ return idsMatch(x.id, f.id); })) { approvedQuotations.push(f); added++; }
+                });
+                if (added) { syncApprovedQuotationsGlobal(); displayAllApprovedQuotations(); }
+            } catch (e) { /* best-effort */ }
+        }
+        function approvalPickMonthYear() {
+            const m = document.getElementById('approvalMonthSelect'), y = document.getElementById('approvalYearSelect');
+            if (!m || !y) return;
+            approvalFreightFilter = false;
+            approvalMonthFilter = y.value + '-' + m.value;
+            updateApprovalFilterButtons();
+            applyApprovalServerFilter();
+        }
+        function approvalShowAllMonths() {
+            approvalMonthFilter = ''; approvalFreightFilter = false;
+            updateApprovalFilterButtons();
+            displayAllApprovedQuotations();   // just the loaded feed, no server call
+        }
+        function approvalToggleFreight() {
+            approvalFreightFilter = !approvalFreightFilter;
+            if (approvalFreightFilter) approvalMonthFilter = '';   // freight is across all months
+            updateApprovalFilterButtons();
+            applyApprovalServerFilter();
         }
 
         function getApprovalSearchInput() {
