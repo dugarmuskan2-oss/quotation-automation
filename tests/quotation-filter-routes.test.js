@@ -113,12 +113,11 @@ describe('GET /quotations-filter?month=YYYY-MM', () => {
         expect(idsOf(april)).not.toContain('m-isodate');
     });
 
-    test('ACTUAL BEHAVIOUR: a DD.MM.YY quotationDate does not match, and hides the usable updatedAt', async () => {
-        // `new Date('15.03.26')` is Invalid Date, so quoteMonth returns '' — and because
-        // quotationDate is truthy it is picked ahead of the perfectly good March updatedAt,
-        // so the quote falls out of EVERY month. Documenting, not endorsing (see notes).
+    // The server now reads the app's own DD.MM.YY dates, matching approvalMonthOf on the client.
+    // `new Date('15.03.26')` is Invalid Date, so this quote used to fall out of EVERY month.
+    test('a DD.MM.YY quotationDate is read, and files the quote under its printed month', async () => {
         const march = await request(makeApp(monthStore())).get('/api/quotations-filter?month=2026-03');
-        expect(idsOf(march)).not.toContain('m-dotted');
+        expect(idsOf(march)).toContain('m-dotted');
         const april = await request(makeApp(monthStore())).get('/api/quotations-filter?month=2026-04');
         expect(idsOf(april)).not.toContain('m-dotted');
     });

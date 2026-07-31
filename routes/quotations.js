@@ -197,10 +197,26 @@ function quoteSummaryMatches(x, q) {
     return hay.indexOf(q) >= 0;
 }
 // A quote's calendar month ('YYYY-MM', UTC) from when it was created.
+// A quote's calendar month, 'YYYY-MM'. Mirrors approvalMonthOf in index.html.
+// quotationDate (the DD.MM.YY the app prints on the quote) is preferred over createdAt so the
+// month a quote is filed under always matches the date shown on it. Bucketing on the UTC slice of
+// createdAt instead meant a quote saved between midnight and 05:30 IST on the 1st was dated the
+// new month but filed under the previous one — pick that month and the quote was missing.
+function monthOfDateValue(value) {
+    if (!value) return '';
+    const dmy = String(value).trim().match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})$/);
+    if (dmy) {
+        const month = Number(dmy[2]);
+        if (month < 1 || month > 12) return '';
+        const year = dmy[3].length === 2 ? '20' + dmy[3] : dmy[3];
+        return year + '-' + String(month).padStart(2, '0');
+    }
+    const t = new Date(value);
+    return isNaN(t.getTime()) ? '' : t.toISOString().slice(0, 7);
+}
 function quoteMonth(x) {
-    const d = x && (x.createdAt || x.quotationDate || x.updatedAt);
-    const t = d ? new Date(d) : null;
-    return (t && !isNaN(t.getTime())) ? t.toISOString().slice(0, 7) : '';
+    if (!x) return '';
+    return monthOfDateValue(x.quotationDate) || monthOfDateValue(x.createdAt) || monthOfDateValue(x.updatedAt);
 }
 // Page cap for the whole-table scans behind search and the month/freight filters. Items carry
 // tableHTML, so they average ~31 KB and a 1 MB scan page holds only ~33 of them — 40 pages reached

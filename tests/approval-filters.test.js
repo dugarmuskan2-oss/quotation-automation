@@ -171,10 +171,20 @@ describe('approvalMonthOf — date value to YYYY-MM', () => {
 describe('quoteMonthClient — picking the quote month', () => {
     const quoteMonthClient = loadFilters({}).quoteMonthClient;
 
-    test('prefers createdAt', () => {
+    // quotationDate wins so the month a quote is filed under always matches the date printed
+    // ON the quote. Bucketing on createdAt's UTC slice filed a quote saved between midnight and
+    // 05:30 IST on the 1st under the previous month, while its own date read the new one.
+    test('prefers the printed quotationDate over createdAt', () => {
         expect(quoteMonthClient({
             createdAt: '2026-06-10T00:00:00.000Z',
             quotationDate: '31.07.26',
+            updatedAt: '2026-05-01T00:00:00.000Z',
+        })).toBe('2026-07');
+    });
+
+    test('falls back to createdAt when there is no quotation date', () => {
+        expect(quoteMonthClient({
+            createdAt: '2026-06-10T00:00:00.000Z',
             updatedAt: '2026-05-01T00:00:00.000Z',
         })).toBe('2026-06');
     });

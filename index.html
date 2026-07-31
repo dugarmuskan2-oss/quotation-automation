@@ -6807,10 +6807,12 @@
         }
         function quoteMonthClient(q) {
             if (!q) return '';
-            // First candidate that yields a real month wins. A quote created in this session has no
-            // createdAt yet — only a DD.MM.YY quotationDate — so it must not stop at an unparseable one,
-            // otherwise the quote you just made is invisible while a month is picked.
-            return approvalMonthOf(q.createdAt) || approvalMonthOf(q.quotationDate) || approvalMonthOf(q.updatedAt);
+            // quotationDate FIRST — the date printed on the quote decides which month it is filed
+            // under, so the two can never disagree. Bucketing on createdAt's UTC slice meant a quote
+            // saved between midnight and 05:30 IST on the 1st was dated the new month but filed under
+            // the previous one. Falls through to createdAt/updatedAt when there is no quote date.
+            // Must stay in step with quoteMonth in routes/quotations.js.
+            return approvalMonthOf(q.quotationDate) || approvalMonthOf(q.createdAt) || approvalMonthOf(q.updatedAt);
         }
         // "A freight enquiry was sent for this quote" — every quote the feature was used on, whether or
         // not it still needs attention. An entry is only ever pushed for an email that actually sent
@@ -8050,9 +8052,18 @@
         // Always creates a revision — one per click, with no change-detection gate.
         function createRevisionFromBaseline(quotation) {
             var baseline = revisionBaselineOf(quotation);
+            // With no stored baseline (a quote sent before baselines were captured) we do NOT know
+            // what the customer received. Snapshotting the CURRENT state and calling it the "Sent
+            // version" asserted that the customer had been quoted the new price — the opposite of
+            // the truth, on the one screen meant to record what they were actually sent. Label it
+            // honestly instead, and mark it so the History view can caveat it.
+            var unverified = !baseline;
             baseline = baseline ? JSON.parse(JSON.stringify(baseline))
-                : buildRevisionSnapshotData(quotation, 'Sent version');   // legacy: no send-time baseline
-            baseline.change = describePostSendChange(baseline, quotation);
+                : buildRevisionSnapshotData(quotation, 'Version before this revision');
+            if (unverified) baseline.unverifiedBaseline = true;
+            baseline.change = unverified
+                ? 'Earlier version — the exact figures the customer received were not recorded'
+                : describePostSendChange(baseline, quotation);
             commitRevisionSnapshot(quotation, baseline);   // pushes to revisions[], revised=true, revisionCount = revNo+1
             // The just-saved version becomes the baseline the next revision will archive.
             quotation.revisionBaseline = buildRevisionSnapshotData(quotation, 'Rev ' + quotation.revisionCount);
