@@ -452,8 +452,9 @@ function postEmailsToApp(appUrl, emails, secret) {
  * @param {number} [endMs] - Optional end of time window (ms)
  * @param {string} [startDateStr] - Optional start date for Gmail search (yyyy/MM/dd)
  * @param {string} [endDatePlusOneStr] - Optional end date for Gmail search (yyyy/MM/dd, exclusive)
+ * @param {function(Object):void} [onEmailCreated] - Called with each email the app reports as a brand-new quote (e.g. to send an acknowledgement).
  */
-function sendLabeledEmailsToAppForLabel(labelName, startMs, endMs, startDateStr, endDatePlusOneStr) {
+function sendLabeledEmailsToAppForLabel(labelName, startMs, endMs, startDateStr, endDatePlusOneStr, onEmailCreated) {
   if (labelName === undefined || labelName === null || (typeof labelName === 'string' && labelName.trim() === '')) {
     labelName = LABEL_NAME;
   }
@@ -472,7 +473,7 @@ function sendLabeledEmailsToAppForLabel(labelName, startMs, endMs, startDateStr,
   }
 
   Logger.log('Sending ' + emails.length + ' email(s) to app for label: ' + labelName);
-  var totalCreated = postEmailBatchesToApp_(appUrl, secret, emails);
+  var totalCreated = postEmailBatchesToApp_(appUrl, secret, emails, onEmailCreated);
   Logger.log('App: created ' + totalCreated + ' quotation(s) total');
   return totalCreated;
 }
@@ -483,9 +484,10 @@ function sendLabeledEmailsToAppForLabel(labelName, startMs, endMs, startDateStr,
  * @param {string} appUrl - Base app URL (no trailing slash)
  * @param {string|null} secret - Optional X-Ingest-Secret value
  * @param {Array<Object>} emails - Email payloads from a getEmailsWithLabel* helper
+ * @param {function(Object):void} [onEmailCreated] - Called with each email the app reports as a brand-new quote.
  * @return {number} Total quotations created (sum of app `created` counts)
  */
-function postEmailBatchesToApp_(appUrl, secret, emails) {
+function postEmailBatchesToApp_(appUrl, secret, emails, onEmailCreated) {
   var totalCreated = 0;
   for (var i = 0; i < emails.length; i += MAX_EMAILS_PER_REQUEST) {
     var batch = emails.slice(i, i + MAX_EMAILS_PER_REQUEST);
@@ -515,7 +517,13 @@ function postEmailBatchesToApp_(appUrl, secret, emails) {
     var b = r.getContentText();
     if (c >= 200 && c < 300) {
       var d = JSON.parse(b);
-      totalCreated += (d.created || 0);
+      var createdCount = d.created || 0;
+      totalCreated += createdCount;
+      // Each request carries a single email (MAX_EMAILS_PER_REQUEST = 1), so a non-zero
+      // "created" means THIS email just became a brand-new quote — hand it to the acknowledger.
+      if (createdCount > 0 && batch.length === 1 && typeof onEmailCreated === 'function') {
+        try { onEmailCreated(batch[0]); } catch (ackErr) { Logger.log('onEmailCreated failed: ' + ackErr.toString()); }
+      }
       if (d.errors && d.errors.length > 0) {
         Logger.log('App errors for email ' + (i + 1) + ': ' + JSON.stringify(d.errors));
       }
@@ -533,9 +541,10 @@ function postEmailBatchesToApp_(appUrl, secret, emails) {
  * The app de-duplicates by Gmail message id, so already-created quotes are skipped cheaply.
  * @param {string} labelName - Gmail label name (defaults to LABEL_NAME)
  * @param {number} [days] - Recency cap in days (default 60)
+ * @param {function(Object):void} [onEmailCreated] - Called with each email the app reports as a brand-new quote (e.g. to send an acknowledgement).
  * @return {number} Total quotations created
  */
-function sendLabeledEmailsToAppRecent(labelName, days) {
+function sendLabeledEmailsToAppRecent(labelName, days, onEmailCreated) {
   if (labelName === undefined || labelName === null || (typeof labelName === 'string' && labelName.trim() === '')) {
     labelName = LABEL_NAME;
   }
@@ -549,7 +558,7 @@ function sendLabeledEmailsToAppRecent(labelName, days) {
   }
 
   Logger.log('Sending ' + emails.length + ' recently-labelled email(s) to app for label: ' + labelName);
-  var totalCreated = postEmailBatchesToApp_(appUrl, secret, emails);
+  var totalCreated = postEmailBatchesToApp_(appUrl, secret, emails, onEmailCreated);
   Logger.log('App: created ' + totalCreated + ' quotation(s) total');
   return totalCreated;
 }

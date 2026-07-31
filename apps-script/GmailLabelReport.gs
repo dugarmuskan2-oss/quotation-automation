@@ -497,13 +497,18 @@ function dailyLabelReport() {
   SpreadsheetApp.flush();
   props.setProperty(PROP_LAST_END, String(endMs));
 
+  // Same run also emails each enquirer a short acknowledgement — but ONLY when their email
+  // becomes a brand-new quote. The acknowledger fires per newly-created quote, so repeats
+  // are never emailed twice.
   const created = sendLabeledEmailsToAppForLabel(
     'Quotation Automation/Create Quotation',
     startMs,
     endMs,
     dateStrings.startDateStr,
-    dateStrings.endDatePlusOneStr
+    dateStrings.endDatePlusOneStr,
+    buildEnquiryAcknowledger_()
   );
+
   return created;
 }
 
@@ -532,9 +537,12 @@ function runReportNow() {
  * quotes already created are skipped cheaply (no duplicates, no AI cost).
  */
 function createQuotationsFromLatest() {
+  // Also acknowledges any enquiry that becomes a brand-new quote here (e.g. late-labelled
+  // emails the report's time window missed), through the same per-new-quote path.
   return sendLabeledEmailsToAppRecent(
     'Quotation Automation/Create Quotation',
-    CREATE_QUOTATIONS_LOOKBACK_DAYS
+    CREATE_QUOTATIONS_LOOKBACK_DAYS,
+    buildEnquiryAcknowledger_()
   );
 }
 
@@ -663,4 +671,113 @@ function checkEnquiryFollowUps() {
   threads.forEach(function (thread) {
     processEnquiryThread_(thread, flagLabelObj, myAddresses, nowMs, overdueMs);
   });
+}
+
+/***** ENQUIRY AUTO-ACKNOWLEDGEMENT *****/
+/**
+ * As each labelled enquiry is turned into a BRAND-NEW quote (during the report run, and
+ * via the "Create Quotations" button), email that enquirer a short acknowledgement in-thread.
+ *
+ * No dedup tag is needed: the app already reserves each email's Gmail message id before
+ * creating a quote, and tells us per email whether it made a new quote or skipped a repeat
+ * (see gmail-ingest). We acknowledge ONLY the new ones, so nobody is ever emailed twice.
+ *
+ * The reply goes through the app's existing /api/send-email route (NOT GmailApp) so the
+ * standard signature's logo renders: the app converts the signature's embedded image to
+ * an inline attachment, exactly as it does for quotation emails. The signature itself is
+ * pulled live from the app (/api/get-default-signature) so it always matches your quotes.
+ */
+
+/** The acknowledgement text (greeting + body paragraphs). The signature is appended from the app. */
+const ACK_GREETING = "Dear Sir/Ma'am,";
+const ACK_BODY_LINES = [
+  'Thank you for your enquiry. We are reviewing your requirement and will share our quotation with you shortly.',
+  'We look forward to the opportunity of doing business with you.'
+];
+
+/**
+ * Build the acknowledger passed to the send-to-app helpers. Returns a function(email) that
+ * emails one newly-created enquirer. The signature, app URL and our own addresses are fetched
+ * ONCE here and reused for every enquiry in the run.
+ * @return {function(Object): void}
+ */
+function buildEnquiryAcknowledger_() {
+  const appUrl = getAppUrl();
+  const secret = getIngestSecret();
+  const signatureHtml = fetchDefaultSignatureHtml_(appUrl, secret);
+  const myAddresses = getMyEmailAddresses_();
+  return function (email) {
+    acknowledgeCreatedEnquiry_(email, signatureHtml, appUrl, secret, myAddresses);
+  };
+}
+
+/**
+ * Email one newly-created enquirer the acknowledgement (in-thread). Skips an email we sent
+ * ourselves (e.g. an internally-forwarded enquiry). Best-effort: a failure is logged, never
+ * thrown, so quote creation and the report are unaffected.
+ * @param {Object} email - The payload sent to the app: { id, from, subject, ... }
+ */
+function acknowledgeCreatedEnquiry_(email, signatureHtml, appUrl, secret, myAddresses) {
+  if (!email || !email.id) return;
+  const from = String(email.from || '').toLowerCase();
+  const isFromUs = [...myAddresses].some(function (m) { return m && from.indexOf(m) !== -1; });
+  if (isFromUs) {
+    Logger.log('Acknowledgement skipped (from us): "' + (email.subject || '') + '"');
+    return;
+  }
+  try {
+    if (postAcknowledgementToApp_(appUrl, secret, email.id, signatureHtml)) {
+      Logger.log('Acknowledged new enquiry: "' + (email.subject || '') + '" -> ' + email.from);
+    }
+  } catch (e) {
+    Logger.log('Acknowledgement failed for "' + (email.subject || '') + '": ' + e.toString());
+  }
+}
+
+/** Build the acknowledgement body: greeting + message paragraphs + the app's standard signature. */
+function buildAcknowledgementBodyHtml_(signatureHtml) {
+  let paras = '<p>' + ACK_GREETING + '</p>';
+  for (let i = 0; i < ACK_BODY_LINES.length; i++) {
+    paras += '<p>' + ACK_BODY_LINES[i] + '</p>';
+  }
+  const sig = signatureHtml || 'Regards,<br>DSC Pipes';
+  return paras + '<div>' + sig + '</div>';
+}
+
+/** GET the app's saved standard signature (HTML). Falls back to a plain sign-off if unavailable. */
+function fetchDefaultSignatureHtml_(appUrl, secret) {
+  try {
+    const headers = {};
+    if (secret) headers['X-Ingest-Secret'] = secret;
+    const resp = UrlFetchApp.fetch(appUrl + '/api/get-default-signature', { headers: headers, muteHttpExceptions: true });
+    if (resp.getResponseCode() === 200) {
+      const data = JSON.parse(resp.getContentText());
+      if (data && data.content) return data.content;
+    } else {
+      Logger.log('get-default-signature returned ' + resp.getResponseCode());
+    }
+  } catch (e) {
+    Logger.log('Could not fetch default signature: ' + e.toString());
+  }
+  return '';
+}
+
+/** POST the acknowledgement to the app's send route (replies in-thread; renders the logo). */
+function postAcknowledgementToApp_(appUrl, secret, replyToMessageId, signatureHtml) {
+  const payload = {
+    replyToMessageId: replyToMessageId,
+    bodyHtml: buildAcknowledgementBodyHtml_(signatureHtml)
+  };
+  const options = {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  };
+  if (secret) options.headers = { 'X-Ingest-Secret': secret };
+  const resp = UrlFetchApp.fetch(appUrl + '/api/send-email', options);
+  const code = resp.getResponseCode();
+  if (code >= 200 && code < 300) return true;
+  Logger.log('send-email failed (' + code + '): ' + resp.getContentText().substring(0, 300));
+  return false;
 }
