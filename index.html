@@ -1412,7 +1412,7 @@
                     style="width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 4px;"
                 >
             </div>
-            <!-- Month/year filter (defaults to the current month) + a Freight filter. -->
+            <!-- Month/year filter (starts on "All months" — the list opens on the latest quotes) + a Freight filter. -->
             <div style="margin-bottom: 10px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                 <label style="font-size:13px; color:#6e6c65;">Month</label>
                 <select id="approvalMonthSelect" onchange="approvalPickMonthYear()" style="height:32px; font-size:13px; padding:2px 6px; border:1px solid #ddd; border-radius:5px;"></select>
@@ -1888,6 +1888,15 @@
             if (!loadMoreBtn) {
                 return;
             }
+            // While a month/freight filter is active, the server filter fetch (not the feed cursor)
+            // decides completeness — so hide the feed "Load more" to avoid the confusing case where an
+            // older month looks empty next to a tempting button. If that fetch errored, we fall back to
+            // feed paging so older quotes stay reachable.
+            const filterActive = !!(approvalMonthFilter || approvalFreightFilter);
+            if (filterActive && !approvalFilterFetchFailed) {
+                loadMoreBtn.style.display = 'none';
+                return;
+            }
             loadMoreBtn.style.display = approvedQuotationsHasMore ? 'inline-block' : 'none';
             loadMoreBtn.disabled = approvedQuotationsLoading;
             loadMoreBtn.textContent = approvedQuotationsLoading ? 'Loading...' : 'Load more';
@@ -1932,11 +1941,11 @@
         }
 
         async function initQuotations() {
-            initApprovalFilters();                 // default the month filter to the current month
+            initApprovalFilters();                 // build the month/year dropdowns (no filter applied yet)
             approvedQuotationsCursor = null;
             approvedQuotationsHasMore = false;
+            // Opens unfiltered on the latest quotes. A month is only fetched when the user picks one.
             await loadQuotationsFromBackend(false);
-            applyApprovalServerFilter();           // pull the current month's quotes (fills in older ones)
             // Quietly check freight-awaiting quotes for new replies once the list has rendered.
             // Background (non-blocking) + freight-only, so the app opens instantly.
             setTimeout(function () { checkAllReplies({ background: true }); }, 0);
@@ -6659,8 +6668,31 @@
         // ── Approval list month/freight filters ─────────────────────────────────────
         let approvalMonthFilter = '';       // 'YYYY-MM' or '' (all months)
         let approvalFreightFilter = false;
+        let approvalFilterLoading = false;     // server filter fetch is in flight
+        let approvalFilterFetchFailed = false; // last server filter fetch errored → fall back to feed paging
         const APPROVAL_MONTHS = ['01','02','03','04','05','06','07','08','09','10','11','12'];
         const APPROVAL_MNAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+        // Human label for the active filter, e.g. "July 2026" or "freight".
+        function approvalFilterLabel() {
+            if (approvalFreightFilter) return 'freight';
+            if (approvalMonthFilter) {
+                const parts = String(approvalMonthFilter).split('-');
+                const idx = APPROVAL_MONTHS.indexOf(parts[1]);
+                return (idx >= 0 ? APPROVAL_MNAMES[idx] : parts[1]) + ' ' + parts[0];
+            }
+            return '';
+        }
+        // Message shown when the active filter has no quotes to show yet (loading) or none at all.
+        function approvalFilteredEmptyHtml() {
+            if (approvalFilterLoading) {
+                return '<p style="text-align:center; color:#999; padding:20px;">Loading ' + escapeHtml(approvalFilterLabel()) + ' quotes…</p>';
+            }
+            const what = approvalFreightFilter
+                ? 'quotes awaiting or with a freight rate'
+                : ('quotes for ' + escapeHtml(approvalFilterLabel()));
+            return '<p style="text-align:center; color:#999; padding:20px;">No ' + what + '.</p>';
+        }
 
         function quoteMonthClient(q) {
             const d = q && (q.createdAt || q.quotationDate || q.updatedAt);
@@ -6674,55 +6706,79 @@
         function updateApprovalFilterButtons() {
             const fb = document.getElementById('approvalFreightBtn');
             if (fb) { fb.style.background = approvalFreightFilter ? '#185FA5' : ''; fb.style.color = approvalFreightFilter ? '#fff' : ''; }
-            const dim = approvalFreightFilter || !approvalMonthFilter;
+            // Only the freight filter overrides the month pick, so only it greys the dropdowns.
+            // (No month picked is now the normal opening state — it must not look disabled.)
+            const dim = approvalFreightFilter;
             ['approvalMonthSelect','approvalYearSelect'].forEach(function(id){ const el = document.getElementById(id); if (el) el.style.opacity = dim ? '0.5' : ''; });
         }
+        // Builds the month/year dropdowns. The app opens UNFILTERED (latest quotes, as before) —
+        // the month select starts on a blank "All months" option, so picking any real month always
+        // fires its onchange. (A <select> does NOT fire onchange when you re-pick the option already
+        // selected, so pre-selecting the current month here would make it unclickable.)
         function initApprovalFilters() {
             const m = document.getElementById('approvalMonthSelect'), y = document.getElementById('approvalYearSelect');
             if (!m || !y || m.dataset.built === 'true') return;
             const now = new Date(), curY = now.getFullYear(), curM = now.getMonth();
-            m.innerHTML = APPROVAL_MONTHS.map(function(mm, i){ return '<option value="'+mm+'">'+APPROVAL_MNAMES[i]+'</option>'; }).join('');
+            m.innerHTML = '<option value="">All months</option>'
+                + APPROVAL_MONTHS.map(function(mm, i){ return '<option value="'+mm+'">'+APPROVAL_MNAMES[i]+'</option>'; }).join('');
             let years = ''; for (let yy = curY; yy >= curY - 6; yy--) years += '<option value="'+yy+'">'+yy+'</option>';
             y.innerHTML = years;
-            m.value = APPROVAL_MONTHS[curM]; y.value = String(curY);
+            m.value = ''; y.value = String(curY);   // no month picked yet; year defaults to this year
             m.dataset.built = 'true';
-            approvalMonthFilter = curY + '-' + APPROVAL_MONTHS[curM];   // default: current month
+            approvalMonthFilter = '';               // no filter on open — show the latest quotes
             approvalFreightFilter = false;
             updateApprovalFilterButtons();
         }
-        // Instant local filter, then pull any not-yet-loaded matches from the server (best-effort).
+        // Put the month dropdown back on "All months" (used by the All-months button + freight toggle).
+        function approvalResetMonthSelect() {
+            const m = document.getElementById('approvalMonthSelect');
+            if (m) m.value = '';
+        }
+        // Instant local filter, then pull any not-yet-loaded matches from the server for that month
+        // (older quotes aren't in the loaded feed). Shows a "Loading…" state so the user waits for the
+        // fetch instead of reaching for "Load more"; always re-renders at the end (results or empty state).
         async function applyApprovalServerFilter() {
-            displayAllApprovedQuotations();
+            approvalFilterFetchFailed = false;
             const params = approvalFreightFilter ? 'freight=1' : (approvalMonthFilter ? 'month=' + encodeURIComponent(approvalMonthFilter) : '');
+            approvalFilterLoading = !!params;   // only show a loading note when we're actually fetching
+            displayAllApprovedQuotations();     // instant: loaded matches, or the loading note if none yet
             if (!params) return;
             try {
                 const res = await fetch(`${API_BASE_URL}/quotations-filter?${params}`);
-                if (!res.ok) return;
+                if (!res.ok) throw new Error('filter fetch failed (' + res.status + ')');
                 const data = await safeJsonParse(res);
                 const found = Array.isArray(data.quotations) ? data.quotations : [];
-                let added = 0;
                 found.forEach(function(f) {
-                    if (f && f.id != null && !approvedQuotations.some(function(x){ return idsMatch(x.id, f.id); })) { approvedQuotations.push(f); added++; }
+                    if (f && f.id != null && !approvedQuotations.some(function(x){ return idsMatch(x.id, f.id); })) { approvedQuotations.push(f); }
                 });
-                if (added) { syncApprovedQuotationsGlobal(); displayAllApprovedQuotations(); }
-            } catch (e) { /* best-effort */ }
+                syncApprovedQuotationsGlobal();
+            } catch (e) {
+                approvalFilterFetchFailed = true;   // let the feed "Load more" reappear as a fallback
+            } finally {
+                approvalFilterLoading = false;
+                displayAllApprovedQuotations();      // clears the loading note; shows results or a clean empty state
+            }
         }
         function approvalPickMonthYear() {
             const m = document.getElementById('approvalMonthSelect'), y = document.getElementById('approvalYearSelect');
             if (!m || !y) return;
             approvalFreightFilter = false;
+            // Blank month ("All months", or only the year was changed) → back to the latest-quotes feed.
+            if (!m.value) { approvalShowAllMonths(); return; }
             approvalMonthFilter = y.value + '-' + m.value;
             updateApprovalFilterButtons();
             applyApprovalServerFilter();
         }
         function approvalShowAllMonths() {
             approvalMonthFilter = ''; approvalFreightFilter = false;
+            approvalResetMonthSelect();
             updateApprovalFilterButtons();
             displayAllApprovedQuotations();   // just the loaded feed, no server call
         }
         function approvalToggleFreight() {
             approvalFreightFilter = !approvalFreightFilter;
-            if (approvalFreightFilter) approvalMonthFilter = '';   // freight is across all months
+            // Freight spans every month, so it clears the month pick (dropdown included).
+            if (approvalFreightFilter) { approvalMonthFilter = ''; approvalResetMonthSelect(); }
             updateApprovalFilterButtons();
             applyApprovalServerFilter();
         }
@@ -7522,6 +7578,9 @@
             
             // The admin margins desk renders above the list (its own container).
             renderMarginDesk();
+            // Filter state decides whether the feed's "Load more" belongs on screen, so recompute it on
+            // every render — the filter functions change that state without touching the feed loader.
+            updateLoadMoreApprovedButton();
 
             // If no quotations, show message
             if (approvedQuotations.length === 0) {
@@ -7535,6 +7594,13 @@
             // Build HTML for all approved quotations (by quotation date, newest first)
             attachApprovalSearchListener();
             const filteredQuotations = getFilteredApprovedQuotations(approvalSearchQuery);
+            // A month/freight filter with nothing to show yet: render a loading note (fetch in flight)
+            // or a clean "no quotes for {month}" message — instead of a blank list beside a Load-more button.
+            if (filteredQuotations.length === 0 && (approvalMonthFilter || approvalFreightFilter)) {
+                renderApprovedQuotationsHTML(container, approvalFilteredEmptyHtml());
+                updateApprovalContainerScrollLimit(container);
+                return;
+            }
             const sortedByQuotationDate = filteredQuotations.slice().sort(function (a, b) {
                 const aQuote = getQuoteNumberSortValue(a.quoteNumber);
                 const bQuote = getQuoteNumberSortValue(b.quoteNumber);
