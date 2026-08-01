@@ -283,3 +283,39 @@ describe('source guards — the reported bugs stay fixed', () => {
         expect(html2).toContain('sanitizeEmailHtmlForPreview(decodeEscapedNoteMarkup(');
     });
 });
+
+describe('source guards — the revision box is rich text, and safely rendered', () => {
+    const html3 = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+
+    test('the revision dialog offers a rich editor, not just a textarea', () => {
+        expect(html3).toContain("class=\"pm-rich\" contenteditable=\"true\"");
+        expect(html3).toContain('.pm-rich {');
+        const fn = html3.slice(html3.indexOf('async function addRevisionRequest('));
+        expect(fn.slice(0, fn.indexOf('\n        }'))).toContain('rich: true');
+    });
+
+    test('what the editor produces is sanitised BEFORE it is stored', () => {
+        // Storing already-safe HTML means a renderer that forgets to sanitise still cannot
+        // publish a script tag onto the public Copy Link page.
+        const fn = html3.slice(html3.indexOf('function promptMultiline('));
+        expect(fn.slice(0, 3000)).toContain('sanitizeEmailHtmlForPreview(raw)');
+    });
+
+    test('both render sites go through revisionTextHtml, never raw stored markup', () => {
+        expect(html3).toContain("'<span class=\"rev-ask-text\">' + revisionTextHtml(entry && entry.text)");
+        expect(html3).toContain("'<span class=\"sq-msg-text\">' + revisionTextHtml(entry && entry.text)");
+        // No render site may inject the stored text unescaped and unsanitised.
+        expect(html3).not.toContain("'<span class=\"sq-msg-text\">' + (entry && entry.text)");
+    });
+
+    test('an empty rich editor cannot be saved as a revision', () => {
+        expect(html3).toContain('function hasVisibleRichText(');
+        const fn = html3.slice(html3.indexOf('async function addRevisionRequest('));
+        expect(fn.slice(0, fn.indexOf('\n        }'))).toContain('hasVisibleRichText(text)');
+    });
+
+    test('a pasted table survives into the card and the shared page', () => {
+        expect(html3).toMatch(/\.rev-ask-text table[^{]*\{[^}]*border-collapse/);
+        expect(html3).toMatch(/\.pm-rich table[^{]*\{[^}]*border-collapse/);
+    });
+});

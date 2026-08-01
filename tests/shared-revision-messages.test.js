@@ -59,7 +59,7 @@ function load(names) {
 }
 
 const { buildSharedMessageGroups, sharedMessagesBlockHtml, sharedMessageLineHtml } =
-    load(['buildSharedMessageGroups', 'sharedMessagesBlockHtml', 'sharedMessageLineHtml']);
+    load(['buildSharedMessageGroups', 'sharedMessagesBlockHtml', 'revisionTextHtml', 'sharedMessageLineHtml']);
 
 const ask = (text, addedAt, extra) => Object.assign({ text, addedAt, addedBy: 'ADMIN' }, extra || {});
 
@@ -180,7 +180,11 @@ describe('rendering the messages', () => {
         expect(sharedMessageLineHtml(ask('an ask', ''), false)).not.toContain('sq-msg-note');
     });
 
-    test('this page is public — a message cannot inject markup', () => {
+    // NOTE ON WHAT THIS COVERS. revisionTextHtml prefers sanitizeEmailHtmlForPreview, which needs
+    // a DOM; this suite runs under @jest-environment node and jsdom is not installed, so here it
+    // takes its escapeHtml FALLBACK. That fallback is a real shipped path and is what is asserted
+    // below. The sanitizer path is covered by a source guard plus a browser check.
+    test('this page is public — a message cannot inject markup (escape fallback)', () => {
         const out = sharedMessageLineHtml(
             { text: '<img src=x onerror=alert(1)>', addedAt: '', addedBy: '<script>bad()</script>' }, false);
         expect(out).not.toContain('<img');
