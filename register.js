@@ -209,7 +209,9 @@
     }
 
     function statusPillHtml(status) {
-        var cls = { 'SENT': 'q-sent', 'REVISION SENT': 'q-revised', 'REGRET': 'q-regretted', 'MARGIN ALLOCATION PENDING': 'q-awaiting', 'PENDING': 'q-new' }[status] || 'q-new';
+        // REVISION PENDING borrows the red "needs attention" pill: it is work still owed, not a
+        // finished state, so it must not read like the calm REVISION SENT.
+        var cls = { 'SENT': 'q-sent', 'REVISION SENT': 'q-revised', 'REGRET': 'q-regretted', 'MARGIN ALLOCATION PENDING': 'q-awaiting', 'REVISION PENDING': 'q-awaiting', 'PENDING': 'q-new' }[status] || 'q-new';
         return '<span class="q-pill ' + cls + '">' + esc(status) + '</span>';
     }
 

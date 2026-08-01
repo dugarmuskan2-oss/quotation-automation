@@ -151,6 +151,10 @@ function registerRangeOf(query) {
 
 function registerStatusOf(q) {
     if (q.adminStatus === 'regretted') return 'REGRET';
+    // An outstanding revision ask outranks "Sent". The quote HAS gone out, but the desk has since
+    // asked for a change, so the live state of that row is that we owe the customer a new version
+    // — reporting it as plain Sent hid work that was still pending.
+    if (quoteNeedsRevision(q)) return 'REVISION PENDING';
     // Sent overrides "awaiting margin": a quote sent without going through the desk is Sent,
     // not still pending margin allocation.
     if (q.sent && q.revised) return 'REVISION SENT';

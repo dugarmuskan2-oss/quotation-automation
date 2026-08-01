@@ -7123,13 +7123,58 @@
 
         // "Add revision" / "Add note" on a quote card. A revision ask puts the quote in the Revision
         // list until the revised quote is sent; a note is only ever a note.
+        // A multi-line stand-in for prompt(). The browser's prompt() is single-line by
+        // construction — Enter submits it — so a revision ask that is really a list
+        // ("cost to cost", "advance payment", "assign to Pavithra") could only be typed as one
+        // run-on line. Enter now starts a new line; the button or Ctrl+Enter saves.
+        function promptMultiline(opts) {
+            return new Promise(function(resolve) {
+                const o = opts || {};
+                const back = document.createElement('div');
+                back.style.cssText = 'position:fixed;inset:0;z-index:100001;background:rgba(0,0,0,0.45);'
+                    + 'display:flex;align-items:center;justify-content:center;padding:20px;';
+                back.innerHTML = '<div style="background:#fff;border-radius:10px;max-width:520px;width:100%;padding:18px 20px;font-family:Arial,Helvetica,sans-serif;">'
+                    + '<div style="font-size:15px;font-weight:700;color:#20201d;margin-bottom:4px;">' + escapeHtml(o.title || '') + '</div>'
+                    + (o.subtitle ? '<div style="font-size:13px;color:#6e6c65;margin-bottom:10px;">' + escapeHtml(o.subtitle) + '</div>' : '')
+                    + '<textarea rows="5" placeholder="' + escapeHtmlAttr(o.placeholder || '') + '" style="width:100%;box-sizing:border-box;border:1px solid #ccc;border-radius:6px;padding:8px 10px;font-size:14px;font-family:inherit;line-height:1.4;resize:vertical;"></textarea>'
+                    + '<div style="font-size:11px;color:#9b988e;margin-top:4px;">Enter starts a new line · Ctrl+Enter saves</div>'
+                    + '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">'
+                    + '<button type="button" data-act="cancel" style="border:1px solid #ddd;background:#f7f6f2;border-radius:6px;padding:7px 14px;font-size:14px;cursor:pointer;">Cancel</button>'
+                    + '<button type="button" data-act="ok" style="border:none;background:#185FA5;color:#fff;border-radius:6px;padding:7px 16px;font-size:14px;cursor:pointer;">' + escapeHtml(o.okLabel || 'Save') + '</button>'
+                    + '</div></div>';
+                const ta = back.querySelector('textarea');
+                let settled = false;
+                const close = function(value) {
+                    if (settled) return;
+                    settled = true;
+                    document.removeEventListener('keydown', onKey, true);
+                    back.remove();
+                    resolve(value);
+                };
+                const onKey = function(e) {
+                    if (e.key === 'Escape') { e.preventDefault(); close(null); }
+                    else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); close(ta.value); }
+                };
+                back.querySelector('[data-act="cancel"]').onclick = function() { close(null); };
+                back.querySelector('[data-act="ok"]').onclick = function() { close(ta.value); };
+                back.addEventListener('click', function(e) { if (e.target === back) close(null); });
+                document.addEventListener('keydown', onKey, true);
+                document.body.appendChild(back);
+                ta.focus();
+            });
+        }
+
         async function addRevisionRequest(quotationId, kind) {
             const quotation = approvedQuotations.find(function(q) { return idsMatch(q.id, quotationId); });
             if (!quotation) { alert('Quotation not found!'); return; }
             const isNote = kind === 'note';
-            const text = prompt(isNote
-                ? 'Add a note for this quote.\n\nThis is internal and does NOT put the quote in the revision list.'
-                : 'What needs to be revised?\n\nThe quote stays in the revision list until the revised version is sent to the customer.');
+            const text = await promptMultiline(isNote
+                ? { title: 'Add a note for this quote',
+                    subtitle: 'Internal only — this does NOT put the quote in the revision list.',
+                    placeholder: 'e.g. Called them, they are comparing three quotes' }
+                : { title: 'What needs to be revised?',
+                    subtitle: 'The quote stays in the revision list until the revised version is sent to the customer.',
+                    placeholder: 'e.g. from UB Corporation: cost to cost\nadvance payment' });
             if (text === null) return;                       // cancelled
             if (!text.trim()) { alert('Please type something first.'); return; }
             try {
@@ -7827,8 +7872,21 @@
 
         // The admin note as safe HTML (a pasted table survives; scripts/handlers are stripped).
         // `big` bumps the font for the printed enquiry. Empty string when there's no note.
+        // A note whose markup got escaped somewhere prints as literal "&nbsp;<br>" gibberish
+        // between every line. Current code round-trips the note correctly, but notes saved by
+        // older builds can carry that damage, and it is the PRINTED sheet the staff work from.
+        // Decoding once here repairs those without touching a healthy note (a real note has real
+        // tags, so it has nothing to decode).
+        function decodeEscapedNoteMarkup(raw) {
+            const s = String(raw || '');
+            if (!/&(amp;nbsp|lt;br|lt;div|lt;p)\b/i.test(s)) return s;
+            const box = document.createElement('textarea');
+            box.innerHTML = s;
+            return box.value;
+        }
+
         function adminNoteHtml(q, big) {
-            const clean = sanitizeEmailHtmlForPreview((q && q.adminNote) || '');
+            const clean = sanitizeEmailHtmlForPreview(decodeEscapedNoteMarkup((q && q.adminNote) || ''));
             if (!clean || !clean.replace(/<br\s*\/?>|&nbsp;|\s/gi, '')) return '';
             return '<div class="admin-note-body" style="white-space:pre-wrap;margin-top:6px;'
                 + (big ? 'font-size:16px;' : '') + '">' + clean + '</div>';

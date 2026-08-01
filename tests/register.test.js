@@ -222,3 +222,64 @@ describe('source guard — register wiring', () => {
         expect(src).toContain('reg-merged');
     });
 });
+
+// ── Reported from the register: a waiting revision was invisible ──────────────────────
+
+describe('registerStatusOf — an outstanding revision ask outranks Sent', () => {
+    const ask = (done) => ({ revisionRequests: [{ text: 'cost to cost', done: !!done }] });
+
+    test('a quote with an open ask reads REVISION PENDING, not SENT', () => {
+        // It HAS gone to the customer, but the desk has since asked for a change, so the row's
+        // live state is that we owe them a new version. Reporting it as Sent hid pending work.
+        expect(registerStatusOf(Object.assign({ sent: true }, ask(false)))).toBe('REVISION PENDING');
+    });
+
+    test('it beats REVISION SENT and MARGIN ALLOCATION PENDING too', () => {
+        expect(registerStatusOf(Object.assign({ sent: true, revised: true }, ask(false)))).toBe('REVISION PENDING');
+        expect(registerStatusOf(Object.assign({ adminStatus: 'awaiting' }, ask(false)))).toBe('REVISION PENDING');
+    });
+
+    test('REGRET still beats it — a regretted quote is closed', () => {
+        expect(registerStatusOf(Object.assign({ adminStatus: 'regretted', sent: true }, ask(false)))).toBe('REGRET');
+    });
+
+    test('once the ask is done the row goes back to its normal status', () => {
+        expect(registerStatusOf(Object.assign({ sent: true }, ask(true)))).toBe('SENT');
+        expect(registerStatusOf(Object.assign({ sent: true, revised: true }, ask(true)))).toBe('REVISION SENT');
+    });
+
+    test('no asks at all changes nothing', () => {
+        expect(registerStatusOf({ sent: true })).toBe('SENT');
+        expect(registerStatusOf({ revisionRequests: [] , sent: true })).toBe('SENT');
+        expect(registerStatusOf({ revisionRequests: 'oops', sent: true })).toBe('SENT');
+    });
+});
+
+describe('source guards — the reported bugs stay fixed', () => {
+    const html2 = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+    const registerSrc = fs.readFileSync(path.join(__dirname, '..', 'register.js'), 'utf8');
+
+    test('the revision box takes MULTIPLE lines — prompt() cannot', () => {
+        // window.prompt is single-line by construction: Enter submits it, so a revision ask that
+        // is really a list could only be typed as one run-on line.
+        const fn = html2.slice(html2.indexOf('async function addRevisionRequest('));
+        const body = fn.slice(0, fn.indexOf('\n        }'));
+        expect(body).toContain('await promptMultiline(');
+        expect(body).not.toMatch(/[^.\w]prompt\(/);
+        expect(html2).toContain('function promptMultiline(');
+        expect(html2).toContain('<textarea');
+    });
+
+    test('a multi-line ask actually renders as multiple lines on the card', () => {
+        expect(html2).toMatch(/\.rev-ask-text \{[^}]*white-space: pre-wrap/);
+    });
+
+    test('the register colours REVISION PENDING as work owed, not as done', () => {
+        expect(registerSrc).toContain("'REVISION PENDING': 'q-awaiting'");
+    });
+
+    test('an admin note whose markup got escaped is decoded before printing', () => {
+        expect(html2).toContain('function decodeEscapedNoteMarkup(');
+        expect(html2).toContain('sanitizeEmailHtmlForPreview(decodeEscapedNoteMarkup(');
+    });
+});
