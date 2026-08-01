@@ -565,19 +565,31 @@
     // thread arrays are projected into every quotations-list page, and a body is kilobytes.
     // Inline base64 images (a pasted signature logo is routinely 100 kB) are dropped and the
     // whole thing capped — losing a logo from a record costs nothing.
-    var MAX_SENT_HTML = 12000;
+    // The cap has to clear a REAL enquiry. Each row of the table carries its inline styling, so a
+    // line item costs a bit over 1 kB — 12 kB (the first attempt) cut a 15-item enquiry off after
+    // eight rows. 60 kB clears roughly fifty items, and the server bounds the total per quote.
+    var MAX_SENT_HTML = 60000;
+    var TRUNCATION_NOTE = '<p><i>[This stored copy was shortened. The full enquiry was sent.]</i></p>';
     function trimSentBodyForStorage(html) {
         var s = String(html || '')
             .replace(/\ssrc\s*=\s*"data:[^"]*"/gi, ' src=""')
             .replace(/\ssrc\s*=\s*'data:[^']*'/gi, " src=''");
-        return s.length > MAX_SENT_HTML ? s.slice(0, MAX_SENT_HTML) : s;
+        if (s.length <= MAX_SENT_HTML) return s;
+        // Cut back to the last tag boundary. A blind slice lands mid-attribute, and the reader's
+        // innerHTML parse then quietly drops the broken tag and auto-closes the table — producing
+        // a tidy, complete-LOOKING enquiry that is missing rows. Say so instead.
+        var cut = s.slice(0, MAX_SENT_HTML);
+        var lastTag = cut.lastIndexOf('<');
+        if (lastTag > 0) cut = cut.slice(0, lastTag);
+        return cut + TRUNCATION_NOTE;
     }
 
-    // Must match keyOf in routes/quotations.js, or a stored body never finds its thread again.
+    // Keyed by the SEND, not the recipient: one enquiry emailed to eight suppliers is one document,
+    // and storing eight identical copies burned eight of the quote's storage slots.
+    // An ISO timestamp sorts lexicographically in chronological order, which is what lets the
+    // server evict the oldest reliably — it cannot depend on object key order surviving DynamoDB.
     function enquiryBodyKey(t) {
-        return (t && t.threadId)
-            ? 'tid:' + t.threadId
-            : 'es:' + String((t && t.email) || '').toLowerCase() + '|' + String((t && t.sentAt) || '');
+        return 'send:' + String((t && t.sentAt) || '');
     }
 
     function getSentBodies(quotation) {
@@ -608,16 +620,18 @@
             var threads = getThreads(quotation);
             var sentOk = results.filter(function (r) { return r.ok; });
             var bodies = getSentBodies(quotation);
+            // ONE timestamp for the whole send, not one per recipient: it is a single enquiry,
+            // and it is what ties every recipient's thread to the one stored copy of the body.
+            var sentAt = new Date().toISOString();
             sentOk.forEach(function (r) {
-                var t = {
+                threads.push({
                     email: r.addr,
                     threadId: (r.d && r.d.threadId) || '',
-                    sentAt: new Date().toISOString(),
+                    sentAt: sentAt,
                     replied: false, replyText: '', rate: 0,
-                };
-                threads.push(t);
-                bodies[enquiryBodyKey(t)] = storedBody;
+                });
             });
+            if (sentOk.length) bodies[enquiryBodyKey({ sentAt: sentAt })] = storedBody;
             var failed = results.filter(function (r) { return !r.ok; });
             if (!failed.length) {
                 st.sent = 'ok:Enquiry sent to ' + sentOk.length + ' supplier' + (sentOk.length > 1 ? 's' : '') + '.';

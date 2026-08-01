@@ -50,7 +50,7 @@ function loadFns(names) {
 }
 
 const buildCurrentVersionRev = loadFns(['currentRevisionNumber', 'buildCurrentVersionRev']);
-const buildSharedWeightHtml = loadFns(['escapeHtml', 'sqFmtKg', 'sqFmtWeight', 'buildSharedWeightHtml']);
+const buildSharedWeightHtml = loadFns(['escapeHtml', 'sqFmtKg', 'sqFmtWeight', 'sqRowIsSeamless', 'buildSharedWeightHtml']);
 const buildSharedFreightHtml = loadFns(['escapeHtml', 'buildSharedFreightHtml']);
 
 describe('buildCurrentVersionRev — current-version rev object from a quote', () => {
@@ -265,5 +265,50 @@ describe('source guard — renderSharedQuotePage stacks all versions + Weight/Fr
     test('has a "no previous versions" note for a single-version quote', () => {
         expect(src).toContain("const prevNote = revs.length ? '' :");
         expect(src).toContain('Versions (newest first)');
+    });
+});
+
+// ── The 7% tolerance is a WELDED-pipe allowance ───────────────────────────────────────
+//
+// The shared page used to apply a blanket total x 0.93, contradicting the rule the Freight tab
+// implements and CLAUDE.md documents: ERW/GI take the 7% under-weight deduction, seamless is
+// billed at exact weight. A customer-facing page understating a seamless load is a real number
+// going out wrong, so these assert the split explicitly — and the tonne half of every figure,
+// which nothing was checking.
+
+describe('buildSharedWeightHtml — 7% tolerance, welded only', () => {
+    const tolerance = (out) => (/With tolerance \(7%\): ([^<&]+)/.exec(out) || [])[1];
+
+    test('an all-welded quote deducts 7% from the whole load', () => {
+        const out = buildSharedWeightHtml({ lineItems: [
+            { originalDescription: '2" NB X Heavy -- ERW', quantity: '1000', kgPerMeter: '10' },
+        ] });
+        expect(out).toContain('Total weight: 10,000 kg (10 T)');
+        expect(tolerance(out).trim()).toBe('9,300 kg (9.3 T)');
+    });
+
+    test('an all-SEAMLESS quote shows no tolerance line at all — billed exact', () => {
+        const out = buildSharedWeightHtml({ lineItems: [
+            { originalDescription: '4" NB X Sch 40', quantity: '1000', kgPerMeter: '10' },
+        ] });
+        expect(out).toContain('Total weight: 10,000 kg (10 T)');
+        expect(out).not.toContain('With tolerance');
+    });
+
+    test('a mixed load deducts from the welded part only, keeping seamless whole', () => {
+        const out = buildSharedWeightHtml({ lineItems: [
+            { originalDescription: '2" NB X Heavy -- ERW', quantity: '1000', kgPerMeter: '10' },  // 10,000 welded
+            { originalDescription: '4" NB X Sch 40', quantity: '1000', kgPerMeter: '10' },        // 10,000 seamless
+        ] });
+        // 20,000 - 7% of the welded 10,000 = 19,300. A blanket 0.93 would have said 18,600.
+        expect(tolerance(out).trim()).toBe('19,300 kg (19.3 T)');
+        expect(out).not.toContain('18,600');
+    });
+
+    test('identifiedPipeType wins over the description when both are present', () => {
+        const out = buildSharedWeightHtml({ lineItems: [
+            { identifiedPipeType: 'Seamless', originalDescription: 'ERW-looking text', quantity: '1000', kgPerMeter: '10' },
+        ] });
+        expect(out).not.toContain('With tolerance');
     });
 });

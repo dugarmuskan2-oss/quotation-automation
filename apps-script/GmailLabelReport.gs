@@ -527,9 +527,15 @@ const SENT_ENQUIRY_LABELS = [
   },
   {
     // Supplier/dealer enquiries from the quote card's Enquiry tab — subject: "Enquiry — DSC-123".
-    // The freight subject also begins with "Freight enquiry", so that is excluded explicitly.
+    //
+    // The quote number is REQUIRED in the match. Searching for the bare word "Enquiry" also hit
+    // the customer's own enquiry thread (we reply into it, so it is "from:me"), stamping an
+    // incoming customer enquiry with the label that means "an enquiry we sent to a supplier" —
+    // and it caught the regret replies too. The app labels these at send time anyway; this sweep
+    // is only a backstop for anything sent before that, so it errs towards missing one rather
+    // than mislabelling a customer thread.
     label: 'Quotation Automation/Enquiry Sent by us',
-    query: 'from:me subject:"Enquiry" -subject:"Freight enquiry"'
+    query: 'from:me subject:"Enquiry" subject:"DSC-" -subject:"Freight enquiry"'
   }
   // Regret replies are NOT listed here. They go out as "Re: <the customer's own subject>" with
   // wording that is editable in Settings, so there is nothing dependable to search on. The app

@@ -43,6 +43,9 @@
     // shown both ways. 1 T = 1000 kg. Trailing zeros dropped — 5000 kg reads "5 T", not "5.00 T".
     function formatTonnes(value) {
         const t = (Number.isFinite(value) ? value : 0) / 1000;
+        // Below ~5 kg two decimals collapse to a bare '0' — print '(0 T)' beside a real kg figure
+        // and the tonne column is simply wrong. Give small loads more precision.
+        if (t > 0 && t < 0.005) return t.toFixed(4).replace(/0+$/, '');
         return String(Number(t.toFixed(2)));
     }
 

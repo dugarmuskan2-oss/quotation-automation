@@ -240,7 +240,7 @@ describe('freight enquiry weight gate — edge cases the gate has to survive', (
         expect(enqScopeComplete(st)).toBe(true);
         expect(enqWeightUsable(st)).toBe(true);
         expect(enqEffectiveWeight(st)).toBe(PARTIAL_WEIGHT);   // the remaining two rows only
-        expect(buildEnquiryDraft(QUOTE, st)).toContain('(2 items)');
+        expect(buildEnquiryDraft(QUOTE, st)).toContain('2 items)');
     });
 
     test('the enquiry is never more trusting than the on-screen panel (secComplete parity)', () => {
@@ -279,7 +279,7 @@ describe('freight enquiry weight gate — split-shipment scoping', () => {
         expect(enqScopeComplete(st)).toBe(true);
         expect(enqWeightUsable(st)).toBe(true);
         expect(enqEffectiveWeight(st)).toBe(18790);
-        expect(buildEnquiryDraft(QUOTE, st)).toContain('• Weight: ' + inr(18790) + ' kg (18.79 T) (2 items)');
+        expect(buildEnquiryDraft(QUOTE, st)).toContain('• Weight: ' + inr(18790) + ' kg (18.79 T, 2 items)');
     });
 
     test('scoping to the incomplete shipment 1 shuts the gate again', () => {

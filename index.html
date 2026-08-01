@@ -7266,7 +7266,10 @@
         function approvalToggleFreight() {
             approvalFreightFilter = !approvalFreightFilter;
             // Freight spans every month, so it clears the month pick (dropdown included).
-            if (approvalFreightFilter) { approvalMonthFilter = ''; approvalRevisionFilter = false; approvalResetMonthSelect(); }
+            // Enquiry has to be cleared too. Every consumer of these flags gives Enquiry top
+            // precedence, so leaving it set meant clicking Freight lit the button up and went on
+            // rendering the Enquiry list — the one toggle of the three that did not clear its peers.
+            if (approvalFreightFilter) { approvalMonthFilter = ''; approvalRevisionFilter = false; approvalEnquiryFilter = false; approvalResetMonthSelect(); }
             updateApprovalFilterButtons();
             applyApprovalServerFilter();
         }
@@ -11820,14 +11823,25 @@
         // Totals are shown in kilograms AND tonnes — transporters work in tonnes, the sheet in kg.
         // 1 T = 1000 kg. Trailing zeros dropped, so 5000 kg reads "5 T", not "5.00 T".
         function sqFmtWeight(n) { return sqFmtKg(n) + ' kg (' + String(Number(((Number(n) || 0) / 1000).toFixed(2))) + ' T)'; }
+        // Welded pipe (ERW/GI) only, mirroring rowIsSeamless in the freight module: the 7%
+        // under-weight tolerance is a rolling allowance on welded pipe. Seamless is billed at
+        // exact weight, so deducting from it understates the load.
+        function sqRowIsSeamless(li) {
+            const t = String((li && li.identifiedPipeType) || '').toLowerCase();
+            if (t) return t.indexOf('seamless') >= 0;
+            const d = String((li && (li.originalDescription || li.description)) || '').toLowerCase();
+            return d.indexOf('seamless') >= 0 || /\bsch\b/.test(d);
+        }
+
         function buildSharedWeightHtml(quotation) {
             const items = Array.isArray(quotation.lineItems) ? quotation.lineItems : [];
-            let total = 0, anyKg = false;
+            let total = 0, anyKg = false, weldedTotal = 0;
             const rows = items.map(function(li) {
                 const qty = parseFloat(String(li.quantity || '').replace(/,/g, '')) || 0;
                 const kgm = parseFloat(String(li.kgPerMeter || '').replace(/,/g, '')) || 0;
                 if (kgm) anyKg = true;
                 const w = qty * kgm; total += w;
+                if (!sqRowIsSeamless(li)) weldedTotal += w;
                 return '<tr><td>' + escapeHtml(li.originalDescription || li.description || '') + '</td>'
                     + '<td style="text-align:right;">' + (qty || '') + '</td>'
                     + '<td style="text-align:right;">' + (kgm || '&mdash;') + '</td>'
@@ -11835,7 +11849,13 @@
             }).join('');
             if (!anyKg) return '<p style="color:#999;">No weight (kg/m) recorded for this quote.</p>';
             return '<table class="sq-tbl"><thead><tr><th>Item</th><th style="text-align:right;">Qty</th><th style="text-align:right;">kg/m</th><th style="text-align:right;">Weight</th></tr></thead><tbody>' + rows + '</tbody></table>'
-                + '<p style="font-weight:600;margin-top:10px;">Total weight: ' + sqFmtWeight(total) + ' &nbsp;&middot;&nbsp; With tolerance (7%): ' + sqFmtWeight(total * 0.93) + '</p>';
+                + '<p style="font-weight:600;margin-top:10px;">Total weight: ' + sqFmtWeight(total)
+                // Seamless keeps its whole weight; only the welded part takes the 7% deduction.
+                // An all-seamless quote has no tolerance line at all, same as the Freight tab.
+                + (weldedTotal > 0
+                    ? ' &nbsp;&middot;&nbsp; With tolerance (7%): ' + sqFmtWeight(total - weldedTotal * 0.07)
+                    : '')
+                + '</p>';
         }
         function buildSharedFreightHtml(quotation) {
             const enq = Array.isArray(quotation.freightEnquiries) ? quotation.freightEnquiries : [];
@@ -11899,11 +11919,9 @@
             // threads ('tid:…' / 'es:…'), so they are not dragged into every list page.
             const stored = (quotation.enquirySentBodies && typeof quotation.enquirySentBodies === 'object')
                 ? quotation.enquirySentBodies : {};
+            // Keyed by the send, so every recipient of one enquiry shares the single stored copy.
             const bodyFor = function(t) {
-                const key = (t && t.threadId)
-                    ? 'tid:' + t.threadId
-                    : 'es:' + String((t && t.email) || '').toLowerCase() + '|' + String((t && t.sentAt) || '');
-                return stored[key] || '';
+                return stored['send:' + String((t && t.sentAt) || '')] || '';
             };
             const row = function(when, icon, tint, title, detail, sentHtml) {
                 // Only the lines we hold a body for become clickable. Enquiries sent before this

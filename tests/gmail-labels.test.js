@@ -123,21 +123,65 @@ describe('labelSentThread — the send must survive a labelling problem', () => 
     jest.resetModules();
   });
 
-  test('an unknown label key is ignored rather than creating a stray label', async () => {
-    await expect(labelSentThread('T1', 'nonsense')).resolves.toBe(false);
-    await expect(labelSentThread('T1', '')).resolves.toBe(false);
-    await expect(labelSentThread('T1', undefined)).resolves.toBe(false);
+  // These next tests must observe WHAT WAS CALLED, not the return value.
+  //
+  // In a jest process there are no GMAIL_* env vars, so createGmailClient throws and the
+  // fail-soft catch turns every single call into `false` — valid key, unknown key, no thread,
+  // all identical. Asserting `resolves.toBe(false)` therefore passed just as happily with the
+  // guards deleted. Recording the calls to applyLabelToThread is what gives these teeth.
+  function withRecorder() {
+    jest.resetModules();
+    const calls = [];
+    jest.doMock('../utils/gmail', () => ({
+      sendEmail: jest.fn(), lookupMessageThread: jest.fn(),
+      fetchThreadMessages: jest.fn(), searchContactSuggestions: jest.fn(),
+      applyLabelToThread: async (threadId, name) => { calls.push([threadId, name]); return true; },
+    }));
+    const fn = require('../routes/gmail')._test.labelSentThread;
+    return { fn, calls, done: () => { jest.dontMock('../utils/gmail'); jest.resetModules(); } };
+  }
+
+  test('a known key really does label the thread, with the right label name', async () => {
+    const r = withRecorder();
+    await expect(r.fn('T1', 'regret')).resolves.toBe(true);
+    expect(r.calls).toEqual([['T1', 'Quotation Automation/Regret']]);
+    r.done();
   });
 
-  test('a send with no thread id is a no-op', async () => {
-    await expect(labelSentThread('', 'regret')).resolves.toBe(false);
-    await expect(labelSentThread(null, 'regret')).resolves.toBe(false);
+  test('an unknown label key never reaches Gmail — no stray label can be created', async () => {
+    const r = withRecorder();
+    await r.fn('T1', 'nonsense');
+    await r.fn('T1', '');
+    await r.fn('T1', undefined);
+    expect(r.calls).toEqual([]);
+    r.done();
   });
 
-  test('the key is case-insensitive but never a raw label name', async () => {
-    // Passing the full label name must NOT work — only the short key is accepted,
-    // so a stray request cannot name an arbitrary label into existence.
-    await expect(labelSentThread('T1', 'Quotation Automation/Regret')).resolves.toBe(false);
+  test('a send with no thread id never reaches Gmail', async () => {
+    const r = withRecorder();
+    await r.fn('', 'regret');
+    await r.fn(null, 'regret');
+    expect(r.calls).toEqual([]);
+    r.done();
+  });
+
+  test('the SHORT key is accepted in any case; a raw label name is not a key', async () => {
+    const r = withRecorder();
+    await expect(r.fn('T1', 'REGRET')).resolves.toBe(true);
+    await r.fn('T2', 'Quotation Automation/Regret');   // a label name is not a key
+    expect(r.calls).toEqual([['T1', 'Quotation Automation/Regret']]);
+    r.done();
+  });
+
+  test('every key in the map is wired to its label', async () => {
+    const r = withRecorder();
+    await r.fn('A', 'freight');
+    await r.fn('B', 'supplier');
+    expect(r.calls).toEqual([
+      ['A', 'Quotation Automation/Freight Enquiry'],
+      ['B', 'Quotation Automation/Enquiry Sent by us'],
+    ]);
+    r.done();
   });
 });
 

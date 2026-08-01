@@ -32,6 +32,9 @@
         // tests extract these helpers by name and eval them, and a bare reference to a module
         // constant would not travel with them.
         var t = (Number(kg) || 0) / 1000;
+        // Below ~5 kg two decimals collapse to a bare '0', printing '(0 T)' beside a real kg
+        // figure. Give small loads the precision they need instead of lying about them.
+        if (t > 0 && t < 0.005) return t.toFixed(4).replace(/0+$/, '');
         // Two decimals is 10 kg of resolution — enough to check a transporter's figure, and
         // trailing zeros are dropped so a clean 5000 kg reads "5 T" rather than "5.00 T".
         return String(Number(t.toFixed(2)));
@@ -46,19 +49,28 @@
     // arrays are projected into every quotations-list page, and a body is kilobytes. Inline
     // base64 images (a pasted signature logo is routinely 100 kB) are dropped and the whole thing
     // capped — losing a logo from a record costs nothing.
-    var MAX_SENT_HTML = 12000;
+    var MAX_SENT_HTML = 60000;
+    var TRUNCATION_NOTE = '<p><i>[This stored copy was shortened. The full enquiry was sent.]</i></p>';
     function trimSentBodyForStorage(html) {
         var s = String(html || '')
             .replace(/\ssrc\s*=\s*"data:[^"]*"/gi, ' src=""')
             .replace(/\ssrc\s*=\s*'data:[^']*'/gi, " src=''");
-        return s.length > MAX_SENT_HTML ? s.slice(0, MAX_SENT_HTML) : s;
+        if (s.length <= MAX_SENT_HTML) return s;
+        // Cut back to the last tag boundary — a blind slice lands mid-attribute and the reader's
+        // innerHTML parse then drops the broken tag and auto-closes the table, showing a tidy
+        // enquiry that is quietly missing rows.
+        var cut = s.slice(0, MAX_SENT_HTML);
+        var lastTag = cut.lastIndexOf('<');
+        if (lastTag > 0) cut = cut.slice(0, lastTag);
+        return cut + TRUNCATION_NOTE;
     }
 
-    // Must match keyOf in routes/quotations.js, or a stored body never finds its thread again.
+    // Keyed by the SEND, not the recipient: one enquiry emailed to six transporters is one
+    // document, and storing six identical copies burned six of the quote's storage slots. An ISO
+    // timestamp sorts lexicographically in chronological order, which is what lets the server
+    // evict the oldest reliably rather than trusting object key order to survive DynamoDB.
     function enquiryBodyKey(t) {
-        return (t && t.threadId)
-            ? 'tid:' + t.threadId
-            : 'es:' + String((t && t.email) || '').toLowerCase() + '|' + String((t && t.sentAt) || '');
+        return 'send:' + String((t && t.sentAt) || '');
     }
 
     function getSentBodies(q) {
@@ -136,7 +148,7 @@
         if (document.getElementById('fwe-styles')) return;
         var css = ''
             + '.fwe-note{font-size:12px;color:#854F0B;background:#FAEEDA;border-radius:8px;padding:7px 10px;margin-bottom:10px;}'
-            + '.fwe-grid{display:grid;grid-template-columns:22px 1fr 64px 64px 78px 28px;gap:8px;align-items:center;}'
+            + '.fwe-grid{display:grid;grid-template-columns:22px 1fr 64px 64px 132px 28px;gap:8px;align-items:center;}'
             + '.fwe-row{padding:5px 0;border-top:1px solid #eee;}'
             + '.fwe-row.miss{background:#FCEBEB;border-radius:6px;}'
             + '.fwe-row input{height:30px;padding:4px 7px;width:100%;box-sizing:border-box;}'
@@ -470,8 +482,13 @@
             + '• Drop: ' + (enq.drop || '—') + '\n'
             // Placeholder rather than a partial figure when the weight cannot be calculated —
             // the draft is only a draft, and sending is blocked until a real weight exists.
-            + '• Weight: ' + (enqWeightUsable(st) ? fmtWeight(enqEffectiveWeight(st)) : '____ kg')
-            + ' (' + rows.length + ' item' + (rows.length === 1 ? '' : 's') + ')\n'
+            // The item count joins the SAME bracket as the tonnage. Adding the tonne figure left
+            // this line reading "17,945 kg (17.95 T) (2 items)" — two bracketed groups colliding
+            // in an email that goes to transporters.
+            + '• Weight: ' + (enqWeightUsable(st)
+                ? fmt(enqEffectiveWeight(st)) + ' kg (' + fmtTonnes(enqEffectiveWeight(st)) + ' T, '
+                  + rows.length + ' item' + (rows.length === 1 ? '' : 's') + ')'
+                : '____ kg (' + rows.length + ' item' + (rows.length === 1 ? '' : 's') + ')') + '\n'
             + '• Material: MS pipes\n\n'
             + '[TABLE]\n\n'
             + 'Please include transit time.\n\n'
@@ -723,11 +740,13 @@
             enq.sending = false;
             var threads = getEnquiryThreads(q);
             var sentOk = results.filter(function (r) { return r.ok; });
+            // ONE timestamp for the whole send, not one per recipient: it is a single enquiry,
+            // and it is what ties every transporter's thread to the one stored copy of the body.
+            var sentAt = new Date().toISOString();
             sentOk.forEach(function (r) {
-                var t = { email: r.addr, forSec: scopeSec, threadId: (r.d && r.d.threadId) || '', sentAt: new Date().toISOString(), replied: false, replyText: '', amount: 0 };
-                threads.push(t);
-                getSentBodies(q)[enquiryBodyKey(t)] = storedBody;
+                threads.push({ email: r.addr, forSec: scopeSec, threadId: (r.d && r.d.threadId) || '', sentAt: sentAt, replied: false, replyText: '', amount: 0 });
             });
+            if (sentOk.length) getSentBodies(q)[enquiryBodyKey({ sentAt: sentAt })] = storedBody;
             var failed = results.filter(function (r) { return !r.ok; });
             if (!failed.length) {
                 enq.sent = 'ok:Enquiry sent to ' + sentOk.length + ' transporter' + (sentOk.length > 1 ? 's' : '') + '.';

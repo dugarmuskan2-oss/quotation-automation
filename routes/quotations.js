@@ -730,8 +730,13 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
     // page carry a body per enquiry per quote. The shared page fetches the FULL quote by id, so it
     // sees this field; the list never has to.
     //
-    // Keyed exactly like the thread merge above ('tid:…' / 'es:…') so a body always finds its thread.
+    // Keys are 'send:<ISO timestamp>' — one entry per SEND, not per recipient.
     const MAX_SENT_BODIES = 25;
+    // The real constraint is DynamoDB's 400 KB per ITEM, and a quote already carries tableHTML,
+    // headerHTML, emailContentHtml and its revisions. Capping the COUNT alone did not bound
+    // anything useful (25 × 60 KB would be 1.5 MB); this caps the bytes and leaves room for the
+    // rest of the quote. Exceed it and every save for that quote would start failing.
+    const MAX_SENT_BODY_CHARS = 150000;
     function mergeEnquirySentBodies(payload, incoming) {
         if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) return;
         const merged = Object.assign({}, payload.enquirySentBodies || {});
@@ -739,11 +744,18 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
             const v = incoming[k];
             if (typeof v === 'string' && v) merged[k] = v;
         });
-        // Backstop against a quote with a long enquiry history creeping toward DynamoDB's 400 KB
-        // per-item limit: keep the most recently added, drop the rest.
-        const keys = Object.keys(merged);
-        if (keys.length > MAX_SENT_BODIES) {
-            keys.slice(0, keys.length - MAX_SENT_BODIES).forEach(function (k) { delete merged[k]; });
+        // Evict oldest-first. Sorting the KEYS is what makes that correct: they are ISO
+        // timestamps, so lexicographic order is chronological order. Object key order could not
+        // be trusted — this map is rehydrated from a DynamoDB Map attribute, which does not
+        // preserve insertion order, so the previous "drop the first N keys" dropped arbitrary
+        // entries while claiming to keep the newest.
+        let keys = Object.keys(merged).sort();
+        while (keys.length > MAX_SENT_BODIES) { delete merged[keys.shift()]; }
+        let total = keys.reduce(function (n, k) { return n + merged[k].length; }, 0);
+        while (keys.length > 1 && total > MAX_SENT_BODY_CHARS) {
+            const oldest = keys.shift();
+            total -= merged[oldest].length;
+            delete merged[oldest];
         }
         payload.enquirySentBodies = merged;
     }

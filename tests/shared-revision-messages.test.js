@@ -249,7 +249,7 @@ describe('buildSharedEnquiryEvents — the "view enquiry" click-through', () => 
         const sink = [];
         const out = buildSharedEnquiryEvents({
             freightEnquiries: [{ sentAt: '2026-03-01T09:00:00Z', email: 't@x.com' }],
-            enquirySentBodies: { 'es:t@x.com|2026-03-01T09:00:00Z': SENT },
+            enquirySentBodies: { 'send:2026-03-01T09:00:00Z': SENT },
         }, sink);
         expect(out).toHaveLength(1);
         expect(out[0].html).toContain('sqShowSentEnquiry(0)');
@@ -272,7 +272,7 @@ describe('buildSharedEnquiryEvents — the "view enquiry" click-through', () => 
         const out = buildSharedEnquiryEvents({
             freightEnquiries: [{ sentAt: '2026-03-01T09:00:00Z' }],
             supplierEnquiries: [{ sentAt: '2026-03-02T09:00:00Z' }],
-            enquirySentBodies: { 'es:|2026-03-01T09:00:00Z': '   ', 'es:|2026-03-02T09:00:00Z': '' },
+            enquirySentBodies: { 'send:2026-03-01T09:00:00Z': '   ', 'send:2026-03-02T09:00:00Z': '' },
         }, sink);
         out.forEach((e) => expect(e.html).not.toContain('sqShowSentEnquiry'));
         expect(sink).toEqual([]);
@@ -283,7 +283,7 @@ describe('buildSharedEnquiryEvents — the "view enquiry" click-through', () => 
         const out = buildSharedEnquiryEvents({
             freightEnquiries: [{ sentAt: '2026-03-01T09:00:00Z' }],
             supplierEnquiries: [{ sentAt: '2026-03-02T09:00:00Z' }],
-            enquirySentBodies: { 'es:|2026-03-01T09:00:00Z': 'FREIGHT', 'es:|2026-03-02T09:00:00Z': 'SUPPLIER' },
+            enquirySentBodies: { 'send:2026-03-01T09:00:00Z': 'FREIGHT', 'send:2026-03-02T09:00:00Z': 'SUPPLIER' },
         }, sink);
         expect(out[0].html).toContain('sqShowSentEnquiry(0)');
         expect(out[1].html).toContain('sqShowSentEnquiry(1)');
@@ -294,7 +294,7 @@ describe('buildSharedEnquiryEvents — the "view enquiry" click-through', () => 
         const sink = [];
         const out = buildSharedEnquiryEvents({
             freightEnquiries: [{ sentAt: '2026-03-01T09:00:00Z', replied: true, replyAt: '2026-03-03T09:00:00Z', amount: 5000 }],
-            enquirySentBodies: { 'es:|2026-03-01T09:00:00Z': 'X' },
+            enquirySentBodies: { 'send:2026-03-01T09:00:00Z': 'X' },
         }, sink);
         const reply = out.find((e) => e.html.includes('Freight rate received'));
         expect(reply.html).not.toContain('sqShowSentEnquiry');
@@ -304,7 +304,7 @@ describe('buildSharedEnquiryEvents — the "view enquiry" click-through', () => 
     test('called with no sink at all it still renders (used by older callers/tests)', () => {
         const out = buildSharedEnquiryEvents({
             supplierEnquiries: [{ sentAt: '2026-03-01T09:00:00Z' }],
-            enquirySentBodies: { 'es:|2026-03-01T09:00:00Z': 'X' },
+            enquirySentBodies: { 'send:2026-03-01T09:00:00Z': 'X' },
         });
         expect(out[0].html).toContain('sqShowSentEnquiry(0)');
     });
@@ -325,7 +325,12 @@ describe('source guard — the viewer cannot destroy the shared page', () => {
     });
 
     test('the sink is reset on every render so stale indexes cannot open the wrong enquiry', () => {
-        expect(html).toContain('_sqSentEnquiries = [];');
+        // Must be the reset INSIDE renderSharedQuotePage. A bare substring check also matched the
+        // module-level declaration 'let _sqSentEnquiries = [];', so it passed even with the
+        // per-render reset deleted — exactly the bug it exists to catch.
+        const render = html.slice(html.indexOf('function renderSharedQuotePage('));
+        const body = render.slice(0, render.indexOf('overlay.innerHTML'));
+        expect(body).toContain('_sqSentEnquiries = [];');
     });
 });
 
@@ -381,10 +386,209 @@ describe('sent enquiry bodies stay OUT of the quotations list projection', () =>
     });
 
     test('client and server derive the SAME key, or a body never finds its thread', () => {
-        const clientKey = "'es:' + String((t && t.email) || '').toLowerCase() + '|' + String((t && t.sentAt) || '')";
-        expect(routesSrc).toContain(clientKey);
-        ['quote-enquiry-tab.js', 'freight-tab-weight-editor.js', 'index.html'].forEach((f) => {
-            expect(fs3.readFileSync(path3.join(__dirname, '..', f), 'utf8')).toContain(clientKey);
+        // One key format, written out in all three client places. The server no longer derives it
+        // (it just stores the map), but it DOES rely on the keys sorting chronologically to evict
+        // the oldest — which only holds because they are 'send:' + an ISO timestamp.
+        [
+            ['quote-enquiry-tab.js', "return 'send:' + String((t && t.sentAt) || '');"],
+            ['freight-tab-weight-editor.js', "return 'send:' + String((t && t.sentAt) || '');"],
+            ['index.html', "stored['send:' + String((t && t.sentAt) || '')]"],
+        ].forEach(([f, snippet]) => {
+            expect(fs3.readFileSync(path3.join(__dirname, '..', f), 'utf8')).toContain(snippet);
         });
+        expect(routesSrc).toContain('Object.keys(merged).sort()');
+    });
+});
+
+// ── The UOM decision, which had no coverage at all ────────────────────────────────────
+//
+// tests/enquiry-tab.test.js runs under @jest-environment node, so qtyHeadingOf short-circuits
+// on `typeof document === 'undefined'` and defaultUomFor always returned '' there — the
+// assertion passed whether the feature existed or not. jsdom is not installed, so the DOM
+// parsing is stubbed here and the DECISION is exercised for real: given a heading, do we fill
+// 'Meters' or leave it blank? That is the rule the user asked for, and the part that can be
+// got wrong silently.
+
+describe('defaultUomFor — Meters only while the quote still says metres', () => {
+    const tabSrc2 = require('fs').readFileSync(
+        require('path').join(__dirname, '..', 'quote-enquiry-tab.js'), 'utf8');
+
+    // Build the real functions with a stub DOM whose column resolver returns `heading`.
+    function loadUom(heading, opts) {
+        const o = opts || {};
+        const names = ['qtyHeadingOf', 'defaultUomFor'];
+        const body = names.map((n) => extractFunction(tabSrc2, n)).join('\n');
+        const fakeTable = {};
+        const document = o.noDocument ? undefined : {
+            createElement: () => ({
+                set innerHTML(v) { /* parsed by the stub below */ },
+                querySelector: () => (o.noTable ? null : fakeTable),
+            }),
+        };
+        const window = {
+            getPdfColLabelsFromTable: o.noResolver ? undefined
+                : () => { if (o.throws) throw new Error('boom'); return ['S. NO', 'ITEMS', heading, 'RATE', 'AMOUNT']; },
+        };
+        // eslint-disable-next-line no-new-func
+        return new Function('document', 'window',
+            "var DEFAULT_QTY_HEADING = 'QTY (MTRS)'; var DEFAULT_UOM = 'Meters';\n"
+            + body + '\nreturn defaultUomFor;')(document, window);
+    }
+
+    const uomFor = (heading, opts) => loadUom(heading, opts)({ tableHTML: '<table></table>' });
+
+    test('the untouched heading gives Meters', () => {
+        expect(uomFor('QTY (Mtrs)')).toBe('Meters');
+    });
+
+    test('case does not matter — the comparison is deliberately case-insensitive', () => {
+        expect(uomFor('qty (mtrs)')).toBe('Meters');
+        expect(uomFor('  QTY (Mtrs)  ')).toBe('Meters');
+    });
+
+    test('a heading retyped to weight leaves UOM BLANK rather than claiming metres', () => {
+        expect(uomFor('WEIGHT (KGS)')).toBe('');
+        expect(uomFor('QTY (Nos)')).toBe('');
+        expect(uomFor('Quantity (MT)')).toBe('');
+    });
+
+    test('no quote table at all: blank, never a guess', () => {
+        expect(loadUom('QTY (Mtrs)')({})).toBe('');
+        expect(loadUom('QTY (Mtrs)')({ tableHTML: '' })).toBe('');
+        expect(uomFor('QTY (Mtrs)', { noTable: true })).toBe('');
+    });
+
+    test('a thrown parse, a missing resolver or no DOM all fall back to blank, not to a crash', () => {
+        expect(uomFor('QTY (Mtrs)', { throws: true })).toBe('');
+        expect(uomFor('QTY (Mtrs)', { noResolver: true })).toBe('');
+        expect(uomFor('QTY (Mtrs)', { noDocument: true })).toBe('');
+    });
+
+    test('an empty heading is blank, not Meters', () => {
+        expect(uomFor('')).toBe('');
+    });
+});
+
+describe('trimSentBodyForStorage — a shortened copy must SAY it was shortened', () => {
+    const load = (file) => {
+        const src = require('fs').readFileSync(require('path').join(__dirname, '..', file), 'utf8');
+        const body = extractFunction(src, 'trimSentBodyForStorage');
+        const max = /var MAX_SENT_HTML = (\d+);/.exec(src)[1];
+        const note = /var TRUNCATION_NOTE = '([^']*)';/.exec(src)[1];
+        // eslint-disable-next-line no-new-func
+        return { fn: new Function('var MAX_SENT_HTML = ' + max + "; var TRUNCATION_NOTE = '" + note + "';\n"
+            + body + '\nreturn trimSentBodyForStorage;')(), max: Number(max), note };
+    };
+
+    ['quote-enquiry-tab.js', 'freight-tab-weight-editor.js'].forEach((file) => {
+        describe(file, () => {
+            const { fn, max, note } = load(file);
+
+            test('a realistic enquiry is stored WHOLE — the first cap cut one off after 8 items', () => {
+                // ~1.2 kB per line item is what the real table costs; 40 items must still fit.
+                const row = '<tr><td style="border:1px solid #000;padding:6px 8px;">' + 'x'.repeat(1100) + '</td></tr>';
+                const body = '<table>' + row.repeat(40) + '</table>';
+                expect(body.length).toBeGreaterThan(40000);
+                expect(fn(body)).toBe(body);
+            });
+
+            test('when it IS too long, the cut lands on a tag boundary and says so', () => {
+                const body = '<table>' + '<tr><td>' + 'y'.repeat(max) + '</td></tr>' + '</table>';
+                const out = fn(body);
+                expect(out).toContain(note);
+                // Never mid-tag: a blind slice let innerHTML drop the broken tag and auto-close the
+                // table, showing a tidy enquiry that was quietly missing rows.
+                const beforeNote = out.slice(0, out.length - note.length);
+                expect(beforeNote.lastIndexOf('<')).toBeLessThan(beforeNote.lastIndexOf('>') + 1);
+            });
+
+            test('base64 images are dropped whichever quoting style they use', () => {
+                expect(fn('<img src="data:image/png;base64,AAAA">')).toBe('<img src="">');
+                expect(fn("<img src='data:image/png;base64,AAAA'>")).toBe("<img src=''>");
+            });
+
+            test('empty and non-string inputs are safe', () => {
+                expect(fn('')).toBe('');
+                expect(fn(null)).toBe('');
+                expect(fn(undefined)).toBe('');
+            });
+        });
+    });
+});
+
+// ── The server-side cap on stored enquiry bodies ──────────────────────────────────────
+//
+// mergeEnquirySentBodies lives inside createQuotationsRouter, so it is brace-matched out of the
+// source and eval'd with its two constants — the same approach the other suites use for closured
+// helpers. It had no coverage at all, and its first version silently dropped ARBITRARY entries
+// while its comment claimed it kept the newest.
+
+describe('mergeEnquirySentBodies — evicting oldest-first, and actually bounding the item', () => {
+    const routesSrc2 = require('fs').readFileSync(
+        require('path').join(__dirname, '..', 'routes', 'quotations.js'), 'utf8');
+    const MAX_BODIES = Number(/const MAX_SENT_BODIES = (\d+);/.exec(routesSrc2)[1]);
+    const MAX_CHARS = Number(/const MAX_SENT_BODY_CHARS = (\d+);/.exec(routesSrc2)[1]);
+    // eslint-disable-next-line no-new-func
+    const merge = new Function(
+        'const MAX_SENT_BODIES = ' + MAX_BODIES + '; const MAX_SENT_BODY_CHARS = ' + MAX_CHARS + ';\n'
+        + extractFunction(routesSrc2, 'mergeEnquirySentBodies') + '\nreturn mergeEnquirySentBodies;')();
+
+    const key = (n) => 'send:2026-03-' + String(n).padStart(2, '0') + 'T09:00:00.000Z';
+
+    test('incoming bodies are merged onto the stored ones, not replacing them', () => {
+        const payload = { enquirySentBodies: { [key(1)]: 'first' } };
+        merge(payload, { [key(2)]: 'second' });
+        expect(payload.enquirySentBodies).toEqual({ [key(1)]: 'first', [key(2)]: 'second' });
+    });
+
+    test('eviction drops the OLDEST, whatever order the keys arrive in', () => {
+        // The real hazard: this map is rehydrated from a DynamoDB Map attribute, whose key order
+        // is not insertion order. Seeded deliberately newest-first to prove sorting is what
+        // decides — the previous version sliced Object.keys and dropped arbitrary entries.
+        const stored = {};
+        for (let d = MAX_BODIES + 3; d >= 1; d--) stored[key(d)] = 'body' + d;
+        const payload = { enquirySentBodies: stored };
+        merge(payload, {});
+        const left = Object.keys(payload.enquirySentBodies).sort();
+        expect(left).toHaveLength(MAX_BODIES);
+        expect(left[0]).toBe(key(4));                       // days 1-3 evicted, the three oldest
+        expect(payload.enquirySentBodies[key(1)]).toBeUndefined();
+        expect(payload.enquirySentBodies[key(MAX_BODIES + 3)]).toBe('body' + (MAX_BODIES + 3));
+    });
+
+    test('the newly saved body is never the one thrown away', () => {
+        const stored = {};
+        for (let d = 1; d <= MAX_BODIES; d++) stored[key(d)] = 'old';
+        const payload = { enquirySentBodies: stored };
+        const fresh = 'send:2026-12-31T09:00:00.000Z';
+        merge(payload, { [fresh]: 'JUST SENT' });
+        expect(payload.enquirySentBodies[fresh]).toBe('JUST SENT');
+    });
+
+    test('the TOTAL size is bounded, not just the count — that is the 400 KB item limit', () => {
+        // Counting entries alone bounded nothing useful: 25 x 60 KB is 1.5 MB, four times the
+        // per-item limit, and every save for that quote would start failing.
+        const payload = { enquirySentBodies: {} };
+        const big = 'x'.repeat(50000);
+        for (let d = 1; d <= 10; d++) merge(payload, { [key(d)]: big });
+        const total = Object.values(payload.enquirySentBodies).reduce((n, v) => n + v.length, 0);
+        expect(total).toBeLessThanOrEqual(MAX_CHARS);
+        expect(MAX_BODIES * 60000).toBeGreaterThan(400000);   // the count cap alone is not a bound
+    });
+
+    test('the most recent body is kept even when it alone exceeds the byte cap', () => {
+        const payload = { enquirySentBodies: {} };
+        merge(payload, { [key(1)]: 'x'.repeat(MAX_CHARS + 1000) });
+        expect(Object.keys(payload.enquirySentBodies)).toHaveLength(1);
+    });
+
+    test('junk and empty values are ignored rather than stored', () => {
+        const payload = { enquirySentBodies: {} };
+        merge(payload, { a: '', b: null, c: 42, d: {} });
+        expect(payload.enquirySentBodies).toEqual({});
+        merge(payload, null);
+        merge(payload, 'nope');
+        merge(payload, ['array']);
+        expect(payload.enquirySentBodies).toEqual({});
     });
 });
