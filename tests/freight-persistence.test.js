@@ -46,7 +46,9 @@ function extractFunction(src, name) {
 // Build persistEnquiryThreads with its REAL dependency (getEnquiryThreads) and a
 // stubbed apiBase/fetch/console, returning the calls fetch received.
 function loadPersist() {
-    const body = ['getEnquiryThreads', 'persistEnquiryThreads']
+    // getSentBodies travels too: the persist payload now carries the sent-enquiry bodies
+    // alongside the threads (they are stored in their own top-level map, not in the threads).
+    const body = ['getEnquiryThreads', 'getSentBodies', 'persistEnquiryThreads']
         .map((n) => extractFunction(freightSrc, n)).join('\n');
     const calls = [];
     const errors = [];

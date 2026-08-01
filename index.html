@@ -304,7 +304,7 @@
         .sq-head h1 { margin: 0; font-size: 22px; color: #3b3f79; }
         .sq-sub { color: #6e6c65; font-size: 13px; margin-top: 4px; }
         .sq-dl { margin-top: 12px; background: #3b3f79; color: #fff; border: none; border-radius: 8px; padding: 9px 16px; font-size: 14px; cursor: pointer; }
-        .sq-sec-h { font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: #9b988e; margin: 26px 0 10px; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
+        .sq-sec-h { font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: #20201d; font-weight: 700; margin: 26px 0 10px; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
         .sq-card { background: #fff; border: 1px solid rgba(0,0,0,0.12); border-radius: 10px; padding: 16px 18px; margin-bottom: 12px; }
         .sq-badge { display: inline-block; font-size: 12px; font-weight: 600; color: #633806; background: #FAEEDA; border-radius: 10px; padding: 3px 10px; margin-bottom: 10px; }
         .sq-badge.sq-cur { color: #0F6E56; background: #DFF3EC; }
@@ -319,6 +319,22 @@
         .sq-ev-body { flex: 1 1 auto; min-width: 0; }
         .sq-ev-detail { color: #6e6c65; margin-left: 7px; word-break: break-word; }
         .sq-ev-when { flex: 0 0 auto; color: #9b988e; font-size: 12px; white-space: nowrap; }
+        /* Only events we kept the sent email for are clickable. */
+        .sq-ev-open { cursor: pointer; }
+        .sq-ev-open:hover { background: #FBFAF6; border-color: rgba(0,0,0,0.22); }
+        .sq-ev-link { margin-left: 8px; color: #185FA5; text-decoration: underline; font-size: 12px; }
+
+        /* What the admin asked for, shown directly above the version that answered it. Indented
+           and tinted so it reads as a note ABOUT the card below, not as another version. */
+        .sq-msgs { margin: 0 0 -4px 0; }
+        .sq-msg { display: flex; align-items: baseline; gap: 9px; background: #FFFCF2;
+            border: 1px solid rgba(0,0,0,0.10); border-left: 3px solid #C0392B; border-radius: 8px 8px 0 0;
+            padding: 8px 12px; font-size: 13px; }
+        .sq-msg + .sq-msg { border-top: none; border-radius: 0; }
+        .sq-msg-note { border-left-color: #9b988e; }
+        .sq-msg-icon { flex: 0 0 auto; }
+        .sq-msg-text { flex: 1 1 auto; min-width: 0; word-break: break-word; white-space: pre-wrap; }
+        .sq-msg-when { flex: 0 0 auto; color: #9b988e; font-size: 12px; white-space: nowrap; }
 
         /* The original enquiry email. Capped and scrollable so a long thread can't dominate the
            page, and images/tables from the customer's own mail are kept inside the card. */
@@ -1558,8 +1574,8 @@
                 <select id="approvalYearSelect" onchange="approvalPickMonthYear()" style="height:32px; font-size:13px; padding:2px 6px; border:1px solid #ddd; border-radius:5px;"></select>
                 <button id="approvalAllMonthsBtn" class="upload-btn" type="button" onclick="approvalShowAllMonths()" style="width:auto; padding:6px 12px;" title="Clear every filter and show the latest quotes">All Quotes</button>
                 <button id="approvalFreightBtn" class="upload-btn" type="button" onclick="approvalToggleFreight()" style="width:auto; padding:6px 12px;" title="Show every quote a freight enquiry was sent for, replied or not">&#128666; Freight</button>
-                <button id="approvalRevisionBtn" class="upload-btn" type="button" onclick="approvalToggleRevision()" style="width:auto; padding:6px 12px;" title="Show every quote the admin has asked for a revision on">&#128221; Revision<span id="approvalRevisionCount" class="rev-count" style="display:none;">0</span></button>
                 <button id="approvalEnquiryBtn" class="upload-btn" type="button" onclick="approvalToggleEnquiry()" style="width:auto; padding:6px 12px;" title="Show every quote a supplier enquiry was sent for">&#128233; Enquiry</button>
+                <button id="approvalRevisionBtn" class="upload-btn" type="button" onclick="approvalToggleRevision()" style="width:auto; padding:6px 12px;" title="Show every quote the admin has asked for a revision on">&#128221; Revision<span id="approvalRevisionCount" class="rev-count" style="display:none;">0</span></button>
             </div>
             <!-- Global sweep: check every quote awaiting a transporter/customer reply in one go. -->
             <div style="margin-bottom: 10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
@@ -1686,7 +1702,7 @@
             </table>
 
             <div class="grand-total" style="margin-top: 12px;">
-                <span>Total Weight: <span id="pipeWeightGrandTotal">0.00</span> Kg</span>
+                <span>Total Weight: <span id="pipeWeightGrandTotal">0.00</span> Kg<span id="pipeWeightGrandTotalTon"> (0 T)</span></span>
             </div>
 
             <div style="display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap;">
@@ -7521,7 +7537,7 @@
                     style="display:inline-flex; align-items:center; gap:5px; font-size:11px; color:#854F0B; background:#FAEEDA; border:1px solid #f0d9a8; border-radius:8px; padding:3px 8px; margin:0 6px 4px 0;">
                     📄 ${escapeHtml(n.name || 'file')} — <i>${escapeHtml(n.note || 'not attached')}</i></span>`;
             }).join('');
-            return `<div style="margin-bottom:8px;"><div style="font-size:11px; color:#9b988e; margin-bottom:3px;">ATTACHED FILES</div>${chips}${noteChips}</div>`;
+            return `<div style="margin-bottom:8px;"><div style="font-size:11px; color:#20201d; font-weight:700; margin-bottom:3px;">ATTACHED FILES</div>${chips}${noteChips}</div>`;
         }
 
         // Print sheet: admin message, then the enquiry AS EMAILED (formatted HTML — tables &
@@ -11801,6 +11817,9 @@
             };
         }
         function sqFmtKg(n) { return Math.round(n).toLocaleString('en-IN'); }
+        // Totals are shown in kilograms AND tonnes — transporters work in tonnes, the sheet in kg.
+        // 1 T = 1000 kg. Trailing zeros dropped, so 5000 kg reads "5 T", not "5.00 T".
+        function sqFmtWeight(n) { return sqFmtKg(n) + ' kg (' + String(Number(((Number(n) || 0) / 1000).toFixed(2))) + ' T)'; }
         function buildSharedWeightHtml(quotation) {
             const items = Array.isArray(quotation.lineItems) ? quotation.lineItems : [];
             let total = 0, anyKg = false;
@@ -11816,7 +11835,7 @@
             }).join('');
             if (!anyKg) return '<p style="color:#999;">No weight (kg/m) recorded for this quote.</p>';
             return '<table class="sq-tbl"><thead><tr><th>Item</th><th style="text-align:right;">Qty</th><th style="text-align:right;">kg/m</th><th style="text-align:right;">Weight</th></tr></thead><tbody>' + rows + '</tbody></table>'
-                + '<p style="font-weight:600;margin-top:10px;">Total weight: ' + sqFmtKg(total) + ' kg &nbsp;&middot;&nbsp; With tolerance (7%): ' + sqFmtKg(total * 0.93) + ' kg</p>';
+                + '<p style="font-weight:600;margin-top:10px;">Total weight: ' + sqFmtWeight(total) + ' &nbsp;&middot;&nbsp; With tolerance (7%): ' + sqFmtWeight(total * 0.93) + '</p>';
         }
         function buildSharedFreightHtml(quotation) {
             const enq = Array.isArray(quotation.freightEnquiries) ? quotation.freightEnquiries : [];
@@ -11870,13 +11889,38 @@
         // actually influenced. Both moments are recorded: when the enquiry went out, and when the
         // reply came back — a rate that arrives between two revisions is usually WHY the second
         // revision exists, and that is only visible if the reply has its own place in the order.
-        function buildSharedEnquiryEvents(quotation) {
+        // `sink` collects the bodies of enquiries we actually sent, so a "… enquiry sent" line can
+        // be clicked to read the real email. It is a parameter rather than a module variable so
+        // this function stays self-contained (the timeline tests extract and eval it on its own).
+        function buildSharedEnquiryEvents(quotation, sink) {
             const out = [];
-            const row = function(when, icon, tint, title, detail) {
-                return '<div class="sq-ev" style="border-left-color:' + tint + ';">'
+            const bodies = sink || [];
+            // The sent bodies live in a top-level map keyed the same way the server merges
+            // threads ('tid:…' / 'es:…'), so they are not dragged into every list page.
+            const stored = (quotation.enquirySentBodies && typeof quotation.enquirySentBodies === 'object')
+                ? quotation.enquirySentBodies : {};
+            const bodyFor = function(t) {
+                const key = (t && t.threadId)
+                    ? 'tid:' + t.threadId
+                    : 'es:' + String((t && t.email) || '').toLowerCase() + '|' + String((t && t.sentAt) || '');
+                return stored[key] || '';
+            };
+            const row = function(when, icon, tint, title, detail, sentHtml) {
+                // Only the lines we hold a body for become clickable. Enquiries sent before this
+                // was stored have nothing to open, so they stay plain rather than offering a
+                // button that opens an empty box.
+                const body = String(sentHtml || '').trim();
+                const idx = body ? (bodies.push({ title: title, when: when, html: body }) - 1) : -1;
+                const open = idx >= 0
+                    ? ' sq-ev-open" role="button" tabindex="0" title="Show the enquiry that was sent"'
+                      + ' onclick="sqShowSentEnquiry(' + idx + ')"'
+                      + ' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();sqShowSentEnquiry(' + idx + ');}"'
+                    : '"';
+                return '<div class="sq-ev' + open + ' style="border-left-color:' + tint + ';">'
                     + '<span class="sq-ev-icon">' + icon + '</span>'
                     + '<span class="sq-ev-body"><b>' + escapeHtml(title) + '</b>'
-                    + (detail ? '<span class="sq-ev-detail">' + escapeHtml(detail) + '</span>' : '') + '</span>'
+                    + (detail ? '<span class="sq-ev-detail">' + escapeHtml(detail) + '</span>' : '')
+                    + (idx >= 0 ? '<span class="sq-ev-link">view enquiry</span>' : '') + '</span>'
                     + '<span class="sq-ev-when">' + escapeHtml(when ? formatRevisionDate(when) : '') + '</span></div>';
             };
 
@@ -11884,7 +11928,7 @@
             freight.forEach(function(t) {
                 if (!t) return;
                 if (t.sentAt) out.push({ when: t.sentAt, sort: 1,
-                    html: row(t.sentAt, '&#128666;', '#185FA5', 'Freight enquiry sent', t.email || '') });
+                    html: row(t.sentAt, '&#128666;', '#185FA5', 'Freight enquiry sent', t.email || '', bodyFor(t)) });
                 if (t.replied) out.push({ when: t.replyAt || t.sentAt || '', sort: 1,
                     html: row(t.replyAt || t.sentAt, '&#128666;', '#0F6E56', 'Freight rate received',
                         (t.email || '') + (t.amount ? ' — ₹' + Math.round(t.amount).toLocaleString('en-IN') : '')) });
@@ -11894,12 +11938,105 @@
             suppliers.forEach(function(t) {
                 if (!t) return;
                 if (t.sentAt) out.push({ when: t.sentAt, sort: 1,
-                    html: row(t.sentAt, '&#128233;', '#6B3FA0', 'Supplier enquiry sent', t.email || '') });
+                    html: row(t.sentAt, '&#128233;', '#6B3FA0', 'Supplier enquiry sent', t.email || '', bodyFor(t)) });
                 if (t.replied) out.push({ when: t.replyAt || t.sentAt || '', sort: 1,
                     html: row(t.replyAt || t.sentAt, '&#128233;', '#0F6E56', 'Supplier offer received',
                         (t.email || '') + (t.rate ? ' — ₹' + Math.round(t.rate).toLocaleString('en-IN') : '')) });
             });
             return out;
+        }
+
+        // The enquiry bodies the current shared-page render collected, indexed by the number
+        // baked into each clickable event's onclick.
+        let _sqSentEnquiries = [];
+
+        // Deliberately its own element, NOT getPreviewOverlay(): that returns the singleton
+        // #pdf-preview-overlay which renderSharedQuotePage uses AS the shared page. Reusing it
+        // here would overwrite the whole quote the moment someone clicked an enquiry.
+        function sqSentEnquiryOverlay() {
+            let el = document.getElementById('sq-sent-enquiry-overlay');
+            if (el) return el;
+            el = document.createElement('div');
+            el.id = 'sq-sent-enquiry-overlay';
+            el.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,0.45);'
+                + 'display:none;overflow:auto;padding:24px;';
+            el.addEventListener('click', function(e) { if (e.target === el) sqCloseSentEnquiry(); });
+            document.body.appendChild(el);
+            return el;
+        }
+
+        function sqCloseSentEnquiry() {
+            const el = document.getElementById('sq-sent-enquiry-overlay');
+            if (el) el.style.display = 'none';
+        }
+
+        function sqShowSentEnquiry(idx) {
+            const rec = _sqSentEnquiries[idx];
+            if (!rec) return;
+            // The body is our own generated HTML, but it embeds text the user typed into the
+            // enquiry rows — so it goes through the same sanitizer the customer's email does.
+            const safe = (typeof sanitizeEmailHtmlForPreview === 'function')
+                ? sanitizeEmailHtmlForPreview(rec.html) : escapeHtml(rec.html);
+            const el = sqSentEnquiryOverlay();
+            el.innerHTML = '<div style="max-width:900px;margin:0 auto;background:#fff;border-radius:10px;padding:18px 20px;">'
+                + '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:12px;">'
+                + '<b style="font-size:15px;">' + escapeHtml(rec.title || 'Enquiry sent') + '</b>'
+                + '<span style="color:#9b988e;font-size:12px;">' + escapeHtml(rec.when ? formatRevisionDate(rec.when) : '') + '</span>'
+                + '<button type="button" onclick="sqCloseSentEnquiry()" style="border:1px solid #ddd;background:#f7f6f2;border-radius:6px;padding:4px 10px;cursor:pointer;">Close</button>'
+                + '</div><div class="sq-enq">' + safe + '</div></div>';
+            el.style.display = 'block';
+        }
+
+        // ── Revision asks and notes, filed against the version that answered them ──────────
+        // A message written on Tuesday and a new version saved on Wednesday are one conversation:
+        // what was asked for, then what was done about it. So each message is filed against the
+        // FIRST version created after it and drawn directly above that version's card. Anything
+        // written since the newest version belongs to the Current one.
+        function sharedMessageLineHtml(entry, isNote) {
+            const stamp = (entry && entry.addedAt) ? formatRevisionDate(entry.addedAt) : '';
+            const who = (entry && entry.addedBy) ? ' · ' + entry.addedBy : '';
+            return '<div class="sq-msg' + (isNote ? ' sq-msg-note' : '') + '">'
+                + '<span class="sq-msg-icon">' + (isNote ? '&#128209;' : '&#128221;') + '</span>'
+                + '<span class="sq-msg-text">' + escapeHtml((entry && entry.text) || '') + '</span>'
+                + '<span class="sq-msg-when">' + escapeHtml(stamp + who) + '</span></div>';
+        }
+
+        function sharedMessagesBlockHtml(list) {
+            if (!list || !list.length) return '';
+            return '<div class="sq-msgs">'
+                + list.map(function(m) { return sharedMessageLineHtml(m.entry, m.isNote); }).join('')
+                + '</div>';
+        }
+
+        // Returns { v0: [...], v1: [...], current: [...] } — the messages belonging above each card.
+        function buildSharedMessageGroups(quotation, revs) {
+            const asks = Array.isArray(quotation.revisionRequests) ? quotation.revisionRequests : [];
+            const notes = Array.isArray(quotation.extraNotes) ? quotation.extraNotes : [];
+            const all = asks.filter(Boolean).map(function(e) { return { entry: e, isNote: false }; })
+                .concat(notes.filter(Boolean).map(function(e) { return { entry: e, isNote: true }; }));
+            const groups = {};
+            const timeOf = function(v) { const t = new Date(v).getTime(); return isNaN(t) ? null : t; };
+            all.forEach(function(m) {
+                const at = timeOf(m.entry.addedAt);
+                let key = 'current';
+                if (at !== null) {
+                    // revs runs oldest-first, so the first one stamped at or after the message is
+                    // the version that answered it.
+                    for (let i = 0; i < revs.length; i++) {
+                        const rt = timeOf(revs[i] && revs[i].createdAt);
+                        if (rt !== null && rt >= at) { key = 'v' + i; break; }
+                    }
+                }
+                // An undated message still shows, against Current — better visible in roughly the
+                // right place than silently dropped.
+                (groups[key] = groups[key] || []).push(m);
+            });
+            Object.keys(groups).forEach(function(k) {
+                groups[k].sort(function(a, b) {
+                    return (timeOf(a.entry.addedAt) || 0) - (timeOf(b.entry.addedAt) || 0);
+                });
+            });
+            return groups;
         }
 
         function renderSharedQuotePage(quotation) {
@@ -11915,12 +12052,14 @@
             // enquiry that came in between two revisions appears between them. Newest first, the
             // same direction the Versions list has always run.
             const entries = [];
+            const msgGroups = buildSharedMessageGroups(quotation, revs);
 
             // Current version renders LIVE (the exact current PDF); loaded into its frame after paint.
             entries.push({
                 when: quotation.updatedAt || quotation.sentAt || '',
                 sort: 2,   // ties: the version outranks an event stamped the same second
-                html: '<div class="sq-card"><span class="sq-badge sq-cur">Current &middot; ' + revisionLabel(buildCurrentVersionRev(quotation), revs.length) + '</span>'
+                html: sharedMessagesBlockHtml(msgGroups.current)
+                    + '<div class="sq-card"><span class="sq-badge sq-cur">Current &middot; ' + revisionLabel(buildCurrentVersionRev(quotation), revs.length) + '</span>'
                     + pdfFrame('about:blank', 'sq-pdf-current') + '</div>'
             });
             // Past versions: the archived original PDF (exactly what was sent) when we have it,
@@ -11933,10 +12072,14 @@
                     : revisionFullQuoteHtml(quotation, r);
                 entries.push({
                     when: r.createdAt || '', sort: 2,
-                    html: '<div class="sq-card"><span class="sq-badge">' + revisionLabel(r, i) + (r.createdAt ? ' &middot; ' + formatRevisionDate(r.createdAt) : '') + '</span>' + body + '</div>'
+                    html: sharedMessagesBlockHtml(msgGroups['v' + i])
+                        + '<div class="sq-card"><span class="sq-badge">' + revisionLabel(r, i) + (r.createdAt ? ' &middot; ' + formatRevisionDate(r.createdAt) : '') + '</span>' + body + '</div>'
                 });
             }
-            buildSharedEnquiryEvents(quotation).forEach(function(e) { entries.push(e); });
+            // Reset per render — the indexes baked into the onclick attributes below only mean
+            // anything against the list this render builds.
+            _sqSentEnquiries = [];
+            buildSharedEnquiryEvents(quotation, _sqSentEnquiries).forEach(function(e) { entries.push(e); });
 
             // Undated entries sink to the bottom rather than jumping to the top.
             entries.sort(function(a, b) {

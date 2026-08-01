@@ -39,6 +39,22 @@
         return value.toFixed(2);
     }
 
+    // Transporters price in tonnes while this sheet works in kilograms, so the grand total is
+    // shown both ways. 1 T = 1000 kg. Trailing zeros dropped — 5000 kg reads "5 T", not "5.00 T".
+    function formatTonnes(value) {
+        const t = (Number.isFinite(value) ? value : 0) / 1000;
+        return String(Number(t.toFixed(2)));
+    }
+
+    // The kg figure and the tonne figure live in two spans; keep them in step from one place so a
+    // new caller cannot update one and leave the other showing a stale number.
+    function setGrandTotal(kg) {
+        const totalEl = $('pipeWeightGrandTotal');
+        if (totalEl) totalEl.textContent = formatKg(kg);
+        const tonEl = $('pipeWeightGrandTotalTon');
+        if (tonEl) tonEl.textContent = ' (' + formatTonnes(kg) + ' T)';
+    }
+
     function resolveKgPerMeter(item, sizeKey) {
         const directKgPerMeter = parseNumber(
             item && (item.kgPerMeter || item.kg_per_meter || item.kgPerMtr || item.kg_per_mtr)
@@ -152,10 +168,7 @@
         if (tbody) {
             tbody.innerHTML = '';
         }
-        const totalEl = $('pipeWeightGrandTotal');
-        if (totalEl) {
-            totalEl.textContent = '0.00';
-        }
+        setGrandTotal(0);
     }
 
     function addPipeRowToTable(description, kgPerMeter, qtyMeters, insertAfterRow, weightMissing) {
@@ -299,10 +312,7 @@
             grandTotal += rowTotal;
         });
 
-        const totalEl = $('pipeWeightGrandTotal');
-        if (totalEl) {
-            totalEl.textContent = formatKg(grandTotal);
-        }
+        setGrandTotal(grandTotal);
     }
 
     /**
@@ -588,6 +598,8 @@
         `).join('');
 
         const grandTotal = totalEl ? (totalEl.textContent || '0.00') : '0.00';
+        // The printout carries the tonne figure too — it is the number the transporter quotes on.
+        const grandTotalTonnes = formatTonnes(parseNumber(grandTotal));
         const html = `
             <!doctype html>
             <html>
@@ -618,7 +630,7 @@
                     </thead>
                     <tbody>${tableRowsHtml}</tbody>
                 </table>
-                <div class="total">Total Weight: ${escapeHtml(grandTotal)} Kg</div>
+                <div class="total">Total Weight: ${escapeHtml(grandTotal)} Kg (${escapeHtml(grandTotalTonnes)} T)</div>
             </body>
             </html>
         `;

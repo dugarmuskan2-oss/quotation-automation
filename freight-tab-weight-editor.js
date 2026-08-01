@@ -24,6 +24,48 @@
     function escTxt(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
     function fmt(n) { return Math.round(n).toLocaleString('en-IN'); }
 
+    // Transporters quote and argue in tonnes; the sheet works in kilograms. Showing both on every
+    // TOTAL (never on a single row) saves doing the division by hand at the moment it matters.
+    // 1 T = 1000 kg exactly — the metric tonne, not any shipping variant.
+    function fmtTonnes(kg) {
+        // 1000 is inlined rather than a named constant so this stays self-contained: the panel
+        // tests extract these helpers by name and eval them, and a bare reference to a module
+        // constant would not travel with them.
+        var t = (Number(kg) || 0) / 1000;
+        // Two decimals is 10 kg of resolution — enough to check a transporter's figure, and
+        // trailing zeros are dropped so a clean 5000 kg reads "5 T" rather than "5.00 T".
+        return String(Number(t.toFixed(2)));
+    }
+    // "12,345 kg (12.35 T)" — the pair used everywhere a total weight is printed.
+    function fmtWeight(kg) { return fmt(kg) + ' kg (' + fmtTonnes(kg) + ' T)'; }
+
+    // Keep a copy of the enquiry we sent, so the shared quote page can show it back rather than
+    // only recording that one went out.
+    //
+    // Stored in q.enquirySentBodies, a top-level map, NOT inside the thread object: the thread
+    // arrays are projected into every quotations-list page, and a body is kilobytes. Inline
+    // base64 images (a pasted signature logo is routinely 100 kB) are dropped and the whole thing
+    // capped — losing a logo from a record costs nothing.
+    var MAX_SENT_HTML = 12000;
+    function trimSentBodyForStorage(html) {
+        var s = String(html || '')
+            .replace(/\ssrc\s*=\s*"data:[^"]*"/gi, ' src=""')
+            .replace(/\ssrc\s*=\s*'data:[^']*'/gi, " src=''");
+        return s.length > MAX_SENT_HTML ? s.slice(0, MAX_SENT_HTML) : s;
+    }
+
+    // Must match keyOf in routes/quotations.js, or a stored body never finds its thread again.
+    function enquiryBodyKey(t) {
+        return (t && t.threadId)
+            ? 'tid:' + t.threadId
+            : 'es:' + String((t && t.email) || '').toLowerCase() + '|' + String((t && t.sentAt) || '');
+    }
+
+    function getSentBodies(q) {
+        if (!q.enquirySentBodies || typeof q.enquirySentBodies !== 'object') q.enquirySentBodies = {};
+        return q.enquirySentBodies;
+    }
+
     // Quantity is null (not 0) when the quote has none — the row shows blank + red so
     // the user fills it in, instead of a silently assumed number.
     function qtyOrNull(v) {
@@ -191,7 +233,7 @@
         var title = st.split ? ('Shipment ' + sec) : 'Weight';
         var complete = secComplete(st, sec);
         var header = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'
-            + '<span style="font-size:13px;font-weight:600;color:#444;">' + title + (complete ? ' &middot; ' + fmt(secWeight(st, sec)) + ' kg' : '') + '</span>'
+            + '<span style="font-size:13px;font-weight:600;color:#444;">' + title + (complete ? ' &middot; ' + fmtWeight(secWeight(st, sec)) : '') + '</span>'
             + (sec === 2 ? '<button class="fwe-link fwe-merge">Remove &middot; items go back</button>'
                 : '<span style="font-size:11px;color:#9b988e;">&#128190; saved with quote</span>') + '</div>';
         var body = rows.length ? rows.map(function (r) { return rowHtml(st, r); }).join('')
@@ -201,9 +243,9 @@
         // a prompt instead of a misleading partial total.
         var totalRow = !rows.length ? ''
             : (complete
-                ? '<div class="fwe-grid fwe-total"><div></div><div>Total weight</div><div></div><div></div><div style="text-align:right;">' + fmt(secWt) + ' kg</div><div></div></div>'
+                ? '<div class="fwe-grid fwe-total"><div></div><div>Total weight</div><div></div><div></div><div style="text-align:right;">' + fmtWeight(secWt) + '</div><div></div></div>'
                   + (secHasTolerance(st, sec)
-                      ? '<div class="fwe-grid fwe-subtotal"><div></div><div>With tolerance (7%)</div><div></div><div></div><div style="text-align:right;">' + fmt(secToleranceWeight(st, sec)) + ' kg</div><div></div></div>'
+                      ? '<div class="fwe-grid fwe-subtotal"><div></div><div>With tolerance (7%)</div><div></div><div></div><div style="text-align:right;">' + fmtWeight(secToleranceWeight(st, sec)) + '</div><div></div></div>'
                       : '')
                 : '<div class="fwe-grid fwe-subtotal"><div></div><div style="color:#9b988e;font-size:12px;">'
                   + missingWeightFieldsLabel(st, sec) + '</div><div></div><div></div><div></div><div></div></div>');
@@ -428,7 +470,7 @@
             + '• Drop: ' + (enq.drop || '—') + '\n'
             // Placeholder rather than a partial figure when the weight cannot be calculated —
             // the draft is only a draft, and sending is blocked until a real weight exists.
-            + '• Weight: ' + (enqWeightUsable(st) ? (fmt(enqEffectiveWeight(st)) + ' kg') : '____ kg')
+            + '• Weight: ' + (enqWeightUsable(st) ? fmtWeight(enqEffectiveWeight(st)) : '____ kg')
             + ' (' + rows.length + ' item' + (rows.length === 1 ? '' : 's') + ')\n'
             + '• Material: MS pipes\n\n'
             + '[TABLE]\n\n'
@@ -460,7 +502,7 @@
         }).join('');
         var total = enqWeightUsable(st)
             ? '<tr><td colspan="3" style="border:1px solid #000;padding:6px 8px;text-align:right;font-weight:700;">Total</td>'
-              + '<td style="border:1px solid #000;padding:6px 8px;text-align:right;font-weight:700;">' + fmt(enqEffectiveWeight(st)) + ' kg</td></tr>'
+              + '<td style="border:1px solid #000;padding:6px 8px;text-align:right;font-weight:700;">' + fmtWeight(enqEffectiveWeight(st)) + '</td></tr>'
             : '';
         return '<table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:Arial,sans-serif;font-size:13px;">'
             + '<thead><tr>' + head + '</tr></thead><tbody>' + body + total + '</tbody></table>';
@@ -512,7 +554,7 @@
         fetch(apiBase() + '/quotations/' + encodeURIComponent(q.id) + '/freight-enquiries', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ freightEnquiries: threads, transporterReplyIn: !!q.transporterReplyIn })
+            body: JSON.stringify({ freightEnquiries: threads, transporterReplyIn: !!q.transporterReplyIn, enquirySentBodies: getSentBodies(q) })
         }).then(function (res) {
             if (!res.ok) console.error('Freight enquiries not saved (' + res.status + ') for quote ' + q.id);
         }).catch(function (e) {
@@ -662,12 +704,16 @@
     }
 
     function freightSendAll(q, st, mountEl, enq, recipients, subject, bodyText, scopeSec) {
+        // Built once, not once per recipient: every transporter gets the same enquiry, and the
+        // stored copy has to be the one they actually received.
+        var bodyHtml = enqTextToHtml(bodyText, st);
+        var storedBody = trimSentBodyForStorage(bodyHtml);
         Promise.all(recipients.map(function (addr) {
             return fetch(apiBase() + '/send-email', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 // label tags the thread Quotation Automation/Freight Enquiry in Gmail.
-                body: JSON.stringify({ to: addr, subject: subject, bodyHtml: enqTextToHtml(bodyText, st), label: 'freight' })
+                body: JSON.stringify({ to: addr, subject: subject, bodyHtml: bodyHtml, label: 'freight' })
             }).then(function (res) {
                 return res.json().catch(function () { return {}; }).then(function (d) { return { addr: addr, ok: res.ok && d && d.success, d: d }; });
             }).catch(function (e) {
@@ -678,7 +724,9 @@
             var threads = getEnquiryThreads(q);
             var sentOk = results.filter(function (r) { return r.ok; });
             sentOk.forEach(function (r) {
-                threads.push({ email: r.addr, forSec: scopeSec, threadId: (r.d && r.d.threadId) || '', sentAt: new Date().toISOString(), replied: false, replyText: '', amount: 0 });
+                var t = { email: r.addr, forSec: scopeSec, threadId: (r.d && r.d.threadId) || '', sentAt: new Date().toISOString(), replied: false, replyText: '', amount: 0 };
+                threads.push(t);
+                getSentBodies(q)[enquiryBodyKey(t)] = storedBody;
             });
             var failed = results.filter(function (r) { return !r.ok; });
             if (!failed.length) {
@@ -1041,7 +1089,7 @@
         if (!win) return;
         win.document.write('<html><head><title>Weight — ' + escTxt(name) + '</title></head><body style="font-family:Arial,Helvetica,sans-serif;padding:24px;color:#20201d;">'
             + '<h2 style="margin:0 0 4px;">Weight summary</h2><p style="margin:0 0 8px;color:#666;font-size:13px;">' + escTxt(name) + '</p>'
-            + '<h3 style="font-size:15px;margin:16px 0 6px;">' + escTxt(label) + ' &mdash; ' + fmt(secWeight(st, sec)) + ' kg</h3>'
+            + '<h3 style="font-size:15px;margin:16px 0 6px;">' + escTxt(label) + ' &mdash; ' + fmtWeight(secWeight(st, sec)) + '</h3>'
             + '<table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr>'
             + '<th style="text-align:left;border-bottom:1px solid #999;padding:6px 4px;">Item</th>'
             + '<th style="text-align:right;border-bottom:1px solid #999;padding:6px 4px;">Qty (m)</th>'
@@ -1083,6 +1131,8 @@
             freightItemsTableHtml: freightItemsTableHtml,
             enqTextToHtml: enqTextToHtml,
             checkFreightRepliesForQuote: checkFreightRepliesForQuote,
+            fmtTonnes: fmtTonnes,
+            fmtWeight: fmtWeight,
             _setSuggest: function (s) { _freightSuggest = s; }
         };
     }

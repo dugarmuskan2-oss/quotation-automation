@@ -188,6 +188,11 @@ describe('source guard — conversation panel + custReplyPending producer', () =
 
     test('the pure parsers stay exposed on utils/gmail._test', () => {
         const gmailSrc = fs.readFileSync(path.join(__dirname, '..', 'utils', 'gmail.js'), 'utf8');
-        expect(gmailSrc).toContain('module.exports._test = { buildRawMessage, extractInlineImages, wrapBase64, extractBodyText, stripHtmlToText, isAutoOrSystemMessage };');
+        // Asserted name by name, not as one exact line: the point is that these parsers stay
+        // reachable from tests, and pinning the whole literal fails the moment anything else is
+        // added to the export (it did, when Gmail labelling arrived).
+        const exportLine = (gmailSrc.match(/module\.exports\._test = \{[^}]*\}/) || [''])[0];
+        ['buildRawMessage', 'extractInlineImages', 'wrapBase64', 'extractBodyText', 'stripHtmlToText', 'isAutoOrSystemMessage']
+            .forEach((name) => expect(exportLine).toContain(name));
     });
 });

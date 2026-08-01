@@ -75,7 +75,10 @@ const fmt = loadFn(freightSrc, 'fmt');
 // DOM), bundled and executed — so the "+" add button and the tolerance row's ×0.93
 // factor are asserted against real output, not values the test itself supplies.
 function loadFreightSection() {
-    const names = ['esc', 'escTxt', 'fmt', 'weightOf', 'secRows', 'secWeight', 'secComplete', 'gridHead', 'rowHtml',
+    // fmtTonnes/fmtWeight print the totals as "12,345 kg (12.35 T)" — sectionHtml calls fmtWeight,
+    // so both have to travel with it or the render throws.
+    const names = ['esc', 'escTxt', 'fmt', 'fmtTonnes', 'fmtWeight', 'weightOf', 'secRows', 'secWeight',
+        'secComplete', 'gridHead', 'rowHtml',
         'rowIsSeamless', 'secToleranceWeight', 'secHasTolerance', 'sectionHtml'];
     const body = names.map((n) => extractFunction(freightSrc, n)).join('\n');
     // eslint-disable-next-line no-new-func
@@ -238,12 +241,12 @@ describe('freight section render — total row, "With tolerance (7%)" row, and "
         const out = sectionHtml(st, 1);
         // Total row = real section weight.
         expect(out).toContain('Total weight');
-        expect(out).toContain('>37 kg</div>');
+        expect(out).toContain('>37 kg (0.04 T)</div>');
         // Tolerance row = fmt(37 × 0.93) = fmt(34.41) = "34", produced by the REAL renderer.
         expect(out).toContain('With tolerance (7%)');
-        expect(out).toContain('>34 kg</div>');
+        expect(out).toContain('>34 kg (0.03 T)</div>');
         // Factor guard: a change to × 0.90 would render 33, not 34.
-        expect(out).not.toContain('>33 kg</div>');
+        expect(out).not.toContain('>33 kg (0.03 T)</div>');
         // The "+" add button is rendered for this section.
         expect(out).toContain('<button class="fwe-add fwe-addbtn" data-sec="1"');
     });
@@ -251,7 +254,7 @@ describe('freight section render — total row, "With tolerance (7%)" row, and "
         const st = { split: false, rows: [{ id: 1, sec: 1, d: 'Bulk', qty: 100000, kgm: 10 }] }; // 1,000,000 kg
         expect(secWeight(st, 1)).toBe(1000000);
         const out = sectionHtml(st, 1);
-        expect(out).toContain('>9,30,000 kg</div>'); // fmt(1,000,000 × 0.93)
+        expect(out).toContain('>9,30,000 kg (930 T)</div>'); // fmt(1,000,000 × 0.93)
     });
 });
 
@@ -360,18 +363,18 @@ describe('sectionHtml — the "With tolerance (7%)" row appears for welded, is o
         expect(secWeight(st, 1)).toBe(187);
         const out = sectionHtml(st, 1);
         expect(out).toContain('With tolerance (7%)');
-        expect(out).toContain('>187 kg</div>'); // total (whole)
-        expect(out).toContain('>174 kg</div>'); // fmt(187 × 0.93) = fmt(173.91)
+        expect(out).toContain('>187 kg (0.19 T)</div>'); // total (whole)
+        expect(out).toContain('>174 kg (0.17 T)</div>'); // fmt(187 × 0.93) = fmt(173.91)
         // Factor guard: × 0.90 would render 168, not 174.
-        expect(out).not.toContain('>168 kg</div>');
+        expect(out).not.toContain('>168 kg (0.17 T)</div>');
     });
     test('an all-seamless section renders NO tolerance row (billed exact)', () => {
         const st = { split: false, rows: [{ id: 1, sec: 1, d: '2" NB X Sch 40', type: 'Seamless', qty: 187, kgm: 1 }] };
         const out = sectionHtml(st, 1);
         expect(out).not.toContain('With tolerance');
-        expect(out).toContain('>187 kg</div>'); // total still shown, whole
+        expect(out).toContain('>187 kg (0.19 T)</div>'); // total still shown, whole
         // No deducted figure should appear anywhere.
-        expect(out).not.toContain('>174 kg</div>');
+        expect(out).not.toContain('>174 kg (0.17 T)</div>');
     });
     test('a mixed section shows a tolerance row at the 193 figure (seamless whole + welded ×0.93)', () => {
         const st = { split: false, rows: [
@@ -380,8 +383,8 @@ describe('sectionHtml — the "With tolerance (7%)" row appears for welded, is o
         ] };
         const out = sectionHtml(st, 1);
         expect(out).toContain('With tolerance (7%)');
-        expect(out).toContain('>200 kg</div>'); // total
-        expect(out).toContain('>193 kg</div>'); // 100 + 93
-        expect(out).not.toContain('>186 kg</div>'); // would be 200 × 0.93 if seamless were deducted
+        expect(out).toContain('>200 kg (0.2 T)</div>'); // total
+        expect(out).toContain('>193 kg (0.19 T)</div>'); // 100 + 93
+        expect(out).not.toContain('>186 kg (0.19 T)</div>'); // would be 200 × 0.93 if seamless were deducted
     });
 });

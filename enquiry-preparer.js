@@ -59,7 +59,12 @@
                     productSpec: String(item.productSpec || item.identifiedPipeType || '').trim(),
                     size: String(item.size || '').trim(),
                     quantity: Number.isFinite(qty) ? String(qty) : String(item.quantity || item.qty || '').trim(),
-                    unit: String(item.unit || item.uom || 'Nos').trim()
+                    // Blank when the quote does not say. This used to default to 'Nos', which was a
+                    // guess printed as fact on an enquiry going out to a supplier — pipe is ordered
+                    // by the metre far more often than by the piece. The quote card's Enquiry tab
+                    // fills in 'Meters' when the quote's own quantity heading says so; everywhere
+                    // else the column is left empty for a human to complete.
+                    unit: String(item.unit || item.uom || '').trim()
                 };
             }).filter(function (item) {
                 return item.description || item.quantity;

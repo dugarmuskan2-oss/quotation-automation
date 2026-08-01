@@ -50,7 +50,7 @@ function loadFns(names) {
 }
 
 const buildCurrentVersionRev = loadFns(['currentRevisionNumber', 'buildCurrentVersionRev']);
-const buildSharedWeightHtml = loadFns(['escapeHtml', 'sqFmtKg', 'buildSharedWeightHtml']);
+const buildSharedWeightHtml = loadFns(['escapeHtml', 'sqFmtKg', 'sqFmtWeight', 'buildSharedWeightHtml']);
 const buildSharedFreightHtml = loadFns(['escapeHtml', 'buildSharedFreightHtml']);
 
 describe('buildCurrentVersionRev — current-version rev object from a quote', () => {

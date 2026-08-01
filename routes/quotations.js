@@ -326,7 +326,7 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
             // pressed Save/Approve/Send or ran the reply sweep, taking the wording with it. The same
             // overwrite un-deleted soft-deleted quotes and dropped freight enquiry records.
             // Always take the stored values; ignore whatever the client sent.
-            const SERVER_OWNED = ['revisionRequests', 'extraNotes', 'deleted', 'deletedAt', 'freightEnquiries', 'transporterReplyIn', 'supplierEnquiries'];
+            const SERVER_OWNED = ['revisionRequests', 'extraNotes', 'deleted', 'deletedAt', 'freightEnquiries', 'transporterReplyIn', 'supplierEnquiries', 'enquirySentBodies'];
             if (stored) {
                 SERVER_OWNED.forEach(function (field) {
                     if (Object.prototype.hasOwnProperty.call(stored, field)) quotation[field] = stored[field];
@@ -720,6 +720,34 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
     //
     // Two separate arrays on purpose: only revisionRequests drives the Revision filter and its
     // count badge, so a note can never put a quote into the revision list by accident.
+
+    // The HTML of enquiries we actually sent, so the shared quote page can show one back.
+    //
+    // Deliberately a TOP-LEVEL field and deliberately NOT in SUMMARY_NESTED_PATHS. The obvious
+    // place for it is inside the freightEnquiries/supplierEnquiries thread objects, but those ARE
+    // projected into every quotations-list page ("these fields are small", says the comment up
+    // there) — an enquiry body is kilobytes, so parking it inside them would have made every list
+    // page carry a body per enquiry per quote. The shared page fetches the FULL quote by id, so it
+    // sees this field; the list never has to.
+    //
+    // Keyed exactly like the thread merge above ('tid:…' / 'es:…') so a body always finds its thread.
+    const MAX_SENT_BODIES = 25;
+    function mergeEnquirySentBodies(payload, incoming) {
+        if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) return;
+        const merged = Object.assign({}, payload.enquirySentBodies || {});
+        Object.keys(incoming).forEach(function (k) {
+            const v = incoming[k];
+            if (typeof v === 'string' && v) merged[k] = v;
+        });
+        // Backstop against a quote with a long enquiry history creeping toward DynamoDB's 400 KB
+        // per-item limit: keep the most recently added, drop the rest.
+        const keys = Object.keys(merged);
+        if (keys.length > MAX_SENT_BODIES) {
+            keys.slice(0, keys.length - MAX_SENT_BODIES).forEach(function (k) { delete merged[k]; });
+        }
+        payload.enquirySentBodies = merged;
+    }
+
     router.post('/quotations/:id/revision-request', async (req, res) => {
         if (!requireDdb(res)) return;
         try {
@@ -778,7 +806,7 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
     router.post('/quotations/:id/supplier-enquiries', async (req, res) => {
         if (!requireDdb(res)) return;
         try {
-            const { supplierEnquiries } = req.body || {};
+            const { supplierEnquiries, enquirySentBodies } = req.body || {};
             if (!Array.isArray(supplierEnquiries)) {
                 return res.status(400).json({ error: 'supplierEnquiries must be an array' });
             }
@@ -792,6 +820,7 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
                 });
                 supplierEnquiries.forEach(function (t) { if (t) merged.set(keyOf(t), t); });
                 payload.supplierEnquiries = Array.from(merged.values());
+                mergeEnquirySentBodies(payload, enquirySentBodies);
             });
             if (!saved) return res.status(404).json({ error: 'Quotation not found' });
             res.json({ success: true, count: (saved.supplierEnquiries || []).length });
@@ -809,7 +838,7 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
     router.post('/quotations/:id/freight-enquiries', async (req, res) => {
         if (!requireDdb(res)) return;
         try {
-            const { freightEnquiries, transporterReplyIn } = req.body || {};
+            const { freightEnquiries, transporterReplyIn, enquirySentBodies } = req.body || {};
             if (!Array.isArray(freightEnquiries)) {
                 return res.status(400).json({ error: 'freightEnquiries must be an array' });
             }
@@ -830,6 +859,7 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
                 freightEnquiries.forEach(function (t) { if (t) merged.set(keyOf(t), t); });
                 payload.freightEnquiries = Array.from(merged.values());
                 if (typeof transporterReplyIn === 'boolean') payload.transporterReplyIn = transporterReplyIn;
+                mergeEnquirySentBodies(payload, enquirySentBodies);
             });
             if (!saved) return res.status(404).json({ error: 'Quotation not found' });
             res.json({ success: true, count: (saved.freightEnquiries || []).length });

@@ -227,11 +227,13 @@ describe('buildRowsFromQuote — the preparer\'s own chain, not a lookalike', ()
         expect(inferred[0].productSpec).toBe(preparer.inferProductSpecFromText(desc, inferred[0].size));
     });
 
-    test('UOM comes from the line item, and defaults the preparer\'s way when absent', () => {
+    test('UOM comes from the line item, and is left blank when the item does not say', () => {
         const rows = buildRowsFromQuote(QUOTE);
         expect(rows[0].uom).toBe('Mtrs');   // item.unit
         expect(rows[2].uom).toBe('MT');     // item.uom
-        expect(rows[1].uom).toBe('Nos');    // normalizeQuotation's default, not the tab's own
+        // Was 'Nos' — a guess, and the wrong one for pipe, printed as fact on a supplier enquiry.
+        // With no quote tableHTML to read a quantity heading from, the column stays empty.
+        expect(rows[1].uom).toBe('');
     });
 
     test('quantities are carried across', () => {

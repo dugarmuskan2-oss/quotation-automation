@@ -91,13 +91,51 @@
         return (typeof window !== 'undefined' && window.enquiryPreparerModel) ? window.enquiryPreparerModel : null;
     }
 
+    // The quantity heading the quote table ships with. Anything else means the user retyped it —
+    // usually to bill by weight ("WEIGHT (KGS)") — and we must not then claim metres.
+    var DEFAULT_QTY_HEADING = 'QTY (MTRS)';
+    var DEFAULT_UOM = 'Meters';
+
+    // Read the quantity column heading off the quote's own stored table.
+    // getPdfColLabelsFromTable (index.html) already resolves that heading, including the case
+    // where the user renamed it, so this defers to it rather than re-deriving the rule.
+    function qtyHeadingOf(quotation) {
+        var html = quotation && quotation.tableHTML;
+        if (!html || typeof document === 'undefined') return '';
+        if (typeof window === 'undefined' || typeof window.getPdfColLabelsFromTable !== 'function') return '';
+        try {
+            var holder = document.createElement('div');
+            holder.innerHTML = html;
+            var table = holder.querySelector('table');
+            if (!table) return '';
+            var labels = window.getPdfColLabelsFromTable(table);
+            return (labels && labels[2]) ? String(labels[2]).trim() : '';
+        } catch (e) {
+            return '';
+        }
+    }
+
+    // 'Meters' only while the quote still says it is quoting metres. If the heading was retyped,
+    // or we cannot read it at all, leave the column blank rather than guess a unit onto an
+    // enquiry that goes out to a supplier.
+    function defaultUomFor(quotation) {
+        var heading = qtyHeadingOf(quotation);
+        if (!heading) return '';
+        return heading.toUpperCase() === DEFAULT_QTY_HEADING ? DEFAULT_UOM : '';
+    }
+
     function buildRowsFromQuote(quotation) {
         var items = Array.isArray(quotation && quotation.lineItems) ? quotation.lineItems : [];
         var live = items.filter(function (li) { return li && !isFreightRow(li); });
+        var fallbackUom = defaultUomFor(quotation);
+        var applyUom = function (row) {
+            if (row && !row.uom) row.uom = fallbackUom;
+            return row;
+        };
         var model = preparerModel();
         if (model && model.normalizeQuotation && model.buildEnquiryRowModel) {
             var normalized = model.normalizeQuotation({ lineItems: live });
-            return (normalized ? normalized.lineItems : []).map(model.buildEnquiryRowModel);
+            return (normalized ? normalized.lineItems : []).map(model.buildEnquiryRowModel).map(applyUom);
         }
         // enquiry-preparer.js not loaded (it initialises on DOMContentLoaded). Same field names so
         // the table still renders; the tab re-renders once the model is available.
@@ -227,7 +265,7 @@
         fetch(apiBase() + '/quotations/' + encodeURIComponent(q.id) + '/supplier-enquiries', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ supplierEnquiries: getThreads(q) })
+            body: JSON.stringify({ supplierEnquiries: getThreads(q), enquirySentBodies: getSentBodies(q) })
         }).then(function (res) {
             if (!res.ok) console.error('Supplier enquiries not saved (' + res.status + ') for quote ' + q.id);
         }).catch(function (e) {
@@ -520,8 +558,38 @@
         loadSignature(function () { doSend(quotation, mountEl, st, subject, recipients); });
     }
 
+    // Keep a copy of what actually went out, so the shared quote page can show the enquiry back
+    // instead of only recording that one was sent.
+    //
+    // It is stored in q.enquirySentBodies, a top-level map, NOT inside the thread object: the
+    // thread arrays are projected into every quotations-list page, and a body is kilobytes.
+    // Inline base64 images (a pasted signature logo is routinely 100 kB) are dropped and the
+    // whole thing capped — losing a logo from a record costs nothing.
+    var MAX_SENT_HTML = 12000;
+    function trimSentBodyForStorage(html) {
+        var s = String(html || '')
+            .replace(/\ssrc\s*=\s*"data:[^"]*"/gi, ' src=""')
+            .replace(/\ssrc\s*=\s*'data:[^']*'/gi, " src=''");
+        return s.length > MAX_SENT_HTML ? s.slice(0, MAX_SENT_HTML) : s;
+    }
+
+    // Must match keyOf in routes/quotations.js, or a stored body never finds its thread again.
+    function enquiryBodyKey(t) {
+        return (t && t.threadId)
+            ? 'tid:' + t.threadId
+            : 'es:' + String((t && t.email) || '').toLowerCase() + '|' + String((t && t.sentAt) || '');
+    }
+
+    function getSentBodies(quotation) {
+        if (!quotation.enquirySentBodies || typeof quotation.enquirySentBodies !== 'object') {
+            quotation.enquirySentBodies = {};
+        }
+        return quotation.enquirySentBodies;
+    }
+
     function doSend(quotation, mountEl, st, subject, recipients) {
         var bodyHtml = messageToHtml(st.message, st.rows);
+        var storedBody = trimSentBodyForStorage(bodyHtml);
 
         Promise.all(recipients.map(function (addr) {
             return fetch(apiBase() + '/send-email', {
@@ -539,13 +607,16 @@
             st.sending = false;
             var threads = getThreads(quotation);
             var sentOk = results.filter(function (r) { return r.ok; });
+            var bodies = getSentBodies(quotation);
             sentOk.forEach(function (r) {
-                threads.push({
+                var t = {
                     email: r.addr,
                     threadId: (r.d && r.d.threadId) || '',
                     sentAt: new Date().toISOString(),
                     replied: false, replyText: '', rate: 0,
-                });
+                };
+                threads.push(t);
+                bodies[enquiryBodyKey(t)] = storedBody;
             });
             var failed = results.filter(function (r) { return !r.ok; });
             if (!failed.length) {
