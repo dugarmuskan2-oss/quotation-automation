@@ -55,7 +55,7 @@
         const totalEl = $('pipeWeightGrandTotal');
         if (totalEl) totalEl.textContent = formatKg(kg);
         const tonEl = $('pipeWeightGrandTotalTon');
-        if (tonEl) tonEl.textContent = ' (' + formatTonnes(kg) + ' T)';
+        if (tonEl) tonEl.textContent = ' (' + formatTonnes(kg) + ' Tonn)';
     }
 
     function resolveKgPerMeter(item, sizeKey) {
@@ -633,7 +633,7 @@
                     </thead>
                     <tbody>${tableRowsHtml}</tbody>
                 </table>
-                <div class="total">Total Weight: ${escapeHtml(grandTotal)} Kg (${escapeHtml(grandTotalTonnes)} T)</div>
+                <div class="total">Total Weight: ${escapeHtml(grandTotal)} Kg (${escapeHtml(grandTotalTonnes)} Tonn)</div>
             </body>
             </html>
         `;

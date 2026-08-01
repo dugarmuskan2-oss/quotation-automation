@@ -1709,7 +1709,7 @@
             </table>
 
             <div class="grand-total" style="margin-top: 12px;">
-                <span>Total Weight: <span id="pipeWeightGrandTotal">0.00</span> Kg<span id="pipeWeightGrandTotalTon"> (0 T)</span></span>
+                <span>Total Weight: <span id="pipeWeightGrandTotal">0.00</span> Kg<span id="pipeWeightGrandTotalTon"> (0 Tonn)</span></span>
             </div>
 
             <div style="display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap;">
@@ -11931,7 +11931,7 @@
         function sqFmtKg(n) { return Math.round(n).toLocaleString('en-IN'); }
         // Totals are shown in kilograms AND tonnes — transporters work in tonnes, the sheet in kg.
         // 1 T = 1000 kg. Trailing zeros dropped, so 5000 kg reads "5 T", not "5.00 T".
-        function sqFmtWeight(n) { return sqFmtKg(n) + ' kg (' + String(Number(((Number(n) || 0) / 1000).toFixed(2))) + ' T)'; }
+        function sqFmtWeight(n) { return sqFmtKg(n) + ' kg (' + String(Number(((Number(n) || 0) / 1000).toFixed(2))) + ' Tonn)'; }
         // Welded pipe (ERW/GI) only, mirroring rowIsSeamless in the freight module: the 7%
         // under-weight tolerance is a rolling allowance on welded pipe. Seamless is billed at
         // exact weight, so deducting from it understates the load.

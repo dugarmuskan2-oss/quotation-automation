@@ -40,7 +40,7 @@
         return String(Number(t.toFixed(2)));
     }
     // "12,345 kg (12.35 T)" — the pair used everywhere a total weight is printed.
-    function fmtWeight(kg) { return fmt(kg) + ' kg (' + fmtTonnes(kg) + ' T)'; }
+    function fmtWeight(kg) { return fmt(kg) + ' kg (' + fmtTonnes(kg) + ' Tonn)'; }
 
     // Keep a copy of the enquiry we sent, so the shared quote page can show it back rather than
     // only recording that one went out.
@@ -486,7 +486,7 @@
             // this line reading "17,945 kg (17.95 T) (2 items)" — two bracketed groups colliding
             // in an email that goes to transporters.
             + '• Weight: ' + (enqWeightUsable(st)
-                ? fmt(enqEffectiveWeight(st)) + ' kg (' + fmtTonnes(enqEffectiveWeight(st)) + ' T, '
+                ? fmt(enqEffectiveWeight(st)) + ' kg (' + fmtTonnes(enqEffectiveWeight(st)) + ' Tonn, '
                   + rows.length + ' item' + (rows.length === 1 ? '' : 's') + ')'
                 : '____ kg (' + rows.length + ' item' + (rows.length === 1 ? '' : 's') + ')') + '\n'
             + '• Material: MS pipes\n\n'

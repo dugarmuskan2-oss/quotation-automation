@@ -283,15 +283,15 @@ describe('buildSharedWeightHtml — 7% tolerance, welded only', () => {
         const out = buildSharedWeightHtml({ lineItems: [
             { originalDescription: '2" NB X Heavy -- ERW', quantity: '1000', kgPerMeter: '10' },
         ] });
-        expect(out).toContain('Total weight: 10,000 kg (10 T)');
-        expect(tolerance(out).trim()).toBe('9,300 kg (9.3 T)');
+        expect(out).toContain('Total weight: 10,000 kg (10 Tonn)');
+        expect(tolerance(out).trim()).toBe('9,300 kg (9.3 Tonn)');
     });
 
     test('an all-SEAMLESS quote shows no tolerance line at all — billed exact', () => {
         const out = buildSharedWeightHtml({ lineItems: [
             { originalDescription: '4" NB X Sch 40', quantity: '1000', kgPerMeter: '10' },
         ] });
-        expect(out).toContain('Total weight: 10,000 kg (10 T)');
+        expect(out).toContain('Total weight: 10,000 kg (10 Tonn)');
         expect(out).not.toContain('With tolerance');
     });
 
@@ -301,7 +301,7 @@ describe('buildSharedWeightHtml — 7% tolerance, welded only', () => {
             { originalDescription: '4" NB X Sch 40', quantity: '1000', kgPerMeter: '10' },        // 10,000 seamless
         ] });
         // 20,000 - 7% of the welded 10,000 = 19,300. A blanket 0.93 would have said 18,600.
-        expect(tolerance(out).trim()).toBe('19,300 kg (19.3 T)');
+        expect(tolerance(out).trim()).toBe('19,300 kg (19.3 Tonn)');
         expect(out).not.toContain('18,600');
     });
 

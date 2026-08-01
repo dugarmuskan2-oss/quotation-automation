@@ -450,7 +450,7 @@ describe('buildEnquiryDraft — the closing line and the [TABLE] placeholder', (
         const draft = buildEnquiryDraft(QUOTE, completeState());
         expect(draft).toContain('• Pickup: Raipur');
         expect(draft).toContain('• Drop: Nagpur');
-        expect(draft).toContain('• Weight: ' + inr(FULL_WEIGHT) + ' kg (17.95 T, 2 items)');
+        expect(draft).toContain('• Weight: ' + inr(FULL_WEIGHT) + ' kg (17.95 Tonn, 2 items)');
         expect(draft).toContain('• Material: MS pipes');
         expect(draft.trim().endsWith('Regards,\nDSC Pipes')).toBe(true);
     });
@@ -477,7 +477,7 @@ describe('freightItemsTableHtml — the consignment broken down per item', () =>
         const tbl = freightItemsTableHtml(completeState());
         expect(tbl).toContain('colspan="3"');
         expect(tbl).toContain('>Total</td>');
-        expect(tbl).toContain('>' + inr(FULL_WEIGHT) + ' kg (17.95 T)</td>');
+        expect(tbl).toContain('>' + inr(FULL_WEIGHT) + ' kg (17.95 Tonn)</td>');
     });
 
     test('no rows in scope -> no table at all (rather than an empty shell)', () => {
@@ -535,16 +535,16 @@ describe('THE GATE STILL HOLDS — a partial weight cannot sneak in via the item
     test('every row complete -> the total appears, in the draft and in the table', () => {
         const st = completeState();
         expect(enqWeightUsable(st)).toBe(true);
-        expect(buildEnquiryDraft(QUOTE, st)).toContain('• Weight: ' + inr(FULL_WEIGHT) + ' kg (17.95 T, 2 items)');
-        expect(freightItemsTableHtml(st)).toContain('>' + inr(FULL_WEIGHT) + ' kg (17.95 T)</td>');
+        expect(buildEnquiryDraft(QUOTE, st)).toContain('• Weight: ' + inr(FULL_WEIGHT) + ' kg (17.95 Tonn, 2 items)');
+        expect(freightItemsTableHtml(st)).toContain('>' + inr(FULL_WEIGHT) + ' kg (17.95 Tonn)</td>');
     });
 
     test('a typed weightOverride vouches for an incomplete load, and the total follows it', () => {
         const st = incompleteState();
         st.enquiry.weightOverride = 20000;
         expect(enqWeightUsable(st)).toBe(true);
-        expect(freightItemsTableHtml(st)).toContain('>' + inr(20000) + ' kg (20 T)</td>');
-        expect(buildEnquiryDraft(QUOTE, st)).toContain('• Weight: ' + inr(20000) + ' kg (20 T, 2 items)');
+        expect(freightItemsTableHtml(st)).toContain('>' + inr(20000) + ' kg (20 Tonn)</td>');
+        expect(buildEnquiryDraft(QUOTE, st)).toContain('• Weight: ' + inr(20000) + ' kg (20 Tonn, 2 items)');
     });
 });
 

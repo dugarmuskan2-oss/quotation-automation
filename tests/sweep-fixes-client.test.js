@@ -279,7 +279,7 @@ describe('freight enquiry weight gate — split-shipment scoping', () => {
         expect(enqScopeComplete(st)).toBe(true);
         expect(enqWeightUsable(st)).toBe(true);
         expect(enqEffectiveWeight(st)).toBe(18790);
-        expect(buildEnquiryDraft(QUOTE, st)).toContain('• Weight: ' + inr(18790) + ' kg (18.79 T, 2 items)');
+        expect(buildEnquiryDraft(QUOTE, st)).toContain('• Weight: ' + inr(18790) + ' kg (18.79 Tonn, 2 items)');
     });
 
     test('scoping to the incomplete shipment 1 shuts the gate again', () => {
