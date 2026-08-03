@@ -195,17 +195,39 @@
         return isFinite(n) && n > 0 ? '₹' + n.toLocaleString('en-IN') : '';
     }
 
+    // How much of [a, b) falls on a Sunday, in milliseconds (local time).
+    // Sundays are deducted from the enquiry→quote gap because the office is shut, so they should
+    // not count against the team. SATURDAYS ARE WORKED and are counted in full.
+    function sundayMsBetween(a, b) {
+        var total = 0;
+        var day = new Date(a.getFullYear(), a.getMonth(), a.getDate());
+        while (day < b) {
+            var next = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1);
+            if (day.getDay() === 0) {                       // 0 = Sunday
+                var from = day > a ? day : a;               // clip to the actual span
+                var to = next < b ? next : b;
+                if (to > from) total += to - from;
+            }
+            day = next;
+        }
+        return total;
+    }
+
     // Whole days between enquiry received and quote sent ('' until sent).
-    // Whole 24-HOUR periods elapsed, not calendar days. An enquiry at 5pm Monday quoted at 9am
-    // Tuesday is 16 hours — that is 0 days, not the 1 a calendar comparison would report. Sundays
-    // and holidays are not skipped: this is raw elapsed time.
+    // Whole 24-HOUR periods of WORKING time, not calendar days. An enquiry at 5pm Monday quoted
+    // at 9am Tuesday is 16 hours — that is 0 days, not the 1 a calendar comparison would report.
+    // Sunday hours are removed; Saturdays and holidays are not.
     function daysBetween(enquiryIso, sentIso) {
         if (!enquiryIso || !sentIso) return '';
         var a = new Date(enquiryIso), b = new Date(sentIso);
         if (isNaN(a.getTime()) || isNaN(b.getTime())) return '';
-        // Math.floor keeps a sent-before-received anomaly NEGATIVE and therefore visible, rather
-        // than blanking it — bad data you can see beats bad data you cannot.
-        return String(Math.floor((b - a) / 3600000 / 24));
+        var ms = b - a;
+        // Only deduct on a forward span. Taking Sundays out of a sent-before-received anomaly
+        // would shrink it towards zero and hide the very thing the negative number is there to show.
+        if (ms > 0) ms -= sundayMsBetween(a, b);
+        // Math.floor keeps that anomaly NEGATIVE and therefore visible, rather than blanking it —
+        // bad data you can see beats bad data you cannot.
+        return String(Math.floor(ms / 3600000 / 24));
     }
 
     function statusPillHtml(status) {

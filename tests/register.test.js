@@ -42,7 +42,7 @@ function loadFns(names) {
     return new Function(body + '\nreturn ' + names[names.length - 1] + ';')();
 }
 
-const daysBetween = loadFns(['daysBetween']);
+const daysBetween = loadFns(['sundayMsBetween', 'daysBetween']);
 const fmtValue = loadFns(['fmtValue']);
 const fmtDay = loadFns(['fmtDay']);
 const parseLabel = loadFns(['parseLabel']);
@@ -135,9 +135,31 @@ describe('daysBetween — Recd → Sent difference', () => {
         expect(daysBetween('2026-07-27T09:00:00', '2026-07-28T10:00:00')).toBe('1');
     });
 
-    test('Sundays are NOT skipped — this is raw elapsed time', () => {
-        // Friday 09:00 -> Monday 09:00 is 72 hours across a Sunday
-        expect(daysBetween('2026-07-31T09:00:00', '2026-08-03T09:00:00')).toBe('3');
+    // Sunday hours are deducted — the office is shut, so a Sunday must not count against the
+    // team. SATURDAYS ARE WORKED and still count in full.
+    test('a Sunday in the middle is not counted', () => {
+        // Friday 09:00 -> Monday 09:00 is 72 elapsed hours, one full day of which is a Sunday.
+        expect(daysBetween('2026-07-31T09:00:00', '2026-08-03T09:00:00')).toBe('2');
+    });
+
+    test('Saturday still counts in full', () => {
+        expect(daysBetween('2026-07-31T09:00:00', '2026-08-01T09:00:00')).toBe('1');   // Fri -> Sat
+    });
+
+    test('only the Sunday PART of a span is removed, not the whole day it touches', () => {
+        // Sat 09:00 -> Sun 09:00 is 24h, but 9 of those fall on Sunday: 15h left, so 0 days.
+        expect(daysBetween('2026-08-01T09:00:00', '2026-08-02T09:00:00')).toBe('0');
+        // Sat 09:00 -> Mon 09:00 is 48h minus a whole Sunday = 24h.
+        expect(daysBetween('2026-08-01T09:00:00', '2026-08-03T09:00:00')).toBe('1');
+    });
+
+    test('a full week loses exactly one day', () => {
+        expect(daysBetween('2026-07-27T09:00:00', '2026-08-03T09:00:00')).toBe('6');   // Mon -> Mon
+    });
+
+    test('a long span loses one day per Sunday it crosses', () => {
+        // Mon 1 Jun -> Mon 29 Jun 2026 is 28 days spanning 4 Sundays.
+        expect(daysBetween('2026-06-01T09:00:00', '2026-06-29T09:00:00')).toBe('24');
     });
     test('spans month and year boundaries', () => {
         expect(daysBetween('2026-06-29T10:00:00', '2026-07-02T10:00:00')).toBe('3');
