@@ -3884,13 +3884,31 @@
         // Keep the words, the table structure and any inline styling; drop the hooks into our UI.
         function sanitizeRichNoteHtml(html) {
             if (!html) return '';
-            // Controls go FIRST, and go entirely. sanitizeEmailHtmlForPreview replaces an unknown
-            // tag with its text — right for an email, wrong here: it turned the copied toolbar
-            // into the stray words "+ H+ M+ Delete" sitting in the middle of the note. A button's
-            // label is a control, not something the admin wrote.
             const pre = document.createElement('div');
             pre.innerHTML = String(html);
-            pre.querySelectorAll('button, input, select, option, textarea').forEach(function(el) { el.remove(); });
+            // A button is pure control — drop it, label and all. sanitizeEmailHtmlForPreview
+            // would otherwise replace it with its text, leaving the copied toolbar behind as the
+            // stray words "+ H+ M+ Delete" in the middle of the note.
+            pre.querySelectorAll('button').forEach(function(el) { el.remove(); });
+            // An input/textarea/select is the OPPOSITE case: on our screens the cell values live
+            // inside them, not as text, so deleting them would take the whole table's data with
+            // them — description, quantity, margin, everything — and leave only the headings.
+            // Replace each with what it actually holds.
+            pre.querySelectorAll('input, textarea, select').forEach(function(el) {
+                const tag = el.tagName;
+                let value;
+                if (tag === 'SELECT') {
+                    const picked = el.selectedOptions && el.selectedOptions[0];
+                    value = picked ? picked.textContent : (el.value || '');
+                } else if (tag === 'TEXTAREA') {
+                    value = el.value || el.textContent || '';
+                } else if (/^(checkbox|radio|hidden|submit|button|image|reset)$/i.test(el.type || '')) {
+                    value = '';                     // a tick box carries no text worth keeping
+                } else {
+                    value = el.value || el.getAttribute('value') || '';
+                }
+                el.replaceWith(document.createTextNode(value));
+            });
             const clean = sanitizeEmailHtmlForPreview(pre.innerHTML);
             if (!clean) return '';
             const box = document.createElement('div');

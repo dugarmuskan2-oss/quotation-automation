@@ -361,11 +361,20 @@ describe('source guard — pasted notes are stripped of our own UI hooks', () =>
         expect(body).toContain("el.removeAttribute('id')");
     });
 
-    test('controls are dropped whole, BEFORE the tag sanitiser turns them into stray words', () => {
+    test('buttons are dropped whole, BEFORE the tag sanitiser turns them into stray words', () => {
         // sanitizeEmailHtmlForPreview replaces an unknown tag with its text, which left the
         // copied toolbar behind as the words "+ H+ M+ Delete" inside the note.
-        expect(body).toContain("pre.querySelectorAll('button, input, select, option, textarea')");
+        expect(body).toContain("pre.querySelectorAll('button')");
         expect(body.indexOf('.remove(); })')).toBeLessThan(body.indexOf('sanitizeEmailHtmlForPreview(pre.innerHTML)'));
+    });
+
+    test('but value-carrying controls are CONVERTED, never deleted', () => {
+        // On our screens the cell values live inside input/textarea, not as text. Deleting them
+        // alongside the buttons took the whole table's data with it — an early cut of this fix
+        // did exactly that, leaving a pasted quote table as nothing but its column headings.
+        expect(body).toContain("pre.querySelectorAll('input, textarea, select')");
+        expect(body).toContain('el.replaceWith(document.createTextNode(value));');
+        expect(body).not.toContain("querySelectorAll('button, input, select, option, textarea')");
     });
 
     test('it does NOT call itself — the first cut accidentally recursed', () => {
