@@ -340,8 +340,11 @@ describe('source guards — the soft-delete filters stay put', () => {
         expect(extractFunction(html, 'loadQuotationsFromBackend')).toContain('!q.deleted');
     });
 
-    test('BOTH server-merge paths skip deleted quotes (!f.deleted)', () => {
-        expect(extractFunction(html, 'applyApprovalServerFilter')).toContain('!f.deleted');
+    test('BOTH server-merge paths skip deleted quotes', () => {
+        // applyApprovalServerFilter was rewritten with an early return (it now also refreshes
+        // quotes it has already loaded), so the old `!f.deleted` literal is gone. What matters —
+        // a soft-deleted quote must not come back as a live card — is unchanged.
+        expect(extractFunction(html, 'applyApprovalServerFilter')).toContain('f.deleted) return;');
         expect(extractFunction(html, 'serverSearchApprovedQuotations')).toContain('!f.deleted');
     });
 

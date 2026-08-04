@@ -73,6 +73,8 @@ const FILTER_FNS = [
     'approvalMonthOf',
     'quoteMonthClient',
     'quoteHasFreightActivityClient',
+    // getFilteredApprovedQuotations asks this which filter the server's answer belongs to.
+    'approvalFilterKey',
     'approvalFilterLabel',
     'approvalFilteredEmptyHtml',
     'getFilteredApprovedQuotations',
@@ -102,6 +104,9 @@ function loadFilters(st, fakeDocument) {
         'var approvalSearchQuery = st.approvalSearchQuery || "";',
         'var approvalFilterLoading = !!st.approvalFilterLoading;',
         'var approvalFilterFetchFailed = !!st.approvalFilterFetchFailed;',
+        // The server's authoritative answer for the active filter (null until it lands).
+        'var approvalServerFilterKey = st.approvalServerFilterKey || null;',
+        'var approvalServerFilterIds = st.approvalServerFilterIds || null;',
         extractConst(html, 'APPROVAL_MONTHS'),
         extractConst(html, 'APPROVAL_MNAMES'),
     ].join('\n');
@@ -116,6 +121,7 @@ function loadFilters(st, fakeDocument) {
         + 'initApprovalFilters: initApprovalFilters,'
         + 'quoteNeedsRevisionClient: quoteNeedsRevisionClient,'
         + 'approvalRevisionCount: approvalRevisionCount,'
+        + 'approvalFilterKey: approvalFilterKey,'
         + 'state: function () { return { approvalMonthFilter: approvalMonthFilter, approvalFreightFilter: approvalFreightFilter }; }'
         + '};';
     // eslint-disable-next-line no-new-func
@@ -479,7 +485,9 @@ describe('index.html source guards — filter-aware "Load more" and merges', () 
     });
 
     test('BOTH server merge loops skip soft-deleted quotes', () => {
-        expect(serverFilterFn).toContain('!f.deleted');
+        // The merge was rewritten with an early return, so the old `!f.deleted` literal is gone.
+        // The guard's real subject is unchanged: a soft-deleted quote must not become a live card.
+        expect(serverFilterFn).toContain('f.deleted) return;');
         expect(serverSearchFn).toContain('!f.deleted');
         // …and the feed loader drops them as well.
         expect(loadFeedFn).toContain('!q.deleted');
@@ -530,5 +538,55 @@ describe('index.html source guards — filter-aware "Load more" and merges', () 
         const showAll = extractFunction(html, 'approvalShowAllMonths');
         expect(showAll).toContain('displayAllApprovedQuotations();');
         expect(showAll).not.toContain('applyApprovalServerFilter');   // no server call needed
+    });
+});
+
+// ── Reported: "the revision button shows wrong quote folders sometimes" ───────────────
+//
+// The list was built by re-filtering THIS TAB's own copy of every quote. Those copies go
+// stale the moment anyone else acts: a colleague sends the revised quote, the server clears
+// the ask, and this tab carries on showing that quote under Revision. The server filter
+// endpoint scans the whole table, so its answer is complete — it is now what the list uses,
+// with the local predicate kept only as an instant fallback until that answer arrives.
+
+describe('source guard — the server answer wins over this tab\'s stale copies', () => {
+    const fs2 = require('fs');
+    const path2 = require('path');
+    const html2 = fs2.readFileSync(path2.join(__dirname, '..', 'index.html'), 'utf8');
+
+    test('the render filters by the ids the server returned, not by a local re-derivation', () => {
+        expect(html2).toContain('function approvalFilterKey(');
+        expect(html2).toContain('approvalServerFilterKey === key && approvalServerFilterIds');
+        expect(html2).toContain('list.filter(function(q) { return q && ids.has(String(q.id)); })');
+    });
+
+    test('a quote already loaded gets its server-owned fields refreshed, not skipped', () => {
+        // The old merge pushed only quotes it had never seen, so an hours-old copy stayed put.
+        expect(html2).toContain('SERVER_OWNED_LIST_FIELDS.forEach(');
+        expect(html2).toMatch(/SERVER_OWNED_LIST_FIELDS = \[[^\]]*'revisionRequests'/);
+        expect(html2).toMatch(/SERVER_OWNED_LIST_FIELDS = \[[^\]]*'freightEnquiries'/);
+        expect(html2).toMatch(/SERVER_OWNED_LIST_FIELDS = \[[^\]]*'supplierEnquiries'/);
+    });
+
+    test('a new filter drops the previous answer, so it cannot be applied to the wrong filter', () => {
+        const fn = html2.slice(html2.indexOf('async function applyApprovalServerFilter('));
+        const head = fn.slice(0, fn.indexOf('if (!params) return;'));
+        expect(head).toContain('approvalServerFilterKey = null;');
+        expect(head).toContain('approvalServerFilterIds = null;');
+    });
+
+    test('the badge counts the same set the list shows', () => {
+        const fn = html2.slice(html2.indexOf('function approvalRevisionCount('));
+        expect(fn.slice(0, 400)).toContain("approvalServerFilterKey === 'revision'");
+    });
+
+    test('the fallback survives a failed fetch — the list is never silently emptied', () => {
+        // On failure the ids stay null, so getFilteredApprovedQuotations uses the local predicate.
+        const fn = html2.slice(html2.indexOf('async function applyApprovalServerFilter('));
+        const body = fn.slice(0, fn.indexOf('\n        function '));
+        expect(body).toContain('approvalFilterFetchFailed = true;');
+        // The ids are only ever SET on the success path, so a failure leaves them null.
+        expect(body.indexOf('approvalServerFilterIds = liveIds;'))
+            .toBeLessThan(body.indexOf('approvalFilterFetchFailed = true;'));
     });
 });

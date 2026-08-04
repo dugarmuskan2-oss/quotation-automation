@@ -6966,8 +6966,40 @@
             return doesMonthMatchQuery(normalizedQuery, quotation.quotationDate || '');
         }
 
+        // Which filter the ids in approvalServerFilterIds belong to; null when we have no
+        // server answer yet (first paint, or the fetch failed) and must fall back to the local
+        // predicates below.
+        let approvalServerFilterKey = null;
+        let approvalServerFilterIds = null;
+
+        // Fields the SERVER owns (it ignores whatever a client posts for them — see SERVER_OWNED
+        // in routes/quotations.js). Because they change through other people's actions rather than
+        // this form, a fresh copy from the server is always the better one, and refreshing them
+        // cannot throw away anything the user has typed here.
+        const SERVER_OWNED_LIST_FIELDS = ['revisionRequests', 'extraNotes', 'freightEnquiries',
+            'supplierEnquiries', 'transporterReplyIn'];
+
+        function approvalFilterKey() {
+            if (approvalEnquiryFilter) return 'enquiry';
+            if (approvalRevisionFilter) return 'revision';
+            if (approvalFreightFilter) return 'freight';
+            return approvalMonthFilter ? 'month:' + approvalMonthFilter : '';
+        }
+
         function getFilteredApprovedQuotations(query) {
             let list = approvedQuotations.slice();
+            // The server's answer wins when we have one. The local predicates below read this
+            // tab's OWN copy of each quote, which goes stale the moment anyone else acts on it —
+            // a colleague sending the revised quote clears the ask on the server, but this tab
+            // still holds the old copy and kept showing that quote under the Revision button.
+            const key = approvalFilterKey();
+            if (key && approvalServerFilterKey === key && approvalServerFilterIds) {
+                const ids = approvalServerFilterIds;
+                list = list.filter(function(q) { return q && ids.has(String(q.id)); });
+                const normalizedQ = normalizeSearchText(query);
+                if (normalizedQ) list = list.filter(function(q) { return matchesApprovalSearch(q, normalizedQ); });
+                return list;
+            }
             if (approvalEnquiryFilter) {
                 // supplier enquiries span all months too
                 list = list.filter(function(q) { return typeof quoteHasSupplierEnquiry === 'function' && quoteHasSupplierEnquiry(q); });
@@ -7088,7 +7120,12 @@
             return openRevisionRequests(q).length > 0;
         }
         // How many quotes are waiting on a revision — drives the red count on the Revision button.
+        // Once the server has given us its answer, count THAT: otherwise the badge and the list it
+        // opens could disagree, the badge counting a stale local copy the list had already dropped.
         function approvalRevisionCount() {
+            if (approvalServerFilterKey === 'revision' && approvalServerFilterIds) {
+                return approvalServerFilterIds.size;
+            }
             return approvedQuotations.filter(quoteNeedsRevisionClient).length;
         }
         // Close every open ask on a quote. Kept (not deleted) so History still shows what was asked.
@@ -7311,6 +7348,10 @@
         async function applyApprovalServerFilter() {
             const mySeq = ++_approvalFilterSeq;
             approvalFilterFetchFailed = false;
+            // The previous answer belonged to the previous filter — drop it, so this render falls
+            // back to the local predicates (instant, if imperfect) until the fresh answer lands.
+            approvalServerFilterKey = null;
+            approvalServerFilterIds = null;
             const params = approvalEnquiryFilter ? 'enquiry=1'
                 : (approvalRevisionFilter ? 'revision=1'
                 : (approvalFreightFilter ? 'freight=1'
@@ -7324,11 +7365,26 @@
                 const data = await safeJsonParse(res);
                 if (mySeq !== _approvalFilterSeq) return;   // a newer month/freight pick superseded this
                 const found = Array.isArray(data.quotations) ? data.quotations : [];
+                const liveIds = new Set();
                 found.forEach(function(f) {
                     // Skip soft-deleted (accidental) quotes the way the feed loader does — this endpoint
                     // still returns them, and without the guard a deleted quote reappears as a live card.
-                    if (f && f.id != null && !f.deleted && !approvedQuotations.some(function(x){ return idsMatch(x.id, f.id); })) { approvedQuotations.push(f); }
+                    if (!f || f.id == null || f.deleted) return;
+                    liveIds.add(String(f.id));
+                    const existing = approvedQuotations.find(function(x){ return idsMatch(x.id, f.id); });
+                    if (!existing) { approvedQuotations.push(f); return; }
+                    // Already loaded: refresh the fields the SERVER owns. Skipping this left an
+                    // hours-old copy in place, so the card could still show an ask a colleague
+                    // had already dealt with. These are never edited in the form, so copying
+                    // them over cannot discard the user's unsaved work.
+                    SERVER_OWNED_LIST_FIELDS.forEach(function(k) {
+                        if (Object.prototype.hasOwnProperty.call(f, k)) existing[k] = f[k];
+                    });
                 });
+                // Remember the authoritative set so the render stops re-deriving it from this
+                // tab's own copies (see getFilteredApprovedQuotations).
+                approvalServerFilterKey = approvalFilterKey();
+                approvalServerFilterIds = liveIds;
                 syncApprovedQuotationsGlobal();
             } catch (e) {
                 if (mySeq !== _approvalFilterSeq) return;   // an abandoned request's failure isn't ours to report
