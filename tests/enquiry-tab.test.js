@@ -42,9 +42,11 @@
  *     cannot wipe it.
  *
  *  7. BCC SEND. Each supplier gets their own email with the supplier on Bcc, so nobody sees
- *     anyone else. That means a message with NO To — buildRawMessage must emit the standard
- *     "To: undisclosed-recipients:;" placeholder (an empty To: is malformed), and the send route
- *     must accept a bcc-only request while still rejecting one with no recipient at all.
+ *     anyone else. That means a message with NO To. It first emitted the RFC group placeholder
+ *     "To: undisclosed-recipients:;" — valid by the spec, but the Gmail API rejects it outright
+ *     ("Invalid To header"), so every supplier enquiry failed to send. sendEmail now addresses
+ *     such a message to our own mailbox, and buildRawMessage omits a To it does not have. The
+ *     send route must still accept a bcc-only request while rejecting one with no recipient.
  *
  * NOTES ON HOW THE BROWSER MODULES ARE LOADED (reality, not the brief):
  *   - enquiry-preparer.js does NOT export defaultHeaderText on its `_test` object; that function
@@ -986,24 +988,38 @@ function headersOf(raw) {
 describe('buildRawMessage — a Bcc-only message is still well-formed', () => {
     const base = { subject: 'Enquiry — DSC-700', bodyHtml: '<p>Please quote.</p>' };
 
-    test('no To at all: the standard undisclosed-recipients placeholder is used', () => {
+    // REPORTED: every supplier enquiry failed with "Failed to send email: Invalid To header".
+    // This used to emit the RFC group placeholder "undisclosed-recipients:;" for a Bcc-only
+    // message. That is valid by the spec, but the Gmail API refuses it. sendEmail now fills
+    // `to` with our own address before building; buildRawMessage simply omits a To it does not
+    // have, which Gmail accepts — rather than inventing one Gmail will reject.
+    test('the placeholder Gmail rejects is never emitted', () => {
         const headers = headersOf(buildRawMessage(Object.assign({ bcc: 'supplier-a@steel.com' }, base)));
-        expect(headers[0]).toBe('To: undisclosed-recipients:;');
+        expect(headers.join('\n')).not.toContain('undisclosed-recipients');
         expect(headers).toContain('Bcc: supplier-a@steel.com');
+    });
+
+    test('no To given: no To header at all, rather than an empty or invented one', () => {
+        const headers = headersOf(buildRawMessage(Object.assign({ bcc: 'supplier-a@steel.com' }, base)));
+        expect(headers.filter((h) => /^To:/.test(h))).toHaveLength(0);
+        expect(headers.join('\n')).not.toContain('To: undefined');
+        expect(headers.join('\n')).not.toMatch(/^To:\s*$/m);
     });
 
     test('an empty-string To (what the Enquiry tab posts) is treated the same', () => {
         const headers = headersOf(buildRawMessage(Object.assign({ to: '', bcc: 'supplier-a@steel.com' }, base)));
-        expect(headers[0]).toBe('To: undisclosed-recipients:;');
+        expect(headers.filter((h) => /^To:/.test(h))).toHaveLength(0);
     });
 
-    test('the To header is never left empty or "undefined" on a Bcc-only send', () => {
-        const headers = headersOf(buildRawMessage(Object.assign({ bcc: 'supplier-a@steel.com' }, base)));
-        const to = headers.filter((h) => /^To:/.test(h));
-        expect(to).toHaveLength(1);
-        expect(to[0]).not.toBe('To: ');
-        expect(to[0]).not.toBe('To: undefined');
-        expect(to[0].trim()).not.toBe('To:');
+    test('sendEmail addresses a Bcc-only message to our own mailbox', () => {
+        // Source guard: the fill happens in sendEmail, which needs a live Gmail client.
+        const src = require('fs').readFileSync(
+            require('path').join(__dirname, '..', 'utils', 'gmail.js'), 'utf8');
+        expect(src).toContain('if (!to && !cc && bcc) to = await getOwnAddress();');
+        expect(src).toContain('gmail.users.getProfile({ userId: \'me\' })');
+        // …and it must run BEFORE the message is built, or it would have no effect.
+        const fn = src.slice(src.indexOf('async function sendEmail('));
+        expect(fn.indexOf('getOwnAddress()')).toBeLessThan(fn.indexOf('buildRawMessage('));
     });
 
     test('a real To is used verbatim, with no placeholder', () => {

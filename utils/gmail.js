@@ -107,12 +107,13 @@ function buildRawMessage({ to, subject, bodyHtml, pdfBase64, pdfFilename, inRepl
     content = multipartEntity('mixed', [content, pdfEntity(pdfBase64, pdfFilename)]);
   }
 
-  // A Bcc-only message (the supplier enquiry) has no To. Emitting an empty `To:` makes the
-  // message malformed, so use the standard placeholder instead — the Bcc still receives it.
+  // Only emit To when there is a real address. A Bcc-only message (the supplier enquiry) used
+  // the RFC group placeholder "undisclosed-recipients:;" here — valid by the spec, but the Gmail
+  // API rejects it outright with "Invalid To header", so every supplier enquiry failed to send.
+  // sendEmail now fills `to` with our own address for Bcc-only mail; if that lookup fails we
+  // send with no To header at all, which Gmail accepts, rather than one it refuses.
   const headers = [];
   if (to) headers.push(`To: ${to}`);
-  else if (bcc) headers.push('To: undisclosed-recipients:;');
-  else headers.push(`To: ${to}`);
   if (cc) headers.push(`Cc: ${cc}`);
   if (bcc) headers.push(`Bcc: ${bcc}`);
   headers.push(`Subject: =?UTF-8?B?${Buffer.from(subject || '', 'utf8').toString('base64')}?=`);
@@ -128,8 +129,29 @@ function buildRawMessage({ to, subject, bodyHtml, pdfBase64, pdfFilename, inRepl
  * Send an email via Gmail API.
  * Returns { messageId, threadId } on success.
  */
+// The address this mailbox sends as. Looked up once — it cannot change for a given refresh
+// token, and a Bcc-only message needs it so the To header is a real address.
+let _ownAddress = null;
+async function getOwnAddress() {
+  if (_ownAddress !== null) return _ownAddress;
+  try {
+    const gmail = createGmailClient();
+    const me = await gmail.users.getProfile({ userId: 'me' });
+    _ownAddress = (me.data && me.data.emailAddress) || '';
+  } catch (err) {
+    console.error('Could not read the sending address:', err.message);
+    _ownAddress = '';
+  }
+  return _ownAddress;
+}
+
 async function sendEmail({ to, subject, bodyHtml, pdfBase64, pdfFilename, threadId, inReplyTo, references, cc, bcc }) {
   const gmail = createGmailClient();
+  // A supplier enquiry goes out one-per-supplier with the supplier on Bcc, so nobody sees who
+  // else was asked — which leaves no To. Address it to ourselves: Gmail refuses the RFC
+  // "undisclosed-recipients:;" placeholder, and the supplier seeing our own address in To is
+  // both accurate and unremarkable.
+  if (!to && !cc && bcc) to = await getOwnAddress();
   const raw = buildRawMessage({ to, subject, bodyHtml, pdfBase64, pdfFilename, inReplyTo, references, cc, bcc });
   const requestBody = { raw };
   if (threadId) requestBody.threadId = threadId;
