@@ -138,3 +138,38 @@ describe('source guard — the compose dialog + send-flow wiring', () => {
         expect(html).toContain("if (win) { win.location = url; } else { window.open(url, '_blank'); }");
     });
 });
+
+// ── Reported: the regret window's To box held the display name as a recipient ─────────
+//
+// Gmail returns the whole From header, e.g. "Jayachandran.Jayaraman"
+// <Jayachandran.Jayaraman@larsentoubro.com>. Seeding the chip field with that raw string
+// split it on the space into TWO chips: the display name (flagged invalid, since a name is
+// not an address) and "<addr>". sendQuotationToCustomer already extracted the bare address
+// and said so in a comment; mdkRegret did not, so only the regret window was wrong.
+
+describe('the regret window seeds ONE recipient: the bare address', () => {
+    const fs2 = require('fs');
+    const path2 = require('path');
+    const html2 = fs2.readFileSync(path2.join(__dirname, '..', 'index.html'), 'utf8');
+    const mdkRegret = html2.slice(html2.indexOf('async function mdkRegret('));
+    const body = mdkRegret.slice(0, mdkRegret.indexOf('\n        }'));
+
+    test('the To list is built from bareEmailFromHeader, not the raw header', () => {
+        expect(body).toContain('bareEmailFromHeader(thread.fromEmail)');
+        expect(body).toContain('to: senderAddress ? [senderAddress] : []');
+        // The raw header must not reach the recipient box any more.
+        expect(body).not.toContain('to: (thread && thread.fromEmail) ? [thread.fromEmail] : []');
+    });
+
+    test('the "replies in the thread with…" note shows the address that will actually be used', () => {
+        expect(body).toContain("'Replies in the original thread with ' + senderAddress");
+    });
+
+    test('the real header from the report yields exactly one clean address', () => {
+        const header = '"Jayachandran.Jayaraman" <Jayachandran.Jayaraman@larsentoubro.com>';
+        expect(bareEmailFromHeader(header)).toBe('Jayachandran.Jayaraman@larsentoubro.com');
+        // What the old code did: one raw string that a space-split turns into two chips.
+        expect(header.split(/\s+/).length).toBeGreaterThan(1);
+        expect(bareEmailFromHeader(header).split(/\s+/)).toHaveLength(1);
+    });
+});

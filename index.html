@@ -8298,15 +8298,21 @@
                 // no way to soften a word for a particular customer.
                 const thread = await fetch(`${API_BASE_URL}/resolve-thread?messageId=${encodeURIComponent(q.gmailMessageId)}`)
                     .then(function(r) { return r.json(); }).catch(function() { return null; });
+                // Gmail hands back the whole From header — "Jane Doe" <jane@x.com>. Seeding the
+                // recipient box with that raw string split it on the space into TWO chips: the
+                // display name (flagged invalid, since it is not an address) and "<jane@x.com>".
+                // Only the bare address is a recipient. The quotation send path already did this;
+                // the regret path did not.
+                const senderAddress = (thread && thread.fromEmail) ? bareEmailFromHeader(thread.fromEmail) : '';
                 const composed = await composeQuotationEmail({
                     title: 'Send regret to ' + company,
                     subtitle: 'Review and edit the reply below, then send. It goes back in the original email thread.',
                     noAttachment: true,
-                    to: (thread && thread.fromEmail) ? [thread.fromEmail] : [],
+                    to: senderAddress ? [senderAddress] : [],
                     subject: (thread && thread.subject) ? replySubjectLocal(thread.subject) : 'Re: Your enquiry',
                     bodyHtml: await regretEmailBodyHtml(),
-                    threadNote: (thread && thread.fromEmail)
-                        ? 'Replies in the original thread with ' + thread.fromEmail
+                    threadNote: senderAddress
+                        ? 'Replies in the original thread with ' + senderAddress
                         : 'Could not read the original thread — check the recipient below.'
                 });
                 if (!composed) return;   // cancelled
