@@ -3875,6 +3875,33 @@
             return wrapper.innerHTML;
         }
 
+        // For notes and revision asks — content the user pastes, often copied from the app's OWN
+        // screens. sanitizeEmailHtmlForPreview keeps class and id (an email preview wants them,
+        // and a stranger's class names match nothing of ours). Our own markup is different: our
+        // stylesheet recognises those classes and re-dresses the paste as a live quotation table,
+        // fake "Enter Section Name" bar and dead buttons included. Duplicated ids are worse than
+        // ugly — getElementById can start finding the pasted copy instead of the real control.
+        // Keep the words, the table structure and any inline styling; drop the hooks into our UI.
+        function sanitizeRichNoteHtml(html) {
+            if (!html) return '';
+            // Controls go FIRST, and go entirely. sanitizeEmailHtmlForPreview replaces an unknown
+            // tag with its text — right for an email, wrong here: it turned the copied toolbar
+            // into the stray words "+ H+ M+ Delete" sitting in the middle of the note. A button's
+            // label is a control, not something the admin wrote.
+            const pre = document.createElement('div');
+            pre.innerHTML = String(html);
+            pre.querySelectorAll('button, input, select, option, textarea').forEach(function(el) { el.remove(); });
+            const clean = sanitizeEmailHtmlForPreview(pre.innerHTML);
+            if (!clean) return '';
+            const box = document.createElement('div');
+            box.innerHTML = clean;
+            box.querySelectorAll('[class], [id]').forEach(function(el) {
+                el.removeAttribute('class');
+                el.removeAttribute('id');
+            });
+            return box.innerHTML;
+        }
+
         function buildEmailContentPreviewHTML(quotation) {
             const htmlPreview = sanitizeEmailHtmlForPreview(quotation.emailContentHtml);
             if (htmlPreview) {
@@ -7181,8 +7208,8 @@
         // PUBLIC Copy Link page, so this must never inject raw stored markup.
         function revisionTextHtml(text) {
             const raw = String(text || '');
-            return (typeof sanitizeEmailHtmlForPreview === 'function')
-                ? sanitizeEmailHtmlForPreview(raw)
+            return (typeof sanitizeRichNoteHtml === 'function')
+                ? sanitizeRichNoteHtml(raw)
                 : escapeHtml(raw);
         }
 
@@ -7217,7 +7244,7 @@
                 const valueOf = function() {
                     if (!o.rich) return ta.value;
                     const raw = ta.innerHTML;
-                    return (typeof sanitizeEmailHtmlForPreview === 'function') ? sanitizeEmailHtmlForPreview(raw) : escapeHtml(raw);
+                    return (typeof sanitizeRichNoteHtml === 'function') ? sanitizeRichNoteHtml(raw) : escapeHtml(raw);
                 };
                 if (o.rich) {
                     ta.addEventListener('paste', function(e) {
@@ -7225,7 +7252,7 @@
                         const pasted = cd && cd.getData && cd.getData('text/html');
                         if (!pasted) return;                 // plain text — let the browser handle it
                         e.preventDefault();
-                        const clean = (typeof sanitizeEmailHtmlForPreview === 'function') ? sanitizeEmailHtmlForPreview(pasted) : '';
+                        const clean = (typeof sanitizeRichNoteHtml === 'function') ? sanitizeRichNoteHtml(pasted) : '';
                         if (clean) document.execCommand('insertHTML', false, clean);
                         else document.execCommand('insertText', false, (cd.getData('text/plain') || ''));
                     });
@@ -7993,7 +8020,7 @@
         }
 
         function adminNoteHtml(q, big) {
-            const clean = sanitizeEmailHtmlForPreview(decodeEscapedNoteMarkup((q && q.adminNote) || ''));
+            const clean = sanitizeRichNoteHtml(decodeEscapedNoteMarkup((q && q.adminNote) || ''));
             if (!clean || !clean.replace(/<br\s*\/?>|&nbsp;|\s/gi, '')) return '';
             return '<div class="admin-note-body" style="white-space:pre-wrap;margin-top:6px;'
                 + (big ? 'font-size:16px;' : '') + '">' + clean + '</div>';
@@ -8077,7 +8104,7 @@
 
             // Note for staff
             h += '<div class="mdk-note-lbl">📝 Notes for staff <span style="color:#9b988e;">(optional — shown on the quote card and the printed enquiry; you can paste a table)</span></div>'
-                + '<div class="mdk-note" id="mdk-note-' + idAttr + '" contenteditable="true" data-ph="e.g. Quote the 6&quot; ERW at Jindal list less 5%." oninput="mdkNoteChanged(\'' + idAttr + '\',this.innerHTML)" onpaste="mdkNotePaste(event,\'' + idAttr + '\')">' + (typeof sanitizeEmailHtmlForPreview === 'function' ? sanitizeEmailHtmlForPreview(q.adminNote || '') : escapeHtml(q.adminNote || '')) + '</div>';
+                + '<div class="mdk-note" id="mdk-note-' + idAttr + '" contenteditable="true" data-ph="e.g. Quote the 6&quot; ERW at Jindal list less 5%." oninput="mdkNoteChanged(\'' + idAttr + '\',this.innerHTML)" onpaste="mdkNotePaste(event,\'' + idAttr + '\')">' + (typeof sanitizeRichNoteHtml === 'function' ? sanitizeRichNoteHtml(q.adminNote || '') : escapeHtml(q.adminNote || '')) + '</div>';
 
             // Enquiry preview (lazy): the formatted email as-is (tables & layout preserved),
             // a View-in-Gmail link, and the retained attachment chips.
@@ -8157,7 +8184,7 @@
             const html = cd && cd.getData && cd.getData('text/html');
             if (!html) return;   // plain text — let the browser paste it normally
             e.preventDefault();
-            const clean = sanitizeEmailHtmlForPreview(html);
+            const clean = sanitizeRichNoteHtml(html);
             if (clean) document.execCommand('insertHTML', false, clean);
             else document.execCommand('insertText', false, (cd.getData('text/plain') || ''));
             const el = document.getElementById('mdk-note-' + id);

@@ -302,7 +302,7 @@ describe('source guards — the reported bugs stay fixed', () => {
 
     test('an admin note whose markup got escaped is decoded before printing', () => {
         expect(html2).toContain('function decodeEscapedNoteMarkup(');
-        expect(html2).toContain('sanitizeEmailHtmlForPreview(decodeEscapedNoteMarkup(');
+        expect(html2).toContain('sanitizeRichNoteHtml(decodeEscapedNoteMarkup(');
     });
 });
 
@@ -320,7 +320,7 @@ describe('source guards — the revision box is rich text, and safely rendered',
         // Storing already-safe HTML means a renderer that forgets to sanitise still cannot
         // publish a script tag onto the public Copy Link page.
         const fn = html3.slice(html3.indexOf('function promptMultiline('));
-        expect(fn.slice(0, 3000)).toContain('sanitizeEmailHtmlForPreview(raw)');
+        expect(fn.slice(0, 3000)).toContain('sanitizeRichNoteHtml(raw)');
     });
 
     test('both render sites go through revisionTextHtml, never raw stored markup', () => {
@@ -339,5 +339,46 @@ describe('source guards — the revision box is rich text, and safely rendered',
     test('a pasted table survives into the card and the shared page', () => {
         expect(html3).toMatch(/\.rev-ask-text table[^{]*\{[^}]*border-collapse/);
         expect(html3).toMatch(/\.pm-rich table[^{]*\{[^}]*border-collapse/);
+    });
+});
+
+// ── Reported: a table pasted into the note rendered AS the quotation table ────────────
+//
+// sanitizeEmailHtmlForPreview keeps class and id — correct for a customer's email, where a
+// stranger's class names match nothing of ours. Our own markup is the opposite case: paste a
+// copy of the quotation table into a note and our stylesheet re-dresses it as a live table,
+// complete with an "Enter Section Name" bar and dead buttons. Duplicated ids are worse than
+// ugly, because getElementById can then find the pasted copy instead of the real control.
+
+describe('source guard — pasted notes are stripped of our own UI hooks', () => {
+    const html4 = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+    const fn = html4.slice(html4.indexOf('function sanitizeRichNoteHtml('));
+    const body = fn.slice(0, fn.indexOf('\n        }'));
+
+    test('class and id are removed', () => {
+        expect(body).toContain("box.querySelectorAll('[class], [id]')");
+        expect(body).toContain("el.removeAttribute('class')");
+        expect(body).toContain("el.removeAttribute('id')");
+    });
+
+    test('controls are dropped whole, BEFORE the tag sanitiser turns them into stray words', () => {
+        // sanitizeEmailHtmlForPreview replaces an unknown tag with its text, which left the
+        // copied toolbar behind as the words "+ H+ M+ Delete" inside the note.
+        expect(body).toContain("pre.querySelectorAll('button, input, select, option, textarea')");
+        expect(body.indexOf('.remove(); })')).toBeLessThan(body.indexOf('sanitizeEmailHtmlForPreview(pre.innerHTML)'));
+    });
+
+    test('it does NOT call itself — the first cut accidentally recursed', () => {
+        expect(body).toContain('const clean = sanitizeEmailHtmlForPreview(pre.innerHTML);');
+        expect(body).not.toContain('const clean = sanitizeRichNoteHtml(');
+    });
+
+    test('every note and revision path uses it; the EMAIL preview deliberately does not', () => {
+        // A customer's email should keep its own styling hooks — only our own screens are the risk.
+        expect(html4).toContain('sanitizeRichNoteHtml(decodeEscapedNoteMarkup(');       // admin note render
+        expect(html4).toContain('sanitizeRichNoteHtml(raw)');                            // revision render
+        expect(html4).toContain('const clean = sanitizeRichNoteHtml(html);');            // note paste
+        expect(html4).toContain('sanitizeRichNoteHtml(pasted)');                         // revision-dialog paste
+        expect(html4).toContain('sanitizeEmailHtmlForPreview(quotation.emailContentHtml)');
     });
 });
