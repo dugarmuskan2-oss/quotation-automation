@@ -322,7 +322,17 @@
     function threadsHtml(q, st) {
         var threads = getThreads(q);
         if (!threads.length) return '';
-        var rows = threads.map(function (t, i) {
+        // Newest send first. The index is carried alongside rather than recomputed: it keys
+        // st.openReplies and the "Read reply" button's data-i, so sorting the array itself would
+        // open a different supplier's reply than the one clicked. sentAt is an ISO stamp, so a
+        // plain string compare is chronological.
+        var rows = threads
+            .map(function (t, i) { return { t: t, i: i }; })
+            .sort(function (a, b) {
+                return String(b.t.sentAt || '').localeCompare(String(a.t.sentAt || ''));
+            })
+            .map(function (entry) {
+            var t = entry.t, i = entry.i;
             var pill = t.replied
                 ? '<span class="fwe-pill fwe-pill-replied">Replied</span>'
                 : '<span class="fwe-pill fwe-pill-wait">Awaiting reply</span>';

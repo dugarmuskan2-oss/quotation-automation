@@ -1111,3 +1111,67 @@ describe('POST /send-email — a Bcc-only supplier enquiry is accepted', () => {
         expect(tabSrc).toContain('Promise.all(recipients.map(function (addr) {');
     });
 });
+
+// ── Latest sent enquiry first ─────────────────────────────────────────────────────────
+//
+// The list was in the order the sends happened, so the newest supplier ended up at the
+// bottom — the wrong way round for a list you scan to see who has come back. Sorting has one
+// trap: the row index keys st.openReplies AND the "Read reply" button's data-i, so sorting
+// the array itself would open a DIFFERENT supplier's reply than the one clicked. The index
+// is carried alongside instead.
+
+describe('threadsHtml — newest send at the top, replies still correctly wired', () => {
+    const src2 = require('fs').readFileSync(
+        require('path').join(__dirname, '..', 'quote-enquiry-tab.js'), 'utf8');
+    function cut(name) {
+        const i = src2.indexOf('function ' + name + '(');
+        const o = src2.indexOf('{', i);
+        let d = 0;
+        for (let k = o; k < src2.length; k++) {
+            if (src2[k] === '{') d++;
+            else if (src2[k] === '}') { d--; if (!d) return src2.slice(i, k + 1); }
+        }
+        throw new Error('not found: ' + name);
+    }
+    // eslint-disable-next-line no-new-func
+    const threadsHtml = new Function(
+        'function escTxt(v){return String(v==null?"":v);}\n'
+        + 'function getThreads(q){return q.supplierEnquiries||[];}\n'
+        + cut('threadsHtml') + '\nreturn threadsHtml;')();
+
+    const QUOTE = { supplierEnquiries: [
+        { email: 'oldest@a.com', sentAt: '2026-03-01T09:00:00.000Z', replied: true, replyText: 'FROM OLDEST' },
+        { email: 'middle@b.com', sentAt: '2026-03-05T09:00:00.000Z', replied: false },
+        { email: 'newest@c.com', sentAt: '2026-03-09T09:00:00.000Z', replied: true, replyText: 'FROM NEWEST' },
+    ] };
+    const emailsIn = (html) => (html.match(/qet-th-email">([^<]+)/g) || []).map((s) => s.split('>')[1]);
+
+    test('the most recent send is listed first', () => {
+        expect(emailsIn(threadsHtml(QUOTE, { openReplies: {} })))
+            .toEqual(['newest@c.com', 'middle@b.com', 'oldest@a.com']);
+    });
+
+    test('"Read reply" keeps each supplier\'s ORIGINAL index, so it opens the right reply', () => {
+        const html = threadsHtml(QUOTE, { openReplies: {} });
+        // newest is array index 2, oldest is 0 — and they appear in that display order.
+        expect((html.match(/data-i="(\d+)"/g) || [])).toEqual(['data-i="2"', 'data-i="0"']);
+        const opened = threadsHtml(QUOTE, { openReplies: { 2: true } });
+        expect(opened).toContain('FROM NEWEST');
+        expect(opened).not.toContain('FROM OLDEST');
+    });
+
+    test('a send with no timestamp still renders rather than disappearing', () => {
+        const q = { supplierEnquiries: [
+            { email: 'undated@x.com' },
+            { email: 'dated@y.com', sentAt: '2026-03-01T09:00:00.000Z' },
+        ] };
+        expect(emailsIn(threadsHtml(q, { openReplies: {} })).sort())
+            .toEqual(['dated@y.com', 'undated@x.com']);
+    });
+
+    test('the stored order itself is untouched — only the display is reordered', () => {
+        const before = QUOTE.supplierEnquiries.map((t) => t.email);
+        threadsHtml(QUOTE, { openReplies: {} });
+        expect(QUOTE.supplierEnquiries.map((t) => t.email)).toEqual(before);
+    });
+});
