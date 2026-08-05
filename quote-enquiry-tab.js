@@ -583,6 +583,18 @@
                 if (e.key === 'Enter' || e.key === ',' || e.key === ';') { e.preventDefault(); addRecip(input.value); }
             };
             input.onblur = function () { if (input.value.trim()) addRecip(input.value); };
+            // The same Gmail-style dropdown the Freight tab uses: it searches your Gmail
+            // contacts (People API) and merges in the suppliers we remember, ranked by the
+            // pipe types on THIS quote. Without this the tab only ever offered the remembered
+            // list, as a row of small chips — so an address never emailed before could not be
+            // completed at all, and it looked like the field simply had no suggestions.
+            if (typeof attachContactAutocomplete === 'function') {
+                attachContactAutocomplete(input.parentElement || input, input, addRecip, function (query) {
+                    return suggestedSuppliers(quotation, query)
+                        .filter(function (s) { return st.to.indexOf(s.email) === -1; })
+                        .map(function (s) { return { name: '', email: s.email }; });
+                });
+            }
         }
         loadSupplierSuggestions(paintSuggestions);
 

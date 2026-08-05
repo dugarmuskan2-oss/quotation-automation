@@ -1316,3 +1316,30 @@ describe('source guard — supplier replies are pulled when the app opens', () =
         expect(tab).toContain('window.quoteAwaitsSupplierReply = quoteAwaitsSupplierReply;');
     });
 });
+
+describe('source guard — the Enquiry recipient box uses the SAME dropdown as Freight', () => {
+    const fsG = require('fs');
+    const pathG = require('path');
+    const tabG = fsG.readFileSync(pathG.join(__dirname, '..', 'quote-enquiry-tab.js'), 'utf8');
+    const freightG = fsG.readFileSync(pathG.join(__dirname, '..', 'freight-tab-weight-editor.js'), 'utf8');
+
+    test('both tabs attach the shared Gmail-contact autocomplete', () => {
+        // Freight had it; Enquiry never called it, so the box only ever offered the remembered
+        // list as small chips — an address never emailed before could not be completed at all.
+        expect(freightG).toContain('attachContactAutocomplete(');
+        expect(tabG).toContain('attachContactAutocomplete(');
+    });
+
+    test('the Enquiry local source is the remembered suppliers, in {name,email} shape', () => {
+        const fn = tabG.slice(tabG.indexOf('attachContactAutocomplete('));
+        const call = fn.slice(0, 500);
+        expect(call).toContain('suggestedSuppliers(quotation, query)');
+        expect(call).toContain("return { name: '', email: s.email };");
+        // Anyone already on the To list must not be offered again.
+        expect(call).toContain('st.to.indexOf(s.email) === -1');
+    });
+
+    test('it degrades quietly if the shared helper is not loaded', () => {
+        expect(tabG).toContain("typeof attachContactAutocomplete === 'function'");
+    });
+});
