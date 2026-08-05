@@ -1175,3 +1175,144 @@ describe('threadsHtml — newest send at the top, replies still correctly wired'
         expect(QUOTE.supplierEnquiries.map((t) => t.email)).toEqual(before);
     });
 });
+
+// ── Pulling supplier replies ──────────────────────────────────────────────────────────
+//
+// Mirrors checkFreightRepliesForQuote, with one deliberate difference: NO rate parsing. A
+// transporter quotes one freight figure worth extracting; a supplier's reply is a price list
+// against many sizes, so guessing a single number from it would be worse than useless.
+// Requested behaviour: reply text only, run automatically when the app opens.
+
+describe('checkSupplierRepliesForQuote', () => {
+    const src3 = require('fs').readFileSync(
+        require('path').join(__dirname, '..', 'quote-enquiry-tab.js'), 'utf8');
+    function cut(name) {
+        const i = src3.indexOf('function ' + name + '(');
+        const o = src3.indexOf('{', i);
+        let d = 0;
+        for (let k = o; k < src3.length; k++) {
+            if (src3[k] === '{') d++;
+            else if (src3[k] === '}') { d--; if (!d) return src3.slice(i, k + 1); }
+        }
+        throw new Error('not found: ' + name);
+    }
+    // MAX_REPLY_CHARS is a module-level var, so it must be supplied alongside the extracted
+    // functions — without it trimReplyForStorage throws, the catch swallows it, and the check
+    // silently reports "no new replies" after half-updating the thread. (That happened while
+    // building this: the harness, not the shipped code, but the failure mode is worth pinning.)
+    function load(fetchStub, persisted) {
+        // eslint-disable-next-line no-new-func
+        return new Function('fetchStub', 'persisted',
+            'function apiBase(){return "/api";}\n'
+            + 'function getThreads(q){return q.supplierEnquiries||[];}\n'
+            + 'function persistThreads(q){persisted.push(q);}\n'
+            + 'var MAX_REPLY_CHARS = 2000;\n'
+            + 'var fetch = fetchStub;\n'
+            + cut('trimReplyForStorage') + '\n' + cut('checkSupplierRepliesForQuote') + '\n'
+            + 'return checkSupplierRepliesForQuote;')(fetchStub, persisted);
+    }
+    const reply = (msgs) => () => Promise.resolve({ ok: true, json: () => Promise.resolve({ messages: msgs }) });
+
+    test('stores the reply, dated from the Gmail header, and persists once', async () => {
+        const calls = [], persisted = [];
+        const run = load((url) => { calls.push(url); return reply([
+            { direction: 'you', auto: false, body: 'our enquiry' },
+            { direction: 'customer', auto: false, date: 'Tue, 5 Aug 2026 10:00:00 +0530', body: '2 inch @ Rs 62/kg' },
+        ])(); }, persisted);
+        const q = { id: 1, supplierEnquiries: [{ email: 'a@x.com', threadId: 'T1', replied: false, replyText: '', rate: 0 }] };
+        await expect(run(q)).resolves.toEqual({ checked: 1, newReplies: 1 });
+        expect(calls).toEqual(['/api/thread-messages?threadId=T1']);
+        expect(q.supplierEnquiries[0]).toMatchObject({
+            replied: true, replyAt: 'Tue, 5 Aug 2026 10:00:00 +0530', replyText: '2 inch @ Rs 62/kg',
+        });
+        expect(persisted).toHaveLength(1);
+    });
+
+    test('NO rate is guessed from a supplier reply, even when it names a price', async () => {
+        const run = load(reply([{ direction: 'customer', auto: false, body: 'Rs 18,500 for the lot' }]), []);
+        const q = { id: 1, supplierEnquiries: [{ threadId: 'T1', replied: false, rate: 0 }] };
+        await run(q);
+        expect(q.supplierEnquiries[0].rate).toBe(0);
+    });
+
+    test('our own send and auto-replies are not mistaken for a supplier answer', async () => {
+        const persisted = [];
+        const run = load(reply([
+            { direction: 'you', auto: false, body: 'our enquiry' },
+            { direction: 'customer', auto: true, body: 'OUT OF OFFICE' },
+        ]), persisted);
+        const q = { id: 1, supplierEnquiries: [{ threadId: 'T1', replied: false }] };
+        await expect(run(q)).resolves.toEqual({ checked: 1, newReplies: 0 });
+        expect(q.supplierEnquiries[0].replied).toBeFalsy();
+        expect(persisted).toHaveLength(0);      // nothing changed -> no write
+    });
+
+    test('the quoted chain of our own enquiry is cut off the stored reply', async () => {
+        const run = load(reply([{ direction: 'customer', auto: false,
+            body: '2 inch @ Rs 62/kg\nOn Mon, 4 Aug 2026 wrote:\n> our original enquiry' }]), []);
+        const q = { id: 1, supplierEnquiries: [{ threadId: 'T1', replied: false }] };
+        await run(q);
+        expect(q.supplierEnquiries[0].replyText).toBe('2 inch @ Rs 62/kg');
+    });
+
+    test('a very long reply is capped and says so', async () => {
+        const run = load(reply([{ direction: 'customer', auto: false, body: 'x'.repeat(5000) }]), []);
+        const q = { id: 1, supplierEnquiries: [{ threadId: 'T1', replied: false }] };
+        await run(q);
+        expect(q.supplierEnquiries[0].replyText).toContain('[truncated]');
+        expect(q.supplierEnquiries[0].replyText.length).toBeLessThan(2100);
+    });
+
+    test('only threads still awaiting AND carrying a threadId are polled', async () => {
+        const calls = [];
+        const run = load((url) => { calls.push(url); return reply([])(); }, []);
+        const q = { id: 1, supplierEnquiries: [
+            { threadId: 'T1', replied: false },                        // polled
+            { threadId: 'T2', replied: true, replyText: 'kept' },       // already answered
+            { threadId: '',  replied: false },                          // never got a thread
+        ] };
+        await run(q);
+        expect(calls).toEqual(['/api/thread-messages?threadId=T1']);
+        expect(q.supplierEnquiries[1].replyText).toBe('kept');
+    });
+
+    test('a failed lookup leaves the thread awaiting, for the next sweep to retry', async () => {
+        const persisted = [];
+        const run = load(() => Promise.reject(new Error('network')), persisted);
+        const q = { id: 1, supplierEnquiries: [{ threadId: 'T1', replied: false }] };
+        await expect(run(q)).resolves.toEqual({ checked: 1, newReplies: 0 });
+        expect(q.supplierEnquiries[0].replied).toBeFalsy();
+        expect(persisted).toHaveLength(0);
+    });
+
+    test('a quote with nothing awaiting does no work at all', async () => {
+        const calls = [];
+        const run = load((url) => { calls.push(url); return reply([])(); }, []);
+        await expect(run({ id: 1, supplierEnquiries: [] })).resolves.toEqual({ checked: 0, newReplies: 0 });
+        await expect(run({ id: 2 })).resolves.toEqual({ checked: 0, newReplies: 0 });
+        expect(calls).toEqual([]);
+    });
+});
+
+describe('source guard — supplier replies are pulled when the app opens', () => {
+    const fs4 = require('fs');
+    const path4 = require('path');
+    const html5 = fs4.readFileSync(path4.join(__dirname, '..', 'index.html'), 'utf8');
+    const tab = fs4.readFileSync(path4.join(__dirname, '..', 'quote-enquiry-tab.js'), 'utf8');
+
+    test('the sweep includes suppliers, and NOT only on an explicit click', () => {
+        const fn = html5.slice(html5.indexOf('async function checkAllReplies('));
+        const body = fn.slice(0, fn.indexOf('\n        }'));
+        expect(body).toContain('window.quoteAwaitsSupplierReply');
+        expect(body).toContain('window.checkSupplierRepliesForQuote(q)');
+        // Customer threads are deliberately click-only (`background ? [] : …`). Suppliers must
+        // NOT be gated that way, or they would never run on open.
+        expect(body).not.toMatch(/supplierQuotes\s*=\s*background\s*\?/);
+        expect(body).toContain('const total = freightNew + supplierNew + custNew;');
+    });
+
+    test('the module exposes what the sweep calls', () => {
+        expect(tab).toContain('window.checkSupplierRepliesForQuote = checkSupplierRepliesForQuote;');
+        expect(tab).toContain('window.quoteAwaitsSupplierReply = quoteAwaitsSupplierReply;');
+    });
+});

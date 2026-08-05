@@ -2316,27 +2316,35 @@
             // threads). Customer threads: only on an explicit click, since "sent" can be a
             // large set and we don't want to slow the app's opening with it.
             const freightQuotes = approvedQuotations.filter(quoteAwaitsFreightReply);
+            // Supplier enquiries run on open too, for the same reason freight does: the working
+            // set is only threads still AWAITING a reply, so it shrinks to nothing once answered.
+            const supplierQuotes = (typeof window.quoteAwaitsSupplierReply === 'function')
+                ? approvedQuotations.filter(window.quoteAwaitsSupplierReply) : [];
             const customerQuotes = background ? [] : approvedQuotations.filter(quoteHasCustomerThread);
 
             try {
-                if (!freightQuotes.length && !customerQuotes.length) {
+                if (!freightQuotes.length && !supplierQuotes.length && !customerQuotes.length) {
                     setStatus('Nothing is awaiting a reply right now.');
                     return;
                 }
-                setStatus('Checking ' + (freightQuotes.length + customerQuotes.length) + ' quote(s)…');
+                setStatus('Checking ' + (freightQuotes.length + supplierQuotes.length + customerQuotes.length) + ' quote(s)…');
 
-                let freightNew = 0, custNew = 0, changedAny = false;
+                let freightNew = 0, supplierNew = 0, custNew = 0, changedAny = false;
                 const CONC = 5;
                 if (freightQuotes.length && typeof window.checkFreightRepliesForQuote === 'function') {
                     const r = await runWithConcurrency(freightQuotes, CONC, function (q) { return window.checkFreightRepliesForQuote(q); });
                     r.forEach(function (x) { if (x && x.newReplies) { freightNew += x.newReplies; changedAny = true; } });
+                }
+                if (supplierQuotes.length && typeof window.checkSupplierRepliesForQuote === 'function') {
+                    const r = await runWithConcurrency(supplierQuotes, CONC, function (q) { return window.checkSupplierRepliesForQuote(q); });
+                    r.forEach(function (x) { if (x && x.newReplies) { supplierNew += x.newReplies; changedAny = true; } });
                 }
                 if (customerQuotes.length) {
                     const r = await runWithConcurrency(customerQuotes, CONC, checkCustomerReplyForQuote);
                     r.forEach(function (x) { if (x) { if (x.newReply) custNew++; if (x.changed) changedAny = true; } });
                 }
 
-                const total = freightNew + custNew;
+                const total = freightNew + supplierNew + custNew;
                 // Re-render when anything changed (flag set OR cleared), but never over an
                 // open/dirty card — that would wipe unsaved edits.
                 let rendered = true;

@@ -318,6 +318,56 @@
           .catch(function () { /* memory is best-effort */ });
     }
 
+    // ── pulling supplier replies ──────────────────────────────────────────────
+    // Mirrors checkFreightRepliesForQuote in freight-tab-weight-editor.js, with one deliberate
+    // difference: NO rate parsing. A transporter quotes a single freight figure worth extracting;
+    // a supplier's reply is a price list against many sizes, so guessing one number from it would
+    // be worse than useless. We store the reply and let a human read it.
+    var MAX_REPLY_CHARS = 2000;
+    function trimReplyForStorage(text) {
+        // Drop the quoted chain (our own enquiry below "On … wrote:") and cap what is left:
+        // these bodies ride inside the quotation record.
+        var s = String(text || '');
+        var quoteIdx = s.search(/^On .+wrote:\s*$/m);
+        if (quoteIdx > 0) s = s.slice(0, quoteIdx).replace(/\s+$/, '');
+        return s.length > MAX_REPLY_CHARS ? (s.slice(0, MAX_REPLY_CHARS) + '\n…[truncated]') : s;
+    }
+
+    // Headless — no UI, safe to run across many quotes at once. Returns { checked, newReplies }.
+    function checkSupplierRepliesForQuote(q) {
+        var threads = getThreads(q);
+        var waiting = threads.filter(function (t) { return t && !t.replied && t.threadId; });
+        if (!waiting.length) return Promise.resolve({ checked: 0, newReplies: 0 });
+        return Promise.all(waiting.map(function (t) {
+            return fetch(apiBase() + '/thread-messages?threadId=' + encodeURIComponent(t.threadId))
+                .then(function (res) { return res.ok ? res.json() : null; })
+                .then(function (data) {
+                    if (!data || !Array.isArray(data.messages)) return false;
+                    // direction 'you' is anything Gmail marked SENT — including our own enquiry,
+                    // which carries both SENT and INBOX because a Bcc-only send is addressed to
+                    // us. `auto` drops out-of-office and mailer-daemon noise.
+                    var replies = data.messages.filter(function (m) { return m.direction === 'customer' && !m.auto; });
+                    if (!replies.length) return false;
+                    var last = replies[replies.length - 1];
+                    t.replied = true;
+                    t.replyAt = last.date || '';
+                    t.replyText = trimReplyForStorage(last.body || last.snippet || '');
+                    return true;
+                })
+                .catch(function () { return false; /* leave awaiting; the next sweep retries */ });
+        })).then(function (flags) {
+            var newReplies = flags.filter(Boolean).length;
+            if (newReplies) persistThreads(q);
+            return { checked: waiting.length, newReplies: newReplies };
+        });
+    }
+
+    // Does this quote have a supplier enquiry still waiting? Keeps the sweep's working set small.
+    function quoteAwaitsSupplierReply(q) {
+        return (Array.isArray(q && q.supplierEnquiries) ? q.supplierEnquiries : [])
+            .some(function (t) { return t && !t.replied && t.threadId; });
+    }
+
     // ── rendering ─────────────────────────────────────────────────────────────
     function threadsHtml(q, st) {
         var threads = getThreads(q);
@@ -670,6 +720,9 @@
         window.quoteHasSupplierEnquiry = function (q) {
             return !!(q && Array.isArray(q.supplierEnquiries) && q.supplierEnquiries.length > 0);
         };
+        // Used by the global "Check all replies" sweep in index.html, which also runs on open.
+        window.checkSupplierRepliesForQuote = checkSupplierRepliesForQuote;
+        window.quoteAwaitsSupplierReply = quoteAwaitsSupplierReply;
     }
 
     if (typeof module !== 'undefined' && module.exports) {
