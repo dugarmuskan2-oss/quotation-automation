@@ -367,6 +367,8 @@
             font-size: 14px; font-family: inherit; line-height: 1.4; min-height: 96px; max-height: 260px; overflow: auto; cursor: text; }
         .pm-rich:empty:before { content: attr(data-ph); color: #b3b0a6; }
         .pm-rich table { border-collapse: collapse; margin: 3px 0; font-size: 13px; }
+        .pm-rich img, .rev-ask-text img, .sq-msg-text img, .admin-note-body img, .mdk-note img {
+            max-width: 100%; height: auto; display: block; margin: 4px 0; border: 1px solid #e2e0d8; border-radius: 4px; }
         .pm-rich td, .pm-rich th { border: 1px solid #d0cec6; padding: 2px 6px; text-align: left; }
         .rev-ask-meta { flex: 0 0 auto; font-size: 11px; color: #9b988e; }
         .rev-ask-hint { font-size: 11px; color: #9b988e; margin: 4px 0 2px; }
@@ -3856,10 +3858,22 @@
             return table.outerHTML;
         }
 
-        function sanitizeEmailHtmlForPreview(html) {
+        // An image we stored ourselves, and nothing else. Only a same-origin path to our own
+        // file-serving route is allowed: no absolute URLs (a remote src on the public Copy Link
+        // page is a tracking pixel that leaks the viewer's IP), no data:, no javascript:.
+        function isOwnStoredImageSrc(src) {
+            const s = String(src || '').trim();
+            return /^\/api\/view-enquiry-file\?/.test(s);
+        }
+
+        // opts.allowImages is passed ONLY by the note/revision path. The email preview must not
+        // set it: inbound customer mail is third-party content, and allowing its images would let
+        // a sender's remote pixels load inside the app.
+        function sanitizeEmailHtmlForPreview(html, opts) {
             if (!html) {
                 return '';
             }
+            const allowImages = !!(opts && opts.allowImages);
             const wrapper = document.createElement('div');
             wrapper.innerHTML = html;
             wrapper.querySelectorAll('script, style, link, meta').forEach(node => node.remove());
@@ -3868,10 +3882,21 @@
                 'TABLE', 'THEAD', 'TBODY', 'TFOOT', 'TR', 'TH', 'TD',
                 'UL', 'OL', 'LI'
             ]);
+            if (allowImages) allowedTags.add('IMG');
             wrapper.querySelectorAll('*').forEach(node => {
                 if (!allowedTags.has(node.tagName)) {
                     const text = node.textContent || '';
                     node.replaceWith(document.createTextNode(text));
+                    return;
+                }
+                if (node.tagName === 'IMG') {
+                    // Whitelist the attributes rather than blacklisting: srcset would reintroduce
+                    // a remote fetch through the back door, and style could hide or resize the
+                    // image over the rest of the page.
+                    if (!isOwnStoredImageSrc(node.getAttribute('src'))) { node.remove(); return; }
+                    Array.from(node.attributes).forEach(attr => {
+                        if (attr.name.toLowerCase() !== 'src') node.removeAttribute(attr.name);
+                    });
                     return;
                 }
                 Array.from(node.attributes).forEach(attr => {
@@ -3917,7 +3942,9 @@
                 }
                 el.replaceWith(document.createTextNode(value));
             });
-            const clean = sanitizeEmailHtmlForPreview(pre.innerHTML);
+            // allowImages: a note may hold a screenshot the admin pasted. Only OUR stored images
+            // survive the check inside — see isOwnStoredImageSrc.
+            const clean = sanitizeEmailHtmlForPreview(pre.innerHTML, { allowImages: true });
             if (!clean) return '';
             const box = document.createElement('div');
             box.innerHTML = clean;
@@ -7220,6 +7247,79 @@
 
         // "Add revision" / "Add note" on a quote card. A revision ask puts the quote in the Revision
         // list until the revised quote is sent; a note is only ever a note.
+        // ── Pasting a screenshot into a note or a revision ask ────────────────────────────
+        // The clipboard carries a real file, not markup, so the paste handlers have to catch it
+        // before falling through to the HTML path. The browser would otherwise insert a blob:
+        // URL that dies on the next page load.
+        function clipboardImageFile(cd) {
+            const items = (cd && cd.items) ? Array.prototype.slice.call(cd.items) : [];
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].kind === 'file' && /^image\//i.test(items[i].type || '')) {
+                    const f = items[i].getAsFile();
+                    if (f) return f;
+                }
+            }
+            const files = (cd && cd.files) ? Array.prototype.slice.call(cd.files) : [];
+            for (let j = 0; j < files.length; j++) {
+                if (/^image\//i.test(files[j].type || '')) return files[j];
+            }
+            return null;
+        }
+
+        // Shrink before sending. A phone screenshot is several megabytes; Vercel rejects a
+        // request over 4.5 MB outright, and nobody needs full resolution in a note.
+        const NOTE_IMAGE_MAX_DIM = 1400;
+        function downscaleImageFile(file) {
+            return new Promise(function(resolve, reject) {
+                const url = URL.createObjectURL(file);
+                const img = new Image();
+                img.onload = function() {
+                    URL.revokeObjectURL(url);
+                    const scale = Math.min(1, NOTE_IMAGE_MAX_DIM / Math.max(img.width, img.height));
+                    const canvas = document.createElement('canvas');
+                    canvas.width = Math.max(1, Math.round(img.width * scale));
+                    canvas.height = Math.max(1, Math.round(img.height * scale));
+                    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                    // PNG keeps screenshots of text crisp; JPEG would blur the very thing being
+                    // pasted. Transparency is flattened by the canvas either way.
+                    const dataUrl = canvas.toDataURL('image/png');
+                    resolve({ base64: dataUrl.split(',')[1] || '', contentType: 'image/png' });
+                };
+                img.onerror = function() { URL.revokeObjectURL(url); reject(new Error('Could not read that image')); };
+                img.src = url;
+            });
+        }
+
+        async function uploadNoteImage(quoteId, file) {
+            const shrunk = await downscaleImageFile(file);
+            const res = await fetch(`${API_BASE_URL}/quotations/${encodeURIComponent(quoteId)}/note-image`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(shrunk)
+            });
+            const data = await safeJsonParse(res);
+            if (!res.ok || !data || !data.url) throw new Error((data && data.error) || 'Upload failed');
+            return data.url;
+        }
+
+        // Shared by both paste handlers. Returns true when it handled an image.
+        function handleImagePaste(e, quoteId, insert) {
+            const cd = e.clipboardData || window.clipboardData;
+            const file = clipboardImageFile(cd);
+            if (!file) return false;
+            e.preventDefault();
+            if (quoteId == null || quoteId === '') {
+                alert('Save the quote before pasting an image into a note.');
+                return true;
+            }
+            uploadNoteImage(quoteId, file).then(function(url) {
+                insert('<img src="' + escapeHtmlAttr(url) + '">');
+            }).catch(function(err) {
+                alert('Could not attach that image: ' + err.message);
+            });
+            return true;
+        }
+
         // "Is there anything actually in there?" for rich text. An empty contenteditable still
         // reports <br> or &nbsp;, so a plain trim() would happily save an empty revision ask.
         function hasVisibleRichText(html) {
@@ -7274,6 +7374,11 @@
                 };
                 if (o.rich) {
                     ta.addEventListener('paste', function(e) {
+                        // A screenshot arrives as a FILE, and must be caught before the HTML path.
+                        if (handleImagePaste(e, o.quoteId, function(markup) {
+                            ta.focus();
+                            document.execCommand('insertHTML', false, markup);
+                        })) return;
                         const cd = e.clipboardData || window.clipboardData;
                         const pasted = cd && cd.getData && cd.getData('text/html');
                         if (!pasted) return;                 // plain text — let the browser handle it
@@ -7309,10 +7414,10 @@
             if (!quotation) { alert('Quotation not found!'); return; }
             const isNote = kind === 'note';
             const text = await promptMultiline(isNote
-                ? { title: 'Add a note for this quote', rich: true,
+                ? { title: 'Add a note for this quote', rich: true, quoteId: quotationId,
                     subtitle: 'Internal only — this does NOT put the quote in the revision list.',
                     placeholder: 'e.g. Called them, they are comparing three quotes' }
-                : { title: 'What needs to be revised?', rich: true,
+                : { title: 'What needs to be revised?', rich: true, quoteId: quotationId,
                     subtitle: 'The quote stays in the revision list until the revised version is sent to the customer.',
                     placeholder: 'e.g. from UB Corporation: cost to cost' });
             if (text === null) return;                       // cancelled
@@ -8206,6 +8311,13 @@
         // Paste into the notes box: keep a real (cleaned) table when the clipboard has HTML;
         // otherwise fall through to the normal plain-text paste.
         function mdkNotePaste(e, id) {
+            // A screenshot arrives as a FILE, and must be caught before the HTML path below.
+            if (handleImagePaste(e, id, function(markup) {
+                const box = document.getElementById('mdk-note-' + id);
+                if (box) box.focus();
+                document.execCommand('insertHTML', false, markup);
+                if (box) mdkNoteChanged(id, box.innerHTML);
+            })) return;
             const cd = e.clipboardData || window.clipboardData;
             const html = cd && cd.getData && cd.getData('text/html');
             if (!html) return;   // plain text — let the browser paste it normally

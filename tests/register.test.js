@@ -365,7 +365,7 @@ describe('source guard — pasted notes are stripped of our own UI hooks', () =>
         // sanitizeEmailHtmlForPreview replaces an unknown tag with its text, which left the
         // copied toolbar behind as the words "+ H+ M+ Delete" inside the note.
         expect(body).toContain("pre.querySelectorAll('button')");
-        expect(body.indexOf('.remove(); })')).toBeLessThan(body.indexOf('sanitizeEmailHtmlForPreview(pre.innerHTML)'));
+        expect(body.indexOf('.remove(); })')).toBeLessThan(body.indexOf('sanitizeEmailHtmlForPreview(pre.innerHTML'));
     });
 
     test('but value-carrying controls are CONVERTED, never deleted', () => {
@@ -378,7 +378,9 @@ describe('source guard — pasted notes are stripped of our own UI hooks', () =>
     });
 
     test('it does NOT call itself — the first cut accidentally recursed', () => {
-        expect(body).toContain('const clean = sanitizeEmailHtmlForPreview(pre.innerHTML);');
+        // Now passes { allowImages: true } — a note may hold a pasted screenshot; the email
+        // preview must NOT set it, or a sender's remote pixels would load inside the app.
+        expect(body).toContain('sanitizeEmailHtmlForPreview(pre.innerHTML, { allowImages: true })');
         expect(body).not.toContain('const clean = sanitizeRichNoteHtml(');
     });
 
@@ -389,5 +391,85 @@ describe('source guard — pasted notes are stripped of our own UI hooks', () =>
         expect(html4).toContain('const clean = sanitizeRichNoteHtml(html);');            // note paste
         expect(html4).toContain('sanitizeRichNoteHtml(pasted)');                         // revision-dialog paste
         expect(html4).toContain('sanitizeEmailHtmlForPreview(quotation.emailContentHtml)');
+    });
+});
+
+// ── Pasting a screenshot into a note or a revision ask ────────────────────────────────
+//
+// The bytes must never reach the quote record: a screenshot is 100 KB-2 MB, base64 inflates
+// it by a third, and DynamoDB caps an ITEM at 400 KB — an inline data: URI would break the
+// quote it was pasted into, and a browser's own blob: URL dies on the next page load. So the
+// file is uploaded and only a short same-origin URL is stored.
+//
+// The sanitiser rules are DOM-bound (jsdom is not installed), so they are guarded here and
+// were exercised for real in a browser: our stored image survives; remote, data:, javascript:,
+// srcset and onerror are all rejected; and the customer-email preview still strips images.
+
+describe('source guard — note images are uploaded, never inlined', () => {
+    const fsI = require('fs');
+    const pathI = require('path');
+    const htmlI = fsI.readFileSync(pathI.join(__dirname, '..', 'index.html'), 'utf8');
+    const routesI = fsI.readFileSync(pathI.join(__dirname, '..', 'routes', 'quotations.js'), 'utf8');
+
+    test('there is an upload route, and it guards size, type and path traversal', () => {
+        expect(routesI).toContain("router.post('/quotations/:id/note-image'");
+        expect(routesI).toMatch(/MAX_NOTE_IMAGE_BYTES = 3 \* 1024 \* 1024/);
+        expect(routesI).toContain('NOTE_IMAGE_EXT');
+        // Same traversal guard the PDF archive uses — nothing under /api is auth-gated.
+        expect(routesI).toMatch(/note-images\/' \+ safeStorageSegment\(req\.params\.id\)/);
+    });
+
+    test('the key sits under enquiries/ so the existing file route can serve it unchanged', () => {
+        expect(routesI).toContain("'enquiries/note-images/'");
+        const rates = fsI.readFileSync(pathI.join(__dirname, '..', 'routes', 'rates.js'), 'utf8');
+        expect(rates).toContain("!key.includes('enquiries')");   // the check the prefix satisfies
+    });
+
+    test('the image is downscaled before upload, under the Vercel request cap', () => {
+        expect(htmlI).toContain('NOTE_IMAGE_MAX_DIM');
+        expect(htmlI).toContain('function downscaleImageFile(');
+        expect(htmlI).toContain("canvas.toDataURL('image/png')");
+    });
+
+    test('BOTH paste handlers catch an image before falling through to the HTML path', () => {
+        // A screenshot arrives as a FILE. If the HTML path ran first the browser would insert a
+        // blob: URL, which dies on the next page load.
+        const noteFn = htmlI.slice(htmlI.indexOf('function mdkNotePaste('));
+        expect(noteFn.slice(0, 600)).toContain('handleImagePaste(e, id,');
+        const dialog = htmlI.slice(htmlI.indexOf('function promptMultiline('));
+        expect(dialog.slice(0, 4000)).toContain('handleImagePaste(e, o.quoteId,');
+        // …and the revision dialog is told which quote the image belongs to.
+        const addRev = htmlI.slice(htmlI.indexOf('async function addRevisionRequest('));
+        expect(addRev.slice(0, 1200)).toContain('quoteId: quotationId');
+    });
+
+    test('only OUR stored images are allowed to render', () => {
+        expect(htmlI).toContain('function isOwnStoredImageSrc(');
+        // A same-origin path to our own file route, nothing else: an absolute URL on the public
+        // Copy Link page is a tracking pixel that leaks the viewer's IP.
+        //
+        // Asserted on the whole function body, not just "the rule appears somewhere". Merely
+        // checking the regex is present passed happily when an early `return true` was inserted
+        // above it — the check was still in the file, just unreachable. The single-return shape
+        // is what makes the rule load-bearing.
+        const srcFn = htmlI.slice(htmlI.indexOf('function isOwnStoredImageSrc('));
+        const srcBody = srcFn.slice(0, srcFn.indexOf('\n        }'));
+        expect(srcBody.match(/return\b/g) || []).toHaveLength(1);
+        expect(srcBody).toMatch(/return \/\^\\\/api\\\/view-enquiry-file\\\?\/\.test\(s\);/);
+        // IMG attributes are whitelisted, not blacklisted — srcset would be a back door.
+        expect(htmlI).toContain("if (attr.name.toLowerCase() !== 'src') node.removeAttribute(attr.name);");
+    });
+
+    test('images are allowed in NOTES only — never in a customer email preview', () => {
+        // Inbound mail is third-party content; allowing its images would load a sender's
+        // remote pixels inside the app.
+        expect(htmlI).toContain('sanitizeEmailHtmlForPreview(pre.innerHTML, { allowImages: true })');
+        expect(htmlI).toContain('sanitizeEmailHtmlForPreview(quotation.emailContentHtml)');
+        expect(htmlI).toMatch(/const allowImages = !!\(opts && opts\.allowImages\);/);
+        expect(htmlI).toContain("if (allowImages) allowedTags.add('IMG');");
+    });
+
+    test('a pasted image cannot blow out the layout wherever it is shown', () => {
+        expect(htmlI).toMatch(/\.pm-rich img, \.rev-ask-text img, \.sq-msg-text img[^{]*\{[^}]*max-width: 100%/);
     });
 });

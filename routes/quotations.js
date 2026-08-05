@@ -905,6 +905,41 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
         }
     });
 
+    // ── An image pasted into a note or a revision ask ──────────────────────────
+    // The bytes are kept OUT of the quote record. A pasted screenshot is 100 KB–2 MB, base64
+    // inflates it by a third, and DynamoDB caps an ITEM at 400 KB (see the enquirySentBodies
+    // note above) — an inline data: URI would break the very quote it was pasted into, and a
+    // browser's own blob: URL dies on the next page load. So the file goes to storage and only
+    // a short URL is stored in the note. The key sits under enquiries/ deliberately, so
+    // GET /api/view-enquiry-file serves it with no change to the read path.
+    const NOTE_IMAGE_EXT = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif', 'image/webp': '.webp' };
+    const MAX_NOTE_IMAGE_BYTES = 3 * 1024 * 1024;   // well under Vercel's 4.5 MB request cap
+    router.post('/quotations/:id/note-image', async (req, res) => {
+        if (!storage || !storage.upload) return res.status(501).json({ error: 'File storage not configured' });
+        try {
+            const { base64, contentType } = req.body || {};
+            const ext = NOTE_IMAGE_EXT[String(contentType || '').toLowerCase()];
+            if (!base64 || !ext) return res.status(400).json({ error: 'base64 and a supported image contentType are required' });
+            const buf = Buffer.from(String(base64), 'base64');
+            if (!buf.length) return res.status(400).json({ error: 'Empty image' });
+            if (buf.length > MAX_NOTE_IMAGE_BYTES) return res.status(413).json({ error: 'Image too large' });
+            // Same path-traversal guard as the PDF archive: nothing under /api is auth-gated,
+            // so an unsanitised id could walk the key out of the prefix entirely.
+            const prefix = 'enquiries/note-images/' + safeStorageSegment(req.params.id);
+            const name = 'n' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + ext;
+            await storage.upload(buf, name, prefix);
+            const key = prefix + '/' + name;
+            res.json({
+                success: true,
+                key,
+                url: '/api/view-enquiry-file?key=' + encodeURIComponent(key) + '&name=' + encodeURIComponent(name),
+            });
+        } catch (error) {
+            console.error('Error storing a pasted note image:', error);
+            res.status(500).json({ error: 'Failed to store the image', details: error.message });
+        }
+    });
+
     // ── Archive a version's PDF, and serve it back ─────────────────────────────
     // The client generates the exact PDF (the same one it emails the customer) and posts
     // its base64 here; we stash it in file storage keyed by quote + version, so History
