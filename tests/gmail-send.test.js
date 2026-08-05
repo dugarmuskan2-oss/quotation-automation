@@ -210,13 +210,33 @@ describe('POST /api/send-email — replyToMessageId', () => {
 // POST /api/send-email — error paths
 // =============================================================================
 describe('POST /api/send-email — errors', () => {
-    test('returns 500 when thread lookup throws', async () => {
+    test('returns 500 when thread lookup throws AND it was the only source of a recipient', async () => {
         mockLookupMessageThread.mockRejectedValue(new Error('Insufficient Permission'));
         const res = await request(app)
             .post('/api/send-email')
             .send({ replyToMessageId: 'orig-msg-id', bodyHtml: '<p>Q</p>' });
         expect(res.status).toBe(500);
         expect(res.body.error).toMatch(/Insufficient Permission/);
+    });
+
+    // REPORTED as a permanent dead end: the regret window asks the user for a recipient
+    // precisely BECAUSE the thread lookup failed on the client — then the send posted
+    // replyToMessageId anyway, the server re-ran the same failing lookup and 500'd, every
+    // retry ate the user's edited wording, and that quote's regret could never be sent.
+    test('a failed lookup with a user-supplied To sends WITHOUT threading instead of dying', async () => {
+        mockLookupMessageThread.mockRejectedValue(new Error('Requested entity was not found'));
+        mockSendEmail.mockResolvedValue({ messageId: 'm1', threadId: 't1' });
+        const res = await request(app)
+            .post('/api/send-email')
+            .send({ replyToMessageId: 'deleted-msg-id', to: 'buyer@acme.com',
+                    subject: 'Re: Your enquiry', bodyHtml: '<p>Regret</p>' });
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        const sent = mockSendEmail.mock.calls[mockSendEmail.mock.calls.length - 1][0];
+        expect(sent.to).toBe('buyer@acme.com');
+        // Fresh message, not a reply into a thread we could not read.
+        expect(sent.threadId).toBeFalsy();
+        expect(sent.inReplyTo).toBeFalsy();
     });
 
     test('returns 500 when sendEmail throws', async () => {

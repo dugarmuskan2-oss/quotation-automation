@@ -96,7 +96,15 @@ function createGmailRouter() {
         if (!subject && info.subject) subject = replySubject(info.subject);
       } catch (err) {
         console.error('Thread lookup failed:', err.message);
-        return res.status(500).json({ error: 'Could not read original email thread: ' + err.message });
+        // Hard-fail ONLY when the lookup was the sole source of a recipient. When the user has
+        // already supplied one (the regret window asks for it precisely because this lookup
+        // failed on the client too), send WITHOUT threading rather than refuse: the old 500 here
+        // made that quote's regret permanently unsendable — every retry re-ran the same failing
+        // lookup, ate the user's edited wording, and told them to "try again".
+        if (!to && !bcc && !cc) {
+          return res.status(500).json({ error: 'Could not read original email thread: ' + err.message });
+        }
+        // No threadId/inReplyTo — the mail goes out as a fresh message to the given recipient.
       }
     }
 

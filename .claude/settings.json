@@ -14,7 +14,14 @@
       "mcp__Claude_Browser__read_console_messages",
       "mcp__Claude_Browser__preview_list",
       "mcp__visualize__show_widget",
-      "mcp__visualize__read_me"
+      "mcp__visualize__read_me",
+      "mcp__Claude_Browser__read_page",
+      "mcp__Claude_Browser__get_page_text",
+      "mcp__Claude_Browser__tabs_context",
+      "mcp__Claude_Browser__find",
+      "mcp__Claude_Preview__preview_snapshot",
+      "mcp__ccd_session_mgmt__list_sessions",
+      "mcp__Claude_Browser__preview_logs"
     ]
   }
 }

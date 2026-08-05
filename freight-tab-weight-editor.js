@@ -565,17 +565,25 @@
     // object is only a list summary — the two cases the old whole-object save had to refuse.
     // Those refusals were silent, so an enquiry that had genuinely been emailed left no record and
     // vanished on reload; the quote then never appeared under the Freight filter.
-    function persistEnquiryThreads(q) {
-        if (!q || q.id == null) return;
-        var threads = getEnquiryThreads(q);
-        fetch(apiBase() + '/quotations/' + encodeURIComponent(q.id) + '/freight-enquiries', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ freightEnquiries: threads, transporterReplyIn: !!q.transporterReplyIn, enquirySentBodies: getSentBodies(q) })
-        }).then(function (res) {
-            if (!res.ok) console.error('Freight enquiries not saved (' + res.status + ') for quote ' + q.id);
-        }).catch(function (e) {
-            console.error('Freight enquiries not saved for quote ' + q.id + ':', e.message);
+    // onFail is optional: the send flow passes one so a lost save is SAID on screen. Losing this
+    // write silently meant the enquiry really went out but its "Sent to / Awaiting reply" record
+    // vanished on reload — the reply sweep never watched those threads and the quote dropped off
+    // the Freight filter, inviting a duplicate send.
+    function persistEnquiryThreads(q, onFail) {
+        if (!q || q.id == null) return Promise.resolve(false);
+        var post = function () {
+            return fetch(apiBase() + '/quotations/' + encodeURIComponent(q.id) + '/freight-enquiries', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ freightEnquiries: getEnquiryThreads(q), transporterReplyIn: !!q.transporterReplyIn, enquirySentBodies: getSentBodies(q) })
+            }).then(function (res) { return res.ok; }).catch(function () { return false; });
+        };
+        return post().then(function (ok) { return ok || post(); }).then(function (ok) {
+            if (!ok) {
+                console.error('Freight enquiries not saved for quote ' + q.id);
+                if (onFail) onFail();
+            }
+            return ok;
         });
     }
     // Pull a rupee amount out of a transporter's reply, e.g. "Rs 18,500", "₹18500/-",
@@ -758,7 +766,12 @@
                 enq.sent = 'err:' + ((failed[0].d && failed[0].d.error) || 'Could not send. Check Gmail is set up (send scope).');
             }
             if (sentOk.length) {
-                persistEnquiryThreads(q);
+                persistEnquiryThreads(q, function () {
+                    // The enquiry went out; only its record failed to save. Say so where the
+                    // user is already looking, instead of a console line nobody sees.
+                    enq.sent = 'err:Enquiry WAS sent, but saving its record failed — reply tracking may be lost. Do not re-send; reload and check the transporter list.';
+                    render(q, mountEl);
+                });
                 recordFreightUsage(sentOk.map(function (r) { return r.addr; }), enq);
             }
             render(q, mountEl);

@@ -260,16 +260,25 @@
         return q.supplierEnquiries;
     }
     // Field-only merge, like the freight route — never a whole-object save.
-    function persistThreads(q) {
-        if (!q || q.id == null) return;
-        fetch(apiBase() + '/quotations/' + encodeURIComponent(q.id) + '/supplier-enquiries', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ supplierEnquiries: getThreads(q), enquirySentBodies: getSentBodies(q) })
-        }).then(function (res) {
-            if (!res.ok) console.error('Supplier enquiries not saved (' + res.status + ') for quote ' + q.id);
-        }).catch(function (e) {
-            console.error('Supplier enquiries not saved for quote ' + q.id + ':', e.message);
+    // onFail is optional: the send flow passes one so a lost save is SAID on screen. Losing this
+    // write silently meant the emails really went out but the "Sent to / Awaiting reply" tracking
+    // vanished on reload — the reply sweep never watched those threads, the quote dropped off the
+    // Enquiry filter, and the natural next step was re-sending the same enquiry to everyone.
+    function persistThreads(q, onFail) {
+        if (!q || q.id == null) return Promise.resolve(false);
+        var post = function () {
+            return fetch(apiBase() + '/quotations/' + encodeURIComponent(q.id) + '/supplier-enquiries', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ supplierEnquiries: getThreads(q), enquirySentBodies: getSentBodies(q) })
+            }).then(function (res) { return res.ok; }).catch(function () { return false; });
+        };
+        return post().then(function (ok) { return ok || post(); }).then(function (ok) {
+            if (!ok) {
+                console.error('Supplier enquiries not saved for quote ' + q.id);
+                if (onFail) onFail();
+            }
+            return ok;
         });
     }
 
@@ -715,7 +724,12 @@
                 st.sent = 'err:' + ((failed[0].d && failed[0].d.error) || 'Could not send. Check Gmail is set up.');
             }
             if (sentOk.length) {
-                persistThreads(quotation);
+                persistThreads(quotation, function () {
+                    // The emails went out; only the record of them failed to save. Say so where
+                    // the user is already looking, instead of a console line nobody sees.
+                    st.sent = 'err:Enquiry WAS sent, but saving its record failed — reply tracking may be lost. Do not re-send; reload and check the Sent to list.';
+                    render(quotation, mountEl);
+                });
                 recordSupplierUsage(sentOk.map(function (r) { return r.addr; }), quotation);
             }
             render(quotation, mountEl);

@@ -11089,7 +11089,11 @@
                         });
                     }
                     function add(raw) {
-                        (raw || '').split(/[,;\s]+/).forEach(function(tok) {
+                        const s = String(raw || '');
+                        // Whitespace splits a pasted ADDRESS list only (it contains @) — a typed
+                        // name keeps its spaces so a multi-word contact search stays one query.
+                        const parts = s.indexOf('@') > -1 ? s.split(/[,;\s]+/) : s.split(/[,;\n]+/);
+                        parts.forEach(function(tok) {
                             const v = tok.trim();
                             if (v && data[key].indexOf(v) === -1) data[key].push(v);
                         });
@@ -11098,7 +11102,8 @@
                     field._flush = function() { if (input.value.trim()) { add(input.value); input.value = ''; } };
                     field.onclick = function() { input.focus(); };
                     input.addEventListener('keydown', function(e) {
-                        if (e.key === ',' || e.key === ';' || e.key === ' ' || e.key === 'Enter') {
+                        // No space — it is part of typing a multi-word contact name.
+                        if (e.key === ',' || e.key === ';' || e.key === 'Enter') {
                             e.preventDefault(); add(input.value); input.value = '';
                         } else if (e.key === 'Backspace' && input.value === '' && data[key].length) {
                             data[key].pop(); render();
@@ -11114,7 +11119,19 @@
 
                 function close(result) { overlay.remove(); resolve(result); }
                 overlay.querySelector('.email-modal-cancel').onclick = function() { close(null); };
-                overlay.addEventListener('click', function(e) { if (e.target === overlay) close(null); });
+                // Backdrop close requires BOTH halves of the click on the backdrop: a click event
+                // fires on the common ancestor of mousedown and mouseup, so drag-selecting text
+                // inside the window and releasing past its edge used to count as a backdrop click
+                // and silently destroyed everything typed. And once anything HAS been typed
+                // (any input event in the window), closing asks first.
+                let downOnBackdrop = false;
+                overlay.addEventListener('mousedown', function(e) { downOnBackdrop = (e.target === overlay); });
+                overlay.addEventListener('input', function() { overlay.dataset.edited = '1'; }, true);
+                overlay.addEventListener('click', function(e) {
+                    if (e.target !== overlay || !downOnBackdrop) return;
+                    if (overlay.dataset.edited === '1' && !confirm('Discard this email? Your edits will be lost.')) return;
+                    close(null);
+                });
                 overlay.querySelector('.email-modal-send').onclick = function() {
                     overlay.querySelectorAll('.chips-field').forEach(function(f) { f._flush(); });
                     if (data.to.length === 0) { alert('Please add at least one recipient in the To field.'); return; }
@@ -11225,7 +11242,13 @@
                         });
                     }
                     function add(raw) {
-                        (raw || '').split(/[,;\s]+/).forEach(function(tok) {
+                        const s = String(raw || '');
+                        // Same rule as the freight recipient box: only split on whitespace for a
+                        // pasted ADDRESS list (it contains @). A typed name keeps its spaces, so
+                        // "Ravi Kumar" stays one searchable query instead of shattering into two
+                        // invalid chips at the first space.
+                        const parts = s.indexOf('@') > -1 ? s.split(/[,;\s]+/) : s.split(/[,;\n]+/);
+                        parts.forEach(function(tok) {
                             const v = tok.trim();
                             if (v && data[key].indexOf(v) === -1) data[key].push(v);
                         });
@@ -11234,7 +11257,8 @@
                     field._flush = function() { if (input.value.trim()) { add(input.value); input.value = ''; } };
                     field.onclick = function(e) { if (e.target === field) input.focus(); };
                     input.addEventListener('keydown', function(e) {
-                        if (e.key === ',' || e.key === ';' || e.key === ' ' || e.key === 'Enter') {
+                        // No space here — space is part of typing a multi-word contact search.
+                        if (e.key === ',' || e.key === ';' || e.key === 'Enter') {
                             e.preventDefault(); add(input.value); input.value = '';
                         } else if (e.key === 'Backspace' && input.value === '' && data[key].length) {
                             data[key].pop(); render();
@@ -11251,7 +11275,19 @@
 
                 function close(result) { overlay.remove(); resolve(result); }
                 overlay.querySelector('.email-modal-cancel').onclick = function() { close(null); };
-                overlay.addEventListener('click', function(e) { if (e.target === overlay) close(null); });
+                // Backdrop close requires BOTH halves of the click on the backdrop: a click event
+                // fires on the common ancestor of mousedown and mouseup, so drag-selecting text
+                // inside the window and releasing past its edge used to count as a backdrop click
+                // and silently destroyed everything typed. And once anything HAS been typed
+                // (any input event in the window), closing asks first.
+                let downOnBackdrop = false;
+                overlay.addEventListener('mousedown', function(e) { downOnBackdrop = (e.target === overlay); });
+                overlay.addEventListener('input', function() { overlay.dataset.edited = '1'; }, true);
+                overlay.addEventListener('click', function(e) {
+                    if (e.target !== overlay || !downOnBackdrop) return;
+                    if (overlay.dataset.edited === '1' && !confirm('Discard this email? Your edits will be lost.')) return;
+                    close(null);
+                });
                 overlay.querySelector('.email-modal-send').onclick = function() {
                     overlay.querySelectorAll('.chips-field').forEach(function(f) { f._flush(); });
                     if (data.to.length === 0) { alert('Please add at least one recipient in the To field.'); return; }
@@ -11491,7 +11527,16 @@
                     // quote pops back onto the Revision list, still bouncing, after a successful send.
                     await clearRevisionRequestsOnServer(quotation.id);
                     archiveQuotationPdf(quotation, pdfResult.base64);   // stash the exact PDF the customer got
-                    saveQuotationToBackend(quotation);
+                    // AWAIT this save, and retry once. It is what makes the ✓ SENT status stick:
+                    // fire-and-forget meant a network blip here left the email genuinely sent but
+                    // the quote looking never-sent on the next reload — passing every send gate
+                    // again and inviting the customer a second copy.
+                    let sentSaved = await saveQuotationToBackend(quotation);
+                    if (!sentSaved) sentSaved = await saveQuotationToBackend(quotation);
+                    if (!sentSaved) {
+                        alert('⚠️ The email WAS SENT to the customer, but saving the sent status failed.\n\n'
+                            + 'Do NOT send this quote again. Press 💾 Save on the card to record it as sent.');
+                    }
                     updateApprovalBadge(quotationId, quotation);
                     updateSentBadge(quotationId);
                     maybeDailyCelebrate();   // confetti when the day's last quote is sent

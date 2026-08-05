@@ -215,9 +215,14 @@
             row.style.backgroundColor = (hasItem && (!kgOk || !qtyOk)) ? 'rgba(255, 0, 0, 0.15)' : '';
         }
         refreshMissingTint();
+        // Recalculate AS the user types. Until this, only the red tint updated live — the row
+        // total and the grand total sat stale (still 0.00 after typing kg/m and qty) until the
+        // user found the manual "♻️ Recalculate" button. Every other table in the app updates
+        // live, so this one reading wrong-until-a-button-press broke the flow. Reading a handful
+        // of rows per keystroke is cheap; the manual button stays for reassurance.
         descInput.addEventListener('input', refreshMissingTint);
-        kgInput.addEventListener('input', refreshMissingTint);
-        qtyInput.addEventListener('input', refreshMissingTint);
+        kgInput.addEventListener('input', function () { refreshMissingTint(); recalculateFromTable(); });
+        qtyInput.addEventListener('input', function () { refreshMissingTint(); recalculateFromTable(); });
 
         const totalSpan = document.createElement('span');
         totalSpan.textContent = '0.00';

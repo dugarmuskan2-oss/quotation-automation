@@ -53,6 +53,13 @@ function loadPersist() {
     const calls = [];
     const errors = [];
     let respond = { ok: true, status: 200 };
+    let respondQueue = null;   // per-call responses when set (consumed one per fetch)
+    const nextResponse = () => {
+        if (respondQueue && respondQueue.length) {
+            return respondQueue.length > 1 ? respondQueue.shift() : respondQueue[0];
+        }
+        return respond;
+    };
     // eslint-disable-next-line no-new-func
     const factory = new Function('calls', 'errors', 'getResponse', `
         function apiBase() { return '/api'; }
@@ -65,10 +72,13 @@ function loadPersist() {
         return persistEnquiryThreads;
     `);
     return {
-        persist: factory(calls, errors, () => respond),
+        persist: factory(calls, errors, nextResponse),
         calls,
         errors,
         setResponse: (r) => { respond = r; },
+        // Per-call responses, for exercising the retry path: consumed one per fetch, the last
+        // entry repeating once the queue is exhausted.
+        setResponseSequence: (seq) => { respondQueue = seq.slice(); },
     };
 }
 
@@ -147,13 +157,29 @@ describe('persistEnquiryThreads — saves the enquiry record every time', () => 
         expect(calls[0].url).toBe('/api/quotations/a%20b%2Fc/freight-enquiries');
     });
 
-    test('a failed save is reported, never swallowed', async () => {
-        const { persist, errors, setResponse } = loadPersist();
+    test('a failed save is RETRIED once, then reported and surfaced — never swallowed', async () => {
+        // The contract grew teeth: one silent console line let a lost save go unnoticed while the
+        // enquiry had really been emailed, so the tracking vanished on reload. Now it retries,
+        // and on final failure both logs AND calls the onFail hook the send flow displays.
+        const { persist, errors, calls, setResponse } = loadPersist();
         setResponse({ ok: false, status: 500 });
-        persist({ id: 'q1', freightEnquiries: [] });
-        await new Promise((r) => setImmediate(r));
+        let surfaced = false;
+        const done = persist({ id: 'q1', freightEnquiries: [] }, function () { surfaced = true; });
+        await done;
+        expect(calls).toHaveLength(2);                        // the retry actually happened
         expect(errors.join(' ')).toContain('not saved');
-        expect(errors.join(' ')).toContain('500');
+        expect(surfaced).toBe(true);                          // the UI hook fired
+    });
+
+    test('a save that succeeds on the RETRY neither logs nor bothers the user', async () => {
+        const { persist, errors, calls, setResponse, setResponseSequence } = loadPersist();
+        if (setResponseSequence) setResponseSequence([{ ok: false, status: 500 }, { ok: true, status: 200 }]);
+        else return;   // harness without sequence support — covered by the case above
+        let surfaced = false;
+        await persist({ id: 'q1', freightEnquiries: [] }, function () { surfaced = true; });
+        expect(calls).toHaveLength(2);
+        expect(surfaced).toBe(false);
+        expect(errors).toHaveLength(0);
     });
 });
 
