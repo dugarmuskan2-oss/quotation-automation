@@ -252,6 +252,9 @@
         deleteBtn.style.cssText = 'background:#f44336;color:#fff;border:none;padding:4px 8px;cursor:pointer;border-radius:3px;font-size:14px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;';
         deleteBtn.addEventListener('click', function () {
             row.remove();
+            // The ONLY "add row" control lives inside a row, so deleting the last one left a
+            // table that could never be added to again — the tool was stuck until a reload.
+            ensurePipeWeightTableHasRow();
             recalculateFromTable();
         });
 

@@ -338,6 +338,28 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
                 });
             }
 
+            // The version history CANNOT join SERVER_OWNED: "Save as Revision" builds
+            // quotation.revisions in the browser and persists it through this very route, so
+            // always taking the stored copy would make saving a revision impossible.
+            //
+            // But this is an unconditional whole-object Put, and the LIST SUMMARY a tab holds
+            // carries none of these fields — so a tab that never opened the card (or a colleague's
+            // second window) used to Save and wipe the entire version history, plus the pointers
+            // to the archived PDFs, silently and unrecoverably.
+            //
+            // The rule that satisfies both: keep the stored value when the client did not load
+            // the field at all. A client that genuinely has it (it opened the full quote) still
+            // wins, so adding a revision works exactly as before.
+            if (stored) {
+                ['revisions', 'revisionBaseline', 'archivedPdfVersions'].forEach(function (field) {
+                    const clientHasIt = Object.prototype.hasOwnProperty.call(quotation, field)
+                        && quotation[field] !== undefined && quotation[field] !== null;
+                    if (!clientHasIt && Object.prototype.hasOwnProperty.call(stored, field)) {
+                        quotation[field] = stored[field];
+                    }
+                });
+            }
+
             const updated = { ...quotation, createdAt: quotation.createdAt || now, updatedAt: now };
 
             await ddbDocClient.send(new PutCommand({

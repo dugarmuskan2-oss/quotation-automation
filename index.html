@@ -2110,6 +2110,17 @@
                 return quotations.length > 0;
             } catch (error) {
                 console.error('Error loading quotations from backend:', error);
+                // Say the list FAILED. Silence here left the container showing its default
+                // "No quotations approved yet" — telling the user their quotes were gone when
+                // the truth was a server or network problem.
+                const listEl = getApprovedQuotationsContainer();
+                if (listEl && !approvedQuotations.length) {
+                    listEl.innerHTML = '<div style="padding:24px;text-align:center;color:#c62828;">'
+                        + 'Could not load your quotations (' + escapeHtml(error.message || 'network error') + ').'
+                        + '<div style="margin-top:4px;color:#6e6c65;font-size:13px;">Your quotes are safe — this is a loading problem.</div>'
+                        + '<div style="margin-top:10px;"><button type="button" class="upload-btn" style="width:auto;padding:6px 14px;"'
+                        + ' onclick="loadQuotationsFromBackend()">↻ Try again</button></div></div>';
+                }
                 return false;
             } finally {
                 approvedQuotationsLoading = false;
@@ -8640,11 +8651,26 @@
             })();
         }
 
+        // Nothing is auto-saved, so closing the tab with edits on a card threw them away without
+        // a word. The browser's own confirm is the only reliable guard at this point.
+        window.addEventListener('beforeunload', function(e) {
+            if (typeof window._flushApprovalEdits === 'function') window._flushApprovalEdits();
+            const dirty = (Array.isArray(approvedQuotations) ? approvedQuotations : [])
+                .some(function(q) { return q && q.hasUnsavedEdits; });
+            const draftOpen = document.querySelectorAll('#creationFilesContainer .quotation-folder').length > 0;
+            if (!dirty && !draftOpen) return;
+            e.preventDefault();
+            e.returnValue = '';       // required for the browser to show its own prompt
+            return '';
+        });
+
         function displayAllApprovedQuotations() {
             /*
                 This function loops through all approved quotations
                 and displays them in the Approval section.
             */
+            // Commit any edit still in the debounce before the DOM it came from is replaced.
+            if (typeof window._flushApprovalEdits === 'function') window._flushApprovalEdits();
             const container = getApprovedQuotationsContainer();
             const previousScrollTop = container ? container.scrollTop : 0;
             const expandedFolderIds = container
@@ -9104,7 +9130,9 @@
         function renderApprovalFolderContent(quotationId, folderContentEl) {
             const quotation = approvedQuotations.find(function(q) { return idsMatch(q.id, quotationId); });
             if (!quotation || !folderContentEl) return;
-            delete folderContentEl.dataset.lazyId;
+            // The lazy marker is cleared only once the details are actually IN HAND (see below).
+            // Clearing it up front meant a failed fetch could never be retried: closing and
+            // reopening the card just re-showed the dead "Please try again" box for good.
 
             function _doRender() {
                 const termsText = quotation.termsText || defaultTermsText || '';
@@ -9134,20 +9162,35 @@
             if (!quotation.tableHTML) {
                 folderContentEl.innerHTML = '<div style="padding:20px;text-align:center;color:#666;">Loading quotation...</div>';
                 fetch(`${API_BASE_URL}/quotations/${encodeURIComponent(quotationId)}`)
-                    .then(function(r) { return r.json(); })
+                    .then(function(r) {
+                        // An HTTP error still parses as JSON ({error:…}) — without this check the
+                        // code fell through and rendered the SUMMARY as if it were the full quote:
+                        // an empty items table, fully editable, with a live Save button that would
+                        // write that emptiness over the real quotation.
+                        if (!r.ok) throw new Error('Server returned ' + r.status);
+                        return r.json();
+                    })
                     .then(function(result) {
-                        if (result && result.quotation) {
-                            Object.assign(quotation, result.quotation);
-                        }
+                        if (!result || !result.quotation) throw new Error('The server did not return this quotation');
+                        Object.assign(quotation, result.quotation);
+                        delete folderContentEl.dataset.lazyId;   // details are in hand
                         _doRender();
                     })
                     .catch(function(err) {
-                        folderContentEl.innerHTML = '<div style="padding:20px;color:#c62828;">Failed to load quotation details. Please try again.</div>';
                         console.error('Failed to fetch full quotation data:', err);
+                        // Keep the lazy marker so reopening retries, and offer a direct retry.
+                        folderContentEl.dataset.lazyId = String(quotationId);
+                        folderContentEl.innerHTML =
+                            '<div style="padding:20px;color:#c62828;">Could not load this quotation ('
+                            + escapeHtml(err.message || 'network error') + ').'
+                            + '<div style="margin-top:10px;"><button type="button" class="save-btn" style="width:auto;padding:6px 14px;"'
+                            + ' onclick="event.stopPropagation(); renderApprovalFolderContent(' + JSON.stringify(String(quotationId))
+                            + ', this.closest(\'.quotation-folder-content\'))">↻ Try again</button></div></div>';
                     });
                 return;
             }
 
+            delete folderContentEl.dataset.lazyId;
             _doRender();
         }
 
@@ -9186,11 +9229,29 @@
             if (!container.dataset.approvalAutosaveDelegationBound) {
                 container.dataset.approvalAutosaveDelegationBound = 'true';
                 var autosavePending = {};
+                var autosaveRun = {};      // the work each pending timer would have done
                 window._cancelApprovalAutosave = function(quotationId) {
                     if (autosavePending[quotationId]) {
                         clearTimeout(autosavePending[quotationId]);
                         autosavePending[quotationId] = null;
+                        autosaveRun[quotationId] = null;
                     }
+                };
+                // Commit any edit still sitting in the 250ms debounce, NOW and synchronously.
+                // Without this, typing in a field and then clicking anything that re-renders the
+                // list (a filter button, Save) lost the edit: the click's blur scheduled the
+                // timer, the re-render replaced the inputs, and the timer then read a DOM that no
+                // longer existed. Called before every re-render, so the model is always current.
+                window._flushApprovalEdits = function(quotationId) {
+                    Object.keys(autosavePending).forEach(function(id) {
+                        if (quotationId != null && String(id) !== String(quotationId)) return;
+                        if (!autosavePending[id]) return;
+                        clearTimeout(autosavePending[id]);
+                        autosavePending[id] = null;
+                        var run = autosaveRun[id];
+                        autosaveRun[id] = null;
+                        if (typeof run === 'function') { try { run(); } catch (e) { console.error('Flushing an edit failed:', e); } }
+                    });
                 };
                 var autosaveHandler = function(e) {
                     var input = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' ? e.target : null;
@@ -9200,9 +9261,15 @@
                     var quotationId = folder.id.replace('folder-', '');
                     var capturedInput = input;
                     if (autosavePending[quotationId]) clearTimeout(autosavePending[quotationId]);
+                    // Kept so _flushApprovalEdits can run exactly this work early.
+                    autosaveRun[quotationId] = function() {
+                        updateQuotationFromApprovalSection(quotationId, capturedInput);
+                    };
                     autosavePending[quotationId] = setTimeout(function() {
                         autosavePending[quotationId] = null;
-                        updateQuotationFromApprovalSection(quotationId, capturedInput);
+                        var run = autosaveRun[quotationId];
+                        autosaveRun[quotationId] = null;
+                        if (run) run();
                     }, 250);
                 };
                 // Only 'change' (a committed edit) marks the quote dirty. NOT 'focusout' —
