@@ -1437,11 +1437,16 @@
             
             <!-- File upload input -->
             <label for="fileUpload" style="margin-top: 20px;">Or Upload File (PDF, Word, Excel, Text, or Image):</label>
-            <input 
-                type="file" 
-                id="fileUpload" 
+            <input
+                type="file"
+                id="fileUpload"
                 accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.png,.jpg,.jpeg,.gif,.webp"
+                onchange="updateEnquiryFileRemoveBtn()"
             >
+            <button type="button" id="fileUploadClear" onclick="clearEnquiryFileInput()"
+                style="display:none; margin-left:8px; padding:3px 10px; font-size:12px; width:auto;
+                       border:1px solid #ddd; background:#f7f6f2; border-radius:5px; cursor:pointer;"
+                title="Take this file back off the enquiry">&#10005; Remove file</button>
             
             <!-- Generate button -->
             <button class="generate-btn" onclick="generateQuotation()">
@@ -4220,12 +4225,37 @@
             displayQuotation(preparedQuotationData, !!creationFolderId);
         }
 
+        // Guard + busy state for the Generate button. A generation is 15-60s of OpenAI time with
+        // no visible progress, so an impatient second click used to either start a SECOND paid
+        // generation of the same file, or (paste-only, because the box was already emptied) show
+        // "Please provide either email content or upload a file" — an error about the previous
+        // click that then sat on screen through the successful result.
+        let _generateInFlight = false;
+        function setGenerateBusy(busy) {
+            _generateInFlight = busy;
+            const btn = document.querySelector('.generate-btn');
+            if (!btn) return;
+            if (busy) {
+                if (!btn.dataset.idleLabel) btn.dataset.idleLabel = btn.innerHTML;
+                btn.disabled = true;
+                btn.innerHTML = '⏳ Reading the enquiry…';
+            } else {
+                btn.disabled = false;
+                if (btn.dataset.idleLabel) btn.innerHTML = btn.dataset.idleLabel;
+            }
+        }
+
         async function generateQuotation() {
             /*
                 async function means this function can wait for things to complete
                 (like reading a file) before continuing
             */
+            if (_generateInFlight) return;
             let creationFolderId = null;
+            // Kept so a FAILED generation can hand the user's text back. It used to be cleared
+            // before the AI call and lived only in creationFolderState, which nothing surfaced —
+            // so a failure meant returning to Gmail to re-copy, losing any hand edits.
+            let clearedEmailText = '';
             try {
                 // Step 1: Get email content from textarea
                 const { emailContent, fileInput, file } = getInputsForQuotation();
@@ -4241,9 +4271,11 @@
                 }
                 const emailInput = document.getElementById('emailContent');
                 if (emailInput) {
+                    clearedEmailText = emailInput.value;
                     emailInput.value = '';
                 }
-                
+                setGenerateBusy(true);
+
                 // Hide any previous error messages
                 clearErrorMessage();
                 creationFolderId = createCreationFolderEntry(emailContent, file);
@@ -4257,27 +4289,54 @@
                 
                 // Step 5: Call AI API to extract data
                 const quotationData = await fetchQuotationData(emailContent, fileContent, file);
-                
+
                 // Step 6: Display the quotation
                 renderQuotation(quotationData, creationFolderId);
                 if (creationFolderId) {
                     await finalizeCreationFolderEntry(creationFolderId);
                     updateCreationContainerScrollLimit();
                 }
-                
+                // The enquiry file has now been USED. Clearing it is what stops the next quote
+                // silently inheriting it: the input was never reset, so pasting a different
+                // customer's email and pressing Generate sent the old file along with it and the
+                // AI blended two enquiries into one wrong quotation.
+                clearEnquiryFileInput();
+
             } catch (error) {
                 // If something goes wrong, show error message
                 showError("An error occurred: " + error.message);
+                // Hand the pasted text back so a failed generation is retryable in place.
+                const emailBox = document.getElementById('emailContent');
+                if (emailBox && clearedEmailText && !emailBox.value) emailBox.value = clearedEmailText;
                 if (creationFolderId) {
-                    markCreationFolderEntryError(creationFolderId, error.message || 'Failed to generate quotation.');
+                    markCreationFolderEntryError(creationFolderId, (error.message || 'Failed to generate quotation.')
+                        + ' — your pasted enquiry has been put back above, so you can try again.');
                     updateCreationContainerScrollLimit();
                 }
             } finally {
+                setGenerateBusy(false);
                 if (creationFolderId) {
                     clearCreationSection();
                     updateCreationEmptyMessage();
                 }
             }
+        }
+
+        // Reset the enquiry file picker. Used after a generation has consumed the file, and by
+        // the Remove button. Clearing .value also resets the browser's own "file chosen" text.
+        function clearEnquiryFileInput() {
+            const input = document.getElementById('fileUpload');
+            if (input) input.value = '';
+            updateEnquiryFileRemoveBtn();
+        }
+
+        // Show a Remove control only while a file is selected. Until this there was NO way to
+        // take a file back off — the only trick was opening the picker and cancelling.
+        function updateEnquiryFileRemoveBtn() {
+            const input = document.getElementById('fileUpload');
+            const btn = document.getElementById('fileUploadClear');
+            if (!input || !btn) return;
+            btn.style.display = (input.files && input.files.length) ? 'inline-block' : 'none';
         }
         
         /*
@@ -8494,7 +8553,16 @@
                     });
                     const result = await safeJsonParse(response);
                     if (!response.ok) throw new Error(result.error || 'Failed to send the regret email');
-                    await mdkSetRegretStatus(id, false, true);
+                    // The email is already gone at this point — the flag save must not fail
+                    // quietly. Unmarked, the quote sat on the desk looking un-regretted with its
+                    // Regret button live, and the natural next click sent the customer a second
+                    // regret. Retry once; if it still fails, say exactly what happened.
+                    let regretMarked = await mdkSetRegretStatus(id, false, true);
+                    if (!regretMarked) regretMarked = await mdkSetRegretStatus(id, false, true);
+                    if (!regretMarked) {
+                        alert('⚠️ The regret email WAS SENT to the customer, but marking the quote as regretted failed.\n\n'
+                            + 'Do NOT click Regret again — that would email them a second time. Reload the app and mark it regretted then.');
+                    }
                 } catch (error) {
                     console.error('Regret email failed:', error);
                     alert('The regret email could not be sent (' + error.message + '). The quote was NOT marked regretted — try again.');
@@ -11118,7 +11186,13 @@
                 });
 
                 function close(result) { overlay.remove(); resolve(result); }
-                overlay.querySelector('.email-modal-cancel').onclick = function() { close(null); };
+                // Cancel gets the same courtesy as the backdrop: once anything has been typed it
+                // asks first. It sits directly beside Send — one misclick used to erase a fully
+                // personalised email while a backdrop click would have asked.
+                overlay.querySelector('.email-modal-cancel').onclick = function() {
+                    if (overlay.dataset.edited === '1' && !confirm('Discard this email? Your edits will be lost.')) return;
+                    close(null);
+                };
                 // Backdrop close requires BOTH halves of the click on the backdrop: a click event
                 // fires on the common ancestor of mousedown and mouseup, so drag-selecting text
                 // inside the window and releasing past its edge used to count as a backdrop click
@@ -11274,7 +11348,13 @@
                 });
 
                 function close(result) { overlay.remove(); resolve(result); }
-                overlay.querySelector('.email-modal-cancel').onclick = function() { close(null); };
+                // Cancel gets the same courtesy as the backdrop: once anything has been typed it
+                // asks first. It sits directly beside Send — one misclick used to erase a fully
+                // personalised email while a backdrop click would have asked.
+                overlay.querySelector('.email-modal-cancel').onclick = function() {
+                    if (overlay.dataset.edited === '1' && !confirm('Discard this email? Your edits will be lost.')) return;
+                    close(null);
+                };
                 // Backdrop close requires BOTH halves of the click on the backdrop: a click event
                 // fires on the common ancestor of mousedown and mouseup, so drag-selecting text
                 // inside the window and releasing past its edge used to count as a backdrop click
@@ -11361,6 +11441,9 @@
         async function sendQuoteReply(quotationId) {
             const quotation = approvedQuotations.find(q => idsMatch(q.id, quotationId));
             if (!quotation) { alert('Quotation not found'); return; }
+            // Same per-quote lock as Send to Customer: the Gmail round-trip takes seconds with
+            // nothing moving on screen, and a second click sent the customer the reply twice.
+            if (_sendInFlight[quotationId]) return;
             const box = document.getElementById('reply-box-' + quotationId);
             const text = box ? (box.value || '').trim() : '';
             if (!text) { alert('Type a reply first.'); return; }
@@ -11368,6 +11451,8 @@
                 alert('This quote has no linked email thread to reply to.');
                 return;
             }
+            _sendInFlight[quotationId] = true;
+            markSendButtonsBusy(quotationId, true);
             const payload = { bodyHtml: escapeHtml(text).replace(/\n/g, '<br>') };
             if (quotation.gmailMessageId) payload.replyToMessageId = quotation.gmailMessageId;
             if (quotation.threadId) payload.threadId = quotation.threadId;
@@ -11386,12 +11471,34 @@
                 }
             } catch (err) {
                 alert('Error sending reply: ' + err.message);
+            } finally {
+                _sendInFlight[quotationId] = false;
+                markSendButtonsBusy(quotationId, false);
             }
+        }
+
+        // One send at a time, per quote. There was no in-flight state at all: the thread lookup
+        // and (after the compose window closed) the PDF + Gmail call all run with the button
+        // still live and nothing on screen moving, so a double-click — or an impatient re-click
+        // during the silent seconds — stacked a second compose and the customer got the
+        // quotation twice. The supplier/freight senders already had a `sending` flag; this is
+        // that same idea for the customer send and the conversation-panel reply.
+        const _sendInFlight = {};
+        function markSendButtonsBusy(quotationId, busy) {
+            const content = document.getElementById('folder-content-' + quotationId);
+            if (!content) return;
+            content.querySelectorAll('button').forEach(function(b) {
+                if (!/Send to Customer|Send quote to customer|Send reply/i.test(b.textContent)) return;
+                b.disabled = busy;
+                if (busy) { b.dataset.prevText = b.textContent; b.textContent = '✉️ Sending…'; }
+                else if (b.dataset.prevText) { b.textContent = b.dataset.prevText; delete b.dataset.prevText; }
+            });
         }
 
         async function sendQuotationToCustomer(quotationId) {
             const quotation = approvedQuotations.find(q => idsMatch(q.id, quotationId));
             if (!quotation) { alert('Quotation not found'); return; }
+            if (_sendInFlight[quotationId]) return;   // a click is already being handled
 
             // A quote must be approved at least once before it can be sent. Editing a
             // field (e.g. Checked By) clears `saved`, but `everApproved` stays true so
@@ -11413,6 +11520,11 @@
                 alert('You have unsaved changes. Please save the quotation (💾 Save) before sending.');
                 return;
             }
+
+            // From here the work is slow and silent (Gmail lookup, then after the compose window
+            // a PDF build + send) — hold the per-quote lock and grey the buttons until done.
+            _sendInFlight[quotationId] = true;
+            markSendButtonsBusy(quotationId, true);
 
             // Resolve thread info up front (reply quotes) so the compose window can pre-fill
             // the recipient + subject and thread the reply in the original conversation.
@@ -11447,8 +11559,12 @@
             const revN = currentRevisionNumber(quotation);
             const pdfName = `Quotation-${quotation.quoteNumber || 'DSC'}${revN > 0 ? '-Rev' + revN : ''}.pdf`;
 
-            // Open the review/compose window — everything pre-filled and editable.
-            const composed = await composeQuotationEmail({
+            // Open the review/compose window — everything pre-filled and editable. The compose
+            // and the send sit in ONE retry loop: on any failure the window REOPENS holding
+            // exactly what the user composed (recipients, subject, reworded message). It used to
+            // close before the send even started, so one Gmail hiccup threw away a personally
+            // worded email and reopening showed the stock template.
+            let prefill = {
                 to: senderEmail,
                 cc: replyAllCc,
                 subject: subjectPrefill,
@@ -11456,7 +11572,11 @@
                 pdfFilename: pdfName,
                 threadNote: threadResolved
                     ? ('Replies into the existing conversation with ' + senderEmail + '. Change the To address to send a new email instead.')
-                    : '',
+                    : (isReply
+                        // The lookup failed on a Gmail-ingested quote: say so, instead of a
+                        // silently blank To and a reply that quietly splits the Gmail thread.
+                        ? 'Could not read the original email thread — fill in the recipient below. This will go out as a new email, not a reply.'
+                        : ''),
                 onPreview: async function(link) {
                     const orig = link.textContent; link.textContent = 'Generating…';
                     const win = window.open('', '_blank');   // open now (in the click gesture) so the popup blocker allows it
@@ -11467,14 +11587,31 @@
                     } catch (e) { if (win) win.close(); throw e; }
                     finally { link.textContent = orig; }
                 }
-            });
-            if (!composed) return;   // user cancelled the compose window
+            };
+            // Everything the user typed, carried into the reopened window after a failure.
+            const retained = function(composed) {
+                return { to: composed.to, cc: composed.cc, bcc: composed.bcc,
+                         subject: composed.subject, bodyHtml: composed.bodyHtml,
+                         pdfFilename: pdfName, threadNote: prefill.threadNote, onPreview: prefill.onPreview };
+            };
+
+            for (;;) {
+            const composed = await composeQuotationEmail(prefill);
+            if (!composed) {   // user cancelled the compose window
+                _sendInFlight[quotationId] = false;
+                markSendButtonsBusy(quotationId, false);
+                return;
+            }
 
             try {
                 // Generate the exact same PDF the app uses for Download/Print, and send its bytes
                 // (the PDF is well under Vercel's request limit, so no server-side rendering is needed).
                 const pdfResult = await downloadQuotationPdf(quotationId, { returnBase64: true });
-                if (!pdfResult || !pdfResult.base64) { alert('Could not generate the quotation PDF.'); return; }
+                if (!pdfResult || !pdfResult.base64) {
+                    alert('Could not generate the quotation PDF. Your email is kept — fix the quote and press Send again.');
+                    prefill = retained(composed);
+                    continue;
+                }
 
                 const payload = {
                     to: composed.to,
@@ -11549,12 +11686,20 @@
                         sentThreadEl.insertAdjacentHTML('beforeend', '<div style="margin-bottom:8px;"><div style="font-size:11px;color:#9b988e;">You · just now</div><div style="background:#E6F1FB;border-radius:8px;padding:8px 10px;font-size:13px;">Sent Quotation ' + escapeHtml(quotation.quoteNumber || '') + ' (PDF) to the customer.</div></div>');
                     }
                     alert('✅ Email sent' + (data.sentTo ? ' to ' + data.sentTo : ''));
+                    break;   // done — leave the retry loop
                 } else {
-                    alert('Failed to send: ' + (data.error || 'Unknown error'));
+                    alert('Failed to send: ' + (data.error || 'Unknown error') + '\n\nYour email is kept — it will reopen so you can try again.');
+                    prefill = retained(composed);
+                    continue;
                 }
             } catch (err) {
-                alert('Error sending email: ' + err.message);
+                alert('Error sending email: ' + err.message + '\n\nYour email is kept — it will reopen so you can try again.');
+                prefill = retained(composed);
+                continue;
             }
+            }   // for(;;)
+            _sendInFlight[quotationId] = false;
+            markSendButtonsBusy(quotationId, false);
         }
 
         async function sendEnquiryFromApp() {
