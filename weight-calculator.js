@@ -443,6 +443,15 @@
                 statusEl.textContent = 'Loaded line items from quotation. You can adjust kg/m and quantities if required.';
                 statusEl.style.color = '#2e7d32';
             }
+        } catch (err) {
+            // There was no catch at all: any failure (quote not found, server down) left
+            // "Loading quotation…" on screen for good, with the button back to normal — so it
+            // looked permanently stuck rather than failed.
+            console.error('Load from quotation failed:', err);
+            if (statusEl) {
+                statusEl.textContent = 'Could not load that quotation (' + (err && err.message ? err.message : 'network error') + '). Check the number and try again.';
+                statusEl.style.color = '#c62828';
+            }
         } finally {
             if (loadBtn) {
                 loadBtn.disabled = false;

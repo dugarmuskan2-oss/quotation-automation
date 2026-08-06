@@ -2224,7 +2224,16 @@
                     }
                 });
                 if (added) syncApprovedQuotationsGlobal();
-                if (added) displayAllApprovedQuotations(); else updateApprovalRevisionCount();
+                // This lands a few seconds after the app opens, i.e. exactly while the user is
+                // typing their first margin. A plain re-render threw that away; the guard skips
+                // rendering over a focused field or a dirty card, and the count still updates.
+                if (added) {
+                    const rendered = (typeof refreshApprovalListPreservingEdits === 'function')
+                        ? refreshApprovalListPreservingEdits() : (displayAllApprovedQuotations(), true);
+                    if (!rendered) updateApprovalRevisionCount();
+                } else {
+                    updateApprovalRevisionCount();
+                }
             } catch (e) { /* best-effort */ }
         }
 
@@ -7393,10 +7402,12 @@
         // "Is there anything actually in there?" for rich text. An empty contenteditable still
         // reports <br> or &nbsp;, so a plain trim() would happily save an empty revision ask.
         function hasVisibleRichText(html) {
-            return !!String(html || '')
-                .replace(/<[^>]*>/g, '')
-                .replace(/&nbsp;/gi, ' ')
-                .trim();
+            const s = String(html || '');
+            // An image IS content. Stripping every tag first meant a note that was just a pasted
+            // screenshot counted as empty: it was refused with "Please type something first" and
+            // the upload — already stored — was thrown away.
+            if (/<img\b/i.test(s) || /<table\b/i.test(s)) return true;
+            return !!s.replace(/<[^>]*>/g, '').replace(/&nbsp;/gi, ' ').trim();
         }
 
         // Render a stored revision ask / note. Old entries are plain text, new ones are HTML —
@@ -8707,6 +8718,17 @@
             // or a clean "no quotes for {month}" message — instead of a blank list beside a Load-more button.
             if (filteredQuotations.length === 0 && (approvalMonthFilter || approvalFreightFilter || approvalRevisionFilter || approvalEnquiryFilter)) {
                 renderApprovedQuotationsHTML(container, approvalFilteredEmptyHtml());
+                updateApprovalContainerScrollLimit(container);
+                return;
+            }
+            // A SEARCH with no matches had no empty state at all — the list just went blank,
+            // which reads like the app broke rather than "nothing matched".
+            if (filteredQuotations.length === 0 && approvalSearchQuery) {
+                renderApprovedQuotationsHTML(container,
+                    '<div style="padding:24px;text-align:center;color:#6e6c65;">'
+                    + 'No quotes match &ldquo;' + escapeHtml(approvalSearchQuery) + '&rdquo;.'
+                    + '<div style="margin-top:6px;font-size:13px;">Searching looks at company, kind attn, quote number and month.'
+                    + ' Older quotes load as you scroll, so a very old one may need &ldquo;All Quotes&rdquo; first.</div></div>');
                 updateApprovalContainerScrollLimit(container);
                 return;
             }
@@ -10707,6 +10729,16 @@
                         refreshHistoryTab(quotation.id);
                         displayAllApprovedQuotations();
                         alert('The revision was NOT saved — the server did not accept it.\n\nNothing has changed; your edits are still on screen. Please try again.');
+                    } else {
+                        // A PLAIN save that failed used to leave hasUnsavedEdits false — the flag
+                        // was cleared optimistically and only the revision path put it back. So
+                        // the quote looked saved, the dirty highlight went away, the list was free
+                        // to re-render over the edits, and Download/Send stopped warning. Nothing
+                        // had actually been written.
+                        quotation.hasUnsavedEdits = true;
+                        displayAllApprovedQuotations();
+                        alert('⚠️ NOT saved — the server did not accept the change.\n\n'
+                            + 'Your edits are still on screen and the quote is still marked unsaved. Please try Save again.');
                     }
                     return;
                 }
@@ -12452,10 +12484,32 @@
         }
         function buildSharedFreightHtml(quotation) {
             const enq = Array.isArray(quotation.freightEnquiries) ? quotation.freightEnquiries : [];
-            const items = Array.isArray(quotation.lineItems) ? quotation.lineItems : [];
-            const freightLine = items.filter(function(li) { return String(li.originalDescription || '').trim().toLowerCase() === 'freight'; })[0];
+            // Freight is NOT in lineItems: extractStructuredLineItemsFromTable keeps only
+            // `.item-row`, and a freight row carries `.freight-row`. So this used to search a
+            // list the freight line can never be in, and "Freight in the quote" never appeared —
+            // even on quotes that plainly had freight on them. Read it from the stored table.
+            let freightAmount = '';
+            try {
+                const holder = document.createElement('div');
+                holder.innerHTML = quotation.tableHTML || '';
+                const fRow = holder.querySelector('.freight-row, [data-row-type="freight"]');
+                if (fRow) {
+                    const cell = fRow.querySelector('[data-field="lineTotal"]');
+                    freightAmount = cell
+                        ? String(cell.value || cell.getAttribute('value') || cell.textContent || '').trim()
+                        : String((fRow.querySelector('.line-total') || {}).textContent || '').replace('₹', '').trim();
+                }
+            } catch (e) { /* a malformed snapshot must not break the whole page */ }
+            // Fallback for any older quote that DID carry freight as a line item.
+            if (!freightAmount) {
+                const items = Array.isArray(quotation.lineItems) ? quotation.lineItems : [];
+                const legacy = items.filter(function(li) {
+                    return String(li.originalDescription || '').trim().toLowerCase() === 'freight';
+                })[0];
+                if (legacy) freightAmount = String(legacy.lineTotal || legacy.finalRate || '').trim();
+            }
             let html = '';
-            if (freightLine) html += '<p style="font-weight:600;">Freight in the quote: &#8377;' + escapeHtml(String(freightLine.lineTotal || freightLine.finalRate || '')) + '</p>';
+            if (freightAmount) html += '<p style="font-weight:600;">Freight in the quote: &#8377;' + escapeHtml(freightAmount) + '</p>';
             if (quotation.freightDistributedIntoMargin) html += '<p style="color:#6e6c65;">Freight is built into the rates (FOR &mdash; no separate line).</p>';
             if (enq.length) {
                 html += '<table class="sq-tbl"><thead><tr><th>Transporter</th><th>Status</th><th style="text-align:right;">Rate</th></tr></thead><tbody>'

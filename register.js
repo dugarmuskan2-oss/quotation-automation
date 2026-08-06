@@ -163,9 +163,22 @@
             })
             .catch(function (err) {
                 console.error('Register month load failed:', err);
-                if (state.month === label && !state.rowsByMonth[label]) {
-                    var container = $('registerTableContainer');
-                    if (container) container.innerHTML = '<p style="text-align:center; color:#c62828; padding:24px;">Could not load the register. Check the server and try Refresh.</p>';
+                if (state.month !== label) return;
+                var container = $('registerTableContainer');
+                if (!container) return;
+                if (!state.rowsByMonth[label]) {
+                    container.innerHTML = '<p style="text-align:center; color:#c62828; padding:24px;">Could not load the register. Check the server and try Refresh.</p>';
+                    return;
+                }
+                // There IS a cached copy, so the table below is real but possibly out of date.
+                // Silence here was the problem: a failed Refresh looked exactly like a successful
+                // one, so stale rows were read as current.
+                if (!container.querySelector('.reg-stale-note')) {
+                    var note = document.createElement('p');
+                    note.className = 'reg-stale-note';
+                    note.style.cssText = 'margin:0 0 8px; padding:8px 12px; background:#FCEBEB; color:#791F1F; border-radius:6px; font-size:13px;';
+                    note.textContent = 'Could not refresh — showing the last saved copy, which may be out of date. Press Refresh to try again.';
+                    container.insertBefore(note, container.firstChild);
                 }
             })
             .finally(function () { state.loadingMonths[label] = false; });

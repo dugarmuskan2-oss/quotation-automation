@@ -573,6 +573,10 @@
             if (!email) return;
             if (st.to.indexOf(email) === -1) st.to.push(email);
             render(quotation, mountEl);
+            // render() rebuilds the tab, which destroys the box being typed into — so adding one
+            // address dropped focus and the next keystrokes went nowhere. Put the cursor back.
+            var again = mountEl.querySelector('.qet-input');
+            if (again) again.focus();
         }
         function paintSuggestions() {
             if (!suggest) return;
