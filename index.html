@@ -3628,6 +3628,40 @@
         // Must match MAX_UPLOAD_SIZE_BYTES in server.js — checked here so an oversized file is
         // caught before the upload, instead of coming back as a bare "Internal Server Error".
         const MAX_ENQUIRY_FILE_BYTES = 10 * 1024 * 1024;
+        // Hosting caps a request body at ~4.5 MB, well under our own 10 MB, so we aim below that.
+        const ENQUIRY_IMAGE_TARGET_BYTES = 3 * 1024 * 1024;
+        // A photographed enquiry only has to be readable, not full phone resolution.
+        const ENQUIRY_IMAGE_MAX_DIM = 2200;
+
+        function isImageFileName(name) {
+            return /\.(png|jpe?g|gif|webp|bmp|heic|heif)$/i.test(String(name || ''));
+        }
+
+        // Shrink a photographed / scanned enquiry so it fits, instead of refusing it. Returns the
+        // original file unchanged if it is already small enough or cannot be read as an image.
+        function shrinkEnquiryImage(file) {
+            return new Promise(function(resolve) {
+                const url = URL.createObjectURL(file);
+                const img = new Image();
+                img.onload = function() {
+                    URL.revokeObjectURL(url);
+                    const scale = Math.min(1, ENQUIRY_IMAGE_MAX_DIM / Math.max(img.width, img.height));
+                    const canvas = document.createElement('canvas');
+                    canvas.width = Math.max(1, Math.round(img.width * scale));
+                    canvas.height = Math.max(1, Math.round(img.height * scale));
+                    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                    // JPEG, not PNG: a photo of a page IS a photograph, and re-encoding it as PNG
+                    // routinely comes out larger than the original. 0.85 keeps typed text sharp.
+                    canvas.toBlob(function(blob) {
+                        if (!blob || blob.size >= file.size) { resolve(file); return; }
+                        const base = String(file.name || 'enquiry').replace(/\.[^.]+$/, '');
+                        resolve(new File([blob], base + '.jpg', { type: 'image/jpeg' }));
+                    }, 'image/jpeg', 0.85);
+                };
+                img.onerror = function() { URL.revokeObjectURL(url); resolve(file); };
+                img.src = url;
+            });
+        }
 
         function isPdfFile(file) {
             if (!file) return false;
@@ -4285,11 +4319,19 @@
             let clearedEmailText = '';
             try {
                 // Step 1: Get email content from textarea
-                const { emailContent, fileInput, file } = getInputsForQuotation();
+                const { emailContent, fileInput } = getInputsForQuotation();
+                let file = getInputsForQuotation().file;
 
-                // Step 2: Refuse an oversized file HERE, before the upload. Sent to the server it
-                // came back as a bare "Internal Server Error" that never mentioned size, and the
-                // pasted text was already gone by then.
+                // Step 2: A photo or scan of an enquiry is routinely several megabytes at full
+                // phone resolution — far more than the AI needs to read it. Shrink it so it goes
+                // through, rather than turning the user away over a limit they can't act on.
+                if (file && isImageFileName(file.name) && file.size > ENQUIRY_IMAGE_TARGET_BYTES) {
+                    try { file = await shrinkEnquiryImage(file); } catch (e) { /* send the original */ }
+                }
+
+                // Step 3: Refuse a file that is STILL too big (a PDF, or an image that would not
+                // shrink). Sent to the server it came back as a bare "Internal Server Error" that
+                // never mentioned size, and the pasted text was already gone by then.
                 if (file && file.size > MAX_ENQUIRY_FILE_BYTES) {
                     const mb = (file.size / (1024 * 1024)).toFixed(1);
                     showError('“' + file.name + '” is ' + mb + ' MB — the limit is '
@@ -4298,7 +4340,7 @@
                     return;
                 }
 
-                // Step 3: Read file content (if file was uploaded)
+                // Step 4: Read file content (if file was uploaded)
             let fileContent = await readUploadedFileContent(file);
             lastEmailContent = emailContent;
             lastFileContent = fileContent;
