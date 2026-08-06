@@ -372,6 +372,9 @@
         .pm-rich td, .pm-rich th { border: 1px solid #d0cec6; padding: 2px 6px; text-align: left; }
         .rev-ask-meta { flex: 0 0 auto; font-size: 11px; color: #9b988e; }
         .rev-ask-hint { font-size: 11px; color: #9b988e; margin: 4px 0 2px; }
+        .rev-ask-done-link { background: none; border: none; padding: 0; font: inherit; color: #0C447C;
+            text-decoration: underline; cursor: pointer; }
+        .rev-ask-done-link:hover { color: #06305c; }
         .rev-ask-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
         .rev-ask-strip.is-empty .rev-ask-actions { margin-top: 0; }
         .rev-ask-btn { background: #fff; border: 1px solid #D8D5D0; color: #4A4A46; border-radius: 6px;
@@ -3622,6 +3625,10 @@
 
         const PDF_PLACEHOLDER = '(PDF uploaded - content extracted by AI)';
 
+        // Must match MAX_UPLOAD_SIZE_BYTES in server.js — checked here so an oversized file is
+        // caught before the upload, instead of coming back as a bare "Internal Server Error".
+        const MAX_ENQUIRY_FILE_BYTES = 10 * 1024 * 1024;
+
         function isPdfFile(file) {
             if (!file) return false;
             const type = (file.type || '').toLowerCase();
@@ -4279,7 +4286,18 @@
             try {
                 // Step 1: Get email content from textarea
                 const { emailContent, fileInput, file } = getInputsForQuotation();
-                
+
+                // Step 2: Refuse an oversized file HERE, before the upload. Sent to the server it
+                // came back as a bare "Internal Server Error" that never mentioned size, and the
+                // pasted text was already gone by then.
+                if (file && file.size > MAX_ENQUIRY_FILE_BYTES) {
+                    const mb = (file.size / (1024 * 1024)).toFixed(1);
+                    showError('“' + file.name + '” is ' + mb + ' MB — the limit is '
+                        + Math.round(MAX_ENQUIRY_FILE_BYTES / (1024 * 1024)) + ' MB. '
+                        + 'Compress or split the file, then press Generate again. Nothing you typed has been lost.');
+                    return;
+                }
+
                 // Step 3: Read file content (if file was uploaded)
             let fileContent = await readUploadedFileContent(file);
             lastEmailContent = emailContent;
@@ -6907,11 +6925,14 @@
             const tableClone = quotationTable ? cloneQuotationTableWithValues(quotationTable) : null;
             const quotationHeader = folderContent.querySelector('.quotation-header');
             const headerClone = quotationHeader ? cloneQuotationHeaderWithValues(quotationHeader) : null;
-            let quoteNumber = (folderContent.querySelector('[data-field="quoteNumber"], #quoteNumber') || {}).value || '';
-            removeCreationFolderEntry(entryId);
+            const quoteNumberEl = folderContent.querySelector('[data-field="quoteNumber"], #quoteNumber');
+            let quoteNumber = (quoteNumberEl || {}).value || '';
             if (!quoteNumber.trim()) {
                 try {
                     quoteNumber = await consumeNextQuoteNumber('approveFromCreationFolder_fallback');
+                    // Write it back into the draft so a retry after a failed save reuses this
+                    // number instead of burning the next one off the counter.
+                    if (quoteNumberEl) quoteNumberEl.value = quoteNumber;
                 } catch (error) {
                     console.error('Failed to generate quote number:', error);
                 }
@@ -6922,7 +6943,20 @@
             quotationData.emailContentHtml = folderState.emailContentHtml || '';
             quotationData.fileContent = folderState.fileContent || '';
             const quotationWithStatus = addQuotationToApprovedQuotations(quotationData);
-            await saveQuotationToBackend(quotationWithStatus);
+            // The draft used to be deleted BEFORE this save, and the result ignored. A failed
+            // save then left the quotation nowhere: gone from the drafts, and in memory only —
+            // so a reload lost the whole generation, AI cost and hand edits included.
+            const ok = await saveQuotationToBackend(quotationWithStatus);
+            if (!ok) {
+                const idx = approvedQuotations.findIndex(function(x) { return idsMatch(x.id, quotationWithStatus.id); });
+                if (idx >= 0) approvedQuotations.splice(idx, 1);
+                syncApprovedQuotationsGlobal();
+                persistAndRefreshApprovals();
+                alert('Could not save this quotation to the server, so it has NOT been created.\n\n'
+                    + 'Your draft is still here below — check the connection and press “Create Quotation” again.');
+                return;
+            }
+            removeCreationFolderEntry(entryId);
             persistAndRefreshApprovals();
             scrollToApprovalSection();
         }
@@ -7296,8 +7330,19 @@
             revisionRequestsOf(quotation).forEach(function(r) {
                 if (r && !r.done) { r.done = true; r.doneAt = now; cleared++; }
             });
+            if (cleared) dropFromRevisionFilterSet(quotation);
             if (cleared && typeof updateApprovalRevisionCount === 'function') updateApprovalRevisionCount();
             return cleared;
+        }
+
+        // While the Revision filter is on, the list is driven by the id set the SERVER returned,
+        // not by the local predicate — so a quote whose asks were just satisfied stayed in the
+        // Revision list (and in the count) until a manual reload, making a completed send look
+        // like it hadn't registered. Drop it from that set too.
+        function dropFromRevisionFilterSet(quotation) {
+            if (!quotation || !approvalServerFilterIds) return;
+            if (approvalServerFilterKey !== 'revision') return;
+            approvalServerFilterIds.delete(String(quotation.id));
         }
 
         // Repaint just this card's revision strip, for when a full list re-render is suppressed
@@ -7322,6 +7367,30 @@
                     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({})
                 });
             } catch (e) { console.error('Could not clear the revision asks for quote ' + quotationId + ':', e.message); }
+        }
+
+        // Close the open revision asks by hand, for the cases sending never covers: an ask
+        // entered on the wrong quote, or one settled with the customer directly. Unlike
+        // clearRevisionRequestsOnServer (fire-and-forget, called after a send that already
+        // happened) this reports failure — nothing else here tells the user it didn't stick.
+        async function markRevisionAsksDone(quotationId) {
+            const quotation = approvedQuotations.find(function(q) { return idsMatch(q.id, quotationId); });
+            const open = openRevisionRequests(quotation);
+            if (!open.length) return;
+            const what = open.length > 1 ? open.length + ' revision asks' : 'this revision ask';
+            if (!confirm('Mark ' + what + ' as done?\n\nThe quote leaves the Revision list. The ask stays on the card under “Revisions done”.')) return;
+            try {
+                const res = await fetch(`${API_BASE_URL}/quotations/${encodeURIComponent(quotationId)}/revision-requests-done`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({})
+                });
+                if (!res.ok) throw new Error('request failed (' + res.status + ')');
+                markRevisionRequestsDone(quotation);   // also drops it from the Revision filter + count
+                syncApprovedQuotationsGlobal();
+                saveToLocalStorage();
+                refreshApprovalListPreservingEdits();
+            } catch (e) {
+                alert('Could not mark the revision as done — check the connection and try again.');
+            }
         }
 
         // "Add revision" / "Add note" on a quote card. A revision ask puts the quote in the Revision
@@ -7760,9 +7829,14 @@
             }
             let body = '';
             if (open.length) {
+                // Sending the revised quote is the usual way this clears — but not the only one.
+                // An ask entered by mistake, or settled on the phone, had no way out at all: the
+                // quote sat in the Revision list for good, pulsing, unless the customer was emailed.
                 body += '<div class="rev-ask-h">📝 Needs revision</div>'
                     + open.map(function(r) { return revisionEntryLineHTML(r, {}); }).join('')
-                    + '<div class="rev-ask-hint">Clears once the revised quote is sent to the customer.</div>';
+                    + '<div class="rev-ask-hint">Clears once the revised quote is sent to the customer'
+                    + ' &mdash; or <button type="button" class="rev-ask-done-link" onclick="event.stopPropagation(); markRevisionAsksDone(' + id + ')">mark '
+                    + (open.length > 1 ? 'them' : 'it') + ' done now</button>.</div>';
             }
             if (notes.length) {
                 body += '<div class="rev-ask-h">🗒️ Notes</div>'
@@ -11801,31 +11875,50 @@
             markSendButtonsBusy(quotationId, false);
         }
 
+        // The standalone Enquiry Preparer's send. It used to be two bare prompt() boxes with no
+        // address validation, no Gmail contact suggestions, no chance to read the email before
+        // it went, and no in-flight guard — a typo'd address failed after the fact, and a second
+        // click sent a second copy. It now uses the same compose window as every other send.
+        let _enquirySendInFlight = false;
         async function sendEnquiryFromApp() {
+            if (_enquirySendInFlight) return;
             if (!window.enquiryPreparer) { alert('Enquiry section not loaded'); return; }
             const htmlBody = window.enquiryPreparer.getEnquiryHtml();
             if (!htmlBody) { alert('No enquiry content to send'); return; }
 
-            const recipient = prompt('Send enquiry to (supplier / dealer email address):', '');
-            if (!recipient || !recipient.trim()) return;
+            const composed = await composeQuotationEmail({
+                title: 'Send enquiry to supplier',
+                subtitle: 'Check the recipients and wording, then send. The enquiry table is included below.',
+                subject: 'Enquiry - DSC Pipes',
+                bodyHtml: htmlBody,
+                noAttachment: true
+            });
+            if (!composed) return;
 
-            const subject = prompt('Subject:', 'Enquiry - DSC Pipes');
-            if (subject === null) return;
-
+            _enquirySendInFlight = true;
+            const btn = document.getElementById('sendEnquiryBtn');
+            const prevText = btn ? btn.textContent : '';
+            if (btn) { btn.disabled = true; btn.textContent = '✉️ Sending…'; }
             try {
-                const res = await fetch('/api/send-email', {
+                const res = await fetch(`${API_BASE_URL}/send-email`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ to: recipient.trim(), subject: subject.trim(), bodyHtml: htmlBody })
+                    body: JSON.stringify({
+                        to: composed.to, cc: composed.cc, bcc: composed.bcc,
+                        subject: composed.subject, bodyHtml: composed.bodyHtml
+                    })
                 });
-                const data = await res.json();
-                if (data.success) {
-                    alert('✅ Enquiry sent to ' + recipient.trim());
+                const data = await safeJsonParse(res);
+                if (data && data.success) {
+                    alert('✅ Enquiry sent to ' + (data.sentTo || composed.to));
                 } else {
-                    alert('Failed to send: ' + (data.error || 'Unknown error'));
+                    alert('Failed to send: ' + ((data && data.error) || 'Unknown error'));
                 }
             } catch (err) {
                 alert('Error sending enquiry: ' + err.message);
+            } finally {
+                _enquirySendInFlight = false;
+                if (btn) { btn.disabled = false; btn.textContent = prevText; }
             }
         }
 
@@ -12199,7 +12292,11 @@
             } else if (options && options.print) {
                 doc.autoPrint();
                 const blobUrl = doc.output('bloburl');
-                window.open(blobUrl, '_blank');
+                // Silently doing nothing when the popup is blocked made Print look like a dead
+                // button on a quote the user could see perfectly well.
+                if (!window.open(blobUrl, '_blank')) {
+                    alert('Your browser blocked the print window.\n\nAllow pop-ups for this site, then press Print again — or use Download PDF.');
+                }
             } else {
                 doc.save(filename);
             }

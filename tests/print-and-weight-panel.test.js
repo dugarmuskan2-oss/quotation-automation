@@ -77,8 +77,12 @@ const fmt = loadFn(freightSrc, 'fmt');
 function loadFreightSection() {
     // fmtTonnes/fmtWeight print the totals as "12,345 kg (12.35 Tonn)" — sectionHtml calls fmtWeight,
     // so both have to travel with it or the render throws.
+    // sectionTitleHtml / totalRowHtml / rowWeightHtml were split out of sectionHtml + rowHtml
+    // so a live edit can repaint just those bits in place (refreshWeights) instead of
+    // rebuilding the tab; they have to travel with it or the render throws.
     const names = ['esc', 'escTxt', 'fmt', 'fmtTonnes', 'fmtWeight', 'weightOf', 'secRows', 'secWeight',
-        'secComplete', 'gridHead', 'rowHtml',
+        'secComplete', 'missingWeightFieldsLabel', 'gridHead', 'rowWeightHtml', 'rowHtml',
+        'sectionTitleHtml', 'totalRowHtml',
         'rowIsSeamless', 'secToleranceWeight', 'secHasTolerance', 'sectionHtml'];
     const body = names.map((n) => extractFunction(freightSrc, n)).join('\n');
     // eslint-disable-next-line no-new-func

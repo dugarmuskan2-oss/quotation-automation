@@ -163,13 +163,21 @@ function registerStatusOf(q) {
     return 'PENDING';
 }
 
+/**
+ * The date the register files a quote under: the customer's own email time when we have
+ * it, else when we ingested. The month window MUST use this same value — filtering on
+ * createdAt while displaying enquiryReceivedAt is what dropped a late-on-the-31st enquiry
+ * out of its month entirely and showed it in the next one, dated to the previous month.
+ */
+function registerDateOf(q) {
+    return q.enquiryReceivedAt || q.createdAt || q.updatedAt || '';
+}
+
 function registerRowOf(q) {
     return {
         id: q.id != null ? String(q.id) : '',
         quoteNumber: q.quoteNumber || '',
-        // The customer's own email time when we have it — createdAt is when WE ingested, which
-        // can be hours or days later and made both this date and the Days figure wrong.
-        enquiryDate: q.enquiryReceivedAt || q.createdAt || q.updatedAt || '',
+        enquiryDate: registerDateOf(q),
         status: registerStatusOf(q),
         company: q.companyName || q.projectName || '',
         contact: q.customerName || '',
@@ -202,9 +210,32 @@ function cacheSet(key, id) {
 // Text search over a quote summary's visible fields (company / bill-to / contact / quote
 // number) — mirrors the client's matchesApprovalSearch so results feel consistent.
 function normalizeSearchQuery(v) { return String(v == null ? '' : v).toLowerCase().replace(/\s+/g, ' ').trim(); }
-function quoteSummaryMatches(x, q) {
+const SEARCH_MONTH_NAMES = ['january', 'february', 'march', 'april', 'may', 'june',
+    'july', 'august', 'september', 'october', 'november', 'december'];
+
+/**
+ * 0-based month for a search query that names one ("January", "jan 2026"), else -1.
+ * Mirrors getMonthIndexFromToken in index.html — prefix match, first token that hits.
+ * The search box's own placeholder invites a month name, but the server matched only text
+ * fields, so a month search returned just the months among the already-loaded quotes and
+ * every older one was silently absent, with the list looking complete.
+ */
+function searchMonthIndex(q) {
+    const tokens = normalizeSearchQuery(q).split(/\s+/).filter(Boolean);
+    for (const t of tokens) {
+        const i = SEARCH_MONTH_NAMES.findIndex(m => m.startsWith(t));
+        if (i >= 0) return i;
+    }
+    return -1;
+}
+function quoteSummaryMatches(x, q, monthIdx) {
     const hay = normalizeSearchQuery([x.companyName, x.projectName, x.customerName, x.quoteNumber].filter(Boolean).join(' '));
-    return hay.indexOf(q) >= 0;
+    if (hay.indexOf(q) >= 0) return true;
+    if (monthIdx >= 0) {
+        const m = quoteMonth(x);
+        if (m && Number(m.slice(5, 7)) - 1 === monthIdx) return true;
+    }
+    return false;
 }
 // A quote's calendar month ('YYYY-MM', UTC) from when it was created.
 // A quote's calendar month, 'YYYY-MM'. Mirrors approvalMonthOf in index.html.
@@ -596,8 +627,9 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
                     // headline and mirrored into the Google Sheet.
                     if (q.deleted) return;
                     if ((q.updatedAt || '') < cutoff) { reachedCutoff = true; return; }
-                    const created = q.createdAt || q.updatedAt || '';
-                    if (created >= cutoff && (!cutoffEnd || created < cutoffEnd)) rows.push(registerRowOf(q));
+                    // Same date the row displays and the Days column counts from.
+                    const filed = registerDateOf(q);
+                    if (filed >= cutoff && (!cutoffEnd || filed < cutoffEnd)) rows.push(registerRowOf(q));
                 });
                 startKey = page.LastEvaluatedKey || null;
                 if (!startKey) break;
@@ -821,16 +853,17 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
     router.post('/quotations/:id/revision-requests-done', async (req, res) => {
         if (!requireDdb(res)) return;
         try {
-            const stored = await loadStoredQuotation(req.params.id);
-            if (!stored) return res.status(404).json({ error: 'Quotation not found' });
-
-            const payload = stored.payload;
             const now = new Date().toISOString();
             let cleared = 0;
-            (Array.isArray(payload.revisionRequests) ? payload.revisionRequests : []).forEach(function (r) {
-                if (r && !r.done) { r.done = true; r.doneAt = now; cleared++; }
+            // Conditional retry: a colleague adding a NEW ask at the same moment must not be
+            // silently discarded by this write (nor the other way round).
+            const payload = await mutateStoredQuotation(req.params.id, (p) => {
+                cleared = 0;
+                (Array.isArray(p.revisionRequests) ? p.revisionRequests : []).forEach(function (r) {
+                    if (r && !r.done) { r.done = true; r.doneAt = now; cleared++; }
+                });
             });
-            if (cleared) await storeQuotationPayload(stored.item, payload);
+            if (!payload) return res.status(404).json({ error: 'Quotation not found' });
             res.json({ success: true, cleared });
         } catch (error) {
             console.error('Error clearing revision requests:', error);
@@ -1026,11 +1059,16 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
                 pages++;
             } while (scanKey && pages < FULL_SCAN_MAX_PAGES);
             if (scanKey) console.warn('Quote search: scan hit the page cap — older quotes were not searched');
+            const monthIdx = searchMonthIndex(q);
             const matches = items.map(quotationFromItem).filter(Boolean)
-                .filter(function (x) { return quoteSummaryMatches(x, q); })
-                .sort(function (a, b) { return new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0); })
-                .slice(0, 100);
-            res.json({ quotations: matches, truncated: !!scanKey });
+                .filter(function (x) { return quoteSummaryMatches(x, q, monthIdx); })
+                .sort(function (a, b) { return new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0); });
+            // A month name legitimately matches a whole month's quotes, which is well over the
+            // old 100 — clipping there is what made a month search look complete while missing
+            // most of it. Still capped, but the caller is told when it clipped.
+            const SEARCH_RESULT_CAP = 500;
+            const clipped = matches.length > SEARCH_RESULT_CAP;
+            res.json({ quotations: matches.slice(0, SEARCH_RESULT_CAP), truncated: !!scanKey || clipped });
         } catch (error) {
             console.error('Quote search failed:', error);
             res.status(500).json({ error: 'Search failed', details: error.message });
@@ -1086,19 +1124,22 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
     router.post('/quotations/:id/register-meta', async (req, res) => {
         if (!requireDdb(res)) return;
         try {
-            const stored = await loadStoredQuotation(req.params.id);
-            if (!stored) return res.status(404).json({ error: 'Quotation not found' });
-
-            const payload = stored.payload;
-            const meta = (payload.registerMeta && typeof payload.registerMeta === 'object') ? payload.registerMeta : {};
             const updates = (req.body && typeof req.body.registerMeta === 'object') ? req.body.registerMeta : {};
-            REGISTER_META_FIELDS.forEach(field => {
-                if (updates[field] !== undefined) meta[field] = String(updates[field] || '');
+            // Every register cell POSTs on its own. As a plain read-modify-write, filling a row
+            // quickly meant two saves read the same record and the second wiped the first —
+            // and BOTH cells showed a green tick. The conditional retry re-reads and re-applies
+            // instead, so each cell lands.
+            let saved = null;
+            const payload = await mutateStoredQuotation(req.params.id, (p) => {
+                const meta = (p.registerMeta && typeof p.registerMeta === 'object') ? p.registerMeta : {};
+                REGISTER_META_FIELDS.forEach(field => {
+                    if (updates[field] !== undefined) meta[field] = String(updates[field] || '');
+                });
+                p.registerMeta = meta;
+                saved = meta;
             });
-            payload.registerMeta = meta;
-
-            await storeQuotationPayload(stored.item, payload);
-            res.json({ success: true, registerMeta: meta });
+            if (!payload) return res.status(404).json({ error: 'Quotation not found' });
+            res.json({ success: true, registerMeta: saved });
         } catch (error) {
             console.error('Error saving register meta:', error);
             res.status(500).json({ error: 'Failed to save register fields', details: error.message });
@@ -1130,4 +1171,4 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
 // Export helper so server.js internal functions can reuse it
 module.exports.quotationFromItem = quotationFromItem;
 // Pure helpers exposed for unit testing (see tests/register.test.js).
-module.exports._test = { registerRangeOf, registerStatusOf, registerRowOf };
+module.exports._test = { registerRangeOf, registerStatusOf, registerRowOf, registerDateOf };

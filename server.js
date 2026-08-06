@@ -1013,6 +1013,16 @@ app.use((req, res, next) => {
 
 // Error handling middleware - must be after all routes
 app.use((err, req, res, next) => {
+    // Multer's size limit is a user mistake, not a server fault. Left to fall through, it
+    // produced "An error occurred: Internal Server Error" with no mention of size — and
+    // scanned/photographed enquiry PDFs routinely go over the limit.
+    if (err && err.code === 'LIMIT_FILE_SIZE') {
+        const limitMb = Math.round(MAX_UPLOAD_SIZE_BYTES / (1024 * 1024));
+        return res.status(413).json({
+            error: `That file is too large. The limit is ${limitMb} MB.`,
+            details: 'Compress the PDF (or split it), then upload again. Any text you pasted is still in the box.'
+        });
+    }
     console.error('Unhandled error:', err);
     res.status(500).json({
         error: 'Internal Server Error',

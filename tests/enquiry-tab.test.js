@@ -1206,6 +1206,9 @@ describe('checkSupplierRepliesForQuote', () => {
             'function apiBase(){return "/api";}\n'
             + 'function getThreads(q){return q.supplierEnquiries||[];}\n'
             + 'function persistThreads(q){persisted.push(q);}\n'
+            // The sweep now also repaints an Enquiry tab that happens to be open. That needs the
+            // DOM, so it is stubbed out here — this suite tests the reply-reading logic only.
+            + 'function repaintOpenTab(){}\n'
             + 'var MAX_REPLY_CHARS = 2000;\n'
             + 'var fetch = fetchStub;\n'
             + cut('trimReplyForStorage') + '\n' + cut('checkSupplierRepliesForQuote') + '\n'

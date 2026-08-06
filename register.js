@@ -143,7 +143,11 @@
         render();
         if (state.rowsByMonth[label]) {
             var meta = $('registerMeta');
-            if (meta && !state.loadingMonths[label]) meta.textContent += ' · updating…';
+            // Append once. Re-opening the same month (or pressing Refresh) used to stack
+            // " · updating… · updating…" onto the line.
+            if (meta && !state.loadingMonths[label] && meta.textContent.indexOf('updating…') === -1) {
+                meta.textContent += ' · updating…';
+            }
         }
         fetchMonth(label);
     }
@@ -154,9 +158,16 @@
         if (!bounds) return;
         state.loadingMonths[label] = true;
         fetch(apiBase() + '/enquiry-register?from=' + encodeURIComponent(bounds.from) + '&to=' + encodeURIComponent(bounds.to))
-            .then(function (r) { return r.json(); })
+            // A server error answers with {error:…} JSON, so r.json() succeeds and the catch
+            // below never runs: rows fell back to [] and the month reported "No enquiries in
+            // this month" — a failure reported as a fact about the business.
+            .then(function (r) {
+                if (!r.ok) throw new Error('register load failed (' + r.status + ')');
+                return r.json();
+            })
             .then(function (data) {
-                var rows = Array.isArray(data.rows) ? data.rows : [];
+                if (!data || !Array.isArray(data.rows)) throw new Error('register load returned no rows');
+                var rows = data.rows;
                 state.rowsByMonth[label] = rows;
                 writeCacheMonth(label, rows);
                 if (state.month === label) render();

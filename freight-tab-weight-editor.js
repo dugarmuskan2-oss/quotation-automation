@@ -14,6 +14,7 @@
     var seq = 1;
     var stateById = {};
     var dragId = null;
+    var mountById = {};   // quote id -> the panel element on screen, for background repaints
 
     function num(v) {
         var n = parseFloat(String(v == null ? '' : v).replace(/,/g, '').trim());
@@ -83,18 +84,48 @@
     function qtyOrNull(v) {
         return (v === undefined || v === null || String(v).trim() === '') ? null : num(v);
     }
-    function seedRows(q) {
+    // A stable id per quote line, so the panel can be re-matched to the quote later.
+    // (The old 'w'+seq fallback minted a new id on every seed, which made re-matching
+    // impossible for quotes whose line items carry no lineItemId.)
+    function quoteRowId(li, idx) {
+        return li && li.lineItemId ? String(li.lineItemId) : ('q' + idx);
+    }
+    // Bring the panel's rows back in line with the quote. The rows used to be seeded ONCE and
+    // then cached for the life of the page, so editing quantities or adding/removing items on
+    // the Quote tab left the freight weight computed from the old figures — with qty locked
+    // read-only, there was no way to correct it. Anything the user owns here (added rows,
+    // removals, split assignment, a typed sizing qty, an edited description) is preserved.
+    function syncRowsWithQuote(q, st) {
         var items = Array.isArray(q.lineItems) ? q.lineItems : [];
-        return items.map(function (li) {
-            return {
-                id: (li.lineItemId ? String(li.lineItemId) : ('w' + (seq++))),
-                d: liDesc(li),
-                type: String(li.identifiedPipeType || ''),
-                qty: qtyOrNull(li.quantity),
-                kgm: num(li.kgPerMeter),
-                sec: 1
-            };
+        var live = {};
+        items.forEach(function (li, idx) {
+            var id = quoteRowId(li, idx);
+            live[id] = true;
+            var r = findRow(st, id);
+            if (!r) {
+                st.rows.push({
+                    id: id, d: liDesc(li), type: String(li.identifiedPipeType || ''),
+                    qty: qtyOrNull(li.quantity), kgm: num(li.kgPerMeter), sec: 1, fromQuote: true
+                });
+                return;
+            }
+            r.fromQuote = true;
+            r.type = String(li.identifiedPipeType || '');
+            if (!r.dEdited) r.d = liDesc(li);
+            // Only follow the quote where the quote actually has a number: a quantity typed
+            // here for sizing (because the quote had none) must survive.
+            var qty = qtyOrNull(li.quantity);
+            if (qty != null) r.qty = qty;
+            if (num(li.kgPerMeter)) r.kgm = num(li.kgPerMeter);
         });
+        // A line deleted on the Quote tab must stop adding weight to the freight enquiry.
+        // Rows the user added here by hand (no fromQuote) are left alone.
+        st.rows = st.rows.filter(function (r) { return !r.fromQuote || live[r.id]; });
+    }
+    function seedRows(q) {
+        var st = { rows: [] };
+        syncRowsWithQuote(q, st);
+        return st.rows;
     }
     function getState(q) {
         var id = String(q.id);
@@ -210,6 +241,30 @@
             + '<div></div><div>Item</div><div style="text-align:right;">Qty</div>'
             + '<div style="text-align:right;">kg/m</div><div style="text-align:right;">Weight</div><div></div></div>';
     }
+    // The row's Weight cell. Split out of rowHtml so a live edit can repaint just this cell
+    // instead of rebuilding the tab (see refreshWeights).
+    function rowWeightHtml(r) {
+        if (r.qty == null) return '<span style="color:#A32D2D;font-size:11px;">no qty</span>';
+        if (!r.kgm) return '<span style="color:#A32D2D;font-size:11px;">not counted</span>';
+        return fmt(weightOf(r)) + ' kg';
+    }
+    function sectionTitleHtml(st, sec) {
+        var title = st.split ? ('Shipment ' + sec) : 'Weight';
+        return title + (secComplete(st, sec) ? ' &middot; ' + fmtWeight(secWeight(st, sec)) : '');
+    }
+    // Total (and the 7% tolerance) only once every row has its kg/m + qty. Until then,
+    // a prompt instead of a misleading partial total.
+    function totalRowHtml(st, sec) {
+        if (!secRows(st, sec).length) return '';
+        if (!secComplete(st, sec)) {
+            return '<div class="fwe-grid fwe-subtotal"><div></div><div style="color:#9b988e;font-size:12px;">'
+                + missingWeightFieldsLabel(st, sec) + '</div><div></div><div></div><div></div><div></div></div>';
+        }
+        return '<div class="fwe-grid fwe-total"><div></div><div>Total weight</div><div></div><div></div><div style="text-align:right;">' + fmtWeight(secWeight(st, sec)) + '</div><div></div></div>'
+            + (secHasTolerance(st, sec)
+                ? '<div class="fwe-grid fwe-subtotal"><div></div><div>With tolerance (7%)</div><div></div><div></div><div style="text-align:right;">' + fmtWeight(secToleranceWeight(st, sec)) + '</div><div></div></div>'
+                : '');
+    }
     function rowHtml(st, r) {
         if (r.removed) {
             return '<div class="fwe-row" data-id="' + r.id + '" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid #eee;">'
@@ -220,9 +275,7 @@
         }
         var qtyMissing = r.qty == null;
         var miss = !r.kgm || qtyMissing;
-        var w = qtyMissing ? '<span style="color:#A32D2D;font-size:11px;">no qty</span>'
-            : (!r.kgm ? '<span style="color:#A32D2D;font-size:11px;">not counted</span>'
-                : (fmt(weightOf(r)) + ' kg'));
+        var w = rowWeightHtml(r);
         var handle = st.split
             ? '<span class="fwe-handle" draggable="true" data-id="' + r.id + '" title="Drag to the other shipment">&#8942;&#8942;</span>'
             : '<span></span>';
@@ -236,31 +289,19 @@
             + '<input type="text" class="fwe-ed" data-id="' + r.id + '" data-f="d" value="' + esc(r.d) + '">'
             + qtyInput
             + '<input type="number" class="fwe-ed" data-id="' + r.id + '" data-f="kgm" value="' + (r.kgm || '') + '" placeholder="&mdash;" style="text-align:right;">'
-            + '<div style="text-align:right;font-size:13px;">' + w + '</div>'
+            + '<div class="fwe-w" style="text-align:right;font-size:13px;">' + w + '</div>'
             + '<button class="fwe-del" data-id="' + r.id + '" title="Delete line" aria-label="Delete line">&times;</button>'
             + '</div>';
     }
     function sectionHtml(st, sec) {
         var rows = secRows(st, sec);
-        var title = st.split ? ('Shipment ' + sec) : 'Weight';
-        var complete = secComplete(st, sec);
         var header = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'
-            + '<span style="font-size:13px;font-weight:600;color:#444;">' + title + (complete ? ' &middot; ' + fmtWeight(secWeight(st, sec)) : '') + '</span>'
+            + '<span class="fwe-sectitle" style="font-size:13px;font-weight:600;color:#444;">' + sectionTitleHtml(st, sec) + '</span>'
             + (sec === 2 ? '<button class="fwe-link fwe-merge">Remove &middot; items go back</button>'
                 : '<span style="font-size:11px;color:#9b988e;">&#128190; saved with quote</span>') + '</div>';
         var body = rows.length ? rows.map(function (r) { return rowHtml(st, r); }).join('')
             : '<p style="margin:8px 0;font-size:12px;color:#9b988e;text-align:center;">Drag items here to weigh them separately.</p>';
-        var secWt = secWeight(st, sec);
-        // Total (and the 7% tolerance) only once every row has its kg/m + qty. Until then,
-        // a prompt instead of a misleading partial total.
-        var totalRow = !rows.length ? ''
-            : (complete
-                ? '<div class="fwe-grid fwe-total"><div></div><div>Total weight</div><div></div><div></div><div style="text-align:right;">' + fmtWeight(secWt) + '</div><div></div></div>'
-                  + (secHasTolerance(st, sec)
-                      ? '<div class="fwe-grid fwe-subtotal"><div></div><div>With tolerance (7%)</div><div></div><div></div><div style="text-align:right;">' + fmtWeight(secToleranceWeight(st, sec)) + '</div><div></div></div>'
-                      : '')
-                : '<div class="fwe-grid fwe-subtotal"><div></div><div style="color:#9b988e;font-size:12px;">'
-                  + missingWeightFieldsLabel(st, sec) + '</div><div></div><div></div><div></div><div></div></div>');
+        var totalRow = '<div class="fwe-totalwrap">' + totalRowHtml(st, sec) + '</div>';
         var foot = '<div class="fwe-foot"><button class="fwe-add fwe-addbtn" data-sec="' + sec + '" title="Add item" aria-label="Add item">+</button><span style="margin-left:auto;"></span>'
             + (!st.split ? '<button class="fwe-btn fwe-split">+ Calculate other weight</button>' : '')
             + '<button class="fwe-btn fwe-print" data-sec="' + sec + '">&#128424; Print</button>'
@@ -282,9 +323,62 @@
     function render(q, mountEl) {
         injectStylesOnce();
         var st = getState(q);
+        syncRowsWithQuote(q, st);   // pick up Quote-tab edits made since the panel was first built
         var html = weightBoxHtml(st) + freightEnquiryBoxHtml(q) + addFreightBoxHtml(q);
         mountEl.innerHTML = html;
         bind(q, mountEl);
+    }
+
+    // Repaint ONLY what a weight edit changes — the row's weight cell and red tint, the
+    // section heading/total, and the enquiry box's weight chip. Editing a field used to call
+    // render(), which replaced the whole tab on blur: the mousedown landed on the old button,
+    // the re-render swapped it out, and the click never fired. So the first click after any
+    // edit was silently swallowed. Nothing here removes or replaces an element the user
+    // could be clicking.
+    function refreshWeights(q, mountEl) {
+        var st = getState(q);
+        mountEl.querySelectorAll('.fwe-drop').forEach(function (zone) {
+            var sec = num(zone.getAttribute('data-sec')) || 1;
+            var titleEl = zone.querySelector('.fwe-sectitle');
+            if (titleEl) titleEl.innerHTML = sectionTitleHtml(st, sec);
+            var totalEl = zone.querySelector('.fwe-totalwrap');
+            if (totalEl) totalEl.innerHTML = totalRowHtml(st, sec);
+            secRows(st, sec).forEach(function (r) {
+                var rowEl = zone.querySelector('.fwe-row[data-id="' + r.id + '"]');
+                if (!rowEl || r.removed) return;
+                var wEl = rowEl.querySelector('.fwe-w');
+                if (wEl) wEl.innerHTML = rowWeightHtml(r);
+                if (rowEl.classList) rowEl.classList.toggle('miss', !r.kgm || r.qty == null);
+            });
+        });
+        refreshEnquiryWeight(q, st, mountEl);
+    }
+
+    // The enquiry box quotes the same weight, so a panel edit has to reach it. Values are
+    // written, never re-created, so an open composer keeps its focus, chips and typed message.
+    function refreshEnquiryWeight(q, st, mountEl) {
+        var enq = st.enquiry;
+        if (!enq.open) return;
+        var usable = enqWeightUsable(st);
+        var kgIn = mountEl.querySelector('.fwe-enq-kg');
+        if (kgIn && document.activeElement !== kgIn && enq.weightOverride == null) {
+            kgIn.value = usable ? Math.round(enqEffectiveWeight(st)) : '';
+            kgIn.placeholder = usable ? '' : 'enter kg';
+            kgIn.style.borderColor = usable ? 'rgba(0,0,0,.2)' : '#C0392B';
+        }
+        var warn = mountEl.querySelector('.fwe-enq-wt-warn');
+        if (warn) {
+            warn.innerHTML = enqWeightWarnHtml(st);
+            warn.hidden = usable;
+        }
+        var reset = mountEl.querySelector('.fwe-kg-reset');
+        if (reset) reset.hidden = (enq.weightOverride == null);
+        var sendBtn = mountEl.querySelector('.fwe-enq-send');
+        if (sendBtn) sendBtn.disabled = !enq.to.length || enq.sending || hasBadRecipient(enq) || !usable;
+        var msgEl = mountEl.querySelector('.fwe-enq-msg');
+        if (msgEl && !enq.messageEdited && document.activeElement !== msgEl) {
+            msgEl.value = buildEnquiryDraft(q, st);
+        }
     }
 
     function findRow(st, id) {
@@ -297,9 +391,17 @@
     // extractStructuredLineItemsFromTable preserves it from sourceLineItems).
     function persistKgm(q, r) {
         var items = Array.isArray(q.lineItems) ? q.lineItems : [];
+        var hit = -1;
         for (var i = 0; i < items.length; i++) {
-            if (String(items[i].lineItemId) === String(r.id)) { items[i].kgPerMeter = r.kgm; break; }
+            if (items[i].lineItemId && String(items[i].lineItemId) === String(r.id)) { hit = i; break; }
         }
+        // Quotes whose line items carry no lineItemId use the positional 'q<index>' id — without
+        // this the edited kg/m was never written back to those quotes at all.
+        if (hit < 0 && /^q\d+$/.test(String(r.id))) {
+            var idx = parseInt(String(r.id).slice(1), 10);
+            if (items[idx]) hit = idx;
+        }
+        if (hit >= 0) items[hit].kgPerMeter = r.kgm;
         if (typeof updateQuotationFromApprovalSection === 'function') {
             try { updateQuotationFromApprovalSection(q.id, null); } catch (e) { }
         }
@@ -388,6 +490,13 @@
     // figure (secComplete); the enquiry must not be more trusting than the panel itself.
     function enqUncountedRows(st) {
         return enqScopeRows(st).filter(function (r) { return !(r.kgm && r.qty != null); });
+    }
+    function enqWeightWarnHtml(st) {
+        var un = enqUncountedRows(st).length, all = enqScopeRows(st).length;
+        return '&#9888; ' + un + ' of ' + all + ' item' + (all === 1 ? '' : 's')
+            + ' ha' + (un === 1 ? 's' : 've')
+            + ' no kg/m or quantity, so the weight cannot be calculated. Fill those in on the panel above,'
+            + ' or type the weight here — the enquiry will not send without it.';
     }
     function enqScopeComplete(st) {
         var rows = enqScopeRows(st);
@@ -684,13 +793,13 @@
             + (enqWeightUsable(st) ? '' : ' placeholder="enter kg"')
             + ' style="width:90px;height:28px;padding:2px 6px;text-align:right;border:1px solid ' + (enqWeightUsable(st) ? 'rgba(0,0,0,.2)' : '#C0392B') + ';border-radius:6px;" title="Edit to override the calculated weight — clear to go back to calculated">'
             + '<span>kg · ' + enqScopeRows(st).length + ' item' + (enqScopeRows(st).length === 1 ? '' : 's') + '</span>'
-            + (enq.weightOverride != null ? '<button type="button" class="fwe-kg-reset fwe-link" style="font-size:11px;">&#8634; use calculated</button>' : '')
+            + '<button type="button" class="fwe-kg-reset fwe-link" style="font-size:11px;"'
+            + (enq.weightOverride != null ? '' : ' hidden') + '>&#8634; use calculated</button>'
             + '</div>'
-            + (enqWeightUsable(st) ? '' :
-                '<p class="fwe-enq-wt-warn" style="margin:4px 0 0;font-size:12px;color:#A32D2D;font-weight:600;">&#9888; '
-                + enqUncountedRows(st).length + ' of ' + enqScopeRows(st).length
-                + ' item' + (enqScopeRows(st).length === 1 ? '' : 's') + ' ha' + (enqUncountedRows(st).length === 1 ? 's' : 've')
-                + ' no kg/m or quantity, so the weight cannot be calculated. Fill those in on the panel above, or type the weight here — the enquiry will not send without it.</p>')
+            // Always emitted (hidden when the weight is usable) so a live edit can toggle it
+            // without rebuilding the composer around the user.
+            + '<p class="fwe-enq-wt-warn" style="margin:4px 0 0;font-size:12px;color:#A32D2D;font-weight:600;"'
+            + (enqWeightUsable(st) ? ' hidden' : '') + '>' + enqWeightWarnHtml(st) + '</p>'
             + '<label class="fwe-enq-lbl">Message to transporters (editable)</label>'
             + '<textarea class="fwe-enq-msg">' + escTxt(draft) + '</textarea>'
             + '<div style="margin-top:12px;"><button type="button" class="fwe-enq-send"' + (enq.to.length && !enq.sending && !hasBadRecipient(enq) && enqWeightUsable(st) ? '' : ' disabled') + '>'
@@ -715,7 +824,11 @@
         }
         var msgEl = mountEl.querySelector('.fwe-enq-msg');
         var bodyText = msgEl ? msgEl.value : enq.message;
-        enq.message = bodyText; enq.messageEdited = true;
+        enq.message = bodyText;
+        // Only "edited" if it really differs from the generated draft. Setting this
+        // unconditionally froze the message at the first send, so a later route, kg/m or
+        // shipment change never reached the body — the subject said one thing, the text another.
+        enq.messageEdited = (String(bodyText).trim() !== buildEnquiryDraft(q, st).trim());
         // Capture the scope now — enq.forSec can change (another "Request freight" click)
         // before the async sends resolve, and each thread must remember its own shipment.
         var scopeSec = (st.split && enq.forSec) ? enq.forSec : 0;
@@ -784,7 +897,19 @@
         var enq = st.enquiry;
         var threads = getEnquiryThreads(q);
         var waiting = threads.filter(function (t) { return !t.replied && t.threadId; });
-        if (!waiting.length || enq.checking) return;
+        if (enq.checking) return;
+        // Nothing left to check is a normal state — usually because the background sweep
+        // already found the replies. Returning silently made the button look broken.
+        if (!waiting.length) {
+            var done = threads.filter(function (t) { return t.replied; }).length;
+            enq.checkResult = threads.length
+                ? ('Nothing left to check — all ' + threads.length + ' transporter'
+                   + (threads.length === 1 ? ' has' : 's have') + ' replied'
+                   + (done ? '' : '') + '. Their replies are listed above.')
+                : 'No enquiries have been sent yet.';
+            render(q, mountEl);
+            return;
+        }
         enq.checking = true;
         render(q, mountEl);
         Promise.all(waiting.map(function (t) {
@@ -863,9 +988,24 @@
                 .catch(function () { return false; /* leave awaiting; next sweep retries */ });
         })).then(function (flags) {
             var newReplies = flags.filter(Boolean).length;
-            if (newReplies) { q.transporterReplyIn = true; persistEnquiryThreads(q); }
+            if (newReplies) {
+                q.transporterReplyIn = true;
+                persistEnquiryThreads(q);
+                // The sweep runs in the background, so its find has to reach a Freight tab
+                // that is already open — otherwise the panel keeps saying "Awaiting reply"
+                // over a reply that is sitting in the model, and the user concludes none came.
+                repaintOpenPanel(q);
+            }
             return { checked: waiting.length, newReplies: newReplies };
         });
+    }
+
+    // Re-render this quote's Freight panel if it is currently on screen. Safe to call from
+    // background work: does nothing when the card is closed or the mount has been replaced.
+    function repaintOpenPanel(q) {
+        var mountEl = mountById[String(q.id)];
+        if (!mountEl || !mountEl.isConnected) return;
+        try { render(q, mountEl); } catch (e) { /* a repaint must never break the sweep */ }
     }
 
     function bindEnquiry(q, st, mountEl) {
@@ -886,7 +1026,9 @@
             chipsBox.querySelectorAll('.fwe-chip-x').forEach(function (x) {
                 x.onclick = function (e) { e.stopPropagation(); enq.to.splice(num(x.getAttribute('data-i')), 1); renderChips(); };
             });
-            if (sendBtn) sendBtn.disabled = !enq.to.length || enq.sending || hasBadRecipient(enq);
+            // The weight gate belongs here too — adding a recipient used to re-enable Send
+            // even when the weight was still incomplete, contradicting the box's own warning.
+            if (sendBtn) sendBtn.disabled = !enq.to.length || enq.sending || hasBadRecipient(enq) || !enqWeightUsable(st);
         }
         function addRecip(raw) {
             var s = String(raw || '');
@@ -931,18 +1073,31 @@
         var kgIn = mountEl.querySelector('.fwe-enq-kg');
         if (kgIn) kgIn.onchange = function () {
             var v = kgIn.value.trim() === '' ? null : num(kgIn.value);
-            enq.weightOverride = (v != null && v > 0 && Math.round(v) !== Math.round(enqScopeWeight(st))) ? v : null;
+            // Typing the same number the panel calculated only counts as "not an override"
+            // when that calculation is complete. With rows missing kg/m or qty the typed
+            // number is the ONLY weight we have — discarding it silently left Send disabled
+            // and the warning on screen, with no way forward.
+            var sameAsCalc = (v != null && Math.round(v) === Math.round(enqScopeWeight(st)));
+            enq.weightOverride = (v != null && v > 0 && !(sameAsCalc && enqScopeComplete(st))) ? v : null;
             refreshDraftIfUntouched();
-            render(q, mountEl);
+            refreshWeights(q, mountEl);   // in place: a render here would eat the click on Send request
         };
         var kgReset = mountEl.querySelector('.fwe-kg-reset');
         if (kgReset) kgReset.onclick = function () {
             enq.weightOverride = null;
             if (!enq.messageEdited) enq.message = '';
-            render(q, mountEl);
+            if (kgIn) kgIn.value = enqWeightUsable(st) ? Math.round(enqEffectiveWeight(st)) : '';
+            refreshDraftIfUntouched();
+            refreshWeights(q, mountEl);
         };
+        // "Hand-edited" has to mean the text actually differs from what we'd generate. Marking
+        // it on any keystroke (or on send) froze the draft: later route/weight changes never
+        // reached it, so a second transporter could be emailed the first shipment's details.
         var msg = mountEl.querySelector('.fwe-enq-msg');
-        if (msg) msg.oninput = function () { enq.message = msg.value; enq.messageEdited = true; };
+        if (msg) msg.oninput = function () {
+            enq.message = msg.value;
+            enq.messageEdited = (msg.value.trim() !== buildEnquiryDraft(q, st).trim());
+        };
         if (sendBtn) sendBtn.onclick = function () { sendFreightEnquiry(q, st, mountEl); };
 
         // Transporter replies: check, read/hide, use a price
@@ -989,11 +1144,11 @@
                 var r = findRow(st, inp.getAttribute('data-id'));
                 if (!r) return;
                 var f = inp.getAttribute('data-f');
-                if (f === 'd') r.d = inp.value;
+                if (f === 'd') { r.d = inp.value; r.dEdited = true; }   // keep it through a quote re-sync
                 else if (f === 'qty') r.qty = qtyOrNull(inp.value);   // blank stays blank (red), never 0
                 else r[f] = num(inp.value);
                 if (f === 'kgm') persistKgm(q, r);
-                render(q, mountEl);
+                refreshWeights(q, mountEl);   // patch in place — a full render here eats the next click
             };
         });
         mountEl.querySelectorAll('.fwe-add').forEach(function (b) {
@@ -1118,7 +1273,12 @@
                 + '<td style="text-align:right;padding:6px 4px;border-bottom:1px solid #eee;">' + ((r.kgm && r.qty != null) ? fmt(weightOf(r)) + ' kg' : '—') + '</td></tr>';
         }).join('');
         var win = window.open('', '_blank', 'width=720,height=820');
-        if (!win) return;
+        // A blocked popup used to make Print look like a dead button — nothing opened and
+        // nothing was said, so the user clicked it again and again.
+        if (!win) {
+            alert('Your browser blocked the print window.\n\nAllow pop-ups for this site, then click Print again.');
+            return;
+        }
         win.document.write('<html><head><title>Weight — ' + escTxt(name) + '</title></head><body style="font-family:Arial,Helvetica,sans-serif;padding:24px;color:#20201d;">'
             + '<h2 style="margin:0 0 4px;">Weight summary</h2><p style="margin:0 0 8px;color:#666;font-size:13px;">' + escTxt(name) + '</p>'
             + '<h3 style="font-size:15px;margin:16px 0 6px;">' + escTxt(label) + ' &mdash; ' + fmtWeight(secWeight(st, sec)) + '</h3>'
@@ -1134,6 +1294,7 @@
     if (typeof window !== 'undefined') {
         window.renderFreightWeightEditor = function (quotation, mountEl) {
             if (!quotation || !mountEl) return;
+            mountById[String(quotation.id)] = mountEl;   // so background work can repaint this panel
             try { render(quotation, mountEl); }
             catch (e) { mountEl.innerHTML = '<div style="padding:16px;color:#c62828;">Weight editor failed to load.</div>'; console.error('FWE render error', e); }
         };

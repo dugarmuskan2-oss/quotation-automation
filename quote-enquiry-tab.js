@@ -22,6 +22,7 @@
     'use strict';
 
     var stateById = {};
+    var mountById = {};   // quote id -> the tab element on screen, for background repaints
 
     function stateFor(quotation) {
         var id = String(quotation.id);
@@ -366,9 +367,22 @@
                 .catch(function () { return false; /* leave awaiting; the next sweep retries */ });
         })).then(function (flags) {
             var newReplies = flags.filter(Boolean).length;
-            if (newReplies) persistThreads(q);
+            if (newReplies) {
+                persistThreads(q);
+                // The sweep is background work, so its find has to reach an Enquiry tab that is
+                // already open — otherwise the tab keeps saying "Awaiting reply" over a reply
+                // that has already arrived, and the user concludes nobody answered.
+                repaintOpenTab(q);
+            }
             return { checked: waiting.length, newReplies: newReplies };
         });
+    }
+
+    // Re-render this quote's Enquiry tab if it is on screen. No-op when the card is closed.
+    function repaintOpenTab(q) {
+        var mountEl = mountById[String(q.id)];
+        if (!mountEl || !mountEl.isConnected) return;
+        try { render(q, mountEl); } catch (e) { /* a repaint must never break the sweep */ }
     }
 
     // Does this quote have a supplier enquiry still waiting? Keeps the sweep's working set small.
@@ -489,7 +503,12 @@
         }
 
         if (!st.built) st.built = true;
-        if (!st.rows.length && !threads.length) st.rows = buildRowsFromQuote(quotation);
+        // Seed whenever there are no rows. The old "&& !threads.length" meant that after a
+        // reload — when the in-page state is empty but the sent-enquiry threads came back from
+        // the server — the table stayed empty, Send stayed disabled (it needs a row) and the
+        // "Create enquiry" button was gone, so sending to one more supplier meant retyping
+        // every line by hand. Rows edited in this session are non-empty, so they survive.
+        if (!st.rows.length) st.rows = buildRowsFromQuote(quotation);
         if (!st.messageEdited) st.message = buildDraft(quotation);
 
         var status = '';
@@ -744,6 +763,7 @@
     if (typeof window !== 'undefined') {
         window.renderQuoteEnquiryTab = function (quotation, mountEl) {
             if (!quotation || !mountEl) return;
+            mountById[String(quotation.id)] = mountEl;   // so background work can repaint this tab
             render(quotation, mountEl);
         };
         // Quotes with at least one supplier enquiry sent — powers the Enquiry filter button.
