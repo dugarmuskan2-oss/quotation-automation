@@ -9130,6 +9130,22 @@
             if (/\bsch\b|schedule/i.test(d)) return 'Seamless';
             return '';
         }
+        // Numbers in a past version must read exactly like the live quote does. Printed raw, a
+        // stored rate came out as "310.03000000000003" and a total as "375316" — floating-point
+        // noise and no separators, on a page that gets shared with the customer. These are the
+        // same two calls the live table and the PDF make: rate to 2 decimals, amount whole, both
+        // with Indian grouping.
+        // Same navy the PDF paints its header band and total bar with (jsPDF rgb 59,63,121).
+        // A function, not a const, so the revision-view tests can extract it with its callers.
+        function revBrand() { return '#3B3F79'; }
+        function revFmtRate(v) {
+            var n = parseFloat(String(v == null ? '' : v).replace(/,/g, ''));
+            return isFinite(n) ? escapeHtml(formatIndianNumber(n, false)) : escapeHtml(String(v == null ? '' : v));
+        }
+        function revFmtAmount(v) {
+            var n = parseFloat(String(v == null ? '' : v).replace(/,/g, ''));
+            return isFinite(n) ? escapeHtml(formatIndianNumber(n, true)) : escapeHtml(String(v == null ? '' : v));
+        }
         function revisionItemsTableHtml(rev) {
             var items = Array.isArray(rev.lineItems) ? rev.lineItems : [];
             // Group by pipe type the same way the live quote does: emit a full-width
@@ -9149,17 +9165,21 @@
                 var tot = (li.lineTotal != null && li.lineTotal !== '') ? li.lineTotal : '';
                 body += '<tr><td style="padding:6px 8px;border-bottom:1px solid #eee;">' + desc + '</td>'
                     + '<td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">' + qty + '</td>'
-                    + '<td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">' + escapeHtml(String(rate)) + '</td>'
-                    + '<td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">' + escapeHtml(String(tot)) + '</td></tr>';
+                    + '<td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">' + revFmtRate(rate) + '</td>'
+                    + '<td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">' + revFmtAmount(tot) + '</td></tr>';
             });
-            var gt = (rev.grandTotal != null && rev.grandTotal !== '') ? ('&#8377;' + escapeHtml(String(rev.grandTotal))) : '';
+            // The brand navy the PDF uses for its header band and total bar, so a rebuilt
+            // version reads as the same document rather than a plain summary table.
+            var th = 'padding:8px;background:' + revBrand() + ';color:#fff;font-weight:600;';
+            var gt = revFmtAmount(rev.grandTotal);
             return '<table style="width:100%;border-collapse:collapse;font-size:13px;margin:8px 0;"><thead><tr>'
-                + '<th style="text-align:left;padding:6px 8px;border-bottom:1px solid #999;">Description</th>'
-                + '<th style="text-align:right;padding:6px 8px;border-bottom:1px solid #999;">Qty</th>'
-                + '<th style="text-align:right;padding:6px 8px;border-bottom:1px solid #999;">Rate</th>'
-                + '<th style="text-align:right;padding:6px 8px;border-bottom:1px solid #999;">Total</th>'
+                + '<th style="text-align:left;' + th + '">Description</th>'
+                + '<th style="text-align:right;' + th + '">Qty</th>'
+                + '<th style="text-align:right;' + th + '">Rate</th>'
+                + '<th style="text-align:right;' + th + '">Total</th>'
                 + '</tr></thead><tbody>' + body + '</tbody></table>'
-                + '<div style="text-align:right;font-weight:600;font-size:14px;margin-top:6px;">Grand total: ' + gt + '</div>';
+                + '<div style="background:' + revBrand() + ';color:#fff;font-weight:700;font-size:14px;'
+                + 'padding:8px 10px;text-align:right;border-radius:2px;">Total: Rs. ' + gt + '</div>';
         }
 
         // A header field for a revision view: its own captured value, else the live quote's
@@ -9170,30 +9190,49 @@
             var v = own != null ? own : quotation[key];
             return String(v == null ? '' : v);
         }
-        // The header block for a past version — the same details the full quote shows.
+        // The header block for a past version. Laid out like the quote itself — title bar with the
+        // quote number, then the details in two columns — instead of the single stacked list it
+        // used to be, which is what made a rebuilt version look like a different document.
         function revisionHeaderHtml(quotation, rev) {
             function row(label, val) {
                 var v = escapeHtml(val || '');
-                return v ? '<div style="display:flex;gap:6px;margin:2px 0;"><span style="min-width:96px;color:#777;">' + label + '</span><span style="font-weight:600;color:#20201d;">' + v + '</span></div>' : '';
+                return v ? '<div style="display:flex;gap:8px;margin:3px 0;">'
+                    + '<span style="min-width:88px;color:#777;flex:none;">' + label + '</span>'
+                    + '<span style="font-weight:600;color:#20201d;">' + v + '</span></div>' : '';
             }
-            return '<div style="font-size:13px;margin:6px 0 12px;">'
-                + row('Company', revisionHeaderField(rev, quotation, 'companyName'))
+            var number = escapeHtml(String(rev.quoteNumber || quotation.quoteNumber || ''));
+            var company = revisionHeaderField(rev, quotation, 'companyName');
+            var title = '<div style="background:' + revBrand() + ';color:#fff;padding:10px 12px;border-radius:2px;'
+                + 'display:flex;justify-content:space-between;align-items:baseline;gap:12px;">'
+                + '<span style="font-weight:700;font-size:15px;">QUOTATION</span>'
+                + '<span style="font-size:13px;">' + number + '</span></div>';
+            var left = row('Company', company)
                 + row('Kind Attn', revisionHeaderField(rev, quotation, 'customerName'))
-                + row('Date', revisionHeaderField(rev, quotation, 'quotationDate'))
-                + row('Bill To', revisionHeaderField(rev, quotation, 'projectName'))
-                + row('Ship To', revisionHeaderField(rev, quotation, 'shipTo'))
                 + row('Phone', revisionHeaderField(rev, quotation, 'contactDetails'))
+                + row('Date', revisionHeaderField(rev, quotation, 'quotationDate'));
+            var right = row('Bill To', revisionHeaderField(rev, quotation, 'projectName'))
+                + row('Ship To', revisionHeaderField(rev, quotation, 'shipTo'))
                 + row('Prepared By', revisionHeaderField(rev, quotation, 'preparedBy'))
-                + row('Checked By', revisionHeaderField(rev, quotation, 'checkedBy'))
-                + '</div>';
+                + row('Checked By', revisionHeaderField(rev, quotation, 'checkedBy'));
+            return title
+                + '<div style="font-size:13px;margin:10px 0 12px;display:grid;'
+                + 'grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:0 24px;">'
+                + '<div>' + left + '</div><div>' + right + '</div></div>';
         }
         // The full quote for a past version: header + items + terms — read-only.
         function revisionFullQuoteHtml(quotation, rev) {
             var termsSource = (rev.termsText != null) ? rev.termsText : (quotation.termsText || '');
             var terms = termsSource
-                ? '<h3 style="margin:18px 0 6px;font-size:14px;">Terms &amp; Conditions</h3><pre style="white-space:pre-wrap;font-family:inherit;font-size:12px;color:#333;margin:0;">' + escapeHtml(termsSource) + '</pre>'
+                ? '<div style="margin:18px 0 6px;font-size:11px;font-weight:700;letter-spacing:.5px;color:#555;">TERMS AND CONDITIONS</div>'
+                  + '<pre style="white-space:pre-wrap;font-family:inherit;font-size:12px;color:#333;margin:0;">' + escapeHtml(termsSource) + '</pre>'
                 : '';
-            return revisionHeaderHtml(quotation, rev) + revisionItemsTableHtml(rev) + terms;
+            // Say why this one looks rebuilt rather than being the real PDF: we only archive the
+            // PDF a customer was actually sent, so a version that was superseded before it went
+            // out has no file to show. Without this the difference reads as a display fault.
+            var note = '<p style="margin:0 0 10px;font-size:11px;color:#9b988e;">'
+                + 'Rebuilt from the saved details — this version was replaced before it was emailed,'
+                + ' so there is no sent PDF for it.</p>';
+            return note + revisionHeaderHtml(quotation, rev) + revisionItemsTableHtml(rev) + terms;
         }
 
         function getRevisionFromButton(btn) {
@@ -12709,22 +12748,28 @@
             const bodyFor = function(t) {
                 return stored['send:' + String((t && t.sentAt) || '')] || '';
             };
-            const row = function(when, icon, tint, title, detail, sentHtml) {
+            // A stored reply is plain text, not markup — turn it into HTML for the viewer.
+            const replyHtml = function(text) {
+                const t = String(text || '').trim();
+                return t ? '<div style="white-space:pre-wrap;font-size:13px;line-height:1.5;">' + escapeHtml(t) + '</div>' : '';
+            };
+            const row = function(when, icon, tint, title, detail, sentHtml, linkLabel) {
                 // Only the lines we hold a body for become clickable. Enquiries sent before this
                 // was stored have nothing to open, so they stay plain rather than offering a
                 // button that opens an empty box.
                 const body = String(sentHtml || '').trim();
+                const label = linkLabel || 'view enquiry';
                 const idx = body ? (bodies.push({ title: title, when: when, html: body }) - 1) : -1;
                 const open = idx >= 0
-                    ? ' sq-ev-open" role="button" tabindex="0" title="Show the enquiry that was sent"'
-                      + ' onclick="sqShowSentEnquiry(' + idx + ')"'
+                    ? ' sq-ev-open" role="button" tabindex="0" title="' + escapeHtml(label)
+                      + '" onclick="sqShowSentEnquiry(' + idx + ')"'
                       + ' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();sqShowSentEnquiry(' + idx + ');}"'
                     : '"';
                 return '<div class="sq-ev' + open + ' style="border-left-color:' + tint + ';">'
                     + '<span class="sq-ev-icon">' + icon + '</span>'
                     + '<span class="sq-ev-body"><b>' + escapeHtml(title) + '</b>'
                     + (detail ? '<span class="sq-ev-detail">' + escapeHtml(detail) + '</span>' : '')
-                    + (idx >= 0 ? '<span class="sq-ev-link">view enquiry</span>' : '') + '</span>'
+                    + (idx >= 0 ? '<span class="sq-ev-link">' + escapeHtml(label) + '</span>' : '') + '</span>'
                     + '<span class="sq-ev-when">' + escapeHtml(when ? formatRevisionDate(when) : '') + '</span></div>';
             };
 
@@ -12733,9 +12778,13 @@
                 if (!t) return;
                 if (t.sentAt) out.push({ when: t.sentAt, sort: 1,
                     html: row(t.sentAt, '&#128666;', '#185FA5', 'Freight enquiry sent', t.email || '', bodyFor(t)) });
+                // The reply itself, not just the fact of one. We already store the transporter's
+                // words (t.replyText) — the line used to show only "Freight rate received" with
+                // no way to read what was actually quoted, or on what terms.
                 if (t.replied) out.push({ when: t.replyAt || t.sentAt || '', sort: 1,
                     html: row(t.replyAt || t.sentAt, '&#128666;', '#0F6E56', 'Freight rate received',
-                        (t.email || '') + (t.amount ? ' — ₹' + Math.round(t.amount).toLocaleString('en-IN') : '')) });
+                        (t.email || '') + (t.amount ? ' — ₹' + Math.round(t.amount).toLocaleString('en-IN') : ''),
+                        replyHtml(t.replyText), 'view reply') });
             });
 
             const suppliers = Array.isArray(quotation.supplierEnquiries) ? quotation.supplierEnquiries : [];
@@ -12745,7 +12794,8 @@
                     html: row(t.sentAt, '&#128233;', '#6B3FA0', 'Supplier enquiry sent', t.email || '', bodyFor(t)) });
                 if (t.replied) out.push({ when: t.replyAt || t.sentAt || '', sort: 1,
                     html: row(t.replyAt || t.sentAt, '&#128233;', '#0F6E56', 'Supplier offer received',
-                        (t.email || '') + (t.rate ? ' — ₹' + Math.round(t.rate).toLocaleString('en-IN') : '')) });
+                        (t.email || '') + (t.rate ? ' — ₹' + Math.round(t.rate).toLocaleString('en-IN') : ''),
+                        replyHtml(t.replyText), 'view reply') });
             });
             return out;
         }

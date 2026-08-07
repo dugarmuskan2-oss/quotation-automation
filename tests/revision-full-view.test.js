@@ -52,20 +52,28 @@ function loadFns(names) {
 
 // Pure dependency shared by all three targets; extracted so the REAL escaping runs.
 const revisionHeaderField = loadFns(['revisionHeaderField']);
-const revisionHeaderHtml = loadFns(['escapeHtml', 'revisionHeaderField', 'revisionHeaderHtml']);
+const revisionHeaderHtml = loadFns(['escapeHtml', 'revBrand', 'revisionHeaderField', 'revisionHeaderHtml']);
+// Rates and amounts now go through the app's OWN formatter (the same one the live table and
+// the PDF use), so formatIndianNumber + the two wrappers travel with the renderer — without
+// them a stored rate printed raw as "310.03000000000003".
+const NUMBER_DEPS = ['formatIndianNumber', 'revBrand', 'revFmtRate', 'revFmtAmount'];
+const revisionHeaderHtmlDeps = ['escapeHtml', 'revBrand', 'revisionHeaderField', 'revisionHeaderHtml'];
+
 const revisionFullQuoteHtml = loadFns([
     'escapeHtml',
     'revisionHeaderField',
     'revisionPipeTypeOf',
+].concat(NUMBER_DEPS, [
     'revisionItemsTableHtml',
     'revisionHeaderHtml',
     'revisionFullQuoteHtml',
-]);
+]));
 
 // Extracted individually so the pipe-type grouping is exercised directly.
 // revisionPipeTypeOf is self-contained; revisionItemsTableHtml needs escapeHtml + it.
 const revisionPipeTypeOf = loadFns(['revisionPipeTypeOf']);
-const revisionItemsTableHtml = loadFns(['escapeHtml', 'revisionPipeTypeOf', 'revisionItemsTableHtml']);
+const revisionItemsTableHtml = loadFns(
+    ['escapeHtml', 'revisionPipeTypeOf'].concat(NUMBER_DEPS, ['revisionItemsTableHtml']));
 
 // Pull the text of every full-width pipe-type header cell (<td colspan="4" …>TYPE</td>),
 // in document order, so we can assert both the COUNT and the ORDER of group headers.
@@ -193,17 +201,18 @@ describe('revisionFullQuoteHtml — the entire past version: header + items + te
         // Header (from the snapshot).
         expect(out).toContain('Snap Steel Ltd');
         expect(out).toContain('Priya');
-        // Items (descriptions + numbers from the snapshot).
+        // Items (descriptions + numbers from the snapshot). Numbers are FORMATTED the way the
+        // live quote formats them: rate to 2 decimals, amounts whole with Indian grouping.
         expect(out).toContain('2&quot; NB X Heavy -- GI');
         expect(out).toContain('100');
         expect(out).toContain('250.00');
-        expect(out).toContain('25000.00');
+        expect(out).toContain('25,000');
         expect(out).toContain('Freight');
-        expect(out).toContain('1500.00');
+        expect(out).toContain('1,500');
         // Grand total from the snapshot.
-        expect(out).toContain('26500.00');
+        expect(out).toContain('26,500');
         // Terms from the snapshot.
-        expect(out).toContain('Terms');
+        expect(out).toContain('TERMS');
         expect(out).toContain('Payment: 100% advance');
     });
 
@@ -219,9 +228,10 @@ describe('revisionFullQuoteHtml — the entire past version: header + items + te
             grandTotal: '6700',
         };
         const out = revisionFullQuoteHtml({}, rev);
-        expect(out).toContain('>250</td>');      // row A uses finalRate...
-        expect(out).not.toContain('>200</td>');  // ...NOT its unitRate
-        expect(out).toContain('>175</td>');      // row B falls back to unitRate
+        // Rates print to 2 decimals now (same as the live quote), so match the formatted cell.
+        expect(out).toContain('>250.00</td>');      // row A uses finalRate...
+        expect(out).not.toContain('>200.00</td>');  // ...NOT its unitRate
+        expect(out).toContain('>175.00</td>');      // row B falls back to unitRate
     });
 
     test('terms fall back to the live quote when the snapshot omits them (null)', () => {
@@ -383,7 +393,7 @@ describe('revisionItemsTableHtml — full-width pipe-type header row per group',
         expect(headerTypesOf(out)).toEqual(['GI']);
         // The freight row itself still renders as a normal cell.
         expect(out).toContain('>Freight</td>');
-        expect(out).toContain('1500');
+        expect(out).toContain('1,500');
     });
 
     test('an all-untyped quote (only freight) emits ZERO header rows', () => {
@@ -409,9 +419,31 @@ describe('revisionItemsTableHtml — full-width pipe-type header row per group',
         expect(out).toContain('2&quot; NB X Heavy -- GI');   // description (escaped)
         expect(out).toContain('>100</td>');                   // qty cell
         expect(out).toContain('>250.00</td>');                // rate cell (finalRate)
-        expect(out).toContain('>25000.00</td>');              // total cell
+        expect(out).toContain('>25,000</td>');                // total cell, Indian grouping
         // Header did not swallow / replace the item row.
         expect(headerCount(out)).toBe(1);
+    });
+
+    // The reason the formatter was introduced: stored rates carry floating-point noise from the
+    // margin maths, and printing them raw put "310.03000000000003" on a page shared with the
+    // customer. Both the rate and the total must come out clean.
+    test('floating-point noise in a stored rate/total never reaches the page', () => {
+        const rev = {
+            lineItems: [
+                { originalDescription: '2" NB X Medium -- ERW', quantity: 70,
+                  finalRate: 310.03000000000003, lineTotal: 21702.100000000002 },
+                { originalDescription: '16" NB X 9.5 MM THK', quantity: 47,
+                  finalRate: 5857.610000000001, lineTotal: 275307.67000000004 },
+            ],
+            grandTotal: 297009.77000000006,
+        };
+        const out = revisionItemsTableHtml(rev);
+        expect(out).not.toMatch(/\d\.\d{4,}/);          // no long decimal tails anywhere
+        expect(out).toContain('>310.03</td>');
+        expect(out).toContain('>5,857.61</td>');
+        expect(out).toContain('>21,702</td>');
+        expect(out).toContain('>2,75,308</td>');        // Indian grouping, rounded
+        expect(out).toContain('Total: Rs. 2,97,010');
     });
 
     test('header text is HTML-escaped (a crafted stored type cannot inject markup)', () => {
