@@ -33,7 +33,6 @@
                 to: [],
                 cc: [],
                 bcc: [],
-                ccOpen: false,
                 message: '',
                 messageEdited: false,
                 sending: false,
@@ -497,18 +496,18 @@
         if (kind === 'bcc') return st.bcc;
         return st.to;
     }
-    // Cc / Bcc, hidden until asked for. The suppliers themselves go on Bcc, one email each, so
-    // they never see one another — these are ADDED to every one of those emails, which is worth
+    // Cc / Bcc, always shown under To. Each takes as many addresses as you like — type or paste,
+    // comma / semicolon / Enter commits one. The suppliers themselves go on Bcc, one email each,
+    // so they never see one another; these are ADDED to every one of those emails, which is worth
     // saying: cc'ing a colleague on an enquiry to eight suppliers puts eight copies in their inbox.
     function ccFieldsHtml(st) {
-        if (!st.ccOpen) return '';
         function fieldRow(kind, label) {
-            return '<label class="qet-lbl">' + label + '</label>'
+            return '<label class="qet-lbl">' + label + ' <span class="qet-sub">(optional)</span></label>'
                 + '<div class="qet-field" data-kind="' + kind + '"><span class="qet-chips" data-kind="' + kind + '">'
                 + chipsHtml(st, kind) + '</span>'
-                + '<input class="qet-input" data-kind="' + kind + '" type="text" placeholder="Add an address" autocomplete="off"></div>';
+                + '<input class="qet-input" data-kind="' + kind + '" type="text" placeholder="Add one or more addresses" autocomplete="off"></div>';
         }
-        return '<div class="qet-ccbox" style="margin-top:6px;">'
+        return '<div class="qet-ccbox">'
             + fieldRow('cc', 'Cc') + fieldRow('bcc', 'Bcc')
             + '<p class="qet-note">Added to every email in this send — one copy per supplier above.</p></div>';
     }
@@ -558,9 +557,7 @@
             + '<div class="qet-field" data-kind="to"><span class="qet-chips" data-kind="to">' + chipsHtml(st, 'to') + '</span>'
             + '<input class="qet-input" data-kind="to" type="text" placeholder="Type a supplier name or email" autocomplete="off"></div>'
             + '<div class="qet-suggest"></div>'
-            + '<p class="qet-note">Suggests suppliers you&rsquo;ve emailed before &mdash; the ones you use for this quote&rsquo;s pipe types come first. Each supplier gets their own email and is BCC&rsquo;d, so nobody sees anyone else.'
-            + ' <button type="button" class="qet-cc-toggle qet-linkbtn">'
-            + (st.ccOpen ? 'hide Cc / Bcc' : '+ Cc / Bcc') + '</button></p>'
+            + '<p class="qet-note">Suggests suppliers you&rsquo;ve emailed before &mdash; the ones you use for this quote&rsquo;s pipe types come first. Each supplier gets their own email and is BCC&rsquo;d, so nobody sees anyone else.</p>'
             + ccFieldsHtml(st)
             + '<label class="qet-lbl">Message (editable) &mdash; [TABLE] is replaced by the enquiry table, and your standard signature is added below it</label>'
             + '<textarea class="qet-msg">' + escTxt(st.message) + '</textarea>'
@@ -620,9 +617,6 @@
             };
         });
 
-        var ccToggle = $('.qet-cc-toggle');
-        if (ccToggle) ccToggle.onclick = function () { st.ccOpen = !st.ccOpen; render(quotation, mountEl); };
-
         var input = mountEl.querySelector('.qet-input[data-kind="to"]');
         var suggest = $('.qet-suggest');
         // Adding to any of the three lists. `kind` decides which one; the cursor goes back into
@@ -638,15 +632,24 @@
         }
         function addRecip(v) { addTo('to', v); }
 
-        // Cc / Bcc boxes: same keys and same blur-commit as To. No contact dropdown on these —
-        // they are usually your own colleagues, typed once, and a second dropdown over the
-        // supplier one is what made this field confusing in the first place.
+        // Cc / Bcc: same keys and same blur-commit as To, so each takes any number of addresses.
+        // A pasted list splits on comma / semicolon / whitespace, like the To box.
         mountEl.querySelectorAll('.qet-ccbox .qet-input').forEach(function (el) {
             var kind = el.dataset.kind;
+            function commit(raw) {
+                String(raw || '').split(/[,;\s]+/).forEach(function (tok) {
+                    if (tok.trim()) addTo(kind, tok);
+                });
+            }
             el.onkeydown = function (e) {
-                if (e.key === 'Enter' || e.key === ',' || e.key === ';') { e.preventDefault(); addTo(kind, el.value); }
+                if (e.key === 'Enter' || e.key === ',' || e.key === ';') { e.preventDefault(); commit(el.value); }
             };
-            el.onblur = function () { if (el.value.trim()) addTo(kind, el.value); };
+            el.onblur = function () { if (el.value.trim()) commit(el.value); };
+            // Same Gmail-contact dropdown as the To box — these are usually colleagues, and
+            // typing a name beats remembering an address.
+            if (typeof attachContactAutocomplete === 'function') {
+                attachContactAutocomplete(el.parentElement || el, el, function (v) { addTo(kind, v); });
+            }
         });
         // The Gmail-contact dropdown already MERGES these remembered suppliers in and draws them
         // at the top of its own list. Painting this older inline row as well put two lists over

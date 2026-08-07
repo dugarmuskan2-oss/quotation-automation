@@ -1339,8 +1339,12 @@ describe('source guard — the Enquiry recipient box uses the SAME dropdown as F
     });
 
     test('the Enquiry local source is the remembered suppliers, in {name,email} shape', () => {
-        const fn = tabG.slice(tabG.indexOf('attachContactAutocomplete('));
-        const call = fn.slice(0, 500);
+        // Anchor on the TO field's call specifically. Cc/Bcc also attach the dropdown now (and
+        // appear earlier in the file), so "the first occurrence" would test the wrong one — they
+        // deliberately pass no local source, since a colleague is not a remembered supplier.
+        const marker = 'attachContactAutocomplete(input.parentElement || input, input, addRecip,';
+        expect(tabG).toContain(marker);
+        const call = tabG.slice(tabG.indexOf(marker), tabG.indexOf(marker) + 500);
         expect(call).toContain('suggestedSuppliers(quotation, query)');
         expect(call).toContain("return { name: '', email: s.email };");
         // Anyone already on the To list must not be offered again.

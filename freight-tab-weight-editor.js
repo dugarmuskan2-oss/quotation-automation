@@ -131,7 +131,7 @@
         var id = String(q.id);
         if (!stateById[id]) stateById[id] = { rows: seedRows(q), split: false, weightOpen: false, freight: { amount: '', amtA: '', amtB: '', method: 'line', applied: '' } };
         if (!stateById[id].freight) stateById[id].freight = { amount: '', amtA: '', amtB: '', method: 'line', applied: '' };
-        if (!stateById[id].enquiry) stateById[id].enquiry = { open: false, forSec: 0, to: [], cc: [], bcc: [], ccOpen: false, pickup: '', drop: '', message: '', messageEdited: false, weightOverride: null, sending: false, sent: '', checking: false, checkResult: '', openReplies: {} };
+        if (!stateById[id].enquiry) stateById[id].enquiry = { open: false, forSec: 0, to: [], cc: [], bcc: [], pickup: '', drop: '', message: '', messageEdited: false, weightOverride: null, sending: false, sent: '', checking: false, checkResult: '', openReplies: {} };
         // Older in-page state predates Cc/Bcc — fill them in rather than letting .slice() throw.
         if (!Array.isArray(stateById[id].enquiry.cc)) stateById[id].enquiry.cc = [];
         if (!Array.isArray(stateById[id].enquiry.bcc)) stateById[id].enquiry.bcc = [];
@@ -760,22 +760,22 @@
             + '<div style="display:flex;flex-direction:column;gap:8px;">' + rows + '</div>' + checkBtn + checkStatus;
     }
 
-    // Cc / Bcc, hidden until asked for. Deliberately a separate block from the To field: To is
-    // one email PER transporter (that is what keeps each reply in its own thread), while these
-    // ride along on every one of those emails — which is worth saying out loud, because cc'ing a
-    // colleague on an enquiry to five transporters puts five copies in their inbox.
+    // Cc / Bcc, always shown under To. Each takes as many addresses as you like — type or paste,
+    // comma / semicolon / Enter commits one. Deliberately separate from the To field: To is one
+    // email PER transporter (that is what keeps each reply in its own thread), while these ride
+    // along on every one of those emails — worth saying out loud, because cc'ing a colleague on
+    // an enquiry to five transporters puts five copies in their inbox.
     function ccFieldsHtml(enq, prefix) {
-        if (!enq.ccOpen) return '';
         function fieldRow(kind, label) {
-            return '<label class="' + prefix + '-enq-lbl">' + label + '</label>'
+            return '<label class="' + prefix + '-enq-lbl">' + label + ' (optional)</label>'
                 + '<div class="' + prefix + '-enq-field" data-kind="' + kind + '">'
                 + '<span class="' + prefix + '-enq-chips" data-kind="' + kind + '" style="display:contents;"></span>'
-                + '<input class="' + prefix + '-enq-input" data-kind="' + kind + '" type="text" placeholder="Add an address" autocomplete="off"></div>';
+                + '<input class="' + prefix + '-enq-input" data-kind="' + kind + '" type="text" placeholder="Add one or more addresses" autocomplete="off"></div>';
         }
-        return '<div class="' + prefix + '-ccbox" style="margin-top:6px;">'
+        return '<div class="' + prefix + '-ccbox">'
             + fieldRow('cc', 'Cc') + fieldRow('bcc', 'Bcc')
             + '<p style="margin:4px 0 0;font-size:11px;color:#9b988e;">'
-            + 'Added to every email in this send — one copy per recipient above.</p></div>';
+            + 'Added to every email in this send — one copy per transporter above.</p></div>';
     }
 
     function freightEnquiryBoxHtml(q) {
@@ -807,9 +807,7 @@
             + '<label class="fwe-enq-lbl">To — transporters</label>'
             + '<div class="fwe-enq-field"><span class="fwe-enq-chips" style="display:contents;"></span>'
             + '<input class="fwe-enq-input" type="text" placeholder="Type a transporter name or email" autocomplete="off"></div>'
-            + '<p style="margin:4px 0 0;font-size:11px;color:#9b988e;">Suggests transporters you’ve used for this route (fill pickup/drop first), plus Gmail matches. Each transporter gets their own email — they can’t see each other.'
-            + ' <button type="button" class="fwe-cc-toggle fwe-link" style="font-size:11px;">'
-            + (enq.ccOpen ? 'hide Cc / Bcc' : '+ Cc / Bcc') + '</button></p>'
+            + '<p style="margin:4px 0 0;font-size:11px;color:#9b988e;">Suggests transporters you’ve used for this route (fill pickup/drop first), plus Gmail matches. Each transporter gets their own email — they can’t see each other.</p>'
             + ccFieldsHtml(enq, 'fwe')
             + '<div class="fwe-enq-wt"><i class="ti ti-weight" style="font-size:16px;" aria-hidden="true"></i>'
             + ((st.split && enq.forSec) ? '<span>Shipment ' + enq.forSec + ' ·</span>' : '')
@@ -1101,8 +1099,6 @@
             bindAddressField(f, f.querySelector('.fwe-enq-chips'), f.querySelector('.fwe-enq-input'),
                 kind === 'cc' ? enq.cc : enq.bcc);
         });
-        var ccToggle = mountEl.querySelector('.fwe-cc-toggle');
-        if (ccToggle) ccToggle.onclick = function () { enq.ccOpen = !enq.ccOpen; render(q, mountEl); };
         warmFreightSuggestions();
 
         // Keep the draft in sync with pickup/drop while the user hasn't hand-edited it.
