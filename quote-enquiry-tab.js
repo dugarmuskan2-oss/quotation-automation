@@ -597,8 +597,13 @@
             var again = mountEl.querySelector('.qet-input');
             if (again) again.focus();
         }
+        // The Gmail-contact dropdown already MERGES these remembered suppliers in and draws them
+        // at the top of its own list. Painting this older inline row as well put two lists over
+        // each other on screen, showing the same addresses twice. So it now only runs as a
+        // fallback, when the shared autocomplete isn't available.
+        var hasContactDropdown = (typeof attachContactAutocomplete === 'function');
         function paintSuggestions() {
-            if (!suggest) return;
+            if (!suggest || hasContactDropdown) return;
             var list = suggestedSuppliers(quotation, input ? input.value : '')
                 .filter(function (s) { return st.to.indexOf(s.email) === -1; });
             suggest.innerHTML = list.length
@@ -610,6 +615,7 @@
         }
         if (input) {
             input.oninput = paintSuggestions;
+            // Warm the remembered list either way — the dropdown's own local source reads it.
             input.onfocus = function () { loadSupplierSuggestions(paintSuggestions); paintSuggestions(); };
             input.onkeydown = function (e) {
                 if (e.key === 'Enter' || e.key === ',' || e.key === ';') { e.preventDefault(); addRecip(input.value); }
