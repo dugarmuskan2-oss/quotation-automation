@@ -31,6 +31,9 @@
                 built: false,          // has the user pressed "Create enquiry" yet
                 rows: [],
                 to: [],
+                cc: [],
+                bcc: [],
+                ccOpen: false,
                 message: '',
                 messageEdited: false,
                 sending: false,
@@ -38,6 +41,9 @@
                 openReplies: {},
             };
         }
+        // Older in-page state predates Cc/Bcc — fill them in rather than letting .map() throw.
+        if (!Array.isArray(stateById[id].cc)) stateById[id].cc = [];
+        if (!Array.isArray(stateById[id].bcc)) stateById[id].bcc = [];
         return stateById[id];
     }
 
@@ -478,12 +484,33 @@
         return '<div class="qet-tbl-wrap"><table class="qet-tbl">' + head + '<tbody>' + body + '</tbody></table></div>';
     }
 
-    function chipsHtml(st) {
-        return st.to.map(function (a, i) {
+    function chipsHtml(st, kind) {
+        var list = listFor(st, kind);
+        return list.map(function (a, i) {
             var bad = !isEmail(a);
             return '<span class="qet-chip' + (bad ? ' qet-chip-bad' : '') + '">' + escTxt(a)
-                + '<button class="qet-chip-x" data-i="' + i + '" title="Remove">&times;</button></span>';
+                + '<button class="qet-chip-x" data-kind="' + (kind || 'to') + '" data-i="' + i + '" title="Remove">&times;</button></span>';
         }).join('');
+    }
+    function listFor(st, kind) {
+        if (kind === 'cc') return st.cc;
+        if (kind === 'bcc') return st.bcc;
+        return st.to;
+    }
+    // Cc / Bcc, hidden until asked for. The suppliers themselves go on Bcc, one email each, so
+    // they never see one another — these are ADDED to every one of those emails, which is worth
+    // saying: cc'ing a colleague on an enquiry to eight suppliers puts eight copies in their inbox.
+    function ccFieldsHtml(st) {
+        if (!st.ccOpen) return '';
+        function fieldRow(kind, label) {
+            return '<label class="qet-lbl">' + label + '</label>'
+                + '<div class="qet-field" data-kind="' + kind + '"><span class="qet-chips" data-kind="' + kind + '">'
+                + chipsHtml(st, kind) + '</span>'
+                + '<input class="qet-input" data-kind="' + kind + '" type="text" placeholder="Add an address" autocomplete="off"></div>';
+        }
+        return '<div class="qet-ccbox" style="margin-top:6px;">'
+            + fieldRow('cc', 'Cc') + fieldRow('bcc', 'Bcc')
+            + '<p class="qet-note">Added to every email in this send — one copy per supplier above.</p></div>';
     }
 
     function render(quotation, mountEl) {
@@ -519,17 +546,22 @@
                 + (ok ? '✓ ' : '⚠ ') + escTxt(st.sent.slice(st.sent.indexOf(':') + 1)) + '</div>';
         }
 
-        var canSend = st.to.length && !st.sending && st.to.every(isEmail) && st.rows.length;
+        // Cc/Bcc are validated too — a typo there fails the whole send, not just that copy.
+        var canSend = st.to.length && !st.sending && st.rows.length
+            && st.to.concat(st.cc, st.bcc).every(isEmail);
         mountEl.innerHTML = '<div class="qet">'
             + '<div class="qet-h">Enquiry &middot; ' + st.rows.length + ' item' + (st.rows.length === 1 ? '' : 's')
             + ' <span class="qet-sub">built from the quote</span></div>'
             + rowsTableHtml(st)
             + '<div class="qet-rowbtns"><button class="qet-btn qet-add">+ Add item</button></div>'
             + '<label class="qet-lbl">To &mdash; suppliers / dealers <span class="qet-sub">(sent on BCC, one email each)</span></label>'
-            + '<div class="qet-field"><span class="qet-chips">' + chipsHtml(st) + '</span>'
-            + '<input class="qet-input" type="text" placeholder="Type a supplier name or email" autocomplete="off"></div>'
+            + '<div class="qet-field" data-kind="to"><span class="qet-chips" data-kind="to">' + chipsHtml(st, 'to') + '</span>'
+            + '<input class="qet-input" data-kind="to" type="text" placeholder="Type a supplier name or email" autocomplete="off"></div>'
             + '<div class="qet-suggest"></div>'
-            + '<p class="qet-note">Suggests suppliers you&rsquo;ve emailed before &mdash; the ones you use for this quote&rsquo;s pipe types come first. Each supplier gets their own email and is BCC&rsquo;d, so nobody sees anyone else.</p>'
+            + '<p class="qet-note">Suggests suppliers you&rsquo;ve emailed before &mdash; the ones you use for this quote&rsquo;s pipe types come first. Each supplier gets their own email and is BCC&rsquo;d, so nobody sees anyone else.'
+            + ' <button type="button" class="qet-cc-toggle qet-linkbtn">'
+            + (st.ccOpen ? 'hide Cc / Bcc' : '+ Cc / Bcc') + '</button></p>'
+            + ccFieldsHtml(st)
             + '<label class="qet-lbl">Message (editable) &mdash; [TABLE] is replaced by the enquiry table, and your standard signature is added below it</label>'
             + '<textarea class="qet-msg">' + escTxt(st.message) + '</textarea>'
             + '<div class="qet-sendrow"><button class="qet-btn qet-send"' + (canSend ? '' : ' disabled') + '>&#9993; Send enquiry</button></div>'
@@ -582,21 +614,40 @@
         };
 
         $$('.qet-chip-x').forEach(function (el) {
-            el.onclick = function () { st.to.splice(Number(el.dataset.i), 1); render(quotation, mountEl); };
+            el.onclick = function () {
+                listFor(st, el.dataset.kind).splice(Number(el.dataset.i), 1);
+                render(quotation, mountEl);
+            };
         });
 
-        var input = $('.qet-input');
+        var ccToggle = $('.qet-cc-toggle');
+        if (ccToggle) ccToggle.onclick = function () { st.ccOpen = !st.ccOpen; render(quotation, mountEl); };
+
+        var input = mountEl.querySelector('.qet-input[data-kind="to"]');
         var suggest = $('.qet-suggest');
-        function addRecip(v) {
+        // Adding to any of the three lists. `kind` decides which one; the cursor goes back into
+        // the SAME box afterwards, because render() rebuilds the tab and would otherwise drop it.
+        function addTo(kind, v) {
             var email = String(v || '').trim().replace(/[;,]$/, '');
             if (!email) return;
-            if (st.to.indexOf(email) === -1) st.to.push(email);
+            var list = listFor(st, kind);
+            if (list.indexOf(email) === -1) list.push(email);
             render(quotation, mountEl);
-            // render() rebuilds the tab, which destroys the box being typed into — so adding one
-            // address dropped focus and the next keystrokes went nowhere. Put the cursor back.
-            var again = mountEl.querySelector('.qet-input');
+            var again = mountEl.querySelector('.qet-input[data-kind="' + kind + '"]');
             if (again) again.focus();
         }
+        function addRecip(v) { addTo('to', v); }
+
+        // Cc / Bcc boxes: same keys and same blur-commit as To. No contact dropdown on these —
+        // they are usually your own colleagues, typed once, and a second dropdown over the
+        // supplier one is what made this field confusing in the first place.
+        mountEl.querySelectorAll('.qet-ccbox .qet-input').forEach(function (el) {
+            var kind = el.dataset.kind;
+            el.onkeydown = function (e) {
+                if (e.key === 'Enter' || e.key === ',' || e.key === ';') { e.preventDefault(); addTo(kind, el.value); }
+            };
+            el.onblur = function () { if (el.value.trim()) addTo(kind, el.value); };
+        });
         // The Gmail-contact dropdown already MERGES these remembered suppliers in and draws them
         // at the top of its own list. Painting this older inline row as well put two lists over
         // each other on screen, showing the same addresses twice. So it now only runs as a
@@ -657,15 +708,19 @@
     function sendEnquiry(quotation, mountEl) {
         var st = stateFor(quotation);
         if (!st.to.length || st.sending || !st.rows.length) return;
-        if (!st.to.every(isEmail)) { st.sent = 'err:Check the highlighted email addresses.'; render(quotation, mountEl); return; }
+        if (!st.to.concat(st.cc, st.bcc).every(isEmail)) {
+            st.sent = 'err:Check the highlighted email addresses.'; render(quotation, mountEl); return;
+        }
 
         var subject = 'Enquiry' + (quotation.quoteNumber ? ' — ' + quotation.quoteNumber : '');
         var recipients = st.to.slice();
+        // Captured now, like the recipients: the composer stays editable while the sends run.
+        var extra = { cc: st.cc.join(', '), bcc: st.bcc.slice() };
         st.sending = true; st.sent = '';
         render(quotation, mountEl);
         // Make sure the standard signature is in hand before building the body, so the enquiry
         // is signed the same way a quotation is.
-        loadSignature(function () { doSend(quotation, mountEl, st, subject, recipients); });
+        loadSignature(function () { doSend(quotation, mountEl, st, subject, recipients, extra); });
     }
 
     // Keep a copy of what actually went out, so the shared quote page can show the enquiry back
@@ -709,17 +764,21 @@
         return quotation.enquirySentBodies;
     }
 
-    function doSend(quotation, mountEl, st, subject, recipients) {
+    function doSend(quotation, mountEl, st, subject, recipients, extra) {
+        extra = extra || { cc: '', bcc: [] };
         var bodyHtml = messageToHtml(st.message, st.rows);
         var storedBody = trimSentBodyForStorage(bodyHtml);
 
         Promise.all(recipients.map(function (addr) {
+            // The supplier stays on Bcc (one email each, nobody sees anyone else); any Bcc the
+            // user added joins them on the same email, and their Cc rides along openly.
+            var bccList = [addr].concat(extra.bcc || []).join(', ');
             return fetch(apiBase() + '/send-email', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 // bcc carries the supplier; `to` is our own account so the message is well-formed.
                 // label tags the thread Quotation Automation/Enquiry Sent by us in Gmail.
-                body: JSON.stringify({ to: '', bcc: addr, subject: subject, bodyHtml: bodyHtml, label: 'supplier' })
+                body: JSON.stringify({ to: '', cc: extra.cc, bcc: bccList, subject: subject, bodyHtml: bodyHtml, label: 'supplier' })
             }).then(function (res) {
                 return res.json().catch(function () { return {}; }).then(function (d) {
                     return { addr: addr, ok: res.ok && d && d.success, d: d };

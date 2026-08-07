@@ -131,7 +131,10 @@
         var id = String(q.id);
         if (!stateById[id]) stateById[id] = { rows: seedRows(q), split: false, weightOpen: false, freight: { amount: '', amtA: '', amtB: '', method: 'line', applied: '' } };
         if (!stateById[id].freight) stateById[id].freight = { amount: '', amtA: '', amtB: '', method: 'line', applied: '' };
-        if (!stateById[id].enquiry) stateById[id].enquiry = { open: false, forSec: 0, to: [], pickup: '', drop: '', message: '', messageEdited: false, weightOverride: null, sending: false, sent: '', checking: false, checkResult: '', openReplies: {} };
+        if (!stateById[id].enquiry) stateById[id].enquiry = { open: false, forSec: 0, to: [], cc: [], bcc: [], ccOpen: false, pickup: '', drop: '', message: '', messageEdited: false, weightOverride: null, sending: false, sent: '', checking: false, checkResult: '', openReplies: {} };
+        // Older in-page state predates Cc/Bcc — fill them in rather than letting .slice() throw.
+        if (!Array.isArray(stateById[id].enquiry.cc)) stateById[id].enquiry.cc = [];
+        if (!Array.isArray(stateById[id].enquiry.bcc)) stateById[id].enquiry.bcc = [];
         return stateById[id];
     }
     function weightOf(r) { return (r.qty || 0) * (r.kgm || 0); }
@@ -713,8 +716,10 @@
         return s.length > MAX_REPLY_CHARS ? (s.slice(0, MAX_REPLY_CHARS) + '\n…[truncated]') : s;
     }
 
+    // Cc and Bcc are checked too: a typo there fails the whole send, not just that copy.
     function hasBadRecipient(enq) {
-        return enq.to.some(function (a) { return typeof isValidEmailAddress === 'function' && !isValidEmailAddress(a); });
+        var all = enq.to.concat(enq.cc || [], enq.bcc || []);
+        return all.some(function (a) { return typeof isValidEmailAddress === 'function' && !isValidEmailAddress(a); });
     }
 
     function enquiryThreadsHtml(q, st) {
@@ -755,6 +760,24 @@
             + '<div style="display:flex;flex-direction:column;gap:8px;">' + rows + '</div>' + checkBtn + checkStatus;
     }
 
+    // Cc / Bcc, hidden until asked for. Deliberately a separate block from the To field: To is
+    // one email PER transporter (that is what keeps each reply in its own thread), while these
+    // ride along on every one of those emails — which is worth saying out loud, because cc'ing a
+    // colleague on an enquiry to five transporters puts five copies in their inbox.
+    function ccFieldsHtml(enq, prefix) {
+        if (!enq.ccOpen) return '';
+        function fieldRow(kind, label) {
+            return '<label class="' + prefix + '-enq-lbl">' + label + '</label>'
+                + '<div class="' + prefix + '-enq-field" data-kind="' + kind + '">'
+                + '<span class="' + prefix + '-enq-chips" data-kind="' + kind + '" style="display:contents;"></span>'
+                + '<input class="' + prefix + '-enq-input" data-kind="' + kind + '" type="text" placeholder="Add an address" autocomplete="off"></div>';
+        }
+        return '<div class="' + prefix + '-ccbox" style="margin-top:6px;">'
+            + fieldRow('cc', 'Cc') + fieldRow('bcc', 'Bcc')
+            + '<p style="margin:4px 0 0;font-size:11px;color:#9b988e;">'
+            + 'Added to every email in this send — one copy per recipient above.</p></div>';
+    }
+
     function freightEnquiryBoxHtml(q) {
         var st = getState(q);
         var enq = st.enquiry;
@@ -784,7 +807,10 @@
             + '<label class="fwe-enq-lbl">To — transporters</label>'
             + '<div class="fwe-enq-field"><span class="fwe-enq-chips" style="display:contents;"></span>'
             + '<input class="fwe-enq-input" type="text" placeholder="Type a transporter name or email" autocomplete="off"></div>'
-            + '<p style="margin:4px 0 0;font-size:11px;color:#9b988e;">Suggests transporters you’ve used for this route (fill pickup/drop first), plus Gmail matches. Each transporter gets their own email — they can’t see each other.</p>'
+            + '<p style="margin:4px 0 0;font-size:11px;color:#9b988e;">Suggests transporters you’ve used for this route (fill pickup/drop first), plus Gmail matches. Each transporter gets their own email — they can’t see each other.'
+            + ' <button type="button" class="fwe-cc-toggle fwe-link" style="font-size:11px;">'
+            + (enq.ccOpen ? 'hide Cc / Bcc' : '+ Cc / Bcc') + '</button></p>'
+            + ccFieldsHtml(enq, 'fwe')
             + '<div class="fwe-enq-wt"><i class="ti ti-weight" style="font-size:16px;" aria-hidden="true"></i>'
             + ((st.split && enq.forSec) ? '<span>Shipment ' + enq.forSec + ' ·</span>' : '')
             // Left EMPTY when the calculation would be partial: prefilling the low number is how a
@@ -836,12 +862,15 @@
             + (enq.drop ? ' (to ' + enq.drop + ')' : '')
             + (scopeSec ? ' — Shipment ' + scopeSec : '');
         var recipients = enq.to.slice();
+        // Captured now, like the recipients: the composer stays editable while the sends run.
+        var extra = { cc: (enq.cc || []).join(', '), bcc: (enq.bcc || []).join(', ') };
         enq.sending = true; enq.sent = ''; enq.checkResult = '';
         render(q, mountEl);
-        loadFreightSignature(function () { freightSendAll(q, st, mountEl, enq, recipients, subject, bodyText, scopeSec); });
+        loadFreightSignature(function () { freightSendAll(q, st, mountEl, enq, recipients, subject, bodyText, scopeSec, extra); });
     }
 
-    function freightSendAll(q, st, mountEl, enq, recipients, subject, bodyText, scopeSec) {
+    function freightSendAll(q, st, mountEl, enq, recipients, subject, bodyText, scopeSec, extra) {
+        extra = extra || { cc: '', bcc: '' };
         // Built once, not once per recipient: every transporter gets the same enquiry, and the
         // stored copy has to be the one they actually received.
         var bodyHtml = enqTextToHtml(bodyText, st);
@@ -851,7 +880,8 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 // label tags the thread Quotation Automation/Freight Enquiry in Gmail.
-                body: JSON.stringify({ to: addr, subject: subject, bodyHtml: bodyHtml, label: 'freight' })
+                // cc/bcc ride along on every one of these per-transporter emails.
+                body: JSON.stringify({ to: addr, cc: extra.cc, bcc: extra.bcc, subject: subject, bodyHtml: bodyHtml, label: 'freight' })
             }).then(function (res) {
                 return res.json().catch(function () { return {}; }).then(function (d) { return { addr: addr, ok: res.ok && d && d.success, d: d }; });
             }).catch(function (e) {
@@ -1018,45 +1048,61 @@
         var chipsBox = mountEl.querySelector('.fwe-enq-chips');
         var input = mountEl.querySelector('.fwe-enq-input');
         var sendBtn = mountEl.querySelector('.fwe-enq-send');
-        function renderChips() {
-            chipsBox.innerHTML = enq.to.map(function (addr, i) {
-                var bad = (typeof isValidEmailAddress === 'function' && !isValidEmailAddress(addr)) ? ' fwe-chip-bad' : '';
-                return '<span class="fwe-chip' + bad + '">' + escTxt(addr) + ' <span class="fwe-chip-x" data-i="' + i + '">×</span></span>';
-            }).join('');
-            chipsBox.querySelectorAll('.fwe-chip-x').forEach(function (x) {
-                x.onclick = function (e) { e.stopPropagation(); enq.to.splice(num(x.getAttribute('data-i')), 1); renderChips(); };
-            });
+        function syncSendBtn() {
             // The weight gate belongs here too — adding a recipient used to re-enable Send
             // even when the weight was still incomplete, contradicting the box's own warning.
             if (sendBtn) sendBtn.disabled = !enq.to.length || enq.sending || hasBadRecipient(enq) || !enqWeightUsable(st);
         }
-        function addRecip(raw) {
-            var s = String(raw || '');
-            // Only split on whitespace for pasted address lists — typed names keep their
-            // spaces so "Ravi Transport" stays searchable / one chip.
-            var parts = s.indexOf('@') > -1 ? s.split(/[,;\s]+/) : s.split(/[,;\n]+/);
-            parts.forEach(function (tok) {
-                var v = tok.trim();
-                if (v && enq.to.indexOf(v) === -1) enq.to.push(v);
-            });
-            renderChips();
-        }
-        renderChips();
-        input.addEventListener('keydown', function (e) {
-            if (e.key === ',' || e.key === ';' || e.key === 'Enter') {
-                e.preventDefault(); addRecip(input.value); input.value = '';
-            } else if (e.key === 'Backspace' && input.value === '' && enq.to.length) {
-                enq.to.pop(); renderChips();
+        // One binder for To, Cc and Bcc — chips, paste splitting, Backspace, blur-commit and the
+        // Gmail dropdown behave the same in all three; only the list they write to differs.
+        function bindAddressField(fieldEl, chipsEl, inputEl, list) {
+            function renderChips() {
+                chipsEl.innerHTML = list.map(function (addr, i) {
+                    var bad = (typeof isValidEmailAddress === 'function' && !isValidEmailAddress(addr)) ? ' fwe-chip-bad' : '';
+                    return '<span class="fwe-chip' + bad + '">' + escTxt(addr) + ' <span class="fwe-chip-x" data-i="' + i + '">×</span></span>';
+                }).join('');
+                chipsEl.querySelectorAll('.fwe-chip-x').forEach(function (x) {
+                    x.onclick = function (e) { e.stopPropagation(); list.splice(num(x.getAttribute('data-i')), 1); renderChips(); };
+                });
+                syncSendBtn();
             }
-        });
-        input.addEventListener('blur', function () { if (input.value.trim()) { addRecip(input.value); input.value = ''; } });
-        // Suggestions are route-aware: they read the CURRENT pickup/drop live, so filling
-        // the route first surfaces the transporters used for it. People API merges in.
-        if (typeof attachContactAutocomplete === 'function') {
-            attachContactAutocomplete(field, input, addRecip, function (query) {
-                return rememberedTransportersForRoute(query, enq.pickup, enq.drop);
+            function add(raw) {
+                var s = String(raw || '');
+                // Only split on whitespace for pasted address lists — typed names keep their
+                // spaces so "Ravi Transport" stays searchable / one chip.
+                var parts = s.indexOf('@') > -1 ? s.split(/[,;\s]+/) : s.split(/[,;\n]+/);
+                parts.forEach(function (tok) {
+                    var v = tok.trim();
+                    if (v && list.indexOf(v) === -1) list.push(v);
+                });
+                renderChips();
+            }
+            renderChips();
+            inputEl.addEventListener('keydown', function (e) {
+                if (e.key === ',' || e.key === ';' || e.key === 'Enter') {
+                    e.preventDefault(); add(inputEl.value); inputEl.value = '';
+                } else if (e.key === 'Backspace' && inputEl.value === '' && list.length) {
+                    list.pop(); renderChips();
+                }
             });
+            inputEl.addEventListener('blur', function () { if (inputEl.value.trim()) { add(inputEl.value); inputEl.value = ''; } });
+            // Suggestions are route-aware: they read the CURRENT pickup/drop live, so filling
+            // the route first surfaces the transporters used for it. People API merges in.
+            if (typeof attachContactAutocomplete === 'function') {
+                attachContactAutocomplete(fieldEl, inputEl, add, function (query) {
+                    return rememberedTransportersForRoute(query, enq.pickup, enq.drop);
+                });
+            }
+            return add;
         }
+        var addRecip = bindAddressField(field, chipsBox, input, enq.to);
+        mountEl.querySelectorAll('.fwe-ccbox .fwe-enq-field').forEach(function (f) {
+            var kind = f.getAttribute('data-kind');
+            bindAddressField(f, f.querySelector('.fwe-enq-chips'), f.querySelector('.fwe-enq-input'),
+                kind === 'cc' ? enq.cc : enq.bcc);
+        });
+        var ccToggle = mountEl.querySelector('.fwe-cc-toggle');
+        if (ccToggle) ccToggle.onclick = function () { enq.ccOpen = !enq.ccOpen; render(q, mountEl); };
         warmFreightSuggestions();
 
         // Keep the draft in sync with pickup/drop while the user hasn't hand-edited it.
