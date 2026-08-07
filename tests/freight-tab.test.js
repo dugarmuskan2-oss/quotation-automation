@@ -215,9 +215,12 @@ describe('source guards — freight module markers must not silently disappear',
         expect(src).toContain(marker);
     });
 
-    test('pickup/drop fields render before the To field (route-first order)', () => {
+    // Route first, then recipients — filling pickup/drop is what makes the recipient box
+    // suggest the transporters used for that route. The recipient field is now labelled Bcc
+    // (each transporter is Bcc'd on their own email, so nobody sees anyone else).
+    test('pickup/drop fields render before the recipient field (route-first order)', () => {
         expect(src.indexOf('Pickup point')).toBeGreaterThan(-1);
-        expect(src.indexOf('Pickup point')).toBeLessThan(src.indexOf('To — transporters'));
+        expect(src.indexOf('Pickup point')).toBeLessThan(src.indexOf('Bcc — transporters'));
     });
 
     test('escapes email-derived text in the Print output (no raw r.d/name)', () => {

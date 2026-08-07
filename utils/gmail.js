@@ -151,7 +151,9 @@ async function sendEmail({ to, subject, bodyHtml, pdfBase64, pdfFilename, thread
   // else was asked — which leaves no To. Address it to ourselves: Gmail refuses the RFC
   // "undisclosed-recipients:;" placeholder, and the supplier seeing our own address in To is
   // both accurate and unremarkable.
-  if (!to && !cc && bcc) to = await getOwnAddress();
+  // Applies whether or not a Cc is present: with both boxes now Bcc+Cc, a send that carried a
+  // Cc used to go out with NO To header at all, which reads as malformed to some clients.
+  if (!to && bcc) to = await getOwnAddress();
   const raw = buildRawMessage({ to, subject, bodyHtml, pdfBase64, pdfFilename, inReplyTo, references, cc, bcc });
   const requestBody = { raw };
   if (threadId) requestBody.threadId = threadId;

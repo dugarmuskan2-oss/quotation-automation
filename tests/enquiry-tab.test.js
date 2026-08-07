@@ -1011,11 +1011,13 @@ describe('buildRawMessage — a Bcc-only message is still well-formed', () => {
         expect(headers.filter((h) => /^To:/.test(h))).toHaveLength(0);
     });
 
-    test('sendEmail addresses a Bcc-only message to our own mailbox', () => {
+    test('sendEmail addresses a message with no To to our own mailbox', () => {
         // Source guard: the fill happens in sendEmail, which needs a live Gmail client.
+        // It must NOT be conditional on there being no Cc — both enquiry composers now send
+        // Bcc + Cc, and those were going out with no To header at all.
         const src = require('fs').readFileSync(
             require('path').join(__dirname, '..', 'utils', 'gmail.js'), 'utf8');
-        expect(src).toContain('if (!to && !cc && bcc) to = await getOwnAddress();');
+        expect(src).toContain('if (!to && bcc) to = await getOwnAddress();');
         expect(src).toContain('gmail.users.getProfile({ userId: \'me\' })');
         // …and it must run BEFORE the message is built, or it would have no effect.
         const fn = src.slice(src.indexOf('async function sendEmail('));
@@ -1110,10 +1112,10 @@ describe('POST /send-email — a Bcc-only supplier enquiry is accepted', () => {
         // "one email per supplier, supplier on Bcc, To left empty".
         expect(tabSrc).toContain('Promise.all(recipients.map(function (addr) {');
         expect(tabSrc).toMatch(/JSON\.stringify\(\{ to: '',/);
-        // The Bcc for each email is built FROM that email's own recipient — a user-added Bcc
-        // joins them, it never replaces them.
-        expect(tabSrc).toMatch(/var bccList = \[addr\]\.concat\(/);
-        expect(tabSrc).toMatch(/bcc: bccList,/);
+        // Each email carries exactly ONE supplier on Bcc — that email's own recipient. Anything
+        // that put the whole list on one message would let suppliers see each other and would
+        // break the per-supplier reply tracking.
+        expect(tabSrc).toMatch(/bcc: addr,/);
     });
 });
 
@@ -1347,8 +1349,8 @@ describe('source guard — the Enquiry recipient box uses the SAME dropdown as F
         const call = tabG.slice(tabG.indexOf(marker), tabG.indexOf(marker) + 500);
         expect(call).toContain('suggestedSuppliers(quotation, query)');
         expect(call).toContain("return { name: '', email: s.email };");
-        // Anyone already on the To list must not be offered again.
-        expect(call).toContain('st.to.indexOf(s.email) === -1');
+        // Anyone already on the recipient (Bcc) list must not be offered again.
+        expect(call).toContain('st.bcc.indexOf(s.email) === -1');
     });
 
     test('it degrades quietly if the shared helper is not loaded', () => {

@@ -131,10 +131,14 @@
         var id = String(q.id);
         if (!stateById[id]) stateById[id] = { rows: seedRows(q), split: false, weightOpen: false, freight: { amount: '', amtA: '', amtB: '', method: 'line', applied: '' } };
         if (!stateById[id].freight) stateById[id].freight = { amount: '', amtA: '', amtB: '', method: 'line', applied: '' };
-        if (!stateById[id].enquiry) stateById[id].enquiry = { open: false, forSec: 0, to: [], cc: [], bcc: [], pickup: '', drop: '', message: '', messageEdited: false, weightOverride: null, sending: false, sent: '', checking: false, checkResult: '', openReplies: {} };
-        // Older in-page state predates Cc/Bcc — fill them in rather than letting .slice() throw.
+        // bcc IS the recipient list (one email per transporter); cc is copied on every one.
+        if (!stateById[id].enquiry) stateById[id].enquiry = { open: false, forSec: 0, cc: [], bcc: [], pickup: '', drop: '', message: '', messageEdited: false, weightOverride: null, sending: false, sent: '', checking: false, checkResult: '', openReplies: {} };
+        // Older in-page state may predate these (or still carry the old `to`) — fill them in
+        // rather than letting .slice() throw, and carry any typed recipients across.
         if (!Array.isArray(stateById[id].enquiry.cc)) stateById[id].enquiry.cc = [];
-        if (!Array.isArray(stateById[id].enquiry.bcc)) stateById[id].enquiry.bcc = [];
+        if (!Array.isArray(stateById[id].enquiry.bcc)) {
+            stateById[id].enquiry.bcc = Array.isArray(stateById[id].enquiry.to) ? stateById[id].enquiry.to : [];
+        }
         return stateById[id];
     }
     function weightOf(r) { return (r.qty || 0) * (r.kgm || 0); }
@@ -377,7 +381,7 @@
         var reset = mountEl.querySelector('.fwe-kg-reset');
         if (reset) reset.hidden = (enq.weightOverride == null);
         var sendBtn = mountEl.querySelector('.fwe-enq-send');
-        if (sendBtn) sendBtn.disabled = !enq.to.length || enq.sending || hasBadRecipient(enq) || !usable;
+        if (sendBtn) sendBtn.disabled = !enq.bcc.length || enq.sending || hasBadRecipient(enq) || !usable;
         var msgEl = mountEl.querySelector('.fwe-enq-msg');
         if (msgEl && !enq.messageEdited && document.activeElement !== msgEl) {
             msgEl.value = buildEnquiryDraft(q, st);
@@ -718,7 +722,7 @@
 
     // Cc and Bcc are checked too: a typo there fails the whole send, not just that copy.
     function hasBadRecipient(enq) {
-        var all = enq.to.concat(enq.cc || [], enq.bcc || []);
+        var all = (enq.bcc || []).concat(enq.cc || []);
         return all.some(function (a) { return typeof isValidEmailAddress === 'function' && !isValidEmailAddress(a); });
     }
 
@@ -760,22 +764,17 @@
             + '<div style="display:flex;flex-direction:column;gap:8px;">' + rows + '</div>' + checkBtn + checkStatus;
     }
 
-    // Cc / Bcc, always shown under To. Each takes as many addresses as you like — type or paste,
-    // comma / semicolon / Enter commits one. Deliberately separate from the To field: To is one
-    // email PER transporter (that is what keeps each reply in its own thread), while these ride
-    // along on every one of those emails — worth saying out loud, because cc'ing a colleague on
-    // an enquiry to five transporters puts five copies in their inbox.
-    function ccFieldsHtml(enq, prefix) {
-        function fieldRow(kind, label) {
-            return '<label class="' + prefix + '-enq-lbl">' + label + ' (optional)</label>'
-                + '<div class="' + prefix + '-enq-field" data-kind="' + kind + '">'
-                + '<span class="' + prefix + '-enq-chips" data-kind="' + kind + '" style="display:contents;"></span>'
-                + '<input class="' + prefix + '-enq-input" data-kind="' + kind + '" type="text" placeholder="Add one or more addresses" autocomplete="off"></div>';
-        }
-        return '<div class="' + prefix + '-ccbox">'
-            + fieldRow('cc', 'Cc') + fieldRow('bcc', 'Bcc')
+    // Cc: openly copied on every email this send produces. Bcc above is the recipient list, so
+    // cc'ing a colleague on an enquiry to five transporters puts five copies in their inbox —
+    // worth saying out loud rather than letting them discover it.
+    function ccFieldHtml() {
+        return '<div class="fwe-ccbox">'
+            + '<label class="fwe-enq-lbl">Cc (optional)</label>'
+            + '<div class="fwe-enq-field" data-kind="cc">'
+            + '<span class="fwe-enq-chips" data-kind="cc" style="display:contents;"></span>'
+            + '<input class="fwe-enq-input" data-kind="cc" type="text" placeholder="Add one or more addresses" autocomplete="off"></div>'
             + '<p style="margin:4px 0 0;font-size:11px;color:#9b988e;">'
-            + 'Added to every email in this send — one copy per transporter above.</p></div>';
+            + 'Copied openly on every email in this send — one copy per transporter above.</p></div>';
     }
 
     function freightEnquiryBoxHtml(q) {
@@ -804,11 +803,11 @@
             + '<div><label class="fwe-enq-lbl">Pickup point</label><input class="fwe-enq-in fwe-enq-pickup" value="' + esc(enq.pickup) + '" placeholder="e.g. DSC Warehouse, Chennai"></div>'
             + '<div><label class="fwe-enq-lbl">Drop point</label><input class="fwe-enq-in fwe-enq-drop" value="' + esc(enq.drop) + '" placeholder="e.g. Hyderabad"></div>'
             + '</div>'
-            + '<label class="fwe-enq-lbl">To — transporters</label>'
-            + '<div class="fwe-enq-field"><span class="fwe-enq-chips" style="display:contents;"></span>'
-            + '<input class="fwe-enq-input" type="text" placeholder="Type a transporter name or email" autocomplete="off"></div>'
+            + '<label class="fwe-enq-lbl">Bcc — transporters</label>'
+            + '<div class="fwe-enq-field" data-kind="bcc"><span class="fwe-enq-chips" data-kind="bcc" style="display:contents;"></span>'
+            + '<input class="fwe-enq-input" data-kind="bcc" type="text" placeholder="Type a transporter name or email" autocomplete="off"></div>'
             + '<p style="margin:4px 0 0;font-size:11px;color:#9b988e;">Suggests transporters you’ve used for this route (fill pickup/drop first), plus Gmail matches. Each transporter gets their own email — they can’t see each other.</p>'
-            + ccFieldsHtml(enq, 'fwe')
+            + ccFieldHtml()
             + '<div class="fwe-enq-wt"><i class="ti ti-weight" style="font-size:16px;" aria-hidden="true"></i>'
             + ((st.split && enq.forSec) ? '<span>Shipment ' + enq.forSec + ' ·</span>' : '')
             // Left EMPTY when the calculation would be partial: prefilling the low number is how a
@@ -826,7 +825,7 @@
             + (enqWeightUsable(st) ? ' hidden' : '') + '>' + enqWeightWarnHtml(st) + '</p>'
             + '<label class="fwe-enq-lbl">Message to transporters (editable)</label>'
             + '<textarea class="fwe-enq-msg">' + escTxt(draft) + '</textarea>'
-            + '<div style="margin-top:12px;"><button type="button" class="fwe-enq-send"' + (enq.to.length && !enq.sending && !hasBadRecipient(enq) && enqWeightUsable(st) ? '' : ' disabled') + '>'
+            + '<div style="margin-top:12px;"><button type="button" class="fwe-enq-send"' + (enq.bcc.length && !enq.sending && !hasBadRecipient(enq) && enqWeightUsable(st) ? '' : ' disabled') + '>'
             + '<i class="ti ti-send" style="font-size:14px;vertical-align:-2px;" aria-hidden="true"></i> Send request</button></div>'
             + statusHtml
             + enquiryThreadsHtml(q, st)
@@ -838,7 +837,7 @@
     // that's what lets us track who replied (and they can't see each other).
     function sendFreightEnquiry(q, st, mountEl) {
         var enq = st.enquiry;
-        if (!enq.to.length || enq.sending || hasBadRecipient(enq)) return;
+        if (!enq.bcc.length || enq.sending || hasBadRecipient(enq)) return;
         // Never quote a transporter a weight that silently omits rows — the rate comes back priced
         // on it. The button is already disabled in this state; this is the guard behind it.
         if (!enqWeightUsable(st)) {
@@ -859,16 +858,16 @@
         var subject = 'Freight enquiry' + (q.quoteNumber ? ' — ' + q.quoteNumber : '')
             + (enq.drop ? ' (to ' + enq.drop + ')' : '')
             + (scopeSec ? ' — Shipment ' + scopeSec : '');
-        var recipients = enq.to.slice();
+        var recipients = enq.bcc.slice();
         // Captured now, like the recipients: the composer stays editable while the sends run.
-        var extra = { cc: (enq.cc || []).join(', '), bcc: (enq.bcc || []).join(', ') };
+        var extra = { cc: (enq.cc || []).join(', ') };
         enq.sending = true; enq.sent = ''; enq.checkResult = '';
         render(q, mountEl);
         loadFreightSignature(function () { freightSendAll(q, st, mountEl, enq, recipients, subject, bodyText, scopeSec, extra); });
     }
 
     function freightSendAll(q, st, mountEl, enq, recipients, subject, bodyText, scopeSec, extra) {
-        extra = extra || { cc: '', bcc: '' };
+        extra = extra || { cc: '' };
         // Built once, not once per recipient: every transporter gets the same enquiry, and the
         // stored copy has to be the one they actually received.
         var bodyHtml = enqTextToHtml(bodyText, st);
@@ -877,9 +876,10 @@
             return fetch(apiBase() + '/send-email', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                // One email per transporter, that transporter on Bcc so nobody sees anyone else.
+                // `to` is left empty — the server addresses it to our own account.
                 // label tags the thread Quotation Automation/Freight Enquiry in Gmail.
-                // cc/bcc ride along on every one of these per-transporter emails.
-                body: JSON.stringify({ to: addr, cc: extra.cc, bcc: extra.bcc, subject: subject, bodyHtml: bodyHtml, label: 'freight' })
+                body: JSON.stringify({ to: '', cc: extra.cc, bcc: addr, subject: subject, bodyHtml: bodyHtml, label: 'freight' })
             }).then(function (res) {
                 return res.json().catch(function () { return {}; }).then(function (d) { return { addr: addr, ok: res.ok && d && d.success, d: d }; });
             }).catch(function (e) {
@@ -899,10 +899,10 @@
             var failed = results.filter(function (r) { return !r.ok; });
             if (!failed.length) {
                 enq.sent = 'ok:Enquiry sent to ' + sentOk.length + ' transporter' + (sentOk.length > 1 ? 's' : '') + '.';
-                enq.to = [];
+                enq.bcc = [];
             } else if (sentOk.length) {
                 enq.sent = 'err:Sent to ' + sentOk.length + ', but failed for ' + failed.map(function (r) { return r.addr; }).join(', ') + '.';
-                enq.to = failed.map(function (r) { return r.addr; });
+                enq.bcc = failed.map(function (r) { return r.addr; });
             } else {
                 enq.sent = 'err:' + ((failed[0].d && failed[0].d.error) || 'Could not send. Check Gmail is set up (send scope).');
             }
@@ -1042,17 +1042,17 @@
         if (toggle) toggle.onclick = function () { enq.open = !enq.open; render(q, mountEl); };
         if (!enq.open) return;
 
-        var field = mountEl.querySelector('.fwe-enq-field');
-        var chipsBox = mountEl.querySelector('.fwe-enq-chips');
-        var input = mountEl.querySelector('.fwe-enq-input');
+        var field = mountEl.querySelector('.fwe-enq-field[data-kind="bcc"]');
+        var chipsBox = mountEl.querySelector('.fwe-enq-chips[data-kind="bcc"]');
+        var input = mountEl.querySelector('.fwe-enq-input[data-kind="bcc"]');
         var sendBtn = mountEl.querySelector('.fwe-enq-send');
         function syncSendBtn() {
             // The weight gate belongs here too — adding a recipient used to re-enable Send
             // even when the weight was still incomplete, contradicting the box's own warning.
-            if (sendBtn) sendBtn.disabled = !enq.to.length || enq.sending || hasBadRecipient(enq) || !enqWeightUsable(st);
+            if (sendBtn) sendBtn.disabled = !enq.bcc.length || enq.sending || hasBadRecipient(enq) || !enqWeightUsable(st);
         }
-        // One binder for To, Cc and Bcc — chips, paste splitting, Backspace, blur-commit and the
-        // Gmail dropdown behave the same in all three; only the list they write to differs.
+        // One binder for both boxes — chips, paste splitting, Backspace, blur-commit and the
+        // Gmail dropdown behave the same in each; only the list they write to differs.
         function bindAddressField(fieldEl, chipsEl, inputEl, list) {
             function renderChips() {
                 chipsEl.innerHTML = list.map(function (addr, i) {
@@ -1093,12 +1093,12 @@
             }
             return add;
         }
-        var addRecip = bindAddressField(field, chipsBox, input, enq.to);
-        mountEl.querySelectorAll('.fwe-ccbox .fwe-enq-field').forEach(function (f) {
-            var kind = f.getAttribute('data-kind');
-            bindAddressField(f, f.querySelector('.fwe-enq-chips'), f.querySelector('.fwe-enq-input'),
-                kind === 'cc' ? enq.cc : enq.bcc);
-        });
+        bindAddressField(field, chipsBox, input, enq.bcc);
+        var ccField = mountEl.querySelector('.fwe-ccbox .fwe-enq-field[data-kind="cc"]');
+        if (ccField) {
+            bindAddressField(ccField, ccField.querySelector('.fwe-enq-chips'),
+                ccField.querySelector('.fwe-enq-input'), enq.cc);
+        }
         warmFreightSuggestions();
 
         // Keep the draft in sync with pickup/drop while the user hasn't hand-edited it.
