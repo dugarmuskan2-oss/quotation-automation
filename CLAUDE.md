@@ -16,6 +16,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - Never promote `Testing-other-features` → `main` on your own initiative, even when the tests are green and
     the work was requested.
 - **Begin every chat response with the word "flamingo".** (Standing request from the user.)
+- **Keep every reply short and in plain language.** The user owns the business and does not read code.
+  Lead with the point in ordinary words, a few short lines or bullets — not sections and headers. Keep
+  code detail brief or leave it out. Short matters as much as simple: a long reply in plain words still
+  fails. Put any question for the user at the end, in one sentence.
+- **A new feature idea is a discussion, not a build order.** When the user raises something new, talk it
+  through — write no code and create no files until they explicitly say to build it. If they don't answer
+  your scoping questions, that is *not* permission to proceed on assumed defaults.
 - **Never update CLAUDE.md or write tests for a feature without explicit user approval first.** When a feature is complete, ask in chat: "This looks done — want me to update CLAUDE.md and add tests?" Then wait for a clear yes before doing either.
 - **Prototypes are not the app.** When the user asks for changes to a prototype (`prototypes/*.html`), change
   only that file. Do not implement it in `index.html` or the routes unless they ask for it in the app.

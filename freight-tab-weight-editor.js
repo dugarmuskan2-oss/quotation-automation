@@ -1368,6 +1368,14 @@
             checkFreightRepliesForQuote: checkFreightRepliesForQuote,
             fmtTonnes: fmtTonnes,
             fmtWeight: fmtWeight,
+            // Keeping the panel in step with the quote, and the in-place repaint that replaced
+            // the full re-render (which used to eat the first click after any edit).
+            syncRowsWithQuote: syncRowsWithQuote,
+            quoteRowId: quoteRowId,
+            rowWeightHtml: rowWeightHtml,
+            sectionTitleHtml: sectionTitleHtml,
+            totalRowHtml: totalRowHtml,
+            hasBadRecipient: hasBadRecipient,
             _setSuggest: function (s) { _freightSuggest = s; }
         };
     }

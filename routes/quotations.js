@@ -1171,4 +1171,8 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
 // Export helper so server.js internal functions can reuse it
 module.exports.quotationFromItem = quotationFromItem;
 // Pure helpers exposed for unit testing (see tests/register.test.js).
-module.exports._test = { registerRangeOf, registerStatusOf, registerRowOf, registerDateOf };
+// searchMonthIndex / quoteSummaryMatches back the search box's month-name promise.
+module.exports._test = {
+    registerRangeOf, registerStatusOf, registerRowOf, registerDateOf,
+    searchMonthIndex, quoteSummaryMatches, quoteMonth,
+};
