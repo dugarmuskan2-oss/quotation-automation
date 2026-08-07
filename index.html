@@ -682,6 +682,7 @@
                 width: 100%;
             }
         }
+
         
         /* IMPORTANT: do NOT use layout containment here.
            It prevents the container from expanding when a folder opens,
@@ -1233,6 +1234,84 @@
             outline: 3px solid rgba(123, 31, 162, 0.35);
             outline-offset: 2px;
         }
+        /* ── Phones ──────────────────────────────────────────────────────────
+           The app is built for a desk, and a nine-column rate table is never
+           going to be comfortable on a 375px screen. What this block fixes is
+           the part that made it unusable rather than merely cramped: an open
+           quote card dragged the WHOLE page sideways, so scrolling down also
+           slid the page left and right under your thumb.
+
+           The rule throughout: a wide table scrolls inside its own box, and the
+           page itself never scrolls sideways. Desktop is untouched. */
+        @media (max-width: 700px) {
+            /* Nothing may push the page wider than the screen. */
+            html, body { overflow-x: hidden; }
+
+            /* Reclaim the width. Three nested boxes were each taking 20px a side,
+               and the page kept a 70px left margin clear for the floating tool
+               switcher — 170px of a 375px screen, leaving the quote itself about
+               200px to live in. The switcher moves to a bar along the bottom
+               (where a thumb reaches it anyway) and the padding comes in. */
+            .main-tools-bar {
+                top: auto;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                transform: none;
+                flex-direction: row;
+                justify-content: center;
+                gap: 18px;
+                padding: 8px 0 calc(8px + env(safe-area-inset-bottom));
+                background: rgba(255,255,255,.96);
+                border-top: 1px solid #e0ddd4;
+                box-shadow: 0 -2px 10px rgba(0,0,0,.06);
+            }
+            #quotationApp, #weightCalculatorApp, #enquiryPreparerApp, #registerApp {
+                padding-left: 12px;
+                padding-right: 12px;
+                /* Clear of the bottom bar, so the last button is never under it. */
+                padding-bottom: calc(80px + env(safe-area-inset-bottom));
+            }
+            .quotation-section { padding: 12px; }
+            .quotation-folder-content { padding: 12px; }
+
+            /* Each wide table gets its own sideways scroll instead. -webkit-
+               overflow-scrolling keeps it feeling native on iOS. */
+            .approval-quotation,
+            .quotation-table-container,
+            .qet-tbl-wrap,
+            #enquiryTableContainer,
+            #registerTableContainer {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            /* Thumb-sized controls. Most buttons sat at 28px; a thumb wants ~44. */
+            button,
+            .upload-btn, .approve-btn, .save-btn, .qet-btn, .fwe-btn {
+                min-height: 40px;
+            }
+            /* …except the small inline ones, where 40px would break the row they
+               sit in (a chip's ×, the margin fill-down arrow, a row's delete). */
+            .chip-x, .qet-chip-x, .fwe-chip-x, .margin-fill-down-btn,
+            .fwe-del, .fwe-restore, .fwe-addbtn, .qet-del, .qet-add-row,
+            .rev-ask-done-link, .qet-linkbtn, .fwe-link {
+                min-height: 0;
+            }
+
+            /* Button rows wrap instead of squeezing to nothing. */
+            .quotation-actions, .qet-sendrow, .fwe-foot, .rev-ask-actions {
+                flex-wrap: wrap;
+            }
+
+            /* The card header grid is built for two wide columns; stack it. */
+            .quotation-header { padding: 12px; }
+            .quote-header-top { flex-wrap: wrap; gap: 8px; }
+
+            /* Give the reading text a little more room. */
+            .approval-quotation { font-size: 13px; }
+        }
+
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
