@@ -381,7 +381,7 @@
         var reset = mountEl.querySelector('.fwe-kg-reset');
         if (reset) reset.hidden = (enq.weightOverride == null);
         var sendBtn = mountEl.querySelector('.fwe-enq-send');
-        if (sendBtn) sendBtn.disabled = !enq.bcc.length || enq.sending || hasBadRecipient(enq) || !usable;
+        if (sendBtn) sendBtn.disabled = !(enq.bcc.length || enq.cc.length) || enq.sending || hasBadRecipient(enq) || !usable;
         var msgEl = mountEl.querySelector('.fwe-enq-msg');
         if (msgEl && !enq.messageEdited && document.activeElement !== msgEl) {
             msgEl.value = buildEnquiryDraft(q, st);
@@ -774,7 +774,8 @@
             + '<span class="fwe-enq-chips" data-kind="cc" style="display:contents;"></span>'
             + '<input class="fwe-enq-input" data-kind="cc" type="text" placeholder="Add one or more addresses" autocomplete="off"></div>'
             + '<p style="margin:4px 0 0;font-size:11px;color:#9b988e;">'
-            + 'Copied openly on every email in this send — one copy per transporter above.</p></div>';
+            + 'Everyone here can see each other, like a normal Cc. With Bcc filled, these ride along on every'
+            + ' hidden email above; with Bcc empty, the enquiry goes as ONE open email to these addresses.</p></div>';
     }
 
     function freightEnquiryBoxHtml(q) {
@@ -825,7 +826,7 @@
             + (enqWeightUsable(st) ? ' hidden' : '') + '>' + enqWeightWarnHtml(st) + '</p>'
             + '<label class="fwe-enq-lbl">Message to transporters (editable)</label>'
             + '<textarea class="fwe-enq-msg">' + escTxt(draft) + '</textarea>'
-            + '<div style="margin-top:12px;"><button type="button" class="fwe-enq-send"' + (enq.bcc.length && !enq.sending && !hasBadRecipient(enq) && enqWeightUsable(st) ? '' : ' disabled') + '>'
+            + '<div style="margin-top:12px;"><button type="button" class="fwe-enq-send"' + ((enq.bcc.length || enq.cc.length) && !enq.sending && !hasBadRecipient(enq) && enqWeightUsable(st) ? '' : ' disabled') + '>'
             + '<i class="ti ti-send" style="font-size:14px;vertical-align:-2px;" aria-hidden="true"></i> Send request</button></div>'
             + statusHtml
             + enquiryThreadsHtml(q, st)
@@ -837,7 +838,7 @@
     // that's what lets us track who replied (and they can't see each other).
     function sendFreightEnquiry(q, st, mountEl) {
         var enq = st.enquiry;
-        if (!enq.bcc.length || enq.sending || hasBadRecipient(enq)) return;
+        if (!(enq.bcc.length || enq.cc.length) || enq.sending || hasBadRecipient(enq)) return;
         // Never quote a transporter a weight that silently omits rows — the rate comes back priced
         // on it. The button is already disabled in this state; this is the guard behind it.
         if (!enqWeightUsable(st)) {
@@ -872,14 +873,22 @@
         // stored copy has to be the one they actually received.
         var bodyHtml = enqTextToHtml(bodyText, st);
         var storedBody = trimSentBodyForStorage(bodyHtml);
-        Promise.all(recipients.map(function (addr) {
-            return fetch(apiBase() + '/send-email', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+        // Standard email semantics: Bcc hides recipients from each other (one email per
+        // transporter), Cc is open. With Bcc EMPTY, the Cc addresses ARE the send — one
+        // email, everyone visible, the way Cc works everywhere else.
+        var ccOnly = !recipients.length;
+        var sends = ccOnly ? [extra.cc] : recipients;
+        Promise.all(sends.map(function (addr) {
+            var payload = ccOnly
+                ? { to: '', cc: addr, bcc: '', subject: subject, bodyHtml: bodyHtml, label: 'freight' }
                 // One email per transporter, that transporter on Bcc so nobody sees anyone else.
                 // `to` is left empty — the server addresses it to our own account.
                 // label tags the thread Quotation Automation/Freight Enquiry in Gmail.
-                body: JSON.stringify({ to: '', cc: extra.cc, bcc: addr, subject: subject, bodyHtml: bodyHtml, label: 'freight' })
+                : { to: '', cc: extra.cc, bcc: addr, subject: subject, bodyHtml: bodyHtml, label: 'freight' };
+            return fetch(apiBase() + '/send-email', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
             }).then(function (res) {
                 return res.json().catch(function () { return {}; }).then(function (d) { return { addr: addr, ok: res.ok && d && d.success, d: d }; });
             }).catch(function (e) {
@@ -898,8 +907,11 @@
             if (sentOk.length) getSentBodies(q)[enquiryBodyKey({ sentAt: sentAt })] = storedBody;
             var failed = results.filter(function (r) { return !r.ok; });
             if (!failed.length) {
-                enq.sent = 'ok:Enquiry sent to ' + sentOk.length + ' transporter' + (sentOk.length > 1 ? 's' : '') + '.';
-                enq.bcc = [];
+                var n = ccOnly ? extra.cc.split(', ').length : sentOk.length;
+                enq.sent = 'ok:Enquiry sent to ' + n + ' transporter' + (n > 1 ? 's' : '') + (ccOnly ? ' (one open email — all Cc)' : '') + '.';
+                // Clear whichever list acted as the RECIPIENTS, so the live Send button
+                // cannot fire the same enquiry twice. Copies (cc on a Bcc send) stay.
+                if (ccOnly) enq.cc = []; else enq.bcc = [];
             } else if (sentOk.length) {
                 enq.sent = 'err:Sent to ' + sentOk.length + ', but failed for ' + failed.map(function (r) { return r.addr; }).join(', ') + '.';
                 enq.bcc = failed.map(function (r) { return r.addr; });
@@ -913,7 +925,11 @@
                     enq.sent = 'err:Enquiry WAS sent, but saving its record failed — reply tracking may be lost. Do not re-send; reload and check the transporter list.';
                     render(q, mountEl);
                 });
-                recordFreightUsage(sentOk.map(function (r) { return r.addr; }), enq);
+                // A ccOnly "addr" is the joined list — split it back so each transporter is
+                // remembered individually for route suggestions.
+                var used = [];
+                sentOk.forEach(function (r) { used = used.concat(String(r.addr).split(', ')); });
+                recordFreightUsage(used, enq);
             }
             render(q, mountEl);
         });
@@ -1049,7 +1065,7 @@
         function syncSendBtn() {
             // The weight gate belongs here too — adding a recipient used to re-enable Send
             // even when the weight was still incomplete, contradicting the box's own warning.
-            if (sendBtn) sendBtn.disabled = !enq.bcc.length || enq.sending || hasBadRecipient(enq) || !enqWeightUsable(st);
+            if (sendBtn) sendBtn.disabled = !(enq.bcc.length || enq.cc.length) || enq.sending || hasBadRecipient(enq) || !enqWeightUsable(st);
         }
         // One binder for both boxes — chips, paste splitting, Backspace, blur-commit and the
         // Gmail dropdown behave the same in each; only the list they write to differs.

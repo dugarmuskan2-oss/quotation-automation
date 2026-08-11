@@ -506,7 +506,8 @@
             + '<div class="qet-field" data-kind="cc"><span class="qet-chips" data-kind="cc">'
             + chipsHtml(st, 'cc') + '</span>'
             + '<input class="qet-input" data-kind="cc" type="text" placeholder="Add one or more addresses" autocomplete="off"></div>'
-            + '<p class="qet-note">Copied openly on every email in this send — one copy per supplier above.</p></div>';
+            + '<p class="qet-note">Everyone here can see each other, like a normal Cc. With Bcc filled, these ride'
+            + ' along on every hidden email above; with Bcc empty, the enquiry goes as ONE open email to these addresses.</p></div>';
     }
 
     function render(quotation, mountEl) {
@@ -542,8 +543,10 @@
                 + (ok ? '✓ ' : '⚠ ') + escTxt(st.sent.slice(st.sent.indexOf(':') + 1)) + '</div>';
         }
 
-        // Cc is validated too — a typo there fails the whole send, not just that copy.
-        var canSend = st.bcc.length && !st.sending && st.rows.length
+        // Either box is enough to send — Bcc for hidden one-each sends, Cc for one open
+        // email — like ordinary mail, which needs a recipient SOMEWHERE, not in one
+        // particular line. Every address is validated; a typo anywhere blocks the send.
+        var canSend = (st.bcc.length || st.cc.length) && !st.sending && st.rows.length
             && st.bcc.concat(st.cc).every(isEmail);
         mountEl.innerHTML = '<div class="qet">'
             + '<div class="qet-h">Enquiry &middot; ' + st.rows.length + ' item' + (st.rows.length === 1 ? '' : 's')
@@ -707,7 +710,7 @@
     // who replied). Within each email the supplier is BCC'd rather than in To, per the brief.
     function sendEnquiry(quotation, mountEl) {
         var st = stateFor(quotation);
-        if (!st.bcc.length || st.sending || !st.rows.length) return;
+        if ((!st.bcc.length && !st.cc.length) || st.sending || !st.rows.length) return;
         if (!st.bcc.concat(st.cc).every(isEmail)) {
             st.sent = 'err:Check the highlighted email addresses.'; render(quotation, mountEl); return;
         }
@@ -769,14 +772,25 @@
         var bodyHtml = messageToHtml(st.message, st.rows);
         var storedBody = trimSentBodyForStorage(bodyHtml);
 
-        Promise.all(recipients.map(function (addr) {
-            return fetch(apiBase() + '/send-email', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+        // Standard email semantics: Bcc hides recipients from each other (one email per
+        // supplier), Cc is open. With Bcc EMPTY, the Cc addresses ARE the send — one email,
+        // everyone visible to everyone, the way Cc works everywhere else.
+        var ccOnly = !recipients.length;
+        var sends = ccOnly ? [extra.cc] : recipients;
+
+        Promise.all(sends.map(function (addr) {
+            var payload = ccOnly
+                // One open email: the Cc list rides in the Cc header; server puts our own
+                // address in To so the message is well-formed.
+                ? { to: '', cc: addr, bcc: '', subject: subject, bodyHtml: bodyHtml, label: 'supplier' }
                 // One email per supplier, that supplier alone on Bcc so nobody sees anyone else.
                 // `to` is left empty — the server addresses it to our own account.
                 // label tags the thread Quotation Automation/Enquiry Sent by us in Gmail.
-                body: JSON.stringify({ to: '', cc: extra.cc, bcc: addr, subject: subject, bodyHtml: bodyHtml, label: 'supplier' })
+                : { to: '', cc: extra.cc, bcc: addr, subject: subject, bodyHtml: bodyHtml, label: 'supplier' };
+            return fetch(apiBase() + '/send-email', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
             }).then(function (res) {
                 return res.json().catch(function () { return {}; }).then(function (d) {
                     return { addr: addr, ok: res.ok && d && d.success, d: d };
@@ -801,8 +815,11 @@
             if (sentOk.length) bodies[enquiryBodyKey({ sentAt: sentAt })] = storedBody;
             var failed = results.filter(function (r) { return !r.ok; });
             if (!failed.length) {
-                st.sent = 'ok:Enquiry sent to ' + sentOk.length + ' supplier' + (sentOk.length > 1 ? 's' : '') + '.';
-                st.bcc = [];
+                var n = ccOnly ? extra.cc.split(', ').length : sentOk.length;
+                st.sent = 'ok:Enquiry sent to ' + n + ' supplier' + (n > 1 ? 's' : '') + (ccOnly ? ' (one open email — all Cc)' : '') + '.';
+                // Clear whichever list acted as the RECIPIENTS, so the live Send button
+                // cannot fire the same enquiry twice. Copies (cc on a Bcc send) stay.
+                if (ccOnly) st.cc = []; else st.bcc = [];
             } else if (sentOk.length) {
                 st.sent = 'err:Sent to ' + sentOk.length + ', but failed for ' + failed.map(function (r) { return r.addr; }).join(', ') + '.';
                 st.bcc = failed.map(function (r) { return r.addr; });
@@ -816,7 +833,11 @@
                     st.sent = 'err:Enquiry WAS sent, but saving its record failed — reply tracking may be lost. Do not re-send; reload and check the Sent to list.';
                     render(quotation, mountEl);
                 });
-                recordSupplierUsage(sentOk.map(function (r) { return r.addr; }), quotation);
+                // A ccOnly "addr" is the joined list — split it back so each supplier is
+                // remembered individually, not as one unusable comma-glued entry.
+                var used = [];
+                sentOk.forEach(function (r) { used = used.concat(String(r.addr).split(', ')); });
+                recordSupplierUsage(used, quotation);
             }
             render(quotation, mountEl);
         });

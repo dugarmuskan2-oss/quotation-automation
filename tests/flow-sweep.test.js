@@ -237,17 +237,24 @@ describe('hasBadRecipient — a typo in Cc must block the send, not just that co
 // reply in its own thread. A behavioural test cannot reach it (it needs a live fetch), so pin the
 // two rules that matter in the source.
 describe('source guards — one email per recipient, that recipient alone on Bcc', () => {
-    test('the supplier enquiry posts one email per address, with only that address on Bcc', () => {
-        expect(enquiryTabSrc).toContain('Promise.all(recipients.map(function (addr) {');
-        expect(enquiryTabSrc).toMatch(/JSON\.stringify\(\{ to: '', cc: extra\.cc, bcc: addr,/);
-        // The whole list on one message would expose every supplier to the others.
+    // The rule: addresses in BCC are hidden from each other — one email each, that address
+    // alone on it. Addresses in CC are open BY DESIGN (one email, everyone visible), so the
+    // cc-only branch is allowed; what must never happen is the hidden list glued into one
+    // message's Bcc, which would expose every supplier to the others.
+    test('the supplier enquiry posts one email per Bcc address, with only that address on it', () => {
+        expect(enquiryTabSrc).toContain('Promise.all(sends.map(function (addr) {');
+        expect(enquiryTabSrc).toMatch(/: \{ to: '', cc: extra\.cc, bcc: addr,/);      // Bcc branch
+        expect(enquiryTabSrc).toMatch(/\? \{ to: '', cc: addr, bcc: '',/);            // open Cc branch
         expect(enquiryTabSrc).not.toMatch(/bcc: recipients\.join/);
+        expect(enquiryTabSrc).not.toMatch(/bcc: extra\.cc/);
     });
 
     test('the freight enquiry does the same', () => {
-        expect(freightSrc).toContain('Promise.all(recipients.map(function (addr) {');
-        expect(freightSrc).toMatch(/JSON\.stringify\(\{ to: '', cc: extra\.cc, bcc: addr,/);
+        expect(freightSrc).toContain('Promise.all(sends.map(function (addr) {');
+        expect(freightSrc).toMatch(/: \{ to: '', cc: extra\.cc, bcc: addr,/);
+        expect(freightSrc).toMatch(/\? \{ to: '', cc: addr, bcc: '',/);
         expect(freightSrc).not.toMatch(/bcc: recipients\.join/);
+        expect(freightSrc).not.toMatch(/bcc: extra\.cc/);
     });
 
     test('both composers render a Bcc recipient box and a Cc box, and no To box', () => {

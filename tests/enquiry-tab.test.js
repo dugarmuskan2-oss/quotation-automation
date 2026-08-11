@@ -1013,11 +1013,11 @@ describe('buildRawMessage — a Bcc-only message is still well-formed', () => {
 
     test('sendEmail addresses a message with no To to our own mailbox', () => {
         // Source guard: the fill happens in sendEmail, which needs a live Gmail client.
-        // It must NOT be conditional on there being no Cc — both enquiry composers now send
-        // Bcc + Cc, and those were going out with no To header at all.
+        // It must cover EVERY no-To shape — Bcc-only, Cc-only (the open one-email send),
+        // or both — or that shape goes out with no To header at all.
         const src = require('fs').readFileSync(
             require('path').join(__dirname, '..', 'utils', 'gmail.js'), 'utf8');
-        expect(src).toContain('if (!to && bcc) to = await getOwnAddress();');
+        expect(src).toContain('if (!to && (bcc || cc)) to = await getOwnAddress();');
         expect(src).toContain('gmail.users.getProfile({ userId: \'me\' })');
         // …and it must run BEFORE the message is built, or it would have no effect.
         const fn = src.slice(src.indexOf('async function sendEmail('));
@@ -1110,12 +1110,12 @@ describe('POST /send-email — a Bcc-only supplier enquiry is accepted', () => {
         // Asserted piecewise rather than as one literal so that adding a field to the payload
         // (the Gmail `label`, or the user's own Cc/Bcc) doesn't fail a test that is really about
         // "one email per supplier, supplier on Bcc, To left empty".
-        expect(tabSrc).toContain('Promise.all(recipients.map(function (addr) {');
-        expect(tabSrc).toMatch(/JSON\.stringify\(\{ to: '',/);
-        // Each email carries exactly ONE supplier on Bcc — that email's own recipient. Anything
-        // that put the whole list on one message would let suppliers see each other and would
-        // break the per-supplier reply tracking.
-        expect(tabSrc).toMatch(/bcc: addr,/);
+        expect(tabSrc).toContain('Promise.all(sends.map(function (addr) {');
+        // Each Bcc email carries exactly ONE supplier — that email's own recipient. Anything
+        // that put the hidden list on one message would let suppliers see each other and would
+        // break the per-supplier reply tracking. (The cc-only branch is one OPEN email by
+        // design — visibility is the whole point of Cc.)
+        expect(tabSrc).toMatch(/: \{ to: '', cc: extra\.cc, bcc: addr,/);
     });
 });
 
