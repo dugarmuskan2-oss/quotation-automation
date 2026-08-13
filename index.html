@@ -2108,6 +2108,7 @@
                 q.fileContent = PDF_PLACEHOLDER;
             }
             delete q._pendingRevisionSnapshot;   // legacy in-session field; never persist it
+            delete q._detailsUpdatedAt;          // in-session freshness marker; never persist it
             return q;
         }
 
@@ -9429,6 +9430,9 @@
                     .then(function(result) {
                         if (!result || !result.quotation) throw new Error('The server did not return this quotation');
                         Object.assign(quotation, result.quotation);
+                        // Remember WHICH version these details are — the freshness check on
+                        // later opens compares against this.
+                        quotation._detailsUpdatedAt = result.quotation.updatedAt || '';
                         delete folderContentEl.dataset.lazyId;   // details are in hand
                         _doRender();
                     })
@@ -9448,6 +9452,64 @@
 
             delete folderContentEl.dataset.lazyId;
             _doRender();
+            checkQuoteFreshness(quotationId, folderContentEl);
+        }
+
+        // Details load the FIRST time a card opens and were then never fetched again, so a
+        // quote revised on another device (or by a colleague) kept showing this tab's old
+        // copy: old items, old total, old History. The Revision list made it obvious — it
+        // points at exactly the quotes that just changed. So every open checks quietly for a
+        // newer version and refreshes in place; if the user has unsaved edits here, never
+        // clobber them — say so instead.
+        function checkQuoteFreshness(quotationId, folderContentEl) {
+            const quotation = approvedQuotations.find(function(q) { return idsMatch(q.id, quotationId); });
+            if (!quotation || !quotation.tableHTML) return;   // no details yet — the lazy path owns this
+            fetch(`${API_BASE_URL}/quotations/${encodeURIComponent(quotationId)}`)
+                .then(function(r) { return r.ok ? r.json() : null; })
+                .then(function(result) {
+                    const fresh = result && result.quotation;
+                    if (!fresh || !fresh.updatedAt) return;
+                    const have = quotation._detailsUpdatedAt || quotation.updatedAt || '';
+                    if (fresh.updatedAt <= have) return;   // ours is current
+                    const editingHere = folderContentEl.contains(document.activeElement);
+                    if (quotation.hasUnsavedEdits || editingHere) {
+                        // Warn, don't replace: their unsaved work outranks the refresh.
+                        if (!folderContentEl.querySelector('.stale-quote-note')) {
+                            const note = document.createElement('div');
+                            note.className = 'stale-quote-note';
+                            note.style.cssText = 'margin:0 0 10px;padding:9px 12px;background:#FCEBEB;color:#791F1F;border-radius:8px;font-size:13px;';
+                            // Single quotes around the id INSIDE the double-quoted attribute —
+                            // JSON.stringify's double quotes would terminate the attribute at
+                            // "reloadQuotationCard(" and the button would silently do nothing.
+                            note.innerHTML = 'This quotation changed on the server after it was loaded here '
+                                + '(revised on another device, or by a colleague). You are looking at the older copy. '
+                                + '<button type="button" class="save-btn" style="width:auto;padding:4px 12px;margin-left:8px;" '
+                                + 'onclick="event.stopPropagation(); reloadQuotationCard(\'' + escapeHtml(String(quotationId)) + '\')">Load the latest (discards edits made here)</button>';
+                            folderContentEl.prepend(note);
+                        }
+                        return;
+                    }
+                    Object.assign(quotation, fresh);
+                    quotation._detailsUpdatedAt = fresh.updatedAt;
+                    quotation.hasUnsavedEdits = false;
+                    // Re-render through the normal path — it redraws every tab (Quote, Freight,
+                    // Enquiry, History) from the fresh model, then re-checks freshness, which
+                    // now finds the copies equal and stops. No loop.
+                    renderApprovalFolderContent(String(quotationId), folderContentEl);
+                })
+                .catch(function() { /* freshness check is best-effort — the card already shows a copy */ });
+        }
+
+        // The stale-copy banner's escape hatch: drop everything this tab holds for the quote
+        // and re-render from the server's current version.
+        function reloadQuotationCard(quotationId) {
+            const quotation = approvedQuotations.find(function(q) { return idsMatch(q.id, quotationId); });
+            const folderContentEl = document.getElementById('folder-content-' + quotationId);
+            if (!quotation || !folderContentEl) return;
+            quotation.tableHTML = '';              // forces the lazy path to fetch fresh
+            quotation.hasUnsavedEdits = false;
+            delete quotation._detailsUpdatedAt;
+            renderApprovalFolderContent(String(quotationId), folderContentEl);
         }
 
         /*
@@ -12512,6 +12574,10 @@
                 // Lazy-render content on first open
                 if (folderContent.dataset.lazyId) {
                     renderApprovalFolderContent(folderContent.dataset.lazyId, folderContent);
+                } else {
+                    // Already rendered on an earlier open — but the server copy may have moved
+                    // on since (revised on another device / by a colleague). Check quietly.
+                    checkQuoteFreshness(quotationId, folderContent);
                 }
                 // Open the folder
                 folderContent.classList.add('show');
