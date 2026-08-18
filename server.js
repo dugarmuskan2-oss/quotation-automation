@@ -38,8 +38,24 @@ let ddbTableName = null;
 const hasAwsCredentials = !!(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY);
 const awsRegion = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1';
 
-// Initialize DynamoDB (if configured)
-if (process.env.DYNAMODB_TABLE) {
+// ── Which quote database? ────────────────────────────────────────────────────
+// QUOTES_DB=supabase switches every quote read/write to Supabase through the
+// command shim (storage/supabaseShim.js); anything else (or unset) keeps the
+// original DynamoDB client. The routes cannot tell the difference — same
+// commands, same result shapes — so this one switch IS the whole rollback plan.
+if (process.env.QUOTES_DB === 'supabase' && process.env.SUPABASE_DB_URL) {
+    try {
+        const { createSupabaseDocClient } = require('./storage/supabaseShim');
+        ddbDocClient = createSupabaseDocClient();
+        ddbTableName = 'ddb_items';   // guards check truthiness; the shim knows its own table
+        console.log('Quote database: SUPABASE (via DynamoDB command shim)');
+    } catch (error) {
+        console.warn('Supabase shim failed to load, falling back to DynamoDB:', error.message);
+    }
+}
+
+// Initialize DynamoDB (if configured, and Supabase didn't take the slot)
+if (!ddbDocClient && process.env.DYNAMODB_TABLE) {
     try {
         const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
         const { DynamoDBDocumentClient } = require('@aws-sdk/lib-dynamodb');
