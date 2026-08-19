@@ -127,9 +127,13 @@ describe('isAutoOrSystemMessage — auto-reply / bounce detection', () => {
 describe('source guards — reply-sweep review fixes', () => {
     test('customer checker ignores auto messages, persists on change, reports changed', () => {
         expect(html).toContain('const real = data.messages.filter(function (m) { return !m.auto; });');
-        // Persist the reply flag only for a fully-loaded quote — never for a list summary,
-        // which would PutCommand-overwrite the stored quote and wipe its items.
-        expect(html).toContain('if (changed && isFullQuote && !q.hasUnsavedEdits');
+        // EVERY flip persists, through the field-only route. The old rule persisted via the
+        // whole-object save and therefore had to skip list summaries (that save would
+        // PutCommand-overwrite the stored quote and wipe its items) — which is exactly why
+        // the badge appeared in one session and was gone the next.
+        expect(html).toContain('if (changed) {');
+        expect(html).toContain("/cust-reply-pending`, {");
+        expect(html).not.toContain('isFullQuote');   // the workaround, and its data-loss risk, are gone
         expect(html).toContain('return { newReply: pending && !wasPending, changed: changed };');
     });
     test('re-render is edit-preserving and fires on any change (set or clear)', () => {

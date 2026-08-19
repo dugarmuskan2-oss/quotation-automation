@@ -2381,14 +2381,16 @@
                 const wasPending = !!q.custReplyPending;
                 const changed = pending !== wasPending;
                 q.custReplyPending = pending;
-                // Persist the set OR clear, using the same guard the freight path uses —
-                // never save over the user's unsaved edits.
-                // Persist the flag — but ONLY for a fully-loaded quote. The sweep runs over the
-                // list summary (no lineItems/tableHTML); saving that PutCommand-overwrites the
-                // stored quote and WIPES its items. Guard against that data loss.
-                const isFullQuote = !!(q.tableHTML || (Array.isArray(q.lineItems) && q.lineItems.length));
-                if (changed && isFullQuote && !q.hasUnsavedEdits && typeof saveQuotationToBackend === 'function') {
-                    saveQuotationToBackend(q);
+                // Persist every flip through the field-only route — safe for summaries (it can
+                // never touch items), so the badge finally survives reloads and other devices.
+                // The old rule saved via the WHOLE-OBJECT route and therefore had to skip any
+                // quote not fully loaded; those flips lived only in this tab's memory, which is
+                // why the badge came and went between sessions.
+                if (changed) {
+                    fetch(`${API_BASE_URL}/quotations/${encodeURIComponent(q.id)}/cust-reply-pending`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ pending: pending })
+                    }).catch(function () { /* re-derived on the next sweep; never block the check */ });
                 }
                 return { newReply: pending && !wasPending, changed: changed };
             } catch (e) { return { newReply: false, changed: false }; }
@@ -7292,7 +7294,7 @@
         // this form, a fresh copy from the server is always the better one, and refreshing them
         // cannot throw away anything the user has typed here.
         const SERVER_OWNED_LIST_FIELDS = ['revisionRequests', 'extraNotes', 'freightEnquiries',
-            'supplierEnquiries', 'transporterReplyIn'];
+            'supplierEnquiries', 'transporterReplyIn', 'custReplyPending'];
 
         function approvalFilterKey() {
             if (approvalEnquiryFilter) return 'enquiry';

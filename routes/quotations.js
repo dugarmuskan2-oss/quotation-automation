@@ -871,6 +871,26 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
         }
     });
 
+    // Persist ONLY the customer-replied flag. The reply sweep runs over list SUMMARIES, and a
+    // whole-object save from a summary is what once wiped six quotes' items — so the sweep
+    // used to skip persisting for any quote not fully loaded, and the badge lived in one
+    // tab's memory: shown this session, gone the next, different per device. A field-only
+    // conditional merge can never touch items, so every flip persists for every quote.
+    router.post('/quotations/:id/cust-reply-pending', async (req, res) => {
+        if (!requireDdb(res)) return;
+        try {
+            const pending = !!(req.body && req.body.pending);
+            const payload = await mutateStoredQuotation(req.params.id, function (p) {
+                p.custReplyPending = pending;
+            });
+            if (!payload) return res.status(404).json({ error: 'Quotation not found' });
+            res.json({ success: true, custReplyPending: pending });
+        } catch (error) {
+            console.error('Error saving customer-reply flag:', error);
+            res.status(500).json({ error: 'Failed to save', details: error.message });
+        }
+    });
+
     // Persist the SUPPLIER-enquiry records (the quote card's Enquiry tab). Same field-only merge
     // as the freight route below, for the same reason: the client posting its own view must never
     // erase an enquiry a colleague sent moments earlier.

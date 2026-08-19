@@ -45,11 +45,19 @@ function loadFn(name) {
 
 const checkCustomerReplyForQuote = loadFn('checkCustomerReplyForQuote');
 
+// Every POST to the field-only flag route, so tests can assert what was persisted.
+let flagPosts = [];
+
 // Stub global.fetch for the /thread-messages read. `entry` is the messages[] to
 // return, or the sentinels 'fail' (res.ok false), 'throw' (network error), or
-// 'badshape' (ok but no messages array).
+// 'badshape' (ok but no messages array). The flag route is answered separately —
+// the thread sentinels must not make the persist call fail too.
 function stubFetch(entry) {
-    global.fetch = jest.fn(function () {
+    global.fetch = jest.fn(function (url, opts) {
+        if (String(url).includes('/cust-reply-pending')) {
+            flagPosts.push({ url: String(url), pending: JSON.parse(opts.body).pending });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) });
+        }
         if (entry === 'throw') return Promise.reject(new Error('network down'));
         if (entry === 'fail') return Promise.resolve({ ok: false, json: () => Promise.resolve({ error: 'boom' }) });
         if (entry === 'badshape') return Promise.resolve({ ok: true, json: () => Promise.resolve({ notMessages: true }) });
@@ -65,6 +73,7 @@ beforeEach(() => {
     global.API_BASE_URL = '';
     global.safeJsonParse = async (res) => res.json();
     global.saveQuotationToBackend = jest.fn();
+    flagPosts = [];   // per-test recorder; without this it accumulates across the file
 });
 afterEach(() => {
     delete global.fetch;
@@ -75,9 +84,9 @@ afterEach(() => {
 });
 
 describe('checkCustomerReplyForQuote — customer reply detection', () => {
-    test('A. SUMMARY quote (no lineItems / no tableHTML), customer last: flags pending but does NOT persist (incident guard)', async () => {
+    test('A. SUMMARY quote (no lineItems / no tableHTML), customer last: persists via the FIELD-ONLY route', async () => {
         stubFetch([you(), cust()]);
-        const q = { threadId: 't1' }; // list summary: no tableHTML, no lineItems
+        const q = { id: 'q1', threadId: 't1' }; // list summary: no tableHTML, no lineItems
         const res = await checkCustomerReplyForQuote(q);
 
         expect(q.custReplyPending).toBe(true);
@@ -88,37 +97,41 @@ describe('checkCustomerReplyForQuote — customer reply detection', () => {
 
     test('B. FULL quote (has lineItems), customer last: persists exactly once', async () => {
         stubFetch([you(), cust()]);
-        const q = { threadId: 't1', lineItems: [{ lineItemId: 'a', unitRate: 100 }] };
+        const q = { id: 'q1', threadId: 't1', lineItems: [{ lineItemId: 'a', unitRate: 100 }] };
         const res = await checkCustomerReplyForQuote(q);
 
         expect(q.custReplyPending).toBe(true);
         expect(res).toEqual({ newReply: true, changed: true });
-        expect(global.saveQuotationToBackend).toHaveBeenCalledTimes(1);
-        expect(global.saveQuotationToBackend).toHaveBeenCalledWith(q);
+        expect(global.saveQuotationToBackend).not.toHaveBeenCalled();   // never the heavy save
+        expect(flagPosts).toEqual([{ url: '/quotations/q1/cust-reply-pending', pending: true }]);
     });
 
     test('B2. FULL quote via tableHTML (no lineItems array) also persists', async () => {
         stubFetch([you(), cust()]);
-        const q = { threadId: 't1', tableHTML: '<table>...</table>' };
+        const q = { id: 'q1', threadId: 't1', tableHTML: '<table>...</table>' };
         const res = await checkCustomerReplyForQuote(q);
 
         expect(res.changed).toBe(true);
-        expect(global.saveQuotationToBackend).toHaveBeenCalledTimes(1);
+        expect(global.saveQuotationToBackend).not.toHaveBeenCalled();
+        expect(flagPosts).toHaveLength(1);
     });
 
-    test('C. FULL quote but hasUnsavedEdits: never clobber the user\'s edits', async () => {
+    test('C. FULL quote with hasUnsavedEdits: STILL persists — the flag route cannot touch edits', async () => {
         stubFetch([you(), cust()]);
-        const q = { threadId: 't1', lineItems: [{ lineItemId: 'a' }], hasUnsavedEdits: true };
+        const q = { id: 'q1', threadId: 't1', lineItems: [{ lineItemId: 'a' }], hasUnsavedEdits: true };
         const res = await checkCustomerReplyForQuote(q);
 
-        expect(q.custReplyPending).toBe(true);      // in-memory flag still set
+        expect(q.custReplyPending).toBe(true);
         expect(res).toEqual({ newReply: true, changed: true });
+        // The whole-object save WOULD have clobbered the unsaved edits, which is why the old
+        // code skipped persisting here entirely — and why the badge kept vanishing.
         expect(global.saveQuotationToBackend).not.toHaveBeenCalled();
+        expect(flagPosts).toEqual([{ url: '/quotations/q1/cust-reply-pending', pending: true }]);
     });
 
     test('D. Last real message is from us: pending stays false, nothing changed', async () => {
         stubFetch([cust(), you()]);
-        const q = { threadId: 't1', lineItems: [{ lineItemId: 'a' }] };
+        const q = { id: 'q1', threadId: 't1', lineItems: [{ lineItemId: 'a' }] };
         const res = await checkCustomerReplyForQuote(q);
 
         expect(q.custReplyPending).toBe(false);
@@ -128,7 +141,7 @@ describe('checkCustomerReplyForQuote — customer reply detection', () => {
 
     test('E. Auto/bounce message is last but a customer reply precedes it: the bounce is ignored', async () => {
         stubFetch([you(), cust(), bounce()]);
-        const q = { threadId: 't1' };
+        const q = { id: 'q1', threadId: 't1' };
         const res = await checkCustomerReplyForQuote(q);
 
         // real = [you, cust]; last real is the customer -> pending
@@ -138,7 +151,7 @@ describe('checkCustomerReplyForQuote — customer reply detection', () => {
 
     test('E2. Only our message then a bounce: pending false (bounce ignored, we spoke last)', async () => {
         stubFetch([you(), bounce()]);
-        const q = { threadId: 't1' };
+        const q = { id: 'q1', threadId: 't1' };
         const res = await checkCustomerReplyForQuote(q);
 
         expect(q.custReplyPending).toBe(false);
@@ -156,7 +169,7 @@ describe('checkCustomerReplyForQuote — customer reply detection', () => {
 
     test('G1. res.ok false: returns not-changed, does not throw or persist', async () => {
         stubFetch('fail');
-        const q = { threadId: 't1', lineItems: [{ lineItemId: 'a' }] };
+        const q = { id: 'q1', threadId: 't1', lineItems: [{ lineItemId: 'a' }] };
         const res = await checkCustomerReplyForQuote(q);
 
         expect(res).toEqual({ newReply: false, changed: false });
@@ -165,14 +178,14 @@ describe('checkCustomerReplyForQuote — customer reply detection', () => {
 
     test('G2. network error is swallowed: returns not-changed, does not throw', async () => {
         stubFetch('throw');
-        const q = { threadId: 't1', lineItems: [{ lineItemId: 'a' }] };
+        const q = { id: 'q1', threadId: 't1', lineItems: [{ lineItemId: 'a' }] };
         await expect(checkCustomerReplyForQuote(q)).resolves.toEqual({ newReply: false, changed: false });
         expect(global.saveQuotationToBackend).not.toHaveBeenCalled();
     });
 
     test('G3. malformed response (no messages array): treated as not-changed', async () => {
         stubFetch('badshape');
-        const q = { threadId: 't1', lineItems: [{ lineItemId: 'a' }] };
+        const q = { id: 'q1', threadId: 't1', lineItems: [{ lineItemId: 'a' }] };
         const res = await checkCustomerReplyForQuote(q);
 
         expect(res).toEqual({ newReply: false, changed: false });
@@ -205,18 +218,19 @@ describe('checkCustomerReplyForQuote — request routing & flag transitions', ()
     test('clearing a previously-pending flag counts as changed but not a new reply (and a full quote re-persists)', async () => {
         // Thread now ends with our message; the quote was previously flagged pending.
         stubFetch([cust(), you()]);
-        const q = { threadId: 't1', lineItems: [{ lineItemId: 'a' }], custReplyPending: true };
+        const q = { id: 'q1', threadId: 't1', lineItems: [{ lineItemId: 'a' }], custReplyPending: true };
         const res = await checkCustomerReplyForQuote(q);
 
         expect(q.custReplyPending).toBe(false);
         expect(res).toEqual({ newReply: false, changed: true });
-        // changed && isFullQuote && !hasUnsavedEdits -> persists the cleared flag too
-        expect(global.saveQuotationToBackend).toHaveBeenCalledTimes(1);
+        // A CLEAR persists too — otherwise the badge would linger after you replied.
+        expect(flagPosts).toEqual([{ url: '/quotations/q1/cust-reply-pending', pending: false }]);
+        expect(global.saveQuotationToBackend).not.toHaveBeenCalled();
     });
 
     test('already-pending and still pending: unchanged, no persist', async () => {
         stubFetch([you(), cust()]);
-        const q = { threadId: 't1', lineItems: [{ lineItemId: 'a' }], custReplyPending: true };
+        const q = { id: 'q1', threadId: 't1', lineItems: [{ lineItemId: 'a' }], custReplyPending: true };
         const res = await checkCustomerReplyForQuote(q);
 
         expect(q.custReplyPending).toBe(true);
@@ -226,7 +240,7 @@ describe('checkCustomerReplyForQuote — request routing & flag transitions', ()
 
     test('empty thread (no messages): pending false, unchanged', async () => {
         stubFetch([]);
-        const q = { threadId: 't1', lineItems: [{ lineItemId: 'a' }] };
+        const q = { id: 'q1', threadId: 't1', lineItems: [{ lineItemId: 'a' }] };
         const res = await checkCustomerReplyForQuote(q);
 
         expect(q.custReplyPending).toBe(false);
@@ -236,7 +250,7 @@ describe('checkCustomerReplyForQuote — request routing & flag transitions', ()
 
     test('empty lineItems array is NOT a full quote (guard uses length): no persist even on a change', async () => {
         stubFetch([you(), cust()]);
-        const q = { threadId: 't1', lineItems: [] }; // length 0 -> summary-like
+        const q = { id: 'q1', threadId: 't1', lineItems: [] }; // length 0 -> summary-like
         const res = await checkCustomerReplyForQuote(q);
 
         expect(res).toEqual({ newReply: true, changed: true });
