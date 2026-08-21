@@ -19,7 +19,11 @@ const fs = require('fs');
 const path = require('path');
 
 const INDEX_PATH = path.join(__dirname, '..', 'index.html');
-const html = fs.readFileSync(INDEX_PATH, 'utf8');
+// Styling now lives in styles.css, not inline in index.html. These source guards
+// assert CSS rules by exact text, so both files are read and searched together —
+// the guard stays exactly as strong, it just no longer cares which file holds it.
+const html = fs.readFileSync(INDEX_PATH, 'utf8')
+    + '\n' + fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
 
 function extractFunction(src, name) {
     const start = src.indexOf('function ' + name);

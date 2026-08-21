@@ -55,7 +55,11 @@ const path = require('path');
 
 const INDEX_PATH = path.join(__dirname, '..', 'index.html');
 const QUOTATIONS_ROUTE_PATH = path.join(__dirname, '..', 'routes', 'quotations.js');
-const html = fs.readFileSync(INDEX_PATH, 'utf8');
+// Styling now lives in styles.css, not inline in index.html. These source guards
+// assert CSS rules by exact text, so both files are read and searched together —
+// the guard stays exactly as strong, it just no longer cares which file holds it.
+const html = fs.readFileSync(INDEX_PATH, 'utf8')
+    + '\n' + fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
 const routeSrc = fs.readFileSync(QUOTATIONS_ROUTE_PATH, 'utf8');
 
 // Pull a top-level `function name(...) { ... }` out of source by brace-matching.

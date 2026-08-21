@@ -229,7 +229,7 @@ describe('esc — register cells are XSS-safe', () => {
 // ─── Source guards ────────────────────────────────────────────────────────────
 
 describe('source guard — register wiring', () => {
-    const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+    const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8') + '\n' + fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
     test('month + year dropdowns exist and call pickMonthYear', () => {
         expect(html).toContain('id="registerMonthSelect"');
         expect(html).toContain('id="registerYearSelect"');
@@ -278,7 +278,7 @@ describe('registerStatusOf — an outstanding revision ask outranks Sent', () =>
 });
 
 describe('source guards — the reported bugs stay fixed', () => {
-    const html2 = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+    const html2 = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8') + '\n' + fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
     const registerSrc = fs.readFileSync(path.join(__dirname, '..', 'register.js'), 'utf8');
 
     test('the revision box takes MULTIPLE lines — prompt() cannot', () => {
@@ -307,7 +307,7 @@ describe('source guards — the reported bugs stay fixed', () => {
 });
 
 describe('source guards — the revision box is rich text, and safely rendered', () => {
-    const html3 = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+    const html3 = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8') + '\n' + fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
 
     test('the revision dialog offers a rich editor, not just a textarea', () => {
         expect(html3).toContain("class=\"pm-rich\" contenteditable=\"true\"");
@@ -351,7 +351,7 @@ describe('source guards — the revision box is rich text, and safely rendered',
 // ugly, because getElementById can then find the pasted copy instead of the real control.
 
 describe('source guard — pasted notes are stripped of our own UI hooks', () => {
-    const html4 = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+    const html4 = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8') + '\n' + fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
     const fn = html4.slice(html4.indexOf('function sanitizeRichNoteHtml('));
     const body = fn.slice(0, fn.indexOf('\n        }'));
 
@@ -408,7 +408,7 @@ describe('source guard — pasted notes are stripped of our own UI hooks', () =>
 describe('source guard — note images are uploaded, never inlined', () => {
     const fsI = require('fs');
     const pathI = require('path');
-    const htmlI = fsI.readFileSync(pathI.join(__dirname, '..', 'index.html'), 'utf8');
+    const htmlI = fsI.readFileSync(pathI.join(__dirname, '..', 'index.html'), 'utf8') + '\n' + fsI.readFileSync(pathI.join(__dirname, '..', 'styles.css'), 'utf8');
     const routesI = fsI.readFileSync(pathI.join(__dirname, '..', 'routes', 'quotations.js'), 'utf8');
 
     test('there is an upload route, and it guards size, type and path traversal', () => {
