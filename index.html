@@ -135,6 +135,15 @@
         >
             <span>📊</span>
         </button>
+        <button
+            type="button"
+            class="main-tools-button"
+            id="mainToolDirectoryButton"
+            onclick="switchToDirectoryTab()"
+            title="Partner Directory"
+        >
+            <span>📇</span>
+        </button>
     </div>
 
     <div class="container" id="quotationApp">
@@ -794,6 +803,9 @@
             <p id="generatedEnquiryStatus" style="margin-top: 6px; font-size: 12px; color: #666;"></p>
         </div>
     </div>
+
+    <!-- Partner Directory — dealers/manufacturers/transporters/fabricators (partner-directory.js renders it) -->
+    <div class="container" id="partnerDirectoryApp" style="display: none;"></div>
 
     <!-- Enquiry Register — the live report (mirrors the Google Sheet layout) -->
     <div class="container" id="registerApp" style="display: none;">
@@ -11964,6 +11976,7 @@
     <script src="freight-tab-weight-editor.js?v=20260624-4"></script>
     <script src="quote-enquiry-tab.js?v=20260731-1"></script>
     <script src="register.js?v=20260722-5"></script>
+    <script src="partner-directory.js?v=20260821-1"></script>
 </body>
 </html>
 

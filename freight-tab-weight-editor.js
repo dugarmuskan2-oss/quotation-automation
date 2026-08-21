@@ -228,6 +228,8 @@
             + '.fwe-enq-send{font-size:13px;padding:8px 15px;border:none;border-radius:8px;background:#185FA5;color:#fff;cursor:pointer;}'
             + '.fwe-enq-send:disabled{background:#b9c7d6;cursor:not-allowed;}'
             + '.fwe-enq-status{margin-top:10px;font-size:13px;}'
+            + '.fwe-dir-ask{font-size:12px;padding:5px 11px;border:1px solid #C9B8E8;border-radius:8px;background:#F8F5FE;color:#4527A0;cursor:pointer;}'
+            + '.fwe-dir-ask:hover{background:#EDE7F6;}'
             + '.fwe-reqf{font-size:13px;padding:5px 11px;border:none;border-radius:8px;background:#185FA5;color:#fff;cursor:pointer;}'
             + '.fwe-th-row{display:flex;flex-direction:column;align-items:flex-start;gap:0;padding:8px 10px;border:1px solid #ececec;border-radius:8px;}'
             + '.fwe-th-top{display:flex;align-items:center;gap:9px;width:100%;}'
@@ -808,6 +810,10 @@
             + '<div class="fwe-enq-field" data-kind="bcc"><span class="fwe-enq-chips" data-kind="bcc" style="display:contents;"></span>'
             + '<input class="fwe-enq-input" data-kind="bcc" type="text" placeholder="Type a transporter name or email" autocomplete="off"></div>'
             + '<p style="margin:4px 0 0;font-size:11px;color:#9b988e;">Suggests transporters you’ve used for this route (fill pickup/drop first), plus Gmail matches. Each transporter gets their own email — they can’t see each other.</p>'
+            // Partner Directory: suggestions appear only when asked for, and read the pickup,
+            // drop and weight typed in THIS box — not a guess taken off the quote.
+            + '<div style="margin-top:8px;"><button type="button" class="fwe-dir-ask">✨ Ask AI — who can I send this with?</button></div>'
+            + '<div class="fwe-dir-panel"></div>'
             + ccFieldHtml()
             + '<div class="fwe-enq-wt"><i class="ti ti-weight" style="font-size:16px;" aria-hidden="true"></i>'
             + ((st.split && enq.forSec) ? '<span>Shipment ' + enq.forSec + ' ·</span>' : '')
@@ -930,6 +936,7 @@
                 var used = [];
                 sentOk.forEach(function (r) { used = used.concat(String(r.addr).split(', ')); });
                 recordFreightUsage(used, enq);
+                if (typeof window !== 'undefined' && window.partnerDirectory) window.partnerDirectory.recordUsage({ emails: used, kind: 'sent', role: 'transporter', pickup: enq.pickup, drop: enq.drop });
             }
             render(q, mountEl);
         });
@@ -1109,7 +1116,19 @@
             }
             return add;
         }
-        bindAddressField(field, chipsBox, input, enq.bcc);
+        var addBcc = bindAddressField(field, chipsBox, input, enq.bcc);
+        // "Ask AI" → the Partner Directory ranks transporters for THIS box's route + weight.
+        // Its picker calls addBcc per address, so chips/validation behave exactly as if typed.
+        var dirAsk = mountEl.querySelector('.fwe-dir-ask');
+        var dirPanel = mountEl.querySelector('.fwe-dir-panel');
+        if (dirAsk && dirPanel && window.partnerDirectory) {
+            dirAsk.onclick = function () {
+                window.partnerDirectory.renderSuggestPanel(dirPanel, {
+                    kind: 'transport', pickup: enq.pickup, drop: enq.drop,
+                    kg: enqWeightUsable(st) ? Math.round(enqEffectiveWeight(st)) : 0,
+                }, function (chip) { String(chip).split(/,\s*/).forEach(function (a) { addBcc(a); }); });
+            };
+        } else if (dirAsk) { dirAsk.style.display = 'none'; }
         var ccField = mountEl.querySelector('.fwe-ccbox .fwe-enq-field[data-kind="cc"]');
         if (ccField) {
             bindAddressField(ccField, ccField.querySelector('.fwe-enq-chips'),

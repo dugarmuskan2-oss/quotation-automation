@@ -57,6 +57,13 @@ const CONFIG_KEY_FREIGHT_SUGGESTIONS  = 'freight-suggestions.json';
 const CONFIG_KEY_SUPPLIER_SUGGESTIONS = 'supplier-suggestions.json';
 /** Editable staff-name list (admin desk "Assign to" + Bigin owner later). */
 const CONFIG_KEY_STAFF_LIST           = 'staff-list.json';
+// The partner directory: dealers, manufacturers, transporters and fabricators, with what
+// each one handles. The two *-suggestions.json files above remember bare emails
+// automatically; this holds the curated records those get promoted into, plus the log of
+// every change the app made on its own ({ contacts: [...], changes: [...] }).
+const CONFIG_KEY_CONTACTS             = 'contacts.json';
+/** Emails tagged with the Add-to-Directory Gmail label, waiting for the owner's approval. */
+const CONFIG_KEY_CONTACTS_PENDING     = 'contacts-pending.json';
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -77,4 +84,6 @@ module.exports = {
     CONFIG_KEY_FREIGHT_SUGGESTIONS,
     CONFIG_KEY_SUPPLIER_SUGGESTIONS,
     CONFIG_KEY_STAFF_LIST,
+    CONFIG_KEY_CONTACTS,
+    CONFIG_KEY_CONTACTS_PENDING,
 };

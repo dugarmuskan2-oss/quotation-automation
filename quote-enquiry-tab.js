@@ -90,6 +90,27 @@
         return String((li && (li.originalDescription || li.description)) || '').trim().toLowerCase() === 'freight';
     }
 
+    // ── what the Partner Directory's "Ask AI" reads off this quote ────────────
+    // One entry per pipe line, with its weight when kg/m AND quantity are both known.
+    function enquiryNeedItems(quotation) {
+        var items = Array.isArray(quotation && quotation.lineItems) ? quotation.lineItems : [];
+        return items.filter(function (li) { return !isFreightRow(li); }).map(function (li) {
+            var kgm = parseFloat(li && li.kgPerMeter), qty = parseFloat(li && li.quantity);
+            return {
+                product: String((li && (li.originalDescription || li.description)) || ''),
+                kg: (isFinite(kgm) && kgm > 0 && isFinite(qty) && qty > 0) ? kgm * qty : null,
+            };
+        });
+    }
+
+    // Total kg ONLY when every line is computable — a partial sum quoted to a supplier is
+    // how a wrong weight travels, so incomplete stays 0 and minimums go unchecked instead.
+    function enquiryNeedKg(quotation) {
+        var items = enquiryNeedItems(quotation);
+        if (!items.length || items.some(function (i) { return i.kg === null; })) return 0;
+        return Math.round(items.reduce(function (s, i) { return s + i.kg; }, 0));
+    }
+
     // ── rows: built by the Enquiry Preparer's OWN code, not a lookalike ───────
     // The whole chain is the preparer's: normalizeQuotation maps the quote's line items to its
     // intermediate shape, then buildEnquiryRowModel derives each column — size via
@@ -558,6 +579,9 @@
             + '<input class="qet-input" data-kind="bcc" type="text" placeholder="Type a supplier name or email" autocomplete="off"></div>'
             + '<div class="qet-suggest"></div>'
             + '<p class="qet-note">Suggests suppliers you&rsquo;ve emailed before &mdash; the ones you use for this quote&rsquo;s pipe types come first. Each supplier gets their own email and is BCC&rsquo;d, so nobody sees anyone else.</p>'
+            // Partner Directory: shown only when asked for; reads this quote's pipe types.
+            + '<div style="margin-top:8px;"><button type="button" class="qet-dir-ask">✨ Ask AI — who can I buy this from?</button></div>'
+            + '<div class="qet-dir-panel"></div>'
             + ccFieldHtml(st)
             + '<label class="qet-lbl">Message (editable) &mdash; [TABLE] is replaced by the enquiry table, and your standard signature is added below it</label>'
             + '<textarea class="qet-msg">' + escTxt(st.message) + '</textarea>'
@@ -631,6 +655,23 @@
             if (again) again.focus();
         }
         function addRecip(v) { addTo('bcc', v); }
+
+        // "Ask AI" → the Partner Directory ranks suppliers for this quote's pipe types and
+        // weight (summed only when every line has kg/m and qty — never guessed). Picked
+        // addresses land as ordinary Bcc chips, exactly as if typed.
+        var dirAsk = mountEl.querySelector('.qet-dir-ask');
+        var dirPanel = mountEl.querySelector('.qet-dir-panel');
+        if (dirAsk && dirPanel && window.partnerDirectory) {
+            dirAsk.onclick = function () {
+                window.partnerDirectory.renderSuggestPanel(dirPanel, {
+                    kind: 'material',
+                    types: quotePipeTypes(quotation),
+                    items: enquiryNeedItems(quotation),
+                    kg: enquiryNeedKg(quotation),
+                    site: String(quotation.shipTo || ''),
+                }, function (chip) { String(chip).split(/,s*/).forEach(function (a) { addTo('bcc', a); }); });
+            };
+        } else if (dirAsk) { dirAsk.style.display = 'none'; }
 
         // Cc: same keys and same blur-commit as the Bcc box, so it takes any number of
         // addresses. A pasted list splits on comma / semicolon / whitespace.
@@ -838,6 +879,7 @@
                 var used = [];
                 sentOk.forEach(function (r) { used = used.concat(String(r.addr).split(', ')); });
                 recordSupplierUsage(used, quotation);
+                if (typeof window !== 'undefined' && window.partnerDirectory) window.partnerDirectory.recordUsage({ emails: used, kind: 'sent', role: 'dealer', pipeTypes: quotePipeTypes(quotation) });
             }
             render(quotation, mountEl);
         });

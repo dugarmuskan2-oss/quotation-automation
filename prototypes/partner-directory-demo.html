@@ -1,0 +1,2874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DSC Partner Directory</title>
+<style>
+/* ── Tokens ────────────────────────────────────────────────────────────────
+   Light is the base. Dark redefines TOKENS ONLY, in two guarded blocks, so the
+   page resolves in all three viewer states (system / explicit light / explicit
+   dark). No component rule ever hard-codes a colour. */
+:root{
+  --bg:#efeee8; --surface:#ffffff; --surface-2:#f6f5f1; --surface-3:#e9e8e1;
+  --text:#20201d; --text-2:#6e6c65; --text-3:#9b988e;
+  --line:rgba(0,0,0,.11); --line-2:rgba(0,0,0,.20);
+  --accent:#185FA5; --accent-ink:#0C447C; --accent-bg:#E6F1FB; --accent-line:#85B7EB;
+  --good:#0F6E56; --good-bg:#E1F5EE;
+  --warn:#854F0B; --warn-bg:#FAEEDA;
+  --bad:#8C2F2F;  --bad-bg:#FBE9E9;
+  --ai:#4527A0;   --ai-bg:#EDE7F6; --ai-line:#C9B8E8; --ai-surface:#F8F5FE;
+  --r:8px; --r-lg:11px;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#17171a; --surface:#212125; --surface-2:#282830; --surface-3:#31313a;
+    --text:#eceaf1; --text-2:#a9a6b3; --text-3:#7c7989;
+    --line:rgba(255,255,255,.11); --line-2:rgba(255,255,255,.22);
+    --accent:#8FBEF2; --accent-ink:#AED2F7; --accent-bg:#152A40; --accent-line:#33608F;
+    --good:#79D6B8; --good-bg:#123029;
+    --warn:#EBBA6C; --warn-bg:#352810;
+    --bad:#F0A0A0;  --bad-bg:#3B1F1F;
+    --ai:#C4ADEF;   --ai-bg:#261D3F; --ai-line:#4A3868; --ai-surface:#1E1830;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#17171a; --surface:#212125; --surface-2:#282830; --surface-3:#31313a;
+  --text:#eceaf1; --text-2:#a9a6b3; --text-3:#7c7989;
+  --line:rgba(255,255,255,.11); --line-2:rgba(255,255,255,.22);
+  --accent:#8FBEF2; --accent-ink:#AED2F7; --accent-bg:#152A40; --accent-line:#33608F;
+  --good:#79D6B8; --good-bg:#123029;
+  --warn:#EBBA6C; --warn-bg:#352810;
+  --bad:#F0A0A0;  --bad-bg:#3B1F1F;
+  --ai:#C4ADEF;   --ai-bg:#261D3F; --ai-line:#4A3868; --ai-surface:#1E1830;
+}
+
+*{box-sizing:border-box;}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+  -webkit-font-smoothing:antialiased;line-height:1.5;}
+.page{max-width:860px;margin:0 auto;padding:22px 16px 56px;}
+
+h1{font-size:19px;font-weight:600;letter-spacing:-.01em;margin:0 0 4px;text-wrap:balance;}
+p{margin:0;}
+.lede{font-size:13.5px;color:var(--text-2);margin:0 0 18px;max-width:66ch;}
+.muted{font-size:12.5px;color:var(--text-2);}
+.tiny{font-size:11px;color:var(--text-3);}
+.num{font-variant-numeric:tabular-nums;}
+
+.ic{width:1em;height:1em;flex:0 0 auto;vertical-align:-.14em;}
+
+.flag{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--warn);
+  background:var(--warn-bg);border-radius:var(--r);padding:5px 10px;margin-bottom:14px;
+  letter-spacing:.02em;text-transform:uppercase;font-weight:600;}
+
+button{font-family:inherit;font-size:13px;color:var(--text);background:transparent;
+  border:1px solid var(--line-2);border-radius:var(--r);padding:6px 12px;cursor:pointer;
+  transition:background .12s,border-color .12s,transform .06s;}
+button:hover{background:var(--surface-2);}
+button:active{transform:scale(.985);}
+button:disabled{opacity:.45;cursor:not-allowed;}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,
+[data-open]:focus-visible,[data-sample]:focus-visible,.hint:focus-visible,.f-chip:focus-visible{
+  outline:2px solid var(--accent);outline-offset:2px;}
+.prim{background:var(--accent-bg);color:var(--accent-ink);border-color:var(--accent-line);}
+.prim:hover{background:var(--accent-bg);border-color:var(--accent);}
+
+input,select,textarea{font-family:inherit;font-size:13px;color:var(--text);background:var(--surface);
+  border:1px solid var(--line-2);border-radius:var(--r);padding:6px 10px;height:34px;width:100%;}
+textarea{height:auto;min-height:66px;padding:9px 11px;line-height:1.55;resize:vertical;}
+input::placeholder,textarea::placeholder{color:var(--text-3);}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg);}
+
+.tabs{display:flex;gap:20px;border-bottom:1px solid var(--line);margin-bottom:16px;}
+.tab{font-size:13px;color:var(--text-2);padding:0 0 9px;cursor:pointer;background:none;
+  border:0;border-bottom:2px solid transparent;border-radius:0;display:flex;align-items:center;gap:6px;}
+.tab:hover{background:none;color:var(--text);}
+.tab.on{color:var(--text);font-weight:600;border-bottom-color:var(--text);}
+
+/* Pills — semantic, never decorative */
+.pill{font-size:11.5px;padding:3px 9px;border-radius:7px;white-space:nowrap;display:inline-block;font-weight:500;}
+.pill-accent{background:var(--accent-bg);color:var(--accent-ink);}
+.pill-good{background:var(--good-bg);color:var(--good);}
+.pill-warn{background:var(--warn-bg);color:var(--warn);}
+.pill-bad{background:var(--bad-bg);color:var(--bad);}
+.pill-ai{background:var(--ai-bg);color:var(--ai);}
+.pill-neutral{background:var(--surface-3);color:var(--text-2);}
+
+.card{border:1px solid var(--line);border-radius:var(--r-lg);padding:12px 14px;
+  background:var(--surface);margin-bottom:8px;}
+.card.click{cursor:pointer;}
+.card.click:hover{background:var(--surface-2);border-color:var(--line-2);}
+.card.open{border-color:var(--accent-line);}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.sp{flex:1;}
+
+.filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;}
+.f-chip{font-size:12px;padding:5px 11px;border-radius:20px;border:1px solid var(--line-2);
+  cursor:pointer;background:var(--surface);color:var(--text);}
+.f-chip:hover{background:var(--surface-2);}
+.f-chip.on{background:var(--text);color:var(--surface);border-color:var(--text);}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
+.fld{margin-bottom:10px;}
+.fld label{display:block;font-size:10.5px;color:var(--text-3);margin-bottom:4px;
+  text-transform:uppercase;letter-spacing:.05em;font-weight:600;}
+.ro{height:34px;display:flex;align-items:center;font-size:13px;color:var(--text-2);}
+
+.sec{font-size:11.5px;font-weight:700;color:var(--text-2);margin:18px 0 9px;
+  padding-bottom:6px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:7px;
+  text-transform:uppercase;letter-spacing:.05em;}
+
+/* A product: what it is + spec, then sizes, then the price rule */
+.pcard{border:1px solid var(--line);border-radius:var(--r);padding:8px 9px;margin-bottom:7px;background:var(--surface-2);}
+.pcard input{height:30px;padding:4px 8px;}
+.pcard-r1{display:grid;grid-template-columns:1fr 1.3fr 26px;gap:6px;align-items:center;}
+.pcard-r2{display:flex;align-items:center;gap:5px;margin-top:6px;flex-wrap:wrap;}
+.pcard-r2 input{width:72px;font-variant-numeric:tabular-nums;}
+.pcard-r3{margin-top:6px;}
+.pcard-lab{font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;font-weight:600;}
+.pcard-dash{color:var(--text-3);}
+/* Firm-wide price rules */
+.orule{display:grid;grid-template-columns:1fr 26px;gap:6px;align-items:center;margin-bottom:5px;}
+.orule input{height:30px;padding:4px 8px;}
+/* Sizes: one row per outside diameter, each with its own wall thickness */
+.sizes{margin-top:8px;border-top:1px solid var(--line);padding-top:7px;}
+.szrow{display:grid;grid-template-columns:58px 78px 78px 1fr 24px;gap:5px;align-items:center;margin-bottom:4px;}
+.szrow input{height:27px;padding:3px 7px;font-variant-numeric:tabular-nums;}
+.szhead{font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;font-weight:600;}
+.addline{font-size:11px;padding:3px 9px;border-style:dashed;color:var(--text-2);}
+/* A person: name and job, then their numbers and addresses */
+.person{border:1px solid var(--line);border-radius:var(--r);padding:9px 10px;margin-bottom:7px;background:var(--surface-2);}
+.person input,.person select{height:29px;padding:4px 8px;}
+.person-top{display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:center;}
+.person-cols{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:7px;}
+.cline{display:grid;grid-template-columns:88px 1fr 24px;gap:5px;align-items:center;margin-bottom:4px;}
+.cline select{font-size:11px;padding:2px 5px;}
+/* A branch: city drives distance, the rest is for the lorry */
+.branch{border:1px solid var(--line);border-radius:var(--r);padding:9px 10px;margin-bottom:7px;background:var(--surface-2);}
+.branch input,.branch select{height:29px;padding:4px 8px;}
+.branch-top{display:grid;grid-template-columns:1fr 1.3fr 24px;gap:6px;align-items:center;}
+/* Enquiry history */
+.hist{border-left:2px solid var(--line-2);padding:3px 0 3px 10px;margin-bottom:14px;}
+.eqwrap{overflow-x:auto;margin-top:6px;}
+.eq{border-collapse:collapse;width:100%;font-size:12px;min-width:340px;}
+.eq th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-3);
+  border-bottom:1px solid var(--line-2);padding:4px 7px;font-weight:600;}
+.eq td{padding:4px 7px;border-bottom:1px solid var(--line);}
+.eq td.num{text-align:right;font-variant-numeric:tabular-nums;}
+.reply{margin-top:7px;background:var(--good-bg);border-radius:var(--r);padding:7px 9px;}
+.reply p.muted{color:var(--good);}
+/* The quote folder, as it opens in the approval list */
+.folder{border:1px solid var(--line-2);border-radius:var(--r-lg);background:var(--surface);overflow:hidden;}
+.qtabs{display:flex;gap:14px;padding:0 14px;border-bottom:1px solid var(--line);background:var(--surface-2);
+  overflow-x:auto;}
+.qtab{font-size:12.5px;color:var(--text-2);padding:9px 11px;background:none;border:0;border-radius:0;
+  border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:5px;}
+.qtab:hover{background:none;color:var(--text);}
+.qtab.on{color:var(--text);font-weight:600;border-bottom-color:var(--accent);}
+.qbody{padding:14px;}
+/* Collapsible panels inside the Freight tab */
+.fold{border:1px solid var(--line);border-radius:var(--r);margin-bottom:10px;}
+.fold-head{display:flex;align-items:center;gap:8px;padding:9px 11px;cursor:pointer;background:var(--surface-2);}
+.fold-head:hover{background:var(--surface-3);}
+.fold-body{padding:11px;border-top:1px solid var(--line);}
+/* What the directory contributes — marked, so it is obvious what is new */
+.added{border:1px solid var(--ai-line);background:var(--ai-surface);border-radius:var(--r);
+  padding:11px 12px;margin-bottom:10px;position:relative;}
+.wtrow{display:flex;align-items:center;gap:8px;margin-top:12px;padding:9px 11px;
+  border:1px solid var(--line);border-radius:var(--r);background:var(--surface-2);flex-wrap:wrap;}
+.addfreight{border:1px solid var(--accent-line);background:var(--accent-bg);border-radius:var(--r);padding:11px 12px;}
+.addfreight b{color:var(--accent-ink);}
+.mini{display:grid;grid-template-columns:1fr 1fr 26px;gap:6px;align-items:center;margin-bottom:5px;}
+.mini input{height:30px;padding:4px 8px;}
+.del{padding:2px 6px;border:0;color:var(--bad);background:none;font-size:14px;line-height:1;}
+.del:hover{background:var(--bad-bg);}
+
+/* Reasons — the whole point: every judgement carries its sentence */
+.why{font-size:12px;color:var(--good);background:var(--good-bg);border-radius:6px;
+  padding:3px 8px;display:inline-block;margin:2px 4px 2px 0;font-variant-numeric:tabular-nums;}
+.why.warn{color:var(--warn);background:var(--warn-bg);}
+.why.bad{color:var(--bad);background:var(--bad-bg);}
+.why.neutral{color:var(--text-2);background:var(--surface-3);}
+.why.note{color:var(--ai);background:var(--ai-bg);}
+
+.rank{display:flex;gap:11px;align-items:flex-start;}
+.rank-n{width:22px;height:22px;border-radius:50%;background:var(--text);color:var(--surface);
+  font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;
+  flex:0 0 auto;margin-top:2px;font-variant-numeric:tabular-nums;}
+.out{opacity:.66;}
+.out .rank-n{background:var(--text-3);}
+.empty{padding:16px;text-align:center;border:1px dashed var(--line-2);border-radius:var(--r-lg);}
+.stale{color:var(--bad);}
+
+.note{border-left:2px solid var(--accent-line);padding:2px 0 2px 10px;margin-bottom:9px;}
+.note p{font-size:13px;line-height:1.45;}
+.when{font-size:11px;color:var(--text-3);}
+.src{font-size:10px;color:var(--ai);background:var(--ai-bg);border-radius:5px;padding:1px 6px;margin-left:5px;}
+.act{font-size:11px;color:var(--text-3);cursor:pointer;text-decoration:underline;}
+.act:hover{color:var(--bad);}
+
+.shot{border:1px dashed var(--line-2);border-radius:var(--r);padding:11px 9px;text-align:center;
+  cursor:pointer;background:var(--surface);color:var(--text);}
+.shot:hover{border-color:var(--accent-line);background:var(--accent-bg);}
+.shot .ic{font-size:21px;color:var(--text-2);margin-bottom:5px;}
+.shot b{font-size:12px;font-weight:600;display:block;}
+.shot span{font-size:10.5px;color:var(--text-3);}
+.filerow{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:var(--r);
+  padding:8px 11px;margin-bottom:6px;background:var(--surface);}
+.drop{border:2px dashed var(--ai-line);border-radius:var(--r-lg);padding:22px 16px;text-align:center;
+  background:var(--surface);}
+.drop b{display:block;font-size:13px;font-weight:600;margin:7px 0 3px;}
+.drop span{font-size:11.5px;color:var(--text-3);}
+.samples{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;}
+/* Recipient chips — a new address is marked, not hidden */
+.chip{font-size:12px;padding:5px 10px;border-radius:7px;background:var(--accent-bg);color:var(--accent-ink);
+  display:inline-flex;align-items:center;gap:7px;margin:0 5px 5px 0;}
+.chip-new{background:var(--warn-bg);color:var(--warn);}
+/* One recipient firm = one email */
+/* Where a waiting item came from — sits directly on top of the record it would change */
+.src-strip{border:1px solid var(--warn);border-radius:var(--r-lg);background:var(--warn-bg);
+  padding:10px 13px;margin-bottom:8px;cursor:pointer;}
+.src-strip:hover{filter:brightness(0.98);}
+.src-strip.on{border-bottom-left-radius:0;border-bottom-right-radius:0;margin-bottom:0;}
+.src-strip.on + .card.open{border-top-left-radius:0;border-top-right-radius:0;border-color:var(--warn);}
+.src-strip .tiny{color:var(--warn);opacity:.85;}
+/* A stand-in for the attachment, so an extraction can be checked against its source */
+.docwrap{border:1px solid var(--line-2);border-radius:var(--r-lg);background:var(--surface-2);padding:12px;margin-bottom:8px;}
+.docpage{background:#fff;color:#20201d;border:1px solid rgba(0,0,0,.14);border-radius:4px;
+  padding:16px 18px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,.10);}
+.doc-p{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:#9b988e;margin-bottom:8px;}
+.doc-h{font-size:15px;font-weight:700;letter-spacing:.02em;}
+.doc-s{font-size:12px;color:#6e6c65;margin-top:2px;}
+.doc-l{font-size:12px;color:#20201d;margin-top:5px;}
+.docpage .eq th{color:#6e6c65;border-bottom-color:rgba(0,0,0,.2);}
+.docpage .eq td{border-bottom-color:rgba(0,0,0,.08);}
+.docpage .eqwrap{margin-top:8px;}
+.bub{font-size:12.5px;border-radius:10px;padding:7px 10px;margin-bottom:6px;max-width:80%;}
+.bub.them{background:#EFEFEF;color:#20201d;}
+.bub.me{background:#DCF8C6;color:#20201d;margin-left:auto;}
+.grp{border:1px solid var(--line);border-radius:var(--r);padding:8px 10px;margin-bottom:6px;background:var(--surface-2);}
+.chip .tiny{color:inherit;opacity:.75;}
+/* Confirm popup */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;
+  justify-content:center;padding:18px;z-index:50;}
+.modal{background:var(--surface);border:1px solid var(--line-2);border-radius:var(--r-lg);
+  padding:18px 19px;max-width:520px;width:100%;max-height:88vh;overflow-y:auto;
+  box-shadow:0 18px 48px rgba(0,0,0,.28);}
+.found{display:flex;gap:9px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line);cursor:pointer;}
+.found input{width:auto;height:auto;margin-top:3px;flex:0 0 auto;accent-color:var(--accent);}
+
+.spin{display:inline-block;width:13px;height:13px;border:2px solid var(--line-2);
+  border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px;}
+@keyframes sp{to{transform:rotate(360deg);}}
+@media (prefers-reduced-motion:reduce){
+  .spin{animation:none;border-top-color:var(--line-2);}
+  *{transition:none !important;}
+}
+
+/* Anything that came from the machine lives in the violet world */
+.web,.ask,.finder{border:1px solid var(--ai-line);background:var(--ai-surface);border-radius:var(--r-lg);padding:13px 14px;}
+.web{margin-bottom:8px;}
+.ask{margin-top:12px;}
+/* The bar, once it lives at the top of the results */
+.askbar{display:flex;align-items:center;gap:8px;margin-bottom:4px;}
+.askbar input{flex:1;}
+.finder{margin-bottom:16px;}
+.weblink{color:var(--ai);text-decoration:underline;}
+/* What the AI understood from your text — shown, so a misread is obvious */
+.read{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;margin:10px 0;}
+.tag{font-size:11.5px;padding:3px 9px;border-radius:7px;background:var(--surface-3);color:var(--text-2);
+  display:inline-block;margin:2px 4px 2px 0;font-variant-numeric:tabular-nums;}
+.tag b{color:var(--text);}
+/* One line of a change: what field, what it was, what it is now */
+.change-head:hover .diff-k,.change-head:hover{color:var(--text);}
+.diff{display:flex;flex-wrap:wrap;align-items:baseline;gap:7px;padding:5px 0;
+  border-top:1px solid var(--line);font-size:12.5px;}
+.diff:first-of-type{border-top:0;}
+.diff-k{color:var(--text-3);font-size:11px;text-transform:uppercase;letter-spacing:.04em;
+  font-weight:600;min-width:110px;}
+.diff-was{color:var(--text-3);text-decoration:line-through;}
+.diff-arrow{color:var(--text-3);font-size:11px;}
+.diff-now{color:var(--text);font-weight:500;}
+
+.foot{margin-top:20px;text-align:center;}
+.foot span{cursor:pointer;text-decoration:underline;font-size:12px;color:var(--text-3);}
+
+@media(max-width:640px){
+  .grid2,.grid3{grid-template-columns:1fr;}
+  .pcard-r1{grid-template-columns:1fr 24px;}
+  .pcard-r1 input:nth-of-type(2){grid-column:1;}
+  .person-cols{grid-template-columns:1fr;}
+  /* Narrow: name takes the full width, the badge/remove sits beside the job title */
+  .person-top,.branch-top{grid-template-columns:1fr auto;}
+  .person-top > input:first-child,.branch-top > select:first-child{grid-column:1/-1;}
+  .person-top > .pill{justify-self:end;}
+  .szrow{grid-template-columns:48px 62px 62px 1fr 22px;}
+  .rank{flex-wrap:wrap;}
+}
+</style>
+</head>
+<body>
+
+<div class="page">
+  <div class="flag" id="flag"></div>
+  <h1>Partner directory</h1>
+  <p class="lede">A clickable mock of your dealers, manufacturers, transporters and fabricators.
+  In <b>Directory</b>, paste an enquiry into the box at the top and it tells you who to send it to —
+  or open anyone to see what's stored, add dated notes, and photograph a card or price list to let the
+  AI fill it in. <b>In the quote card</b> shows the same thing working inside one of your real quotes.
+  <b>Recent changes</b> holds anything the app filled in by itself, waiting for a yes.</p>
+
+  <div class="tabs">
+    <button class="tab on" id="tabDir"></button>
+    <button class="tab" id="tabQuote"></button>
+    <button class="tab" id="tabChanges"></button>
+  </div>
+  <div id="app"></div>
+  <p class="foot"><span id="bReset">Reset demo</span></p>
+</div>
+
+<script>
+(function(){
+  'use strict';
+  var TODAY='2026-08-07';
+  var HOME='Chennai';   // where the business sits — the fallback when an enquiry names no place
+
+  // ── Inline icons (the artifact sandbox blocks external requests) ───────────
+  var ICONS={
+    flask:'<path d="M9 3h6M10 3v5.6L4.7 18a2 2 0 0 0 1.7 3h11.2a2 2 0 0 0 1.7-3L14 8.6V3"/>',
+    book:'<path d="M6 3h11a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M4 8h2M4 16h2"/><circle cx="12" cy="10" r="2"/><path d="M9 16c.4-1.6 1.6-2.4 3-2.4s2.6.8 3 2.4"/>',
+    file:'<path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M19 8v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7z"/><path d="M9 12h6M9 16h4"/>',
+    plus:'<path d="M12 5v14M5 12h14"/>',
+    chev:'<path d="M9 6l6 6-6 6"/>',
+    chevdown:'<path d="M6 9l6 6 6-6"/>',
+    note:'<path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M19 8v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7z"/><path d="M9 12h6M9 16h3"/>',
+    photo:'<rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="9" cy="9.5" r="1.3"/><path d="M4 15.5l4-3.5 5 4.5 3-2.5 4 3.5"/>',
+    camera:'<path d="M5 8h2l1.6-2.2h6.8L17 8h2a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2z"/><circle cx="12" cy="13.6" r="3.4"/>',
+    id:'<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M6 16c.4-1.5 1.5-2.2 3-2.2s2.6.7 3 2.2"/><path d="M14.5 9.5H18M14.5 13.5H18"/>',
+    table:'<rect x="4" y="4" width="16" height="16" rx="1.5"/><path d="M4 9.5h16M4 15h16M10 4v16"/>',
+    chat:'<path d="M4 20.5l1.5-3.8A8 8 0 1 1 8.6 19.4z"/><path d="M9.2 10.2c0 2.9 2 4.8 4.8 4.8l1.3-1.4-1.9-1.3-.9.9c-.9-.2-1.9-1.2-2.1-2.1l.9-.9-1.3-1.9z"/>',
+    globe:'<circle cx="11" cy="11" r="8"/><path d="M3.4 8.5h15.2M3.4 13.5h9.1"/><path d="M11 3a15 15 0 0 0 0 16M11 3a15 15 0 0 1 3.4 7.4"/><circle cx="17" cy="17" r="3.2"/><path d="M21.5 21.5l-2.2-2.2"/>',
+    spark:'<path d="M12 3l1.7 4.6L18.3 9l-4.6 1.7L12 15.3l-1.7-4.6L5.7 9l4.6-1.4z"/><path d="M18.4 14.6l.75 1.9 1.9.75-1.9.75-.75 1.9-.75-1.9-1.9-.75 1.9-.75z"/>',
+    mark:'<path d="M6.5 4h11a1 1 0 0 1 1 1v16l-6.5-4.3L5.5 21V5a1 1 0 0 1 1-1z"/>',
+    folder:'<path d="M3 7.5a2 2 0 0 1 2-2h3.6l2 2H19a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+    minus:'<path d="M6 12h12"/>',
+    search:'<circle cx="10.5" cy="10.5" r="6.5"/><path d="M21 21l-5.8-5.8"/>',
+    brochure:'<path d="M12 6.6C10.4 5.2 8 4.6 5.5 4.6A2.5 2.5 0 0 0 3 7.1v10.4a2 2 0 0 1 2-2c2.3 0 4.7.6 7 2 2.3-1.4 4.7-2 7-2a2 2 0 0 1 2 2V7.1a2.5 2.5 0 0 0-2.5-2.5c-2.5 0-4.9.6-6.5 2z"/><path d="M12 6.6v10.9"/>',
+    pdf:'<path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M19 8v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7z"/><path d="M8.4 17.4v-4h1.1a1.15 1.15 0 1 1 0 2.3H8.4"/><path d="M13.2 17.4v-4h.9a1.5 1.5 0 0 1 1.5 1.5v1a1.5 1.5 0 0 1-1.5 1.5z"/>',
+    upload:'<path d="M12 15.5V4.5"/><path d="M8 8.4l4-3.9 4 3.9"/><path d="M4 15v3.5a1.5 1.5 0 0 0 1.5 1.5h13a1.5 1.5 0 0 0 1.5-1.5V15"/>',
+    refresh:'<path d="M20 11.5A8 8 0 1 0 18.4 17"/><path d="M20 4.5v6h-6"/>',
+    mail:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6.5l8.5 6 8.5-6"/>',
+    truck:'<path d="M3 6.5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1V17H3z"/><path d="M14 9h3.5l3 3.5V17H14z"/><circle cx="7" cy="17.5" r="1.9"/><circle cx="17.5" cy="17.5" r="1.9"/>'
+  };
+  function ic(n,style){
+    return '<svg class="ic" style="'+(style||'')+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+      +'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(ICONS[n]||'')+'</svg>';
+  }
+
+  // ── Geography. Rough coordinates + great-circle × 1.25 for road distance, so
+  //    ANY city typed into the enquiry box works — no hand-built mileage table.
+  var COORD={
+    'Pune':[18.52,73.86],'Mumbai':[19.08,72.88],'Nashik':[20.00,73.78],'Murbad':[19.25,73.39],
+    'Aurangabad':[19.88,75.34],'Kalamboli':[19.03,73.10],'Chakan':[18.76,73.86],
+    'Bhavnagar':[21.76,72.15],'Rajkot':[22.30,70.80],'Ahmedabad':[23.02,72.57],'Surat':[21.17,72.83],
+    'Bahadurgarh':[28.69,76.93],'Malanpur':[26.35,78.20],'Delhi':[28.61,77.21],'Raipur':[21.25,81.63],
+    'Hubli':[15.36,75.12],'Hosur':[12.74,77.83],'Bangalore':[12.97,77.59],'Chennai':[13.08,80.27],
+    'Madurai':[9.93,78.12],'Trichy':[10.79,78.70],'Salem':[11.66,78.15],'Vellore':[12.92,79.13],
+    'Hyderabad':[17.38,78.49],'Kochi':[9.93,76.27],'Coimbatore':[11.02,76.96],'Nagpur':[21.15,79.09],
+    'Kolkata':[22.57,88.36],'Vadodara':[22.31,73.18],'Jamnagar':[22.47,70.06],'Goa':[15.30,74.12]
+  };
+  function haversine(a,b){
+    var R=6371, rad=Math.PI/180;
+    var dLat=(b[0]-a[0])*rad, dLon=(b[1]-a[1])*rad;
+    var x=Math.sin(dLat/2)*Math.sin(dLat/2)
+      +Math.cos(a[0]*rad)*Math.cos(b[0]*rad)*Math.sin(dLon/2)*Math.sin(dLon/2);
+    return 2*R*Math.asin(Math.min(1,Math.sqrt(x)));
+  }
+  function kmBetween(from,to){
+    if(String(from).toLowerCase()==='pan india') return 0;
+    if(!COORD[from]||!COORD[to]) return null;
+    return Math.round(haversine(COORD[from],COORD[to])*1.25/10)*10;
+  }
+  function nearestBranch(p,site){
+    var names=branchNames(p);
+    var best=null;
+    names.concat([p.city]).forEach(function(n){
+      var k=kmBetween(n,site);
+      if(k===null) return;
+      if(!best||k<best.km) best={name:n,km:k};
+    });
+    return best;
+  }
+
+  // ── Two enquiries for the quote tab ───────────────────────────────────────
+  // Quantities are in running metres, the way an enquiry arrives; kg/m is the standard weight
+  // for that size and class, so the weight panel adds up the way the real one does.
+  var QUOTES=[
+    { no:'DSC-142', customer:'Chemplast Sanmar', site:'Pune', rate:'Rs 4,86,200',
+      items:[
+        {d:'2" NB Heavy — GI',    product:'GI heavy',   type:'GI',  qty:300, unit:'m', kgm:6.20, kg:1860},
+        {d:'1" NB Medium — ERW',  product:'ERW medium', type:'ERW', qty:120, unit:'m', kgm:2.44, kg:293},
+        {d:'3/4" NB Medium — GI', product:'GI medium',  type:'GI',  qty:200, unit:'m', kgm:1.58, kg:316}]},
+    { no:'DSC-149', customer:'Kerala Petrochem', site:'Kochi', rate:'Rs 11,20,000',
+      items:[{d:'6" NB SCH 40 — SS 304 Seamless', product:'SS 304 seamless', type:'SS', qty:180, unit:'m', kgm:28.26, kg:5087}]}
+  ];
+  function Q(){ return QUOTES[S.quote]; }
+  function quoteNeed(){
+    var q=Q(), t={};
+    q.items.forEach(function(i){ t[i.type]=1; });
+    return { items:q.items, types:Object.keys(t), site:q.site,
+             tons:q.items.reduce(function(s,i){return s+i.kg;},0)/1000, known:true };
+  }
+
+  var SEED=[
+    { id:11, role:'dealer', company:'Annai Steel Traders', person:'K. Murugan',
+      email:'annaisteel@gmail.com', phone:'98410 33270', city:'Chennai', branches:'Chennai, Coimbatore',
+      types:['GI','ERW'], moq:0.25,
+      people:[{name:'S. Anand',phone:'98410 33271',email:'anand@annaisteel.com',role:'Sales'}],
+      products:[{p:'GI pipe',spec:'IS 1239 Light / Medium / Heavy',odFrom:'1/2"',odTo:'6"',thkFrom:'2.0',thkTo:'4.85',moq:0.25,rule:''},
+                {p:'ERW black pipe',spec:'IS 3589 / IS 1239',odFrom:'1/2"',odTo:'8"',thkFrom:'2.0',thkTo:'6.0',moq:0.25,rule:''}],
+      rules:['Rates include delivery anywhere in Chennai city'],
+      notes:[{d:'2026-07-19',t:'Delivers anywhere in the city same day. Ask for Murugan directly, not the office line.',src:''}],
+      history:[
+        {d:'2026-07-19',quote:'DSC-138',repliedOn:'2026-07-19',won:true,
+         rows:[{desc:'2" NB Heavy — GI',qty:'400',unit:'m',offer:'Rs 91/kg'},
+               {desc:'1" NB Medium — ERW',qty:'200',unit:'m',offer:'Rs 84/kg'}],
+         reply:'Both ready stock. Delivery in 2 days, freight extra. Rates hold for 7 days.'},
+        {d:'2026-06-30',quote:'DSC-131',repliedOn:'2026-06-30',won:false,
+         rows:[{desc:'3/4" NB Medium — GI',qty:'600',unit:'m',offer:'Rs 88/kg'}],
+         reply:'Rs 88/kg ex-godown. Can deliver same day if confirmed by noon.'},
+        {d:'2026-06-11',quote:'DSC-124',repliedOn:null,won:false,
+         rows:[{desc:'4" NB Black — ERW',qty:'250',unit:'m',offer:''}],reply:null}],
+      images:[], enq:13, rep:12, last:'2026-07-19', checked:'2026-07-19' },
+
+    { id:12, role:'dealer', company:'Coromandel Tube Corporation', person:'S. Ravi',
+      email:'sales@coromandeltube.in', phone:'044 2625 8890', city:'Chennai', branches:'Chennai',
+      types:['Seamless','ERW'], moq:1,
+      products:[{p:'Seamless ASTM A106',moq:1,rule:''},{p:'Seamless P11',moq:2,rule:'ASTM + Rs 48/kg'},
+                {p:'ERW black',moq:0.5,rule:''}],
+      notes:[{d:'2026-06-28',t:'Only ones nearby holding seamless in stock. Slow to reply — chase on the phone.',src:''}],
+      images:[], enq:8, rep:4, last:'2026-06-28', checked:'2026-06-28' },
+
+    { id:13, role:'transporter', company:'Sakthi Cargo Movers', person:'Prabhu',
+      email:'sakthicargo@gmail.com', phone:'94440 21188', city:'Chennai', branches:'Chennai',
+      routes:[{from:'Chennai',to:'Coimbatore'},{from:'Chennai',to:'Bangalore'},
+              {from:'Chennai',to:'Hyderabad'},{from:'Chennai',to:'Kochi'}],
+      vehicles:'19 ft, 22 ft, 32 ft MXL', partLoad:true,
+      notes:[{d:'2026-08-02',t:'Best rates anywhere south of Chennai. Will not go north of Hyderabad.',src:''}],
+      images:[], enq:15, rep:14, last:'2026-08-02', checked:'2026-08-02' },
+
+    { id:1, role:'dealer', company:'Kalpataru Steel', person:'Rakesh Shah',
+      email:'sales@kalpatarusteel.com', phone:'98220 41155', city:'Pune', branches:'Pune, Nashik',
+      types:['GI','ERW','Seamless'], moq:0.5,
+      people:[{name:'Nikhil Shah',phone:'98220 41156',email:'nikhil@kalpatarusteel.com',role:'Seamless desk'}],
+      history:[
+        {d:'2026-07-28',quote:'DSC-140',repliedOn:'2026-07-28',won:false,
+         rows:[{desc:'2" NB Heavy — GI',qty:'300',unit:'m',offer:'Rs 92/kg'}],
+         reply:'Rs 92/kg, but GI heavy is tight — 10 days, not 5.'},
+        {d:'2026-07-02',quote:'DSC-133',repliedOn:'2026-07-03',won:true,
+         rows:[{desc:'6" NB SCH 80 — Seamless P11',qty:'12',unit:'T',offer:'ASTM + Rs 45/kg'}],
+         reply:'ASTM + Rs 45/kg as always. Can hold the material for a week.'}],
+      products:[{p:'GI pipe',spec:'IS 1239 Heavy',odFrom:'1/2"',odTo:'6"',thkFrom:'2.65',thkTo:'4.85',moq:0.25,rule:''},
+                {p:'GI pipe',spec:'IS 1239 Medium',odFrom:'1/2"',odTo:'6"',thkFrom:'2.3',thkTo:'4.5',moq:0.25,rule:''},
+                {p:'ERW black pipe',spec:'IS 1239 Medium',odFrom:'1/2"',odTo:'8"',thkFrom:'2.3',thkTo:'4.5',moq:0.25,rule:''},
+                {p:'Seamless P11',spec:'ASTM A335 P11',odFrom:'1/2"',odTo:'12"',thkFrom:'sch 40',thkTo:'sch 160',moq:1,rule:'ASTM + Rs 45/kg'},
+                {p:'Seamless imported',spec:'ASTM A106 Gr B',odFrom:'1/2"',odTo:'12"',thkFrom:'sch 40',thkTo:'sch 80',moq:1,rule:'Domestic + Rs 30/kg'}],
+      rules:['GST 18% extra on all rates','Freight always ex-works — never included','2% off if paid within 15 days'],
+      notes:[{d:'2026-07-28',t:'Rakesh says GI heavy is tight till mid-Aug — 10 day lead time, not 5.',src:''},
+             {d:'2026-05-04',t:'Gives us 30 days credit. Never asks for advance.',src:''}],
+      images:[{n:'rate-sheet-jul.jpg',kind:'photo',d:'2026-07-14',count:3,sample:'pricelist'}],
+      enq:11, rep:9, last:'2026-07-28', checked:'2026-06-14' },
+
+    { id:2, role:'dealer', company:'Maharashtra Steel Centre', person:'Sunil Kadam',
+      email:'msc.pune@gmail.com', phone:'99700 23841', city:'Pune', branches:'Pune',
+      types:['GI','ERW'], moq:0.25,
+      products:[{p:'GI light medium heavy',moq:0.25,rule:''},{p:'ERW medium',moq:0.25,rule:''}],
+      notes:[{d:'2026-07-02',t:'Small quantities are fine here — took a 300 kg order without fuss.',src:''}],
+      images:[], enq:6, rep:3, last:'2026-07-02', checked:'2026-05-30' },
+
+    { id:3, role:'manufacturer', company:'Jindal Star', person:'RFQ desk',
+      email:'sales@jindalstar.com', phone:'022 4001 9000', city:'Nashik', branches:'Nashik, Mumbai',
+      types:['GI','ERW'], moq:5,
+      products:[{p:'GI heavy',moq:3,rule:'Ex-works — freight always extra'},
+                {p:'GI medium',moq:3,rule:''},{p:'ERW medium',moq:5,rule:''}],
+      notes:[{d:'2026-08-01',t:'Best price of anyone if you can hit 3 T. Below that they will not quote.',src:''}],
+      images:[], enq:14, rep:11, last:'2026-08-01', checked:'2026-07-20' },
+
+    { id:4, role:'manufacturer', company:'APL Apollo', person:'RFQ desk',
+      email:'rfq@aplapollo.com', phone:'0124 462 8800', city:'Murbad', branches:'Murbad, Raipur, Hosur',
+      types:['ERW'], moq:10, products:[{p:'ERW all sizes',moq:10,rule:''}],
+      notes:[], images:[], enq:5, rep:4, last:'2026-06-19', checked:'2026-04-11' },
+
+    { id:5, role:'manufacturer', company:'Surya Roshni', person:'North desk',
+      email:'orders@suryaroshni.com', phone:'0129 424 6000', city:'Bahadurgarh', branches:'Bahadurgarh, Malanpur',
+      types:['GI'], moq:8, products:[{p:'GI',moq:8,rule:''}],
+      notes:[{d:'2026-02-08',t:'Too far for anything under a full truck. Only worth it for big GI lots.',src:''}],
+      images:[], enq:3, rep:1, last:'2026-02-08', checked:'2025-11-02' },
+
+    { id:6, role:'dealer', company:'Bhavani Tubes', person:'Jignesh Patel',
+      email:'bhavanitubes@yahoo.in', phone:'94260 77320', city:'Bhavnagar', branches:'Bhavnagar',
+      types:['Seamless'], moq:1,
+      products:[{p:'Seamless ASTM A106',moq:1,rule:''},{p:'Seamless P11',moq:2,rule:'ASTM + Rs 52/kg'}],
+      notes:[{d:'2026-07-11',t:'Replies same day, every time. Dearer than Kalpataru on P11.',src:''}],
+      images:[], enq:4, rep:4, last:'2026-07-11', checked:'2026-07-11' },
+
+    { id:7, role:'transporter', company:'Shree Ganesh Roadlines', person:'Manoj',
+      email:'sgroadlines@gmail.com', phone:'98250 66412', city:'Bhavnagar', branches:'Bhavnagar, Rajkot',
+      routes:[{from:'Bhavnagar',to:'Pune'},{from:'Bhavnagar',to:'Mumbai'}],
+      vehicles:'32 ft MXL, 20 ft', partLoad:true,
+      notes:[{d:'2026-07-25',t:'Manoj will hold a truck a day for us if we ask early.',src:''}],
+      images:[], enq:9, rep:8, last:'2026-07-25', checked:'2026-07-25' },
+
+    { id:8, role:'transporter', company:'Balaji Transport', person:'Sagar',
+      email:'balajitpt@gmail.com', phone:'90110 45520', city:'Nashik', branches:'Nashik',
+      routes:[{from:'Nashik',to:'Pune'},{from:'Nashik',to:'Mumbai'}],
+      vehicles:'Trailer, 22 ft', partLoad:false,
+      notes:[{d:'2026-06-02',t:'Cheapest on Nashik–Pune but only full loads. No part load, ever.',src:''}],
+      images:[], enq:7, rep:6, last:'2026-07-30', checked:'2026-06-02' },
+
+    { id:9, role:'transporter', company:'VRL Logistics', person:'Booking office',
+      email:'booking@vrlgroup.in', phone:'0836 233 8888', city:'Hubli', branches:'Pan India',
+      routes:[{from:'Nashik',to:'Pune'},{from:'Bhavnagar',to:'Pune'},{from:'Mumbai',to:'Pune'},
+              {from:'Mumbai',to:'Kochi'},{from:'Chennai',to:'Coimbatore'},{from:'Chennai',to:'Hyderabad'}],
+      vehicles:'Part-load network, 19 ft, 32 ft', partLoad:true,
+      notes:[], images:[], enq:12, rep:9, last:'2026-08-03', checked:'2026-07-15' },
+
+    { id:10, role:'fabricator', company:'Precision Fab Works', person:'Amit Deshpande',
+      email:'precisionfab@gmail.com', phone:'93710 88214', city:'Chennai', branches:'Chennai',
+      types:[], moq:0,
+      products:[{p:'Cutting + bevelling',moq:0,rule:'Rs 40 per cut'},
+                {p:'Threading up to 6"',moq:0,rule:'Rs 65 per end'}],
+      notes:[], images:[], enq:2, rep:2, last:'2026-05-16', checked:'2026-05-16' }
+  ];
+
+  var SAMPLES=[
+    // A brochure is the big one — a single PDF carries the whole range, the branches and the
+    // approvals, which is otherwise an afternoon of typing.
+    { id:'brochure', icon:'brochure', kind:'pdf', label:'Brochure', sub:'PDF, any length',
+      file:'kalpataru-brochure.pdf', detail:'8 pages',
+      finds:[
+        {kind:'product', label:'Product range (p.3)', value:'GI light / medium / heavy — 1/2" to 6", min 0.25 T',
+         product:{p:'GI light medium heavy',moq:0.25,rule:''}},
+        {kind:'product', label:'Product range (p.4)', value:'ERW black — 1/2" to 8", min 0.25 T',
+         product:{p:'ERW black',moq:0.25,rule:''}},
+        {kind:'product', label:'Product range (p.5)', value:'Seamless ASTM A106 Gr B — 1/2" to 12", min 1 T',
+         product:{p:'Seamless ASTM A106',moq:1,rule:''}},
+        {kind:'field', key:'types',    label:'Pipe types', value:'GI, ERW, Seamless'},
+        {kind:'field', key:'branches', label:'Branches (back cover)', value:'Pune, Nashik, Aurangabad, Kolhapur'},
+        {kind:'note',  label:'Note (p.2)', value:'ISO 9001 and IBR approved — certificates reproduced in the brochure.'},
+        {kind:'note',  label:'Note (p.7)', value:'Stock godown at Chakan, 30 km from Pune — same-day loading claimed.'}]},
+    { id:'card', icon:'id', kind:'photo', label:'Visiting card', sub:'Photo of a card', file:'visiting-card.jpg',
+      finds:[
+        {kind:'field', key:'person',   label:'Contact person', value:'Rakesh N. Shah'},
+        {kind:'field', key:'phone',    label:'Phone',          value:'98220 41155, 020 2445 8890'},
+        {kind:'field', key:'branches', label:'Branches',       value:'Pune, Nashik, Aurangabad'},
+        {kind:'note',  label:'Note',   value:'Card says "Authorised dealer — Jindal & Surya".'}]},
+    { id:'pricelist', icon:'table', kind:'photo', label:'Price list', sub:'Photo or PDF rate sheet', file:'rate-sheet-aug.jpg',
+      finds:[
+        {kind:'product', label:'Product + rule', value:'Seamless P11 — ASTM + Rs 45/kg, min 1 T',
+         product:{p:'Seamless P11',moq:1,rule:'ASTM + Rs 45/kg'}},
+        {kind:'product', label:'Product + rule', value:'Seamless SCH 80 — ASTM + Rs 18/kg, min 1 T',
+         product:{p:'Seamless SCH 80',moq:1,rule:'ASTM + Rs 18/kg'}},
+        {kind:'field',   key:'moq', label:'Overall MOQ', value:'0.5'},
+        {kind:'note',    label:'Note', value:'Rate sheet dated 1 Aug 26 — valid 15 days.'}]},
+    { id:'whatsapp', icon:'chat', kind:'photo', label:'WhatsApp rate', sub:'Screenshot of a message', file:'whatsapp-rate.png',
+      finds:[
+        {kind:'note', label:'Note', value:'Quoted GI heavy Rs 92/kg ex-works, 10 day lead time (6 Aug).'},
+        {kind:'product', label:'Product + rule', value:'GI heavy — Rs 92/kg ex-works, min 0.5 T',
+         product:{p:'GI heavy',moq:0.5,rule:'Rs 92/kg ex-works (6 Aug)'}}]}
+  ];
+
+  // ── Emails you tagged in Gmail with the "Add to Directory" label ───────────
+  // The same trick that already turns a labelled enquiry into a quote, pointed at the
+  // directory instead. An emailed brochure beats a photographed one: the sender's address
+  // comes attached, and the signature usually carries the name, phone and city too.
+  // Nothing saves on arrival — it waits here for a yes.
+  var INBOX=[
+    { id:'p1', from:'sales@velavansteels.com', subject:'Velavan Steels — brochure & rate list',
+      file:'velavan-brochure.pdf', matchEmail:null, role:'dealer',
+      company:'Velavan Steels', city:'Chennai',
+      finds:[
+        {kind:'field', key:'person',   label:'Contact person (signature)', value:'R. Velavan'},
+        {kind:'field', key:'phone',    label:'Phone (signature)',          value:'98404 21150'},
+        {kind:'field', key:'city',     label:'City (signature)',           value:'Chennai'},
+        {kind:'field', key:'branches', label:'Branches (back cover)',      value:'Chennai, Vellore'},
+        {kind:'field', key:'types',    label:'Pipe types (p.2)',           value:'GI, ERW'},
+        {kind:'product', label:'Product range (p.3)', value:'GI heavy — 1/2" to 6", min 0.5 T',
+         product:{p:'GI heavy',moq:0.5,rule:''}},
+        {kind:'product', label:'Product range (p.4)', value:'ERW black — min 0.5 T',
+         product:{p:'ERW black',moq:0.5,rule:''}},
+        {kind:'note', label:'Note (email body)', value:'Offering 45 days credit on the first three orders.'}]},
+
+    { id:'p2', from:'sales@kalpatarusteel.com', subject:'Revised rates w.e.f. 1 Aug',
+      file:'kalpataru-rates-aug.pdf', matchEmail:'sales@kalpatarusteel.com', role:'dealer',
+      finds:[
+        {kind:'product', label:'Rate change (p.1)', value:'Seamless P11 — ASTM + Rs 52/kg',
+         product:{p:'Seamless P11',moq:1,rule:'ASTM + Rs 52/kg'}},
+        {kind:'note', label:'Note (email body)', value:'Rates revised 1 Aug — GI up Rs 2/kg across the board.'}]}
+  ];
+
+  // What the next "check Gmail" turns up, so the arrival can be watched happening.
+  var INBOX_LATER=[
+    { id:'p3', from:'booking@chennaiexpresscarriers.in', subject:'Rate card — Chennai to south Tamil Nadu',
+      file:'rate-card.jpg', matchEmail:null, role:'transporter',
+      company:'Chennai Express Carriers', city:'Chennai',
+      finds:[
+        {kind:'field', key:'person',   label:'Contact person (signature)', value:'Vasanth K'},
+        {kind:'field', key:'phone',    label:'Phone (signature)',          value:'90031 44720'},
+        {kind:'field', key:'vehicles', label:'Vehicles (rate card)',       value:'19 ft, 24 ft, 32 ft MXL'},
+        {kind:'routes',  label:'Routes (rate card)', value:'Chennai → Madurai, Trichy, Coimbatore',
+         routes:[{from:'Chennai',to:'Madurai'},{from:'Chennai',to:'Trichy'},{from:'Chennai',to:'Coimbatore'}]},
+        {kind:'note', label:'Note (rate card)', value:'Part loads accepted on all south routes.'}]}
+  ];
+
+  // ── The files themselves ──────────────────────────────────────────────────
+  // Mock stand-ins for the real attachment, so what the AI read can be checked against what
+  // it filled in. Reviewing an extraction you cannot see is just trusting it.
+  var DOCS={
+    'velavan-brochure.pdf':{kind:'pdf', pages:[
+      {p:'Cover', head:'VELAVAN STEELS', sub:'Manufacturers &amp; Stockists · GI and ERW Pipes · Chennai',
+       lines:['ISO 9001:2015 certified','Serving Tamil Nadu since 2009']},
+      {p:'Page 2', head:'Our products',
+       lines:['Galvanised Iron (GI) pipes — IS 1239','ERW black pipes — IS 1239 / IS 3589','Approvals: ISO 9001, IBR']},
+      {p:'Page 3', head:'GI pipe — size range', table:{
+        cols:['NB','Inch','OD mm','Heavy mm'],
+        rows:[['15','1/2"','21.3','3.2'],['25','1"','33.7','4.0'],['50','2"','60.3','4.5'],
+              ['80','3"','88.9','4.85'],['150','6"','165.1','5.4']]},
+       lines:['Minimum order 0.5 T']},
+      {p:'Page 4', head:'ERW black pipe', table:{
+        cols:['NB','Inch','OD mm','Thk mm'],
+        rows:[['15','1/2"','21.3','2.6'],['50','2"','60.3','3.6'],['200','8"','219.1','5.0']]},
+       lines:['Minimum order 0.5 T']},
+      {p:'Page 7', head:'Stock &amp; despatch',
+       lines:['Godown at Chakan, 30 km from Pune','Same-day loading on confirmed orders']},
+      {p:'Back cover', head:'Contact',
+       lines:['R. Velavan — Proprietor','98404 21150','sales@velavansteels.com',
+              'Branches: Chennai, Vellore']}]},
+
+    'kalpataru-rates-aug.pdf':{kind:'pdf', pages:[
+      {p:'Page 1', head:'KALPATARU STEEL', sub:'Revised rates with effect from 1 August 2026',
+       table:{cols:['Product','Basis','Was','Now'],
+              rows:[['Seamless P11','ASTM + premium','+ Rs 45/kg','+ Rs 52/kg'],
+                    ['GI — all classes','Per kg','—','+ Rs 2/kg']]},
+       lines:['All rates ex-works Pune. GST extra.','Rakesh Shah · sales@kalpatarusteel.com']}]},
+
+    'rate-card.jpg':{kind:'photo', pages:[
+      {p:'Rate card', head:'CHENNAI EXPRESS CARRIERS', sub:'Chennai to South Tamil Nadu',
+       table:{cols:['Route','Vehicle','Part load'],
+              rows:[['Chennai → Madurai','19 / 24 / 32 ft','Yes'],
+                    ['Chennai → Trichy','19 / 24 ft','Yes'],
+                    ['Chennai → Coimbatore','24 / 32 ft MXL','Yes']]},
+       lines:['Vasanth K · 90031 44720','Part loads accepted on all south routes']}]},
+
+    'visiting-card.jpg':{kind:'photo', pages:[
+      {p:'Card', head:'KALPATARU STEEL', sub:'Authorised dealer — Jindal &amp; Surya',
+       lines:['Rakesh N. Shah','98220 41155 · 020 2445 8890','sales@kalpatarusteel.com',
+              'Pune · Nashik · Aurangabad']}]},
+
+    'rate-sheet-aug.jpg':{kind:'photo', pages:[
+      {p:'Rate sheet', head:'KALPATARU STEEL — rate sheet', sub:'Dated 1 Aug 26 · valid 15 days',
+       table:{cols:['Product','Basis','Minimum'],
+              rows:[['Seamless P11','ASTM + Rs 45/kg','1 T'],['Seamless SCH 80','ASTM + Rs 18/kg','1 T']]},
+       lines:['Overall minimum order 0.5 T']}]},
+
+    'whatsapp-rate.png':{kind:'photo', chat:[
+      {who:'them', t:'Sir GI heavy 2 inch — Rs 92/kg ex-works'},
+      {who:'them', t:'Lead time 10 days, not 5. Material is tight this month.'},
+      {who:'me', t:'Noted, thanks'}]},
+
+    'rate-sheet-jul.jpg':{kind:'photo', pages:[
+      {p:'Rate sheet', head:'KALPATARU STEEL — rate sheet', sub:'Dated 1 Jul 26',
+       table:{cols:['Product','Basis','Minimum'], rows:[['Seamless P11','ASTM + Rs 45/kg','1 T']]},
+       lines:['Overall minimum order 0.5 T']}]}
+  };
+
+  // Render a stand-in for the file, page by page, the way you would flip through it.
+  function docView(file){
+    var d=DOCS[file];
+    if(!d) return '<div class="docwrap"><p class="muted empty">No preview stored for '+esc(file)+'.</p></div>';
+    var body = d.chat
+      ? '<div class="docpage"><div class="doc-p">'+esc(file)+'</div>'
+        +d.chat.map(function(m){
+            return '<div class="bub '+(m.who==='me'?'me':'them')+'">'+esc(m.t)+'</div>'; }).join('')
+        +'</div>'
+      : d.pages.map(function(pg){
+          return '<div class="docpage">'
+            +'<div class="doc-p">'+esc(pg.p)+'</div>'
+            +'<div class="doc-h">'+pg.head+'</div>'
+            +(pg.sub?'<div class="doc-s">'+pg.sub+'</div>':'')
+            +(pg.table
+              ? '<div class="eqwrap"><table class="eq"><thead><tr>'
+                +pg.table.cols.map(function(c){return '<th>'+esc(c)+'</th>';}).join('')
+                +'</tr></thead><tbody>'
+                +pg.table.rows.map(function(r){
+                    return '<tr>'+r.map(function(v){return '<td>'+esc(v)+'</td>';}).join('')+'</tr>'; }).join('')
+                +'</tbody></table></div>'
+              : '')
+            +(pg.lines||[]).map(function(l){ return '<p class="doc-l">'+esc(l)+'</p>'; }).join('')
+            +'</div>';
+        }).join('');
+    return '<div class="docwrap">'
+      +'<p class="tiny" style="margin-bottom:8px;">'+ic(d.kind==='pdf'?'pdf':'photo')+' <b>'+esc(file)+'</b>'
+      +' — this is what the AI read. Check the record below against it.</p>'
+      +body+'</div>';
+  }
+
+  var WEB={
+    SS:[
+      {company:'Ratnadeep Metal & Tubes', city:'Ahmedabad', what:'SS 304 / 316 seamless and welded pipe, 1/2" to 12", ASTM A312 stockist.', src:'IndiaMART', note:'Listed 8 years · responds to enquiries'},
+      {company:'Nikita Metals', city:'Mumbai', what:'SS 304 seamless pipe stockist, ready stock in Kalamboli.', src:'nikitametals.co.in', note:'Own website · stock list published'},
+      {company:'Sagar Steel Corporation', city:'Mumbai', what:'SS, duplex and alloy pipe. ASTM A312 / A790. Cut lengths available.', src:'IndiaMART', note:'Listed 12 years'}],
+    generic:[
+      {company:'Sri Balaji Steel Traders', city:'Chennai', what:'GI and ERW pipe stockist, all classes. Ambattur godown.', src:'IndiaMART', note:'Listed 5 years'},
+      {company:'Vetri Tubes & Fittings', city:'Chennai', what:'GI, ERW and seamless. Small quantities accepted.', src:'JustDial', note:'Listed 3 years'},
+      {company:'Kovai Pipe Syndicate', city:'Coimbatore', what:'ERW and GI, bulk lots. Delivers across Tamil Nadu.', src:'IndiaMART', note:'Listed 9 years'}]
+  };
+
+
+  function daysSince(d){ return Math.round((new Date(TODAY)-new Date(d))/86400000); }
+  function ago(d){
+    var n=daysSince(d);
+    if(n<1) return 'today';
+    if(n<31) return n+' day'+(n===1?'':'s')+' ago';
+    if(n<365){ var m=Math.round(n/30); return m+' month'+(m===1?'':'s')+' ago'; }
+    var y=Math.round(n/365); return y+' year'+(y===1?'':'s')+' ago';
+  }
+  function isRegular(p){ return p.enq>=5 && daysSince(p.last)<=120; }
+  function replyRate(p){ return p.enq?Math.round(p.rep/p.enq*100):0; }
+
+  var ROLE_LABEL={dealer:'Dealer',manufacturer:'Manufacturer',transporter:'Transporter',
+                  fabricator:'Fabricator',other:'Other'};
+  var ROLE_KIND={dealer:'accent',manufacturer:'ai',transporter:'good',fabricator:'warn',other:'neutral'};
+  var ROLE_ORDER=['dealer','manufacturer','transporter','fabricator','other'];
+
+  // "Other" is only useful if it can say WHAT — a galvaniser, a testing lab, a scrap buyer.
+  // Whatever is typed becomes the badge, so the list never fills with identical Other chips.
+  function roleLabel(p){
+    if(p && p.role==='other') return String(p.roleOther||'').trim()||'Other';
+    return ROLE_LABEL[p&&p.role]||'Other';
+  }
+
+  // ── IS 1239 Part 1, the table every MS/GI pipe range is quoted against ─────
+  // The point a range table makes: ONE outside diameter carries a DIFFERENT wall thickness
+  // in each class. So a supplier's range is a list of sizes, never a "from–to" of thickness.
+  var IS1239=[
+    {nb:'15',  inch:'1/2"',   od:'21.3',  light:'2.0', medium:'2.6',  heavy:'3.2'},
+    {nb:'20',  inch:'3/4"',   od:'26.9',  light:'2.3', medium:'2.6',  heavy:'3.2'},
+    {nb:'25',  inch:'1"',     od:'33.7',  light:'2.6', medium:'3.2',  heavy:'4.0'},
+    {nb:'32',  inch:'1-1/4"', od:'42.4',  light:'2.6', medium:'3.2',  heavy:'4.0'},
+    {nb:'40',  inch:'1-1/2"', od:'48.3',  light:'2.9', medium:'3.2',  heavy:'4.0'},
+    {nb:'50',  inch:'2"',     od:'60.3',  light:'2.9', medium:'3.6',  heavy:'4.5'},
+    {nb:'65',  inch:'2-1/2"', od:'76.1',  light:'3.2', medium:'3.6',  heavy:'4.5'},
+    {nb:'80',  inch:'3"',     od:'88.9',  light:'3.2', medium:'4.0',  heavy:'4.85'},
+    {nb:'100', inch:'4"',     od:'114.3', light:'3.6', medium:'4.5',  heavy:'5.4'},
+    {nb:'125', inch:'5"',     od:'139.7', light:'',    medium:'4.85', heavy:'5.4'},
+    {nb:'150', inch:'6"',     od:'165.1', light:'',    medium:'4.85', heavy:'5.4'}
+  ];
+  // Pull the class out of a spec line ("IS 1239 Heavy" -> heavy) so the table can be loaded.
+  function specClass(spec){
+    var s=String(spec||'').toLowerCase();
+    if(/heavy/.test(s)) return 'heavy';
+    if(/medium/.test(s)) return 'medium';
+    if(/light/.test(s)) return 'light';
+    return '';
+  }
+
+  // ── One shape at runtime ──────────────────────────────────────────────────
+  // The seed is written the short way (person/email/phone, branches as a string) because it
+  // reads better. Everything downstream wants the real shape: a firm has PEOPLE, each with
+  // several numbers and addresses; a branch is a place with a street address, not a word.
+  function normalizePartner(p){
+    if(!p.people||!p.people.length||!p.people[0].phones){
+      var first={ name:p.person||'', role:'Main contact',
+                  phones:(p.phone?[{label:'Phone',v:p.phone}]:[]),
+                  emails:(p.email?[{label:'Work',v:p.email}]:[]) };
+      var rest=(p.people||[]).map(function(c){
+        return { name:c.name||'', role:c.role||'',
+                 phones:(c.phone?[{label:'Phone',v:c.phone}]:[]),
+                 emails:(c.email?[{label:'Work',v:c.email}]:[]) };
+      });
+      p.people=[first].concat(rest);
+    }
+    if(!Array.isArray(p.branches)){
+      p.branches=String(p.branches||'').split(',').map(function(s){return s.trim();}).filter(Boolean)
+        .map(function(c){ return {city:c,area:'',address:''}; });
+    }
+    (p.products||[]).forEach(function(pr){
+      if(!Array.isArray(pr.sizes)) pr.sizes=[];
+      delete pr.odFrom; delete pr.odTo; delete pr.thkFrom; delete pr.thkTo;
+    });
+    (p.history||[]).forEach(function(h){ if(!Array.isArray(h.rows)) h.rows=[]; });
+    return p;
+  }
+
+  function people(p){ return (p&&p.people)||[]; }
+  function mainPerson(p){ return people(p)[0]||{name:'',phones:[],emails:[]}; }
+  function mainName(p){ return mainPerson(p).name||''; }
+  // Every address a firm has, whichever person holds it — matching an incoming email has to
+  // look at all of them, not just the first.
+  function allEmails(p){
+    var out=[];
+    people(p).forEach(function(c){ (c.emails||[]).forEach(function(e){ if(e.v) out.push(e.v); }); });
+    return out;
+  }
+  function mainEmail(p){ return allEmails(p)[0]||''; }
+  function mainPhone(p){
+    var ph=mainPerson(p).phones||[];
+    return ph.length?ph[0].v:'';
+  }
+  function matchCity(text){
+    var t=String(text||'').toLowerCase();
+    return Object.keys(COORD).filter(function(city){
+      return city!=='Pan India' && t.indexOf(city.toLowerCase())!==-1;
+    }).sort(function(a,b){ return b.length-a.length; })[0]||'';
+  }
+
+  function branchList(p){ return (p&&Array.isArray(p.branches))?p.branches:[]; }
+  function branchNames(p){
+    var out=branchList(p).map(function(b){ return b.city; }).filter(Boolean);
+    if(p.city && out.indexOf(p.city)===-1) out.push(p.city);
+    return out;
+  }
+
+  var S,P;
+  function reset(){
+    P=JSON.parse(JSON.stringify(SEED)).map(normalizePartner);
+    S={view:'dir',filter:'all',q:'',openId:null,quote:0,freightFrom:'Nashik',
+       scan:{open:false,reading:false,sample:null,picked:{}},noteDraft:'',
+       find:{text:'',state:'idle',need:null,web:{state:'idle',results:[]}},
+       web:{state:'idle',results:[]},
+       ask:{material:{q:'',state:'idle',asked:''},transport:{q:'',state:'idle',asked:''}},
+       compose:{material:{to:[],draft:''},transport:{to:[],draft:''}},
+       confirm:null, sendPick:null,   // the "new address?" popup and the who-at-this-firm picker
+       pending:JSON.parse(JSON.stringify(INBOX)),   // labelled emails waiting for a yes
+       gmail:'idle', inboxLeft:JSON.parse(JSON.stringify(INBOX_LATER)),
+       label:'Quotation Automation/Add to Directory', labelEdit:false,
+       changes:[], seq:1, openChange:null, openPending:null, typeOther:null, openDoc:null,
+       qtab:'freight', wOpen:true, fOpen:true, enqMade:false,
+       frt:{pickup:'',drop:'',kg:null,message:'',messageEdited:false},
+       enqMsg:'Dear Sir,\n\nPlease quote your best rate for the requirement in the table below.\nKindly confirm make, availability and delivery time.\n\nRegards,\nDSC Pipes'};  // the Recent-changes log, newest first
+  }
+  reset();
+
+  var app=document.getElementById('app');
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function pill(t,kind){ return '<span class="pill pill-'+kind+'">'+esc(t)+'</span>'; }
+  function byId(id){
+    var p=P.filter(function(x){return x.id===id;})[0];
+    if(p) return p;
+    var pi=(S.pending||[]).filter(function(x){ return x.preview && x.preview.id===id; })[0];
+    return pi?pi.preview:null;
+  }
+  function words(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9 ]/g,' ').split(/\s+/).filter(function(w){return w.length>1;}); }
+
+  // ── Guessing a company name from an email address ─────────────────────────
+  // Domains run the words together — kalpatarusteel.com. Peel the trade word off the end
+  // so it reads like a company: "Kalpataru Steel". Always a GUESS, always shown for
+  // confirmation before it is saved.
+  var FREE_MAIL=/^(gmail|yahoo|ymail|hotmail|outlook|live|rediffmail|icloud|proton|protonmail|aol)$/;
+  var TRADE_WORDS=['corporation','engineering','international','enterprises','enterprise','industries',
+    'roadlines','logistics','syndicate','overseas','agencies','carriers','trading','traders','exports',
+    'industry','movers','impex','metals','steels','stores','alloys','agency','cargo','trader','tubes',
+    'pipes','steel','metal','alloy','group','corp','tube','pipe','iron'];
+
+  function splitTradeWord(s){
+    for(var i=0;i<TRADE_WORDS.length;i++){
+      var w=TRADE_WORDS[i];
+      if(s.length>w.length && s.slice(-w.length)===w) return splitTradeWord(s.slice(0,-w.length)).concat([w]);
+    }
+    return s?[s]:[];
+  }
+  function companyFromEmail(email){
+    var domain=String(email||'').toLowerCase().split('@')[1]||'';
+    var label=domain.split('.')[0]||'';
+    if(!label||FREE_MAIL.test(label)) return '';      // a personal address says nothing
+    var out=[];
+    label.split(/[-_.]+/).filter(Boolean).forEach(function(part){ out=out.concat(splitTradeWord(part)); });
+    return out.map(function(w){ return w.charAt(0).toUpperCase()+w.slice(1); }).join(' ');
+  }
+  function knownEmail(email){
+    var e=String(email||'').trim().toLowerCase();
+    return P.filter(function(p){ return allEmails(p).some(function(x){ return String(x).toLowerCase()===e; }); })[0]||null;
+  }
+  function isEmail(v){ return /^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(String(v||'').trim()); }
+
+  function matchProduct(p,need){
+    var nw=words(need), best=null, top=0;
+    (p.products||[]).forEach(function(pr){
+      var pw=words(pr.p);
+      var hits=nw.filter(function(w){return pw.indexOf(w)!==-1;}).length;
+      if(hits>top){ top=hits; best=pr; }
+    });
+    return top?best:null;
+  }
+
+  // ══ READING A TYPED ENQUIRY ═══════════════════════════════════════════════
+  // Genuinely parsed, not canned — type anything and it responds to what's there.
+  //
+  // Enquiries arrive in RUNNING METRES ("300 mtr of 2 inch GI heavy"), but every minimum
+  // in the directory is in tonnes. Standard kg/m turns one into the other — the same
+  // conversion the weight calculator already does. Where the size or class is missing the
+  // weight stays UNKNOWN and minimums are simply not checked: nothing is ever assumed.
+  var KGM={
+    l :{'0.5':1.10,'0.75':1.40,'1':2.00,'1.25':2.60,'1.5':3.00,'2':4.10,'2.5':5.40,'3':6.70,'4':10.20},
+    m :{'0.5':1.22,'0.75':1.58,'1':2.44,'1.25':3.14,'1.5':3.61,'2':5.10,'2.5':6.42,'3':8.36,'4':12.20,'5':15.60,'6':18.60},
+    h :{'0.5':1.47,'0.75':1.90,'1':2.90,'1.25':3.90,'1.5':4.50,'2':6.20,'2.5':8.00,'3':10.20,'4':14.50,'5':19.20,'6':22.90},
+    '40':{'0.5':1.27,'0.75':1.69,'1':2.50,'1.25':3.39,'1.5':4.05,'2':5.44,'2.5':8.63,'3':11.29,'4':16.07,'6':28.26,'8':42.55},
+    '80':{'1':3.24,'1.5':5.41,'2':7.48,'2.5':11.41,'3':15.27,'4':22.32,'6':42.56,'8':64.64}
+  };
+  var CLASS_KEY={heavy:'h',medium:'m',light:'l'};
+
+  function sizeToInches(raw){
+    var s=String(raw||'').trim();
+    var m=s.match(/^(\d+)[-\s](\d+)\/(\d+)$/);            // 1-1/2, 2 1/2
+    if(m) return Number(m[1])+Number(m[2])/Number(m[3]);
+    m=s.match(/^(\d+)\/(\d+)$/);                           // 3/4
+    if(m) return Number(m[1])/Number(m[2]);
+    m=s.match(/^(\d+(?:\.\d+)?)$/);
+    return m?Number(m[1]):null;
+  }
+  function sizeLabel(n){
+    if(n===null) return '';
+    var whole=Math.floor(n), e=Math.round((n-whole)*4);
+    if(!e) return whole+'"';
+    var g=(e%2===0)?2:1;
+    return (whole?whole+'-':'')+(e/g)+'/'+(4/g)+'"';
+  }
+
+  // One enquiry line: "300 mtr of 2 inch GI heavy" -> size, class, type, and a weight.
+  function readLine(frag,ctx){
+    var t=' '+frag.toLowerCase()+' ';
+    var type='';
+    if(/\bss\b|stainless|\b304\b|\b316\b|a312/.test(t)) type='SS';
+    else if(/\bgi\b|galvani/.test(t)) type='GI';
+    else if(/\berw\b/.test(t)) type='ERW';
+    else if(/seamless|a106|\bp11\b|\bp22\b|sch/.test(t)) type='Seamless';
+    type=type||ctx.type;
+    if(!type) return null;
+
+    var cls='';
+    var sch=t.match(/sch(?:edule)?\.?\s*(\d{2,3})/);
+    if(sch) cls='sch '+sch[1];
+    else if(/heavy/.test(t)) cls='heavy';
+    else if(/medium/.test(t)) cls='medium';
+    else if(/light/.test(t)) cls='light';
+    cls=cls||ctx.cls;
+
+    var sm=t.match(/(\d+[-\s]\d+\/\d+|\d+\/\d+|\d+(?:\.\d+)?)\s*(?:"|”|inch(?:es)?|nb\b)/);
+    var inches=sm?sizeToInches(sm[1].trim()):null;
+
+    var q=readQty(t);
+    return { type:type, cls:cls, inches:inches, kind:q.kind, val:q.val };
+  }
+
+  // Quantity. Order matters: tonnes and kg are checked before metres so "mtr" can never
+  // be read as "mt", and a bare "m" is only ever metres.
+  function readQty(t){
+    var mT=t.match(/(\d+(?:\.\d+)?)\s*(?:m\.?t\.?(?![a-z])|tonnes?|tons?|t(?![a-z]))/);
+    if(mT) return {kind:'T', val:parseFloat(mT[1])};
+    var mK=t.match(/(\d[\d,]*(?:\.\d+)?)\s*(?:kgs?(?![a-z])|kilo)/);
+    if(mK) return {kind:'kg', val:parseFloat(mK[1].replace(/,/g,''))};
+    var mM=t.match(/(\d[\d,]*(?:\.\d+)?)\s*(?:mtrs?|met(?:er|re)s?|rmt|m(?![a-z]))/);
+    if(mM) return {kind:'m', val:parseFloat(mM[1].replace(/,/g,''))};
+    return {kind:'', val:0};
+  }
+
+  // Weight is resolved AFTER merging, because the size that makes metres convertible often
+  // sits in a different clause from the quantity ("12 MT seamless sch 80, 6 inch").
+  function resolveLine(li){
+    var name=(li.type+' '+(li.cls||'')).trim();
+    var kg=null;
+    if(li.kind==='T') kg=li.val*1000;
+    else if(li.kind==='kg') kg=li.val;
+    else if(li.kind==='m'){
+      var schM=li.cls?li.cls.match(/sch\s*(\d+)/):null;
+      var key=li.cls?(CLASS_KEY[li.cls]||(schM?schM[1]:'')):'';
+      var table=KGM[key];
+      var perM=(table&&li.inches!==null)?table[String(li.inches)]:null;
+      if(perM) kg=li.val*perM;
+    }
+    var shown=li.kind ? (li.val+(li.kind==='T'?' T':li.kind==='kg'?' kg':' m')) : '';
+    return { d:(sizeLabel(li.inches)+' '+name).trim(), product:name, type:li.type, cls:li.cls,
+             inches:li.inches, kg:kg, qtyShown:shown, unresolved:!!(li.kind&&kg===null) };
+  }
+
+  // "12 MT seamless P11 sch 80, 6 inch" arrives as two clauses — one carrying the weight,
+  // the other the size. Fold a size-less quantity into the matching sized line.
+  function mergeClauses(lines){
+    var sized=lines.filter(function(l){ return l.inches!==null; });
+    var out=[];
+    lines.forEach(function(l){
+      if(l.inches===null && l.kind){
+        var host=sized.filter(function(s){
+          return s.type===l.type && !s.kind && (!s.cls || !l.cls || s.cls===l.cls);
+        })[0];
+        if(host){ host.kind=l.kind; host.val=l.val; if(!host.cls) host.cls=l.cls; return; }
+      }
+      out.push(l);
+    });
+    return out;
+  }
+
+  function readEnquiry(text){
+    var raw=String(text||'');
+    var t=' '+raw.toLowerCase()+' ';
+
+    // Whole-text context: a type or class stated once applies to lines that omit it.
+    var ctx={type:'',cls:''};
+    if(/\bss\b|stainless|\b304\b|\b316\b|a312/.test(t)) ctx.type='SS';
+    else if(/\bgi\b|galvani/.test(t)) ctx.type='GI';
+    else if(/\berw\b/.test(t)) ctx.type='ERW';
+    else if(/seamless|a106|\bp11\b|\bp22\b|sch\s*\d/.test(t)) ctx.type='Seamless';
+    var cSch=t.match(/sch(?:edule)?\.?\s*(\d{2,3})/);
+    if(cSch) ctx.cls='sch '+cSch[1];
+    else if(/heavy/.test(t)) ctx.cls='heavy';
+    else if(/medium/.test(t)) ctx.cls='medium';
+    else if(/light/.test(t)) ctx.cls='light';
+
+    var parsed=raw.split(/,|;|\n|\+|\band\b/i)
+      .map(function(f){ return f.trim(); }).filter(Boolean)
+      .map(function(f){ return readLine(f,ctx); })
+      .filter(function(li){ return li && (li.kind||li.inches!==null); });
+
+    var merged=[];
+    mergeClauses(parsed).map(resolveLine).forEach(function(li){
+      // Same product twice? One line, summed — mirrors how minimums are checked.
+      var e=merged.filter(function(x){return x.d===li.d;})[0];
+      if(e){ if(li.kg!==null) e.kg=(e.kg||0)+li.kg; if(li.unresolved) e.unresolved=true; }
+      else merged.push(li);
+    });
+
+    var types=[];
+    merged.forEach(function(li){ if(types.indexOf(li.type)===-1) types.push(li.type); });
+    if(!types.length && ctx.type) types.push(ctx.type);
+
+    var classes=[];
+    merged.forEach(function(li){ if(li.cls && classes.indexOf(li.cls)===-1) classes.push(li.cls); });
+    if(!classes.length && ctx.cls) classes.push(ctx.cls);
+
+    var kgTotal=merged.reduce(function(s,li){ return s+(li.kg||0); },0);
+    var unresolved=merged.some(function(li){ return li.unresolved; });
+
+    // A pure freight line ("Transport 8 T from Nashik to Pune") has no pipe in it at all,
+    // but the weight still decides part load vs full truck — so read it from the whole text.
+    if(!kgTotal){
+      var q=readQty(t);
+      if(q.kind==='T') kgTotal=q.val*1000;
+      else if(q.kind==='kg') kgTotal=q.val;
+    }
+
+    var cities=Object.keys(COORD);
+    var find=function(rx){
+      var m=t.match(rx);
+      if(!m) return '';
+      return cities.filter(function(c){ return m[1].indexOf(c.toLowerCase())===0; })[0]||'';
+    };
+    var pickup=find(/(?:from|ex[- ])\s*([a-z ]{3,20})/);
+    var site=find(/(?:deliver(?:y|ed|ing)?\s*(?:at|to|in)?|to|for)\s+([a-z ]{3,20})/);
+    if(site&&site===pickup) site='';
+    if(!site) cities.forEach(function(c){ if(c!==pickup && t.indexOf(' '+c.toLowerCase()+' ')!==-1) site=site||c; });
+
+    // Most enquiries never name a place — they are local and everyone knows it. Falling back
+    // to HOME (Chennai) keeps the distance ranking working instead of switching it off, but
+    // the assumption is always shown so a genuinely out-of-town job gets corrected.
+    var siteAssumed=false;
+    if(!site){ site=HOME; siteAssumed=true; }
+
+    var freight=/transport|freight|lorry|truck|vehicle|part load|full load/.test(t);
+
+    return { text:raw.trim(), items:merged, types:types, classes:classes,
+             site:site, siteAssumed:siteAssumed, pickup:pickup,
+             tons:kgTotal/1000, known:kgTotal>0,
+             unresolved:unresolved, freight:freight||!!pickup,
+             empty:!types.length && !freight && !pickup };
+  }
+
+  // ══ SCORING ═══════════════════════════════════════════════════════════════
+  function scoreSupplier(p,need){
+    var why=[], score=0, blocked=false;
+    var hit=need.types.filter(function(t){ return (p.types||[]).indexOf(t)!==-1; });
+    if(!need.types.length){ why.push(['neutral','No pipe type given — cannot match on product']); }
+    else if(!hit.length){ blocked=true; why.push(['bad','Does not deal in '+need.types.join(' / ')]); }
+    else if(hit.length===need.types.length){ score+=40; why.push(['ok','Deals in '+need.types.join(' + ')]); }
+    else { score+=20; why.push(['warn','Only does '+hit.join(', ')+' — not '+need.types.filter(function(t){return hit.indexOf(t)===-1;}).join(', ')]); }
+
+    // Lines are grouped onto the product row that covers them and summed first — two GI
+    // lines against one "GI" row is their combined weight, not two separate shortfalls.
+    // Falling short on ONE product is a warning, not a block: they can supply the rest.
+    if(!blocked && need.known){
+      var rows=[];
+      need.items.forEach(function(it){
+        var pr=matchProduct(p,it.product);
+        if(!pr) return;
+        var e=rows.filter(function(x){return x.row===pr;})[0];
+        if(!e){ e={row:pr,tons:0}; rows.push(e); }
+        e.tons+=it.kg/1000;
+      });
+      // A minimum is a fact about them, not a verdict. Being under it pushes a supplier DOWN
+      // the list and says so plainly — it never removes them, because a minimum is the sort
+      // of thing that gets waived for a good customer, and that call is the owner's.
+      if(rows.length){
+        var can=rows.filter(function(e){return e.tons>=e.row.moq;});
+        var cant=rows.filter(function(e){return e.tons<e.row.moq;});
+        score+=can.length?(cant.length?12:25):0;
+        score-=cant.length*30;
+        if(can.length) why.push(['ok','Stocks '+can.map(function(e){return e.row.p;}).join(', ')+' — you clear the minimum']);
+        cant.forEach(function(e){
+          why.push(['warn','Under their minimum — '+e.row.p+' needs '+e.row.moq+' T, you have '+e.tons.toFixed(2)+' T']);
+        });
+        can.forEach(function(e){ if(e.row.rule) why.push(['note',e.row.p+': '+e.row.rule]); });
+      }else if(p.moq>need.tons){
+        score-=30;
+        why.push(['warn','Under their minimum — they ask for '+p.moq+' T, this enquiry is '+need.tons.toFixed(2)+' T']);
+      }
+      else { score+=10; why.push(['ok','No minimum in the way']); }
+    }else if(!blocked && !need.known && p.moq){
+      why.push(['neutral','No quantity given — their '+p.moq+' T minimum not checked']);
+    }
+
+    if(need.site){
+      var nb=nearestBranch(p,need.site);
+      if(!nb) why.push(['neutral','Cannot work out the distance to '+need.site]);
+      else if(nb.km<=60){ score+=35; why.push(['ok','In '+nb.name+' — right by the site']); }
+      else if(nb.km<=250){ score+=20; why.push(['ok',nb.name+' branch, '+nb.km+' km from site']); }
+      else { score-=10; why.push(['warn',nb.name+' — '+nb.km+' km away, freight will hurt']); }
+    }
+
+    if(p.enq){ score+=Math.round(p.rep/p.enq*20)+(daysSince(p.last)<=120?10:0);
+      why.push([p.rep?'ok':'warn','Replied to '+p.rep+' of '+p.enq+' enquiries'+(daysSince(p.last)<=120?', dealt with recently':', but not lately')]); }
+    else why.push(['neutral','Never asked through the app']);
+
+    (p.rules||[]).forEach(function(r){ if(String(r).trim()) why.push(['note','Applies to everything: '+r]); });
+    var n=(p.notes||[])[0];
+    if(n) why.push(['note','Your note ('+ago(n.d)+'): '+n.t]);
+    if(daysSince(p.checked)>180) why.push(['warn','Last edited '+ago(p.checked)+' — worth confirming before you quote']);
+    return {p:p,score:blocked?-999+score:score,why:why,blocked:blocked};
+  }
+
+  function scoreTransporter(p,need,from){
+    var why=[], score=0, blocked=false, to=need.site;
+    var exact=(p.routes||[]).filter(function(r){return r.from===from&&r.to===to;})[0];
+    if(exact){ score+=45; why.push(['ok','Runs '+from+' → '+to+' regularly']); }
+    else if((p.routes||[]).some(function(r){return r.from===from;})){ score+=22; why.push(['warn','Loads from '+from+', but not to '+to]); }
+    else if(/pan india/i.test(branchNames(p).join(' '))){ score+=8; why.push(['warn','No regular '+from+' → '+to+', but runs a national network']); }
+    else { blocked=true; why.push(['bad','Does not run '+from+' → '+to]); }
+
+    if(!need.known){ why.push(['neutral','No weight given — part load vs full truck not checked']); }
+    // Full-load-only is a transporter's minimum. Same rule: it sinks them, it does not hide them.
+    else if(need.tons<9 && !p.partLoad){ score-=30; why.push(['warn','Full loads only — this is '+need.tons.toFixed(1)+' T, a part load']); }
+    else if(need.tons<9){ score+=25; why.push(['ok','Takes part load — you only have '+need.tons.toFixed(1)+' T']); }
+    else { score+=15; why.push(['ok',need.tons.toFixed(1)+' T is a full truck — their strength']); }
+
+    why.push(['neutral','Keeps '+p.vehicles]);
+    if(p.enq){ score+=Math.round(p.rep/p.enq*20); why.push([p.rep?'ok':'warn','Replied to '+p.rep+' of '+p.enq+' enquiries']); }
+    var n=(p.notes||[])[0];
+    if(n) why.push(['note','Your note ('+ago(n.d)+'): '+n.t]);
+    return {p:p,score:blocked?-999+score:score,why:why,blocked:blocked};
+  }
+
+  // ══ DIRECTORY ═════════════════════════════════════════════════════════════
+  function dirView(){
+    var counts={all:P.length};
+    P.forEach(function(p){ counts[p.role]=(counts[p.role]||0)+1; });
+    var chips=[['all','All'],['manufacturer','Manufacturers'],['dealer','Dealers'],
+               ['transporter','Transporters'],['fabricator','Fabricators'],['other','Other']]
+      .map(function(c){ return '<button class="f-chip'+(S.filter===c[0]?' on':'')+'" data-f="'+c[0]+'">'+c[1]+' <span class="num">'+(counts[c[0]]||0)+'</span></button>'; }).join('');
+    var list=P.filter(function(p){
+      if(S.filter!=='all' && p.role!==S.filter) return false;
+      if(!S.q) return true;
+      var hay=(p.company+' '+p.city+' '+branchNames(p).join(' ')+' '+(p.types||[]).join(' ')+' '
+        +people(p).map(function(x){return x.name;}).join(' ')+' '+allEmails(p).join(' ')+' '
+        +(p.roleOther||'')+' '+ROLE_LABEL[p.role]+' '
+        +(p.products||[]).map(function(x){return x.p;}).join(' ')+' '
+        +(p.notes||[]).map(function(n){return n.t;}).join(' ')).toLowerCase();
+      return hay.indexOf(S.q.toLowerCase())!==-1;
+    });
+    // When a name-search finds nobody, the finder block explains it and offers the web —
+    // a second "nobody matches" line under it would just be noise.
+    var quietEmpty = S.find.state==='name' && !list.length;
+    return finderBlock(list.length)
+      +'<div class="filters">'+chips
+      +'<span class="sp"></span>'
+      +'<button class="prim" id="bAdd" style="white-space:nowrap;">'+ic('plus')+' Add partner</button></div>'
+      +(list.length?list.map(dirCard).join('')
+                   :(quietEmpty?'':'<p class="muted empty">Nobody matches that.</p>'));
+  }
+
+  // ── One box, two jobs: paste an enquiry and it says who to send it to; type a name or a
+  //    city and it just filters the list. Which one you meant is worked out from the text.
+  function finderBlock(matchCount){
+    var f=S.find;
+    var h='<div class="finder"><div class="row" style="margin-bottom:9px;">'
+      +'<span style="color:var(--ai);">'+ic('spark','font-size:16px;')+'</span>'
+      +'<b style="font-size:13px;">Who should I send this enquiry to?</b>'
+      +'<span class="tiny sp" style="text-align:right;">Or type a name to just find someone</span></div>'
+      +'<textarea id="findIn" placeholder="Paste the customer\'s enquiry — e.g. 300 mtr of 2&quot; GI heavy and 120 mtr of 1&quot; ERW medium, delivery at Pune&#10;&#10;Or type a company, city or product to search the list.">'+esc(f.text)+'</textarea>'
+      +'<div style="display:flex;gap:8px;margin:9px 0 0;flex-wrap:wrap;">'
+      +'<button class="prim" data-find="go">'+ic('search')+' Suggest who to ask</button>'
+      +(f.state!=='idle'?'<button data-find="clear">Clear</button>':'')+'</div>';
+
+    if(f.state==='idle') return h+'</div>';
+    if(f.state==='reading'){
+      return h+'<div style="text-align:center;padding:18px;"><span class="spin"></span> <span class="muted">Reading…</span></div></div>';
+    }
+    // Nothing that looks like an enquiry — treat it as a plain search of the directory.
+    // And if the directory has nobody either, the same button that works everywhere else
+    // appears here: search the web. No dead ends.
+    if(f.state==='name'){
+      if(matchCount>0){
+        return h+'<p class="muted" style="margin-top:11px;">No enquiry in that, so I searched your list instead — '
+          +'<b>'+matchCount+'</b> partner'+(matchCount===1?'':'s')+' below match'+(matchCount===1?'es':'')+' <b>'+esc(f.text)+'</b>.</p>'
+          +'<p class="tiny" style="margin-top:5px;">For suggestions, include the pipe type (GI, ERW, seamless, SS), how much, and where it is going.</p></div>';
+      }
+      return h+'<p class="muted" style="margin-top:11px;">Nobody in your directory matches <b>'+esc(f.text)+'</b>.</p>'
+        +nameWeb(f)+'</div>';
+    }
+
+    var need=f.need;
+
+    h+=readBack(need);
+    if(need.types.length){
+      var sup=P.filter(function(p){return p.role==='dealer'||p.role==='manufacturer';})
+               .map(function(p){return scoreSupplier(p,need);}).sort(function(a,b){return b.score-a.score;});
+      var good=sup.filter(function(r){return !r.blocked;});
+      // Web search sits directly under the picks — it is the real next step. The ruled-out
+      // list is a footnote and belongs last, not between you and the way forward.
+      h+='<div class="sec" style="margin-top:16px;">Send it to</div>'
+        +rankList(good)
+        +finderWeb(good.length,need)
+        +ruledOut(sup.filter(function(r){return r.blocked;}));
+    }
+    if(need.freight && need.site){
+      var from=need.pickup||HOME;
+      var tra=P.filter(function(p){return p.role==='transporter';})
+               .map(function(p){return scoreTransporter(p,need,from);}).sort(function(a,b){return b.score-a.score;});
+      h+='<div class="sec" style="margin-top:18px;">'+ic('truck')+' For the transport — '+esc(from)+' → '+esc(need.site)+'</div>'
+        +rankList(tra.filter(function(r){return !r.blocked;}))
+        +ruledOut(tra.filter(function(r){return r.blocked;}));
+    }
+    return h+'</div>';
+  }
+
+  // Show what was understood, line by line, so a misread is obvious instead of silent.
+  function readBack(need){
+    var lines=need.items.map(function(li){
+      var w = li.kg!==null ? ' = <b>'+(li.kg/1000).toFixed(2)+' T</b>'
+                           : ' — <b>weight unknown</b>'+(li.cls?'':', class not given');
+      return '<span class="tag">'+esc(li.d||li.product)+(li.qtyShown?' × '+esc(li.qtyShown):'')+w+'</span>';
+    }).join('');
+    var tags=[];
+    tags.push(need.known ? 'Total: <b>'+need.tons.toFixed(2)+' T</b>'
+                         : '<b>No weight worked out</b> — minimums not checked');
+    if(need.pickup) tags.push('From: <b>'+esc(need.pickup)+'</b>');
+    tags.push(need.siteAssumed
+      ? 'Deliver to: <b>'+esc(need.site)+'</b> — assumed, no place named'
+      : 'Deliver to: <b>'+esc(need.site)+'</b>');
+    return '<div class="read"><p class="tiny" style="margin-bottom:6px;">What I understood — correct the text and ask again if this is wrong:</p>'
+      +(lines?lines+'<div style="height:5px;"></div>':'')
+      +tags.map(function(t){return '<span class="tag">'+t+'</span>';}).join('')
+      +(need.unresolved?'<p class="tiny" style="margin-top:7px;">Metres only turn into tonnes when the size <i>and</i> class are both given — otherwise the weight is left blank rather than guessed.</p>':'')
+      +'</div>';
+  }
+
+  // The web offer, sized to the moment: loud when your list came up empty, quiet when it
+  // merely might be beaten — but always there. Nobody should have to leave the app to Google.
+  function nameWeb(f){
+    var w=f.web;
+    if(w.state==='idle'){
+      return '<div style="margin-top:9px;"><button class="prim" data-fweb="go">'+ic('globe')+' Search the web for it</button></div>';
+    }
+    if(w.state==='searching'){
+      return '<div class="web" style="margin-top:9px;text-align:center;"><span class="spin"></span> <span class="muted">Searching the web for '+esc(f.text)+'…</span></div>';
+    }
+    return '<div style="margin-top:9px;">'
+      +'<p class="muted" style="margin-bottom:8px;">'+ic('globe')+' Found on the web — <b>nobody has vetted these</b>. Check them before you rely on a price.</p>'
+      +w.results.map(function(r,i){ return webCard(r,i,'fwebadd'); }).join('')
+      +'<button data-fweb="reset" style="font-size:12px;padding:4px 10px;">Clear results</button></div>';
+  }
+
+  function finderWeb(goodCount,need){
+    var w=S.find.web;
+    if(w.state==='idle'){
+      if(goodCount>=2){
+        return '<div style="margin-top:11px;text-align:right;">'
+          +'<button data-fweb="go">'+ic('globe')+' None of these? Search the web</button></div>';
+      }
+      return '<div style="margin-top:11px;">'
+        +'<p class="muted" style="margin-bottom:8px;">'+(goodCount?'Only one match in your directory.':'Nobody in your directory deals in this.')+' Want to look outside it?</p>'
+        +'<button class="prim" data-fweb="go">'+ic('globe')+' Search the web for suppliers</button></div>';
+    }
+    if(w.state==='searching'){
+      return '<div class="web" style="margin-top:11px;text-align:center;"><span class="spin"></span> <span class="muted">Searching the web for '+esc(need.types.join(' / '))+' suppliers'+(need.site?' near '+esc(need.site):'')+'…</span></div>';
+    }
+    return '<div style="margin-top:11px;">'
+      +'<p class="muted" style="margin-bottom:8px;">'+ic('globe')+' Found on the web — <b>nobody has vetted these</b>. Check them before you rely on a price.</p>'
+      +w.results.map(function(r,i){ return webCard(r,i,'fwebadd'); }).join('')
+      +'<button data-fweb="reset" style="font-size:12px;padding:4px 10px;">Clear results</button></div>';
+  }
+
+  function dirCard(p){
+    if(S.openId===p.id) return editCard(p);
+    var stale=daysSince(p.checked)>180, bits=[];
+    if(p.role==='transporter'){
+      bits.push((p.routes||[]).length+' regular route'+((p.routes||[]).length===1?'':'s'));
+      bits.push(p.vehicles); bits.push(p.partLoad?'Takes part load':'Full load only');
+    }else if(p.role==='other'){
+      bits.push((p.products||[]).length+' service'+((p.products||[]).length===1?'':'s'));
+      bits.push('Not suggested against enquiries');
+    }else{
+      if((p.types||[]).length) bits.push(p.types.join(' · '));
+      bits.push((p.products||[]).length+' product'+((p.products||[]).length===1?'':'s'));
+      if(p.role!=='fabricator') bits.push('MOQ '+(p.moq?p.moq+' T':'none'));
+    }
+    var latest=(p.notes||[])[0];
+    return '<div class="card click" data-open="'+p.id+'" tabindex="0" role="button">'
+      +'<div class="row"><span style="font-size:14px;font-weight:600;'+(p.company?'':'color:var(--text-3);')+'">'
+      +esc(p.company||'New partner — needs a name')+'</span>'
+      +pill(roleLabel(p),ROLE_KIND[p.role])
+      +(isRegular(p)?pill('Regular','good'):'')
+      +(p.fromWeb?pill('From web — unverified','bad'):'')
+      +'<span class="sp"></span>'
+      +((p.notes||[]).length?'<span class="tiny">'+ic('note')+' <span class="num">'+p.notes.length+'</span></span>':'')
+      +((p.images||[]).length?'<span class="tiny">'+ic('photo')+' <span class="num">'+p.images.length+'</span></span>':'')
+      +'<span style="color:var(--text-3);">'+ic('chev')+'</span></div>'
+      +'<p class="muted" style="margin-top:5px;">'+esc(p.city)+' · '+bits.filter(Boolean).map(esc).join(' · ')+'</p>'
+      +(latest?'<p class="muted" style="margin-top:5px;font-style:italic;">“'+esc(latest.t)+'” <span class="tiny">— '+ago(latest.d)+'</span></p>':'')
+      +'<p class="tiny'+(stale?' stale':'')+'" style="margin-top:5px;">Asked <span class="num">'+p.enq+'</span> times · replied <span class="num">'+replyRate(p)+'%</span> · last dealt '+ago(p.last)
+      +' · <b>details checked '+ago(p.checked)+'</b>'+(stale?' — worth a call':'')+'</p></div>';
+  }
+
+  function editCard(p){
+    // What they ARE is the first decision, not a badge — it decides which fields below even
+    // apply. Changing it swaps the panel underneath (products vs vehicles and routes).
+    var roles=ROLE_ORDER.map(function(r){
+      return '<option value="'+r+'"'+(p.role===r?' selected':'')+'>'+ROLE_LABEL[r]+'</option>'; }).join('');
+    // The header is the close control — the same place you clicked to open it.
+    return '<div class="card open">'
+      +'<div class="row" data-close="1" tabindex="0" role="button" style="cursor:pointer;margin-bottom:12px;">'
+      +'<span style="color:var(--text-3);">'+ic('chevdown')+'</span>'
+      +'<span style="font-size:14px;font-weight:600;">'+esc(p.company||'New partner')+'</span>'
+      +pill(roleLabel(p),ROLE_KIND[p.role])
+      +'<span class="sp"></span><span class="tiny">click to close</span></div>'
+      +'<div class="grid2">'
+        +fld('Company','company',p.company,'e.g. Annai Steel Traders')
+        +'<div class="fld"><label>They are a…</label><select data-k="role">'+roles+'</select></div>'
+      +'</div>'
+      +(p.role==='other'
+        ? '<div style="margin-top:-2px;">'+fld('What are they?','roleOther',p.roleOther,'e.g. galvaniser, testing lab, scrap buyer')+'</div>'
+        : '')
+      +'<p class="tiny" style="margin:-4px 0 10px;">'+roleHint(p.role)+'</p>'
+      +peopleBlock(p)+placesBlock(p)
+      +scanBlock(p)+(p.role==='transporter'?transporterBlock(p):supplierBlock(p))
+      +notesBlock(p)+historyBlock(p)+autoBlock(p)+'</div>';
+  }
+
+  // ── Contacts, the way a phone stores them ─────────────────────────────────
+  // A person is a card: one name, then as many numbers and addresses as they actually have,
+  // each labelled. Rakesh has a mobile AND a landline; the office has a sales address AND
+  // an accounts one. Flattening that into one phone / one email loses the number you need.
+  var PHONE_LABELS=['Mobile','WhatsApp','Office','Direct','Home'];
+  var EMAIL_LABELS=['Work','Sales','Accounts','Personal'];
+
+  function peopleBlock(p){
+    return '<div class="sec">Contacts<span class="sp"></span>'
+      +'<span class="tiny">'+people(p).length+' '+(people(p).length===1?'person':'people')+'</span></div>'
+      +people(p).map(function(c,i){ return personCard(c,i,p); }).join('')
+      +'<button data-addpc="1" style="font-size:12px;padding:4px 10px;">+ Add another person</button>'
+      +'<p class="tiny" style="margin-top:7px;">The first address on the first person is the one enquiries go to, '
+      +'and the one an incoming email is matched against — but <b>every</b> address here is matched, '
+      +'so a reply from the accounts inbox still finds the right firm.</p>';
+  }
+
+  function personCard(c,i,p){
+    var a=function(k){ return 'data-pc="'+i+'" data-k="'+k+'"'; };
+    var lineRow=function(kind,labels,arr){
+      return (arr||[]).map(function(x,j){
+        return '<div class="cline">'
+          +'<select data-pc="'+i+'" data-'+kind+'="'+j+'" data-k="label">'
+          +labels.map(function(l){ return '<option'+(x.label===l?' selected':'')+'>'+esc(l)+'</option>'; }).join('')
+          +'</select>'
+          +'<input data-pc="'+i+'" data-'+kind+'="'+j+'" data-k="v" value="'+esc(x.v)+'" placeholder="'
+          +(kind==='ph'?'number':'address')+'">'
+          +'<button class="del" data-del'+kind+'="'+i+':'+j+'" aria-label="Remove">✕</button></div>';
+      }).join('')
+      +'<button data-add'+kind+'="'+i+'" class="addline">+ '+(kind==='ph'?'phone':'email')+'</button>';
+    };
+    return '<div class="person">'
+      +'<div class="person-top">'
+      +'<input '+a('name')+' value="'+esc(c.name)+'" placeholder="Name">'
+      +'<input '+a('role')+' value="'+esc(c.role||'')+'" placeholder="Their job — e.g. Owner, Sales">'
+      +(i===0?'<span class="pill pill-accent">Main</span>'
+             :'<button class="del" data-delpc="'+i+'" aria-label="Remove">✕</button>')+'</div>'
+      +'<div class="person-cols">'
+      +'<div>'+lineRow('ph',PHONE_LABELS,c.phones)+'</div>'
+      +'<div>'+lineRow('em',EMAIL_LABELS,c.emails)+'</div>'
+      +'</div></div>';
+  }
+
+  // ── Where they are ────────────────────────────────────────────────────────
+  // A branch is a place you can send a lorry to, so it holds the town and the street address
+  // as well as the city. The city is what the distance is measured from.
+  function placesBlock(p){
+    var list=branchList(p);
+    var known=Object.keys(COORD).filter(function(c){ return c!=='Pan India'; }).sort();
+    return '<div class="sec">Where they are<span class="sp"></span>'
+      +'<button data-addbranch="1" style="font-size:11px;padding:3px 9px;">+ Add a branch</button></div>'
+      +'<div class="grid2">'+fld('City (head office)','city',p.city)
+      +fld('Head office address','address',p.address,'Street, area, pin')+'</div>'
+      +(list.length
+        ? list.map(function(b,i){
+            return '<div class="branch">'
+              +'<div class="branch-top">'
+              +'<select data-br="'+i+'" data-k="city">'
+              +'<option value="">City…</option>'
+              +known.map(function(c){ return '<option'+(b.city===c?' selected':'')+'>'+esc(c)+'</option>'; }).join('')
+              +'</select>'
+              +'<input data-br="'+i+'" data-k="area" value="'+esc(b.area||'')+'" placeholder="Town or area — e.g. Ambattur">'
+              +'<button class="del" data-delbranch="'+i+'" aria-label="Remove">✕</button></div>'
+              +'<input data-br="'+i+'" data-k="address" value="'+esc(b.address||'')+'" placeholder="Full address (optional)" style="margin-top:6px;">'
+              +'</div>';
+          }).join('')
+        : '<p class="tiny" style="margin-bottom:8px;">No branches — the head office is used on its own.</p>')
+      +'<p class="tiny"><b>How this is used:</b> for every enquiry the app measures the distance from '
+      +'each branch\'s <b>city</b> to the delivery point and scores the <b>nearest</b> one. A branch near '
+      +'the site can beat a cheaper supplier further away, because freight is what kills the margin. '
+      +'The town and address are for you and for the lorry — they do not affect the ranking.</p>';
+  }
+
+  // ── History: what was asked, and what came back ───────────────────────────
+  function historyBlock(p){
+    var h=p.history||[];
+    if(!h.length){
+      return '<div class="sec">Enquiry history</div>'
+        +'<p class="tiny">No enquiries sent through the app yet. Every one you send from a quote is '
+        +'recorded here with their reply, so you can see what they quoted last time.</p>';
+    }
+    return '<div class="sec">Enquiry history<span class="sp"></span>'
+      +'<span class="tiny">'+h.filter(function(x){return x.reply;}).length+' of '+h.length+' answered</span></div>'
+      +h.map(function(x){
+        return '<div class="hist">'
+          +'<div class="row" style="gap:7px;"><span class="tiny">'+ago(x.d)+'</span>'
+          +pill(x.quote,'accent')
+          +(x.won?pill('Order placed','good'):'')
+          +(x.reply?'':pill('No reply','bad'))+'</div>'
+          +enquiryTable(x)
+          +(x.reply
+            ? '<div class="reply"><p class="tiny" style="margin-bottom:3px;">Their reply'
+              +(x.repliedOn?' — '+ago(x.repliedOn):'')+'</p>'
+              +'<p class="muted">'+esc(x.reply)+'</p></div>'
+            : '<p class="tiny" style="margin-top:6px;">Never came back on this one.</p>')
+          +'</div>';
+      }).join('');
+  }
+
+  // The enquiry as it actually went out — the OUR REQUIREMENT table, not a summary of it.
+  // A one-line "asked for 2 inch GI" hides the quantities, which is the part you need when
+  // you are comparing what they quoted last time against what they are quoting now.
+  function enquiryTable(x){
+    if(!(x.rows||[]).length){
+      return '<p class="muted" style="margin-top:5px;"><b>Asked:</b> '+esc(x.asked||'—')+'</p>';
+    }
+    return '<div class="eqwrap"><table class="eq"><thead><tr>'
+      +'<th>Description</th><th>Qty</th><th>Unit</th><th>Your offer</th></tr></thead><tbody>'
+      +x.rows.map(function(r){
+        return '<tr><td>'+esc(r.desc)+'</td><td class="num">'+esc(r.qty)+'</td><td>'+esc(r.unit)+'</td>'
+          +'<td class="'+(r.offer?'num':'')+'">'+esc(r.offer||'—')+'</td></tr>';
+      }).join('')
+      +'</tbody></table></div>'
+      +'<p class="tiny" style="margin-top:4px;">Exactly the table that was emailed — their prices filled into the last column when they replied.</p>';
+  }
+
+  function roleHint(role){
+    if(role==='transporter') return 'Suggested for freight — matched on the route they run and whether they take part loads.';
+    if(role==='manufacturer') return 'Suggested for material — mills give the best price but hold you to a minimum order.';
+    if(role==='fabricator')   return 'Kept for cutting, bevelling and threading work — not offered for pipe supply.';
+    if(role==='other')        return 'Kept in the directory and searchable, but never suggested against an enquiry — say below what they do.';
+    return 'Suggested for material — dealers usually sell small quantities without a minimum.';
+  }
+
+  // Brochures, price lists, cards — anything the AI can read details out of. Files stay on the
+  // partner so they can be re-read later; whatever is pulled out is always shown for approval
+  // first, and logged with the file it came from.
+  function scanBlock(p){
+    var h='<div class="sec">'+ic('brochure')+' Brochures &amp; documents<span class="sp"></span>'
+      +(S.scan.open?'<button data-scan="close" style="font-size:11px;padding:3px 9px;">Close</button>'
+                   :'<button class="prim" data-scan="open" style="font-size:11px;padding:3px 9px;">'+ic('upload')+' Add a file</button>')+'</div>';
+
+    if((p.images||[]).length){
+      h+='<div style="margin-bottom:9px;">'+p.images.map(function(im,i){
+        return '<div class="filerow"><span style="color:var(--ai);">'+ic(im.kind==='pdf'?'pdf':'photo','font-size:17px;')+'</span>'
+          +'<div style="flex:1;min-width:0;"><span style="font-size:13px;font-weight:500;">'+esc(im.n)+'</span>'
+          +'<p class="tiny" style="margin-top:2px;">'+(im.count?im.count+' detail'+(im.count===1?'':'s')+' taken from it · ':'')
+          +'added '+ago(im.d||TODAY)+'</p></div>'
+          +'<button data-doc="'+esc(im.n)+'" style="font-size:11px;padding:3px 8px;">'+ic('search')+' View</button>'
+          +'<button data-reread="'+esc(im.sample||'')+'" title="Read it again" style="font-size:11px;padding:3px 8px;">'+ic('refresh')+' Re-read</button>'
+          +'<button class="del" data-delimg="'+i+'" aria-label="Remove">✕</button></div>';
+      }).join('')+'</div>';
+    }
+
+    if(!S.scan.open){
+      return h+((p.images||[]).length
+        ? '<p class="tiny">Kept on the partner — the AI reads them again whenever it needs a rate or a spec.</p>'
+        : '<p class="tiny">No files yet. A brochure or rate sheet fills most of this page in for you.</p>');
+    }
+    if(S.scan.reading){
+      return h+'<div class="card" style="text-align:center;padding:22px;"><span class="spin"></span> '
+        +'<span class="muted">Reading '+esc(S.scan.sample.file)+(S.scan.sample.detail?' ('+esc(S.scan.sample.detail)+')':'')+'…</span></div>';
+    }
+    if(S.scan.sample){
+      var s=S.scan.sample, f=s.finds;
+      return h+'<div class="card" style="background:var(--surface-2);">'
+        +'<div class="row" style="margin-bottom:4px;"><span style="color:var(--ai);">'+ic(s.kind==='pdf'?'pdf':'photo','font-size:16px;')+'</span>'
+        +'<b style="font-size:13px;">'+esc(s.file)+'</b>'+(s.detail?'<span class="tiny">'+esc(s.detail)+'</span>':'')
+        +'<span class="sp"></span>'
+        +'<button data-doc="'+esc(s.file)+'" style="font-size:11px;padding:3px 8px;">'
+        +ic('search')+' '+(S.openDoc===s.file?'Hide':'View')+'</button></div>'
+        +(S.openDoc===s.file?docView(s.file):'')
+        +'<p class="muted" style="margin-bottom:3px;">Found <b>'+f.length+'</b> things. Tick what to keep — nothing is saved until you apply it:</p>'
+        +f.map(function(x,i){
+          return '<label class="found"><input type="checkbox" data-find2="'+i+'"'+(S.scan.picked[i]!==false?' checked':'')+'>'
+            +'<span><span class="tiny">'+esc(x.label)+'</span><br><span style="font-size:13px;">'+esc(x.value)+'</span>'
+            +'<br>'+changeNote(p,x)+'</span></label>';
+        }).join('')
+        +'<div style="display:flex;gap:8px;margin-top:11px;flex-wrap:wrap;">'
+        +'<button class="prim" data-scan="apply">Apply to '+esc(p.company)+'</button>'
+        +'<button data-scan="back">Pick another file</button></div></div>';
+    }
+    return h+'<div class="drop">'+ic('upload','font-size:24px;color:var(--ai);')
+      +'<b>Drop brochures, price lists, cards or rate screenshots here</b>'
+      +'<span>PDF or photo · take one on your phone · several at a time</span></div>'
+      +'<p class="tiny" style="margin:9px 0 7px;">This is a mock, so pick a file below to see what the AI pulls out of it:</p>'
+      +'<div class="samples">'
+      +SAMPLES.map(function(s){
+        return '<button class="shot" data-sample="'+s.id+'">'+ic(s.icon,'font-size:21px;')
+          +'<b>'+esc(s.label)+'</b><span>'+esc(s.sub)+'</span></button>';
+      }).join('')+'</div>';
+  }
+
+  // Adding a file to a partner who already has details can OVERWRITE them. Say so before it
+  // happens, and show what would be lost — a silent replacement is how good data goes missing.
+  function changeNote(p,x){
+    if(x.kind==='note') return '<span class="why note">Adds a dated note — nothing is replaced</span>';
+    if(x.kind==='product'){
+      var hit=(p.products||[]).filter(function(pr){ return pr.p.toLowerCase()===x.product.p.toLowerCase(); })[0];
+      if(!hit) return '<span class="why">New product row</span>';
+      if(hit.moq===x.product.moq && (hit.rule||'')===(x.product.rule||''))
+        return '<span class="why neutral">Same as what you have — no change</span>';
+      var was=hit.p+' · min '+hit.moq+' T'+(hit.rule?' · '+hit.rule:'');
+      return '<span class="why warn">Replaces what you have: '+esc(was)+'</span>';
+    }
+    var current = x.key==='types' ? (p.types||[]).join(', ')
+                : x.key==='moq'   ? String(p.moq||'')
+                : String(p[x.key]||'');
+    if(!current) return '<span class="why">Currently blank</span>';
+    if(current===String(x.value)) return '<span class="why neutral">Same as what you have — no change</span>';
+    return '<span class="why warn">Replaces: '+esc(current)+'</span>';
+  }
+
+  var PIPE_TYPES=['GI','ERW','Seamless','SS','MS','Alloy'];
+
+  function supplierBlock(p){
+    var have=p.types||[];
+    var canAdd=PIPE_TYPES.filter(function(t){ return have.indexOf(t)===-1; });
+    return '<div class="sec">What they supply</div>'
+      +'<div class="grid2">'
+      +'<div class="fld"><label>Pipe types</label>'
+      +'<div style="display:flex;gap:6px;">'
+      +'<select id="typePick" style="flex:1;">'
+      +'<option value="">Pick a type…</option>'
+      +canAdd.map(function(t){ return '<option>'+esc(t)+'</option>'; }).join('')
+      +'<option value="__other"'+(S.typeOther!==null&&S.typeOther!==undefined?' selected':'')+'>＋ Add another…</option>'
+      +'</select><button data-addtype="1" style="white-space:nowrap;">Add</button></div>'
+      +(S.typeOther!==null&&S.typeOther!==undefined
+        ? '<input id="typeOtherIn" value="'+esc(S.typeOther)+'" placeholder="What do they deal in? e.g. Ductile iron" style="margin-top:6px;">'
+        : '')
+      +'</div>'
+      +fld('Overall MOQ (tonnes)','moq',p.moq)+'</div>'
+      +'<div class="fld" style="margin-top:-4px;">'
+      +(have.length
+        ? '<div>'+have.map(function(t,i){
+            return '<span class="chip">'+esc(t)+'<span data-deltype="'+i+'" style="cursor:pointer;opacity:.65;">✕</span></span>';
+          }).join('')+'</div>'
+        : '<p class="tiny">None set — they will not be suggested for any enquiry until a type is added.</p>')
+      +'</div>'
+      +'<p class="tiny" style="margin-bottom:10px;">Overall MOQ is the fallback. A product with its own minimum below wins over it.</p>'
+
+      +'<div class="tiny" style="margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em;font-weight:600;">Product range</div>'
+      +(p.products||[]).map(function(pr,i){ return productRow(pr,i); }).join('')
+      +'<button data-addpr="1" style="font-size:12px;padding:4px 10px;">+ Add product</button>'
+      +'<p class="tiny" style="margin-top:8px;">Sizes and thickness are what decide whether they can even make the line — '
+      +'a 10" enquiry never goes to someone who stops at 6". Store the price as a <b>relationship</b> '
+      +'("P11 = ASTM + Rs 45/kg") — that holds for years, where a bare rate is stale in weeks.</p>'
+      +otherRulesBlock(p);
+  }
+
+  // Not every price rule belongs to a product. GST, freight terms, payment discounts and
+  // rate-revision dates apply to the whole firm, and putting them on one product row would
+  // both hide them and repeat them.
+  function otherRulesBlock(p){
+    var rules=p.rules||[];
+    return '<div class="tiny" style="margin:14px 0 6px;text-transform:uppercase;letter-spacing:.05em;font-weight:600;">'
+      +'Other price rules</div>'
+      +(rules.length
+        ? rules.map(function(r,i){
+            return '<div class="orule">'
+              +'<input data-orule="'+i+'" value="'+esc(r)+'" placeholder="e.g. GST 18% extra on all rates">'
+              +'<button class="del" data-delorule="'+i+'" aria-label="Remove">✕</button></div>';
+          }).join('')
+        : '<p class="tiny" style="margin-bottom:6px;">None yet.</p>')
+      +'<button data-addorule="1" style="font-size:12px;padding:4px 10px;">+ Add rule</button>'
+      +'<p class="tiny" style="margin-top:7px;">Anything that applies to <b>everything they quote</b> — GST, '
+      +'freight terms, payment discounts, when rates are revised. These show up against them on every '
+      +'enquiry, so you are not caught out by a rate that looked cheaper than it was.</p>';
+  }
+
+  // One product: what it is, to what standard, then THE SIZES — one row per outside diameter,
+  // each with its own wall thickness. A pipe range is never "2 mm to 5 mm across the board":
+  // 15 NB heavy is 3.2 mm while 100 NB heavy is 5.4 mm. Ranges would let the app promise a
+  // size the supplier does not roll.
+  function productRow(pr,i){
+    var f=function(k,ph,v){ return '<input data-pr="'+i+'" data-k="'+k+'" value="'+esc(v==null?'':v)+'" placeholder="'+esc(ph)+'">'; };
+    var cls=specClass(pr.spec);
+    var sizes=pr.sizes||[];
+    return '<div class="pcard">'
+      +'<div class="pcard-r1">'
+        +f('p','Product — e.g. GI pipe',pr.p)
+        +f('spec','Specification — e.g. IS 1239 Heavy',pr.spec)
+        +'<button class="del" data-delpr="'+i+'" aria-label="Remove">✕</button></div>'
+      +'<div class="pcard-r2">'
+        +'<span class="pcard-lab">Minimum order</span>'+f('moq','T',pr.moq)+'<span class="pcard-lab">tonnes</span>'
+        +'<span class="sp"></span>'
+        +(cls?'<button data-loadis="'+i+'" class="addline">Load IS 1239 '+esc(cls)+' sizes</button>':'')
+      +'</div>'
+      +'<div class="pcard-r3">'+f('rule','Price rule — e.g. ASTM + Rs 45/kg',pr.rule)+'</div>'
+      +'<div class="sizes">'
+        +'<div class="szrow szhead"><span>NB</span><span>Size</span><span>OD mm</span><span>Thickness mm</span><span></span></div>'
+        +(sizes.length
+          ? sizes.map(function(s,j){
+              var g=function(k,ph){ return '<input data-pr="'+i+'" data-sz="'+j+'" data-k="'+k+'" value="'+esc(s[k]==null?'':s[k])+'" placeholder="'+ph+'">'; };
+              return '<div class="szrow">'+g('nb','15')+g('inch','1/2&quot;')+g('od','21.3')+g('thk','3.2')
+                +'<button class="del" data-delsz="'+i+':'+j+'" aria-label="Remove">✕</button></div>';
+            }).join('')
+          : '<p class="tiny" style="padding:5px 0;">No sizes yet — until one is added, this product will not be matched to an enquiry size.</p>')
+        +'<button data-addsz="'+i+'" class="addline">+ size</button>'
+      +'</div></div>';
+  }
+
+  function transporterBlock(p){
+    return '<div class="sec">Vehicles &amp; routes</div><div class="grid2">'
+      +fld('Vehicles they keep','vehicles',p.vehicles)
+      +'<div class="fld"><label>Part load</label><select data-k="partLoad">'
+      +'<option value="yes"'+(p.partLoad?' selected':'')+'>Accepts part load</option>'
+      +'<option value="no"'+(p.partLoad?'':' selected')+'>Full load only</option></select></div></div>'
+      +'<div class="tiny" style="margin-bottom:6px;">Regular routes</div>'
+      +(p.routes||[]).map(function(r,i){
+        return '<div class="mini"><input data-rt="'+i+'" data-k="from" value="'+esc(r.from)+'" placeholder="From">'
+          +'<input data-rt="'+i+'" data-k="to" value="'+esc(r.to)+'" placeholder="To">'
+          +'<button class="del" data-delrt="'+i+'" aria-label="Remove">✕</button></div>';
+      }).join('')
+      +'<button data-addrt="1" style="font-size:12px;padding:4px 10px;">+ Add route</button>';
+  }
+
+  function notesBlock(p){
+    return '<div class="sec">'+ic('note')+' Notes</div>'
+      +'<div style="display:flex;gap:8px;margin-bottom:12px;">'
+      +'<input id="noteIn" placeholder="What did they tell you? e.g. lead time is 10 days, not 5" style="flex:1;">'
+      +'<button class="prim" data-addnote="1" style="white-space:nowrap;">Add note</button></div>'
+      +((p.notes||[]).length
+        ? p.notes.map(function(n,i){
+            return '<div class="note"><p>'+esc(n.t)+'</p><span class="when">'+ago(n.d)+'</span>'
+              +(n.src?'<span class="src">'+esc(n.src)+'</span>':'')
+              +' <span class="act" data-delnote="'+i+'">remove</span></div>';
+          }).join('')
+        : '<p class="tiny">No notes yet. Every note is dated, so you can see when one has gone old.</p>');
+  }
+
+  function autoBlock(p){
+    return '<div class="sec">What the app works out on its own</div><div class="grid3">'
+      +ro('Regular?',isRegular(p)?'Yes':'No')+ro('Enquiries sent',String(p.enq))+ro('Reply rate',replyRate(p)+'%')
+      +ro('Last dealt with',ago(p.last))+ro('Last edited',ago(p.checked))+'</div>'
+      +'<p class="tiny">You never type these. "Regular" means asked 5+ times and dealt with in the last 4 months. '
+      +'"Last edited" moves on its own whenever anything here changes.</p>';
+  }
+
+  function fld(l,k,v,ph){
+    return '<div class="fld"><label>'+esc(l)+'</label><input data-k="'+k+'" value="'+esc(v==null?'':v)+'"'
+      +(ph?' placeholder="'+esc(ph)+'"':'')+'></div>';
+  }
+  function ro(l,v){ return '<div class="fld"><label>'+esc(l)+'</label><div class="ro num">'+esc(v)+'</div></div>'; }
+
+  // ══ INSIDE A QUOTE ════════════════════════════════════════════════════════
+  function quoteView(){
+    var q=Q();
+    var tabs=[['quote','Quote','file'],['freight','Freight','truck'],['enquiry','Enquiry','mail'],['history','History','refresh']]
+      .map(function(t){
+        return '<button class="qtab'+(S.qtab===t[0]?' on':'')+'" data-qtab="'+t[0]+'">'+ic(t[2])+' '+t[1]+'</button>';
+      }).join('');
+
+    return '<div class="read" style="margin-bottom:14px;">'
+      +'<p class="muted"><b>What this tab is:</b> one of your real quote folders from the approval list, '
+      +'with its <b>Freight</b> and <b>Enquiry</b> tabs exactly where they are today. The directory adds '
+      +'<b>who to ask</b> inside them — no new screen to go to.</p></div>'
+      +'<div class="row" style="margin-bottom:11px;"><span class="muted">Open quote</span>'
+      +'<select id="qPick" style="width:auto;">'+QUOTES.map(function(x,i){ return '<option value="'+i+'"'+(S.quote===i?' selected':'')+'>'+x.no+' · '+x.customer+'</option>'; }).join('')+'</select>'
+      +'<span class="tiny">Switch to DSC-149 to see what happens when your directory has nobody.</span></div>'
+
+      +'<div class="folder">'
+      +'<div class="row" style="padding:11px 14px;border-bottom:1px solid var(--line);">'
+      +'<span style="color:var(--text-2);">'+ic('folder','font-size:17px;')+'</span>'
+      +'<span style="font-size:14px;font-weight:600;">'+q.no+' · '+esc(q.customer)+'</span>'
+      +pill('Approved','accent')+'<span class="sp"></span>'
+      +'<span class="tiny num">'+esc(q.rate)+'</span></div>'
+      +'<div class="qtabs">'+tabs+'</div>'
+      +'<div class="qbody">'
+      +(S.qtab==='freight'?qtFreight(q)
+       :S.qtab==='enquiry'?qtEnquiry(q)
+       :S.qtab==='history'?qtHistory(q)
+       :qtQuote(q,quoteNeed()))
+      +'</div></div>';
+  }
+
+  function qtQuote(q,need){
+    return '<table class="eq" style="margin-bottom:10px;"><thead><tr>'
+      +'<th>Description</th><th>Qty</th><th>Unit</th><th>Weight</th></tr></thead><tbody>'
+      +q.items.map(function(i){
+        return '<tr><td>'+esc(i.d)+'</td><td class="num">'+i.qty+'</td><td>'+esc(i.unit)+'</td>'
+          +'<td class="num">'+(i.kg/1000).toFixed(2)+' T</td></tr>';
+      }).join('')+'</tbody></table>'
+      +'<p class="muted num"><b>'+need.tons.toFixed(2)+' T total</b> · deliver to <b>'+esc(q.site)+'</b></p>'
+      +'<p class="tiny" style="margin-top:6px;">The Quote tab is unchanged — everything the directory adds lives in '
+      +'<b>Freight</b> and <b>Enquiry</b>.</p>';
+  }
+
+  // ── FREIGHT TAB ───────────────────────────────────────────────────────────
+  // Laid out as the real Send-freight-enquiry box is: route, then recipients, then weight,
+  // then the message. The suggestion button sits UNDER the address field, so by the time it
+  // runs it can read the pickup, the drop and the weight you actually typed — not a guess
+  // taken off the quote.
+  function qtFreight(q){
+    return foldSection('weight','Calculate weight',S.wOpen,weightPanel(q,quoteNeed()))
+      +foldSection('freightenq','Send freight enquiry',S.fOpen,freightComposer(q))
+      +'<div class="addfreight">'
+      +'<b style="font-size:13px;">Add freight to quote</b>'
+      +'<div class="row" style="margin-top:8px;">'
+      +'<input placeholder="Amount" style="width:120px;" value="">'
+      +'<select style="width:auto;"><option>Line item</option><option>FOR — hide in PDF</option></select>'
+      +'<button class="prim">Add freight</button></div></div>';
+  }
+
+  function freightComposer(q){
+    var fr=S.frt, need=quoteNeed();
+    var kg=(fr.kg===null)?Math.round(need.tons*1000):fr.kg;
+    var a=askNeed('transport');
+    var tra=P.filter(function(p){return p.role==='transporter';})
+             .map(function(p){return scoreTransporter(p,a.need,a.from);})
+             .sort(function(x,y){return y.score-x.score;});
+    var shown=S.ask.transport.state==='done';
+
+    return '<div class="grid2">'
+      +'<div class="fld"><label>Pickup point</label>'
+      +'<input id="frtPickup" value="'+esc(fr.pickup)+'" placeholder="e.g. DSC Warehouse, Chennai"></div>'
+      +'<div class="fld"><label>Drop point</label>'
+      +'<input id="frtDrop" value="'+esc(fr.drop)+'" placeholder="e.g. Hyderabad"></div></div>'
+
+      +'<div class="fld"><label>Bcc — transporters</label>'
+      +recipientField('transport','Type a transporter name or email')+'</div>'
+      +'<p class="tiny" style="margin:-4px 0 10px;">Each transporter gets their own email — they cannot see '
+      +'each other. People at the same firm ride on one email and are Cc&rsquo;d together.</p>'
+
+      +askButton('transport')
+      +(S.ask.transport.state==='thinking'
+        ? '<div class="added" style="text-align:center;"><span class="spin"></span> <span class="muted">Reading…</span></div>' : '')
+      +(shown
+        ? '<div class="added">'
+          +askBar('transport')
+          +'<p class="tiny" style="margin:9px 0 8px;">Read from this box: '
+          +'<b>'+esc(a.from||'no pickup')+'</b> → <b>'+esc(a.need.site||'no drop')+'</b>'
+          +' · <b>'+(a.need.tons?a.need.tons.toFixed(2)+' T':'no weight')+'</b></p>'
+          +rankList(tra.filter(function(r){return !r.blocked;}))
+          +ruledOut(tra.filter(function(r){return r.blocked;}))
+          +'</div>'
+        : '')
+
+      +'<div class="wtrow">'+ic('truck')
+      +'<input id="frtKg" type="number" value="'+kg+'" style="width:96px;text-align:right;">'
+      +'<span class="muted">kg · '+q.items.length+' item'+(q.items.length===1?'':'s')+'</span>'
+      +(fr.kg!==null?'<button data-frtreset="1" class="addline">&#8634; use calculated</button>':'')
+      +'</div>'
+
+      +'<div class="fld" style="margin-top:10px;"><label>Message to transporters (editable)</label>'
+      +'<textarea id="frtMsg" rows="6">'+esc(fr.messageEdited?fr.message:freightDraft(q,kg))+'</textarea></div>'
+      +'<button class="prim" data-send="transport"'+(S.compose.transport.to.length?'':' disabled')+'>'
+      +ic('mail')+' Send request</button>';
+  }
+
+  // Regenerated from the route and weight until you hand-edit it, as the real one is.
+  function freightDraft(q,kg){
+    var fr=S.frt;
+    return 'Dear Sir,\n\nPlease quote your best freight rate for the following:\n\n'
+      +'• Pickup: '+(fr.pickup||'—')+'\n'
+      +'• Drop: '+(fr.drop||'—')+'\n'
+      +'• Approx weight: '+kg+' kg\n'
+      +'• Material: MS / GI pipes\n\n'
+      +'Kindly confirm vehicle availability and transit time.\n\nRegards,\nDSC Pipes';
+  }
+
+  function weightPanel(q,need){
+    return '<table class="eq"><thead><tr><th>Description</th><th>Qty</th><th>kg/m</th><th>Weight</th></tr></thead><tbody>'
+      +q.items.map(function(i){
+        return '<tr><td>'+esc(i.d)+'</td><td class="num">'+i.qty+' '+esc(i.unit)+'</td>'
+          +'<td class="num">'+i.kgm.toFixed(2)+'</td><td class="num">'+i.kg+' kg</td></tr>';
+      }).join('')
+      +'<tr><td colspan="3"><b>Total weight</b></td><td class="num"><b>'+need.tons.toFixed(2)+' T</b></td></tr>'
+      +'</tbody></table>'
+      +'<p class="tiny" style="margin-top:6px;">Unchanged — the panel you already have.</p>';
+  }
+
+  // ── ENQUIRY TAB ───────────────────────────────────────────────────────────
+  // Create enquiry builds the requirement table, as today. The suggestion button sits below
+  // the address field — after the table — so it reads the pipe types and quantities you are
+  // actually asking for.
+  function qtEnquiry(q){
+    var a=askNeed('material');
+    var sup=P.filter(function(p){return p.role==='dealer'||p.role==='manufacturer';})
+             .map(function(p){return scoreSupplier(p,a.need);}).sort(function(x,y){return y.score-x.score;});
+    var good=sup.filter(function(r){return !r.blocked;});
+    var shown=S.ask.material.state==='done';
+
+    if(!S.enqMade){
+      return '<div style="margin-bottom:10px;">'
+        +'<button class="prim" data-enq="make">'+ic('mail')+' Create enquiry</button></div>'
+        +'<p class="muted empty">Builds the requirement table from this quote — what you do today. '
+        +'Who to send it to comes after that.</p>';
+    }
+    return '<div style="margin-bottom:10px;">'
+      +'<button data-enq="make">'+ic('mail')+' Create enquiry</button>'
+      +' <button data-enq="clear">Start again</button></div>'
+      +'<div class="sec">Our requirement (enquiry)</div>'
+      +'<div class="eqwrap"><table class="eq"><thead><tr>'
+      +'<th>S. No</th><th>Product &amp; specification</th><th>Size</th><th>Qty</th><th>UOM</th>'
+      +'<th>Make required</th><th>Rate</th><th>Make offered</th></tr></thead><tbody>'
+      +q.items.map(function(i,n){
+        return '<tr><td class="num">'+(n+1)+'</td><td>'+esc(i.d)+'</td><td>'+esc(sizeOfItem(i))+'</td>'
+          +'<td class="num">'+i.qty+'</td><td>'+esc(i.unit)+'</td><td>—</td><td>—</td><td>—</td></tr>';
+      }).join('')+'</tbody></table></div>'
+      +'<p class="tiny" style="margin:6px 0 12px;">Built from the quote — unchanged from what you have today.</p>'
+
+      +'<div class="fld"><label>Bcc — suppliers</label>'
+      +recipientField('material','Type a supplier name or email')+'</div>'
+      +'<p class="tiny" style="margin:-4px 0 10px;">Each supplier gets their own email and is Bcc&rsquo;d, '
+      +'so nobody sees anyone else.</p>'
+
+      +askButton('material')
+      +(S.ask.material.state==='thinking'
+        ? '<div class="added" style="text-align:center;"><span class="spin"></span> <span class="muted">Reading…</span></div>' : '')
+      +(shown
+        ? '<div class="added">'
+          +askBar('material')
+          +'<p class="tiny" style="margin:9px 0 8px;">Read from the table above: '
+          +'<b>'+esc(a.need.types.join(' + ')||'no pipe type')+'</b>'
+          +' · <b>'+(a.need.tons?a.need.tons.toFixed(2)+' T':'no weight')+'</b>'
+          +' · to <b>'+esc(a.need.site)+'</b></p>'
+          +rankList(good)+webBlock(good.length)+ruledOut(sup.filter(function(r){return r.blocked;}))
+          +'</div>'
+        : '')
+
+      +'<div class="fld" style="margin-top:10px;"><label>Message to suppliers (editable)</label>'
+      +'<textarea id="enqMsg" rows="5">'+esc(S.enqMsg)+'</textarea></div>'
+      +'<button class="prim" data-send="material"'+(S.compose.material.to.length?'':' disabled')+'>'
+      +ic('mail')+' Send enquiry</button>';
+  }
+
+  function sizeOfItem(i){
+    var m=String(i.d||'').match(/^[^ ]+/);
+    return m?m[0]:'';
+  }
+
+  // The chip field itself — firm groups already added, plus the box to type a new address.
+  function recipientField(section,ph){
+    var c=S.compose[section];
+    return '<div>'
+      +(c.to.length?c.to.map(function(g,i){ return groupRow(g,section,i); }).join(''):'')
+      +'<div style="display:flex;gap:8px;">'
+      +'<input id="to-'+section+'" placeholder="'+esc(ph)+'" value="'+esc(c.draft)+'" style="flex:1;">'
+      +'<button data-addto="'+section+'" style="white-space:nowrap;">Add</button></div></div>';
+  }
+
+  function qtHistory(q){
+    return '<p class="muted empty">Revisions and the customer conversation live here — unchanged, and '
+      +'outside what the directory touches.</p>';
+  }
+
+  // A collapsible section, the way the Freight tab already works.
+  function foldSection(key,title,open,body){
+    return '<div class="fold">'
+      +'<div class="fold-head" data-fold="'+key+'" tabindex="0" role="button">'
+      +'<span style="color:var(--text-3);">'+ic(open?'chevdown':'chev')+'</span>'
+      +'<b style="font-size:13px;">'+esc(title)+'</b></div>'
+      +(open?'<div class="fold-body">'+body+'</div>':'')+'</div>';
+  }
+
+  function rankList(rows){
+    if(!rows.length) return '<p class="muted empty">Nobody in your directory fits this one.</p>';
+    return rows.map(function(r,i){
+      return '<div class="card"><div class="rank"><div class="rank-n">'+(i+1)+'</div>'
+        +'<div style="flex:1;min-width:0;"><div class="row">'
+        +'<span style="font-size:14px;font-weight:600;">'+esc(r.p.company)+'</span>'
+        +pill(roleLabel(r.p),ROLE_KIND[r.p.role])+(isRegular(r.p)?pill('Regular','good'):'')+'</div>'
+        +'<p class="tiny" style="margin:4px 0 7px;">'+esc([mainName(r.p),mainEmail(r.p),mainPhone(r.p)].filter(Boolean).join(' · '))+'</p>'
+        +'<div>'+r.why.map(function(w){return '<span class="why '+(w[0]==='ok'?'':w[0])+'">'+esc(w[1])+'</span>';}).join('')+'</div></div>'
+        +'<button class="prim" data-pick="'+r.p.id+'" style="white-space:nowrap;">'+ic('mail')+' Send Email</button></div></div>';
+    }).join('');
+  }
+
+  // Which composer a partner drops into, from what they are.
+  function sectionFor(p){ return p&&p.role==='transporter'?'transport':'material'; }
+
+  function ruledOut(rows){
+    if(!rows.length) return '';
+    return '<p class="tiny" style="margin:13px 0 7px;">Not suggested — but shown, so you can overrule it:</p>'
+      +rows.map(function(r){
+        var bad=r.why.filter(function(w){return w[0]==='bad';});
+        return '<div class="card out"><div class="rank"><div class="rank-n">'+ic('minus','font-size:12px;')+'</div>'
+          +'<div style="flex:1;min-width:0;"><span style="font-size:13px;font-weight:600;">'+esc(r.p.company)+'</span> '
+          +pill(roleLabel(r.p),ROLE_KIND[r.p.role])
+          +'<div style="margin-top:5px;">'+bad.map(function(w){return '<span class="why bad">'+esc(w[1])+'</span>';}).join('')+'</div></div>'
+          +'<button style="white-space:nowrap;">Ask anyway</button></div></div>';
+      }).join('');
+  }
+
+  function webCard(r,i,addAttr){
+    return '<div class="web"><div class="row"><span style="font-size:14px;font-weight:600;">'+esc(r.company)+'</span>'
+      +pill('From web','ai')+(r.added?pill('Added to directory','good'):'')+'</div>'
+      +'<p class="muted" style="margin:5px 0 3px;">'+esc(r.city)+' — '+esc(r.what)+'</p>'
+      +'<p class="tiny" style="margin-bottom:9px;">Source: <span class="weblink">'+esc(r.src)+'</span> · '+esc(r.note)+'</p>'
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap;">'
+      +(r.added?'<button disabled>Already added</button>':'<button class="prim" data-'+addAttr+'="'+i+'">Add to directory</button>')
+      +'<button>Draft an enquiry</button></div></div>';
+  }
+
+  function webBlock(goodCount){
+    var thin=goodCount<2, need=askNeed('material').need;
+    if(S.web.state==='idle'){
+      return '<div style="margin-top:11px;'+(thin?'':'text-align:right;')+'">'
+        +(thin?'<p class="muted" style="margin-bottom:8px;">'+(goodCount?'Only one match in your directory.':'Nobody in your directory deals in this.')+' Want to look outside it?</p>':'')
+        +'<button class="'+(thin?'prim':'')+'" data-web="go">'+ic('globe')+' '+(thin?'Search the web for suppliers':'None of these? Search the web')+'</button></div>';
+    }
+    if(S.web.state==='searching'){
+      return '<div class="web" style="margin-top:11px;text-align:center;"><span class="spin"></span> <span class="muted">Searching the web for '+esc(need.types.join(' / '))+' suppliers near '+esc(need.site)+'…</span></div>';
+    }
+    return '<div style="margin-top:11px;">'
+      +'<p class="muted" style="margin-bottom:8px;">'+ic('globe')+' Found on the web — <b>nobody has vetted these</b>. Check them before you rely on a price.</p>'
+      +S.web.results.map(function(r,i){ return webCard(r,i,'webadd'); }).join('')
+      +'<button data-web="reset" style="font-size:12px;padding:4px 10px;">Clear results</button></div>';
+  }
+
+  // One bar, always above the results. Empty + Ask = "just show me who". Typed + Ask = the
+  // same list, with whatever you typed folded in. Nothing is shown until you press it.
+  // Before anything is asked, this is just a button. Afterwards the bar sits at the top of
+  // the results, so a follow-up question is typed right where the answer is — and the results
+  // stay put until you change the question. No Clear: retyping is the reset.
+  function askTitle(section){ return section==='material'?'Who can I buy this from?':'Who can I send this with?'; }
+
+  function askButton(section){
+    var st=S.ask[section];
+    if(st.state!=='idle') return '';
+    return '<div style="margin-bottom:12px;">'
+      +'<button class="prim" data-ask="'+section+'">'+ic('spark')+' Ask AI</button>'
+      +'<span class="tiny" style="margin-left:8px;">'+esc(askTitle(section))+'</span></div>';
+  }
+
+  function askBar(section){
+    var st=S.ask[section];
+    var ph=(section==='material')
+      ? 'Add anything that matters — e.g. needed in 5 days, or 12 T of seamless to Kochi'
+      : 'Add anything that matters — e.g. loading from Nashik, or part load only';
+    return '<div class="askbar">'
+      +'<span style="color:var(--ai);">'+ic('spark','font-size:15px;')+'</span>'
+      +'<input id="ask-'+section+'" placeholder="'+esc(ph)+'" value="'+esc(st.q)+'">'
+      +'<button class="prim" data-ask="'+section+'" style="white-space:nowrap;">Ask</button></div>';
+  }
+
+  // What the quote says, with anything typed into the bar layered on top of it.
+  function askNeed(section){
+    var need=quoteNeed(), from=S.freightFrom, notes=[];
+    need={items:need.items,types:need.types.slice(),site:need.site,tons:need.tons,known:true};
+    // Freight reads the box you filled in: its pickup, its drop, its weight. Those are the
+    // real intent — the quote's delivery point is only the fallback when the box is empty.
+    if(section==='transport'){
+      var fr=S.frt;
+      if(String(fr.pickup||'').trim()) from=matchCity(fr.pickup)||fr.pickup;
+      if(String(fr.drop||'').trim()) need.site=matchCity(fr.drop)||fr.drop;
+      if(fr.kg!==null && fr.kg>0) need.tons=fr.kg/1000;
+    }
+    var typed=String(S.ask[section].asked||'').trim();
+    if(typed){
+      var extra=readEnquiry(typed);
+      if(extra.site && !extra.siteAssumed && extra.site!==need.site){
+        need.site=extra.site; notes.push('Delivering to <b>'+esc(extra.site)+'</b>, not '+esc(quoteNeed().site));
+      }
+      if(extra.pickup){ from=extra.pickup; notes.push('Loading from <b>'+esc(extra.pickup)+'</b>'); }
+      if(extra.types.length){ need.types=extra.types; notes.push('Looking for <b>'+esc(extra.types.join(' + '))+'</b>'); }
+      if(extra.known && extra.tons!==need.tons){
+        need.tons=extra.tons; need.items=extra.items;
+        notes.push('Using <b>'+extra.tons.toFixed(2)+' T</b>, not the quote\'s '+quoteNeed().tons.toFixed(2)+' T');
+      }
+    }
+    return {need:need, from:from, typed:typed, notes:notes};
+  }
+
+
+
+  // ── Send enquiry ──────────────────────────────────────────────────────────
+  // Recipients are grouped BY FIRM, because that is the rule that matters: everyone at one
+  // firm goes on ONE email and is CC'd, so they can see each other. Each firm gets its own
+  // separate email, so two suppliers never learn they are being quoted against each other.
+  function composerBlock(section){
+    var c=S.compose[section];
+    var label=section==='material'?'suppliers':'transporters';
+    return '<div class="card" style="margin-top:12px;">'
+      +'<div class="row" style="margin-bottom:8px;">'+ic('mail','font-size:15px;')
+      +'<b style="font-size:13px;">Send the enquiry to '+label+'</b>'
+      +'<span class="tiny sp" style="text-align:right;">'
+      +(c.to.length?c.to.length+' separate email'+(c.to.length===1?'':'s'):'A new address is offered to the directory')
+      +'</span></div>'
+      +(c.to.length
+        ? c.to.map(function(g,i){ return groupRow(g,section,i); }).join('')
+          +'<p class="tiny" style="margin:2px 0 9px;">'
+          +'<b>'+c.to.length+' separate email'+(c.to.length===1?'':'s')+'</b> — one per firm. '
+          +'People at the same firm are CC\'d together and can see each other; '
+          +'<b>no firm can see any other firm.</b></p>'
+        : '<p class="tiny" style="margin-bottom:8px;">Nobody added yet — use <b>Send Email</b> above, or type an address.</p>')
+      +'<div style="display:flex;gap:8px;">'
+      +'<input id="to-'+section+'" placeholder="type an email and press Enter…" value="'+esc(c.draft)+'" style="flex:1;">'
+      +'<button data-addto="'+section+'" style="white-space:nowrap;">Add</button>'
+      +'<button class="prim" data-send="'+section+'" style="white-space:nowrap;"'+(c.to.length?'':' disabled')+'>Send</button></div></div>';
+  }
+
+  function groupRow(g,section,i){
+    return '<div class="grp">'
+      +'<div class="row" style="gap:7px;">'
+      +'<b style="font-size:13px;">'+esc(g.company||g.emails[0])+'</b>'
+      +(g.partnerId?'':pill('not in directory','warn'))
+      +'<span class="sp"></span>'
+      +'<span class="tiny">'+(g.emails.length>1?g.emails.length+' people, all CC\'d':'1 address')+'</span>'
+      +'<span data-unchip="'+section+':'+i+'" style="cursor:pointer;opacity:.6;">✕</span></div>'
+      +'<p class="tiny" style="margin-top:3px;">'+g.emails.map(esc).join(', ')+'</p></div>';
+  }
+
+  // ── Choosing who at a firm gets the email ─────────────────────────────────
+  function sendPickModal(){
+    var s=S.sendPick;
+    if(!s) return '';
+    var p=byId(s.partnerId);
+    if(!p) return '';
+    var rows=[];
+    people(p).forEach(function(c,ci){
+      (c.emails||[]).forEach(function(e,ei){
+        if(e.v) rows.push({key:ci+':'+ei, name:c.name||'(no name)', role:c.role||'', label:e.label, v:e.v});
+      });
+    });
+    var picked=rows.filter(function(r){ return s.chosen[r.key]; });
+    return '<div class="modal-bg" data-send-modal="close"><div class="modal" role="dialog" aria-modal="true">'
+      +'<div class="row" style="margin-bottom:3px;">'+ic('mail','font-size:16px;color:var(--accent);')
+      +'<b style="font-size:14px;">Send to '+esc(p.company)+'</b></div>'
+      +'<p class="muted" style="margin-bottom:11px;">Pick who at this firm should get the enquiry.</p>'
+      +(rows.length
+        ? '<div style="margin-bottom:6px;"><button data-sendall="1" style="font-size:11px;padding:3px 9px;">'
+          +(picked.length===rows.length?'Clear all':'Select all')+'</button></div>'
+          +rows.map(function(r){
+            return '<label class="found"><input type="checkbox" data-sendpick="'+r.key+'"'+(s.chosen[r.key]?' checked':'')+'>'
+              +'<span><span style="font-size:13px;">'+esc(r.v)+'</span><br>'
+              +'<span class="tiny">'+esc(r.name)+(r.role?' · '+esc(r.role):'')+' · '+esc(r.label)+'</span></span></label>';
+          }).join('')
+          +'<p class="tiny" style="margin-top:9px;">'
+          +(picked.length>1
+            ? 'These <b>'+picked.length+'</b> go on <b>one email</b>, CC\'d together — they will see each other, which is what you want inside one firm.'
+            : 'Tick more than one and they go on the same email, CC\'d together.')
+          +'<br>Other firms you add are sent <b>separately</b> and never see this one.</p>'
+        : '<p class="muted empty">No email address on this firm yet. Add one on their card first.</p>')
+      +'<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">'
+      +'<button class="prim" data-send-modal="add"'+(picked.length?'':' disabled')+'>'
+      +'Add '+(picked.length>1?picked.length+' recipients':'recipient')+'</button>'
+      +'<button data-send-modal="close">Cancel</button></div></div></div>';
+  }
+
+  // ── "That address is new — shall I keep them?" ─────────────────────────────
+  // Everything it can work out for certain is pre-filled; the company name is a guess off
+  // the domain and sits in an editable box. Nothing is saved unless you press Add.
+  function confirmModal(){
+    var c=S.confirm;
+    if(!c) return '';
+    var roles=['dealer','manufacturer','transporter','fabricator'].map(function(r){
+      return '<option value="'+r+'"'+(c.role===r?' selected':'')+'>'+ROLE_LABEL[r]+'</option>'; }).join('');
+    return '<div class="modal-bg" data-modal="close"><div class="modal" role="dialog" aria-modal="true">'
+      +'<div class="row" style="margin-bottom:4px;">'+ic('spark','font-size:16px;color:var(--ai);')
+      +'<b style="font-size:14px;">New address — add them to your directory?</b></div>'
+      +'<p class="muted" style="margin-bottom:11px;">'+esc(c.email)+' is not in your list.</p>'
+      +'<div class="grid2">'
+      +'<div class="fld"><label>Company '+(c.guessed?'— guessed from the address':'')+'</label>'
+        +'<input id="cf-company" value="'+esc(c.company)+'"'+(c.guessed?' style="border-color:var(--warn);"':'')+'></div>'
+      +'<div class="fld"><label>They are a…</label><select id="cf-role">'+roles+'</select></div></div>'
+      +'<p class="tiny" style="margin:-4px 0 11px;">'
+      +(c.guessed?'Check the name — it was read off the domain, not from them. ':'No company name in the address, so that one is yours to fill. ')
+      +(c.section==='material'?'Dealer or manufacturer is the one thing no enquiry can tell us.':'')+'</p>'
+      +'<div class="read" style="margin:0 0 12px;">'
+      +'<p class="tiny" style="margin-bottom:6px;">Filed with what this enquiry already proves:</p>'
+      +c.facts.map(function(f){ return '<span class="tag">'+f+'</span>'; }).join('')
+      +'</div>'
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap;">'
+      +'<button class="prim" data-modal="add">Add to directory</button>'
+      +'<button data-modal="skip">Send without saving</button></div></div></div>';
+  }
+
+  function openConfirm(email,section){
+    var guess=companyFromEmail(email);
+    var need=quoteNeed(), facts=[];
+    if(section==='material'){
+      facts.push('Found in: <b>a supplier enquiry</b>');
+      if(need.types.length) facts.push('Deals in: <b>'+esc(need.types.join(' + '))+'</b>');
+      need.items.forEach(function(i){ facts.push('Asked for: <b>'+esc(i.product)+'</b>'); });
+    }else{
+      facts.push('Found in: <b>a freight enquiry</b>');
+      facts.push('Route: <b>'+esc(S.freightFrom)+' → '+esc(need.site)+'</b>');
+    }
+    facts.push('First asked: <b>today</b>');
+    S.confirm={ email:email, section:section, facts:facts,
+                company:guess||'', guessed:!!guess,
+                role:section==='material'?'dealer':'transporter' };
+  }
+
+  function commitConfirm(){
+    var c=S.confirm, need=quoteNeed();
+    var company=String(($('cf-company')||{}).value||c.company||c.email).trim();
+    var role=(($('cf-role')||{}).value)||c.role;
+    var id=Math.max.apply(null,P.map(function(p){return p.id;}))+1;
+    var partner={ id:id, role:role, company:company, people:[{name:'',role:'Main contact',phones:[],emails:[{label:'Work',v:c.email}]}],
+      city:role==='transporter'?'':'', branches:'',
+      types:role==='transporter'?[]:need.types.slice(), moq:0,
+      products:role==='transporter'?[]:need.items.map(function(i){ return {p:i.product,moq:0,rule:''}; }),
+      routes:role==='transporter'?[{from:S.freightFrom,to:need.site}]:[],
+      vehicles:'', partLoad:true, notes:[], images:[], fromEnquiry:true,
+      enq:1, rep:0, last:TODAY, checked:TODAY };
+    P.unshift(normalizePartner(partner));
+    logChange('Added '+company, c.email+' — filed as '+ROLE_LABEL[role]
+      +(partner.types.length?', '+partner.types.join(' + '):'')
+      +(partner.routes.length?', '+partner.routes[0].from+' → '+partner.routes[0].to:''),
+      'Enquiry on '+Q().no, id, null);
+    S.compose[c.section].to.push({partnerId:partner.id, company:company, emails:[c.email]});
+    S.confirm=null;
+  }
+
+  // ── Recent changes: everything the app did on its own, with an undo ────────
+  function logChange(title,detail,source,partnerId,before){
+    var now=P.filter(function(p){return p.id===partnerId;})[0];
+    S.changes.unshift({ id:S.seq++, title:title, detail:detail, source:source,
+                        partnerId:partnerId, before:before, undone:false,
+                        lines:now?diffLines(before,now):[] });   // frozen at the moment it happened
+  }
+
+  // Exactly what moved, field by field. Worked out when the change is logged and kept, so
+  // the record still reads true after later edits — a log you cannot open is not a record.
+  function diffLines(before,now){
+    var out=[], b=before||{};
+    var was=function(k){ return String(b[k]==null?'':b[k]); };
+    [['company','Company'],['person','Contact person'],['email','Email'],['phone','Phone'],
+     ['city','City'],['branches','Branches'],['vehicles','Vehicles']].forEach(function(f){
+      if(was(f[0])!==String(now[f[0]]||'')) out.push({label:f[1],from:was(f[0]),to:String(now[f[0]]||'')});
+    });
+    if(String(b.moq||0)!==String(now.moq||0)) out.push({label:'Overall MOQ',from:(b.moq||0)+' T',to:(now.moq||0)+' T'});
+    var ta=(b.types||[]).join(', '), tb=(now.types||[]).join(', ');
+    if(ta!==tb) out.push({label:'Pipe types',from:ta,to:tb});
+
+    var line=function(y){ return 'min '+y.moq+' T'+(y.rule?' · '+y.rule:''); };
+    var had={}; (b.products||[]).forEach(function(x){ had[x.p.toLowerCase()]=x; });
+    (now.products||[]).forEach(function(x){
+      var o=had[x.p.toLowerCase()];
+      if(!o) out.push({label:'Product added',from:'',to:x.p+' — '+line(x)});
+      else if(o.moq!==x.moq||(o.rule||'')!==(x.rule||'')) out.push({label:x.p,from:line(o),to:line(x)});
+    });
+    var hadR=(b.routes||[]).map(function(r){return r.from+' → '+r.to;});
+    (now.routes||[]).forEach(function(r){
+      var k=r.from+' → '+r.to;
+      if(hadR.indexOf(k)===-1) out.push({label:'Route added',from:'',to:k});
+    });
+    var hadN=(b.notes||[]).map(function(n){return n.t;});
+    (now.notes||[]).forEach(function(n){ if(hadN.indexOf(n.t)===-1) out.push({label:'Note added',from:'',to:n.t}); });
+    var hadF=(b.images||[]).map(function(i){return i.n;});
+    (now.images||[]).forEach(function(i){ if(hadF.indexOf(i.n)===-1) out.push({label:'File kept',from:'',to:i.n}); });
+    return out;
+  }
+
+  function changesView(){
+    return waitingBlock()
+      +'<div class="sec" style="margin-top:20px;">Already applied</div>'
+      +(S.changes.length
+        ? '<p class="muted" style="margin-bottom:10px;">Everything the app changed on its own, newest first. '
+          +'<b>Click any one to see exactly what moved.</b></p>'
+          +S.changes.map(changeCard).join('')
+        : '<p class="muted empty">Nothing applied yet.</p>');
+  }
+
+  // One applied change, openable. Opening shows WHAT MOVED and then the partner's own record
+  // — the very same editor the Directory opens — so you fix a wrong reading where you spot it,
+  // instead of noting the problem here and hunting for the contact somewhere else.
+  function changeCard(ch){
+    var open=S.openChange===ch.id;
+    var p=P.filter(function(x){return x.id===ch.partnerId;})[0];
+    // The record opens as a SIBLING, not nested inside this card — so it is the identical
+    // full-width card the Directory opens, not a squeezed copy of it.
+    return '<div class="card'+(ch.undone?' out':'')+'">'
+      +'<div class="row change-head" data-change="'+ch.id+'" tabindex="0" role="button" style="cursor:pointer;">'
+      +'<span style="color:var(--text-3);">'+ic(open?'chevdown':'chev')+'</span>'
+      +'<span style="font-size:14px;font-weight:600;">'+esc(ch.title)+'</span>'
+      +pill(ch.source,'ai')+(ch.undone?pill('Undone','bad'):'')
+      +'<span class="sp"></span><span class="tiny">today</span></div>'
+      +'<p class="muted" style="margin:5px 0 0 24px;">'+esc(ch.detail)+'</p>'
+      +(open?changeBody(ch):'')
+      +(ch.undone?'':'<div style="margin:10px 0 0 24px;"><button data-undo="'+ch.id+'">Undo this</button></div>')
+      +'</div>'
+      +(open
+        ? (p?editCard(p)
+             :'<p class="muted empty">This partner was removed when the change was undone.</p>')
+        :'');
+  }
+
+  function changeBody(ch){
+    if(!ch.lines.length){
+      return '<div class="read" style="margin:9px 0 0 24px;"><p class="tiny">Nothing measurable changed on the record.</p></div>';
+    }
+    return '<div class="read" style="margin:9px 0 0 24px;">'
+      +'<p class="tiny" style="margin-bottom:7px;">'+ch.lines.length+' change'+(ch.lines.length===1?'':'s')
+      +(ch.undone?' — since undone, the record is back to the left-hand values':'')+':</p>'
+      +ch.lines.map(function(l){
+        return '<div class="diff">'
+          +'<span class="diff-k">'+esc(l.label)+'</span>'
+          +(l.from?'<span class="diff-was">'+esc(l.from)+'</span><span class="diff-arrow">→</span>':'<span class="diff-arrow">added</span>')
+          +'<span class="diff-now">'+esc(l.to)+'</span></div>';
+      }).join('')+'</div>';
+  }
+
+  // Which Gmail label feeds this. Named here rather than buried in a script, because the
+  // one question anybody asks is "what exactly do I tag?" — and the answer has to be
+  // copyable, spelled the way Gmail spells it.
+  function labelSetting(){
+    return '<div class="read" style="margin:0 0 12px;">'
+      +'<div class="row" style="margin-bottom:6px;">'
+      +'<span class="tiny">Watching this Gmail label:</span>'
+      +'<span class="pill pill-accent" style="font-family:ui-monospace,Menlo,Consolas,monospace;">'+esc(S.label)+'</span>'
+      +'<span class="sp"></span>'
+      +(S.labelEdit
+        ? '<button data-label="save" style="font-size:11px;padding:3px 9px;">Save</button>'
+        : '<button data-label="edit" style="font-size:11px;padding:3px 9px;">Change</button>')+'</div>'
+      +(S.labelEdit
+        ? '<input id="labelIn" value="'+esc(S.label)+'" style="margin-bottom:7px;">'
+        : '')
+      +'<p class="tiny">Tag any email with it in Gmail — a brochure, a rate list, a visiting card photo — '
+      +'and it turns up here on the next check. It sits beside your existing '
+      +'<b>Create Quotation</b> label and uses the same script, so there is nothing new to install: '
+      +'the label name is one line in the Apps Script settings.</p>'
+      +'<p class="tiny" style="margin-top:5px;"><b>Nothing is saved until you approve it.</b></p></div>';
+  }
+
+  // ── Waiting for you: emails you labelled in Gmail ──────────────────────────
+  function waitingBlock(){
+    var n=S.pending.length;
+    var h='<div class="sec">'+ic('mail')+' Waiting for you'
+      +(n?'<span class="pill pill-warn" style="margin-left:4px;">'+n+'</span>':'')
+      +'<span class="sp"></span>'
+      +(S.gmail==='checking'
+        ? '<span class="tiny"><span class="spin"></span> checking…</span>'
+        : '<button data-gmail="check" style="font-size:11px;padding:3px 9px;">'+ic('refresh')+' Check Gmail</button>')
+      +'</div>'
+      +labelSetting();
+
+    if(!n) return h+'<p class="muted empty">Nothing waiting.<br><span class="tiny">Label a supplier\'s brochure or rate list in Gmail and it turns up here.</span></p>';
+
+    // One waiting item = where it came from, then the record itself, then approve or discard.
+    // No separate list of findings: the record already shows every one of them in the field
+    // it landed in, which is where you would check it anyway.
+    return h+S.pending.map(function(pi){
+      var match=pi.matchEmail?knownEmail(pi.matchEmail):null;
+      var open=S.openPending===pi.id;
+      return '<div class="src-strip'+(open?' on':'')+'" data-pending="'+pi.id+'" tabindex="0" role="button">'
+        +'<div class="row">'
+        +'<span style="color:var(--text-3);">'+ic(open?'chevdown':'chev')+'</span>'
+        +'<span style="font-size:14px;font-weight:600;">'+esc(match?match.company:(pi.company||pi.from))+'</span>'
+        +(match?pill('Updates someone you have','accent'):pill('New '+ROLE_LABEL[pi.role].toLowerCase(),'warn'))
+        +'<span class="sp"></span><span class="tiny">today</span></div>'
+        +'<div style="margin-left:24px;">'
+        +'<p class="tiny" style="margin-top:5px;">'+ic('mail')+' From <b>'+esc(pi.from)+'</b> · “'+esc(pi.subject)+'”</p>'
+        +'<p class="tiny" style="margin-top:3px;">'+ic(/\.pdf$/i.test(pi.file)?'pdf':'photo')+' '+esc(pi.file)
+        +' · read into <b>'+pi.finds.length+'</b> field'+(pi.finds.length===1?'':'s')+' below'
+        +' · tagged <b>'+esc(S.label)+'</b></p>'
+        +'<button data-doc="'+esc(pi.file)+'" style="font-size:11px;padding:3px 9px;margin-top:7px;">'
+        +ic('search')+' '+(S.openDoc===pi.file?'Hide the file':'View the file')+'</button></div>'
+        +'</div>'
+        +(S.openDoc===pi.file?docView(pi.file):'')
+        +(open?editCard(match||previewPartner(pi)):'')
+        +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px;">'
+        +'<button class="prim" data-approve="'+pi.id+'">Approve — '+(match?'update '+esc(match.company):'add them')+'</button>'
+        +'<button data-discard="'+pi.id+'">Discard</button></div>';
+    }).join('');
+  }
+
+  // The card as this email WOULD create it — built once and kept on the item, so anything you
+  // correct while reviewing is what actually gets saved when you approve.
+  function previewPartner(pi){
+    if(!pi.preview){
+      pi.preview=normalizePartner({ id:-(S.seq++), role:pi.role,
+        company:pi.company||companyFromEmail(pi.from)||pi.from, person:'', email:pi.from, phone:'',
+        city:pi.city||'', branches:pi.city||'', types:[], moq:0, products:[], routes:[],
+        vehicles:'', partLoad:true, notes:[], images:[], fromEnquiry:true,
+        enq:0, rep:0, last:TODAY, checked:TODAY });
+      pi.finds.forEach(function(x){ applyFind(pi.preview,x,pi.file); });
+    }
+    return pi.preview;
+  }
+
+  // Approving is the only thing that writes. New partner or existing, it lands in the log
+  // below with an undo, exactly like every other automatic change.
+  function approvePending(id){
+    var pi=S.pending.filter(function(x){return x.id===id;})[0];
+    if(!pi) return;
+    var target=pi.matchEmail?knownEmail(pi.matchEmail):null;
+    var before=target?JSON.parse(JSON.stringify(target)):null;
+    if(!target){
+      // Save exactly what was reviewed — corrections included — not a fresh build.
+      target=previewPartner(pi);
+      target.id=Math.max.apply(null,P.map(function(p){return p.id;}))+1;
+      P.unshift(target);
+      finishApproval(pi,target,before);
+      return;
+    }
+    pi.finds.forEach(function(x){ applyFind(target,x,pi.file); });
+    finishApproval(pi,target,before);
+  }
+
+  function finishApproval(pi,target,before){
+    if(!(target.images||[]).some(function(im){return im.n===pi.file;}))
+      target.images.unshift({n:pi.file,kind:/\.pdf$/i.test(pi.file)?'pdf':'photo',d:TODAY,count:pi.finds.length});
+    target.checked=TODAY;
+    logChange((before?target.company+' updated':'Added '+target.company),
+      pi.finds.length+' detail'+(pi.finds.length===1?'':'s')+' from “'+pi.subject+'” ('+pi.file+')',
+      'Gmail label', target.id, before);
+    S.pending=S.pending.filter(function(x){return x.id!==pi.id;});
+  }
+
+  // One place that knows how to write a finding onto a partner — shared by the Gmail queue
+  // and the file scanner, so the two can never drift apart.
+  function applyFind(p,x,fileName){
+    if(x.kind==='field'){
+      // A name, phone or address belongs to a PERSON, not to the firm — writing it flat would
+      // set a field nothing reads, and the contact card would come back empty.
+      if(x.key==='person'||x.key==='phone'||x.key==='email'){ applyToPerson(p,x.key,x.value); }
+      else if(x.key==='moq') p.moq=parseFloat(x.value)||0;
+      else if(x.key==='types') p.types=x.value.split(',').map(function(s){return s.trim();}).filter(Boolean);
+      else p[x.key]=x.value;
+    }else if(x.kind==='product'){
+      var i=(p.products||[]).findIndex(function(pr){ return pr.p.toLowerCase()===x.product.p.toLowerCase(); });
+      if(i===-1) p.products.push(JSON.parse(JSON.stringify(x.product)));
+      else p.products[i]=JSON.parse(JSON.stringify(x.product));
+    }else if(x.kind==='routes'){
+      x.routes.forEach(function(r){
+        if(!(p.routes||[]).some(function(e){ return e.from===r.from && e.to===r.to; })) p.routes.push({from:r.from,to:r.to});
+      });
+    }else if(x.kind==='note'){
+      p.notes.unshift({d:TODAY,t:x.value,src:'read from '+fileName});
+    }
+  }
+
+  function applyToPerson(p,key,value){
+    if(!p.people||!p.people.length) p.people=[{name:'',role:'Main contact',phones:[],emails:[]}];
+    var c=p.people[0];
+    if(key==='person'){ c.name=value; return; }
+    var list = key==='phone' ? (c.phones=c.phones||[]) : (c.emails=c.emails||[]);
+    var label = key==='phone' ? 'Mobile' : 'Work';
+    // "98404 21150, 020 2445 8890" is two numbers, not one.
+    String(value).split(/[,;]+/).map(function(s){return s.trim();}).filter(Boolean).forEach(function(v){
+      if(!list.some(function(x){ return x.v===v; })) list.push({label:label, v:v});
+    });
+  }
+
+  function undoChange(id){
+    var ch=S.changes.filter(function(x){return x.id===id;})[0];
+    if(!ch||ch.undone) return;
+    var idx=P.findIndex(function(p){ return p.id===ch.partnerId; });
+    if(ch.before===null){ if(idx!==-1) P.splice(idx,1); }        // it was an addition
+    else if(idx!==-1) P[idx]=JSON.parse(JSON.stringify(ch.before)); // it was an edit
+    ch.undone=true;
+  }
+
+  // ══ RENDER + EVENTS ═══════════════════════════════════════════════════════
+  function render(){
+    var live=S.changes.filter(function(c){return !c.undone;}).length;
+    $('flag').innerHTML=ic('flask')+' Prototype — not live data';
+    $('tabDir').innerHTML=ic('book')+' Directory';
+    $('tabQuote').innerHTML=ic('file')+' In the quote card';
+    // Pending outranks applied on the badge — one needs you, the other is just history.
+    $('tabChanges').innerHTML=ic('refresh')+' Recent changes'
+      +(S.pending.length?' <span class="pill pill-warn" style="margin-left:2px;">'+S.pending.length+'</span>'
+       :live?' <span class="pill pill-ai" style="margin-left:2px;">'+live+'</span>':'');
+    $('tabDir').className='tab'+(S.view==='dir'?' on':'');
+    $('tabQuote').className='tab'+(S.view==='quote'?' on':'');
+    $('tabChanges').className='tab'+(S.view==='changes'?' on':'');
+    app.innerHTML = (S.view==='dir'?dirView():S.view==='changes'?changesView():quoteView())+confirmModal()+sendPickModal();
+    bind();
+    var cf=$('cf-company'); if(cf) cf.focus();
+  }
+  function each(sel,fn){ app.querySelectorAll(sel).forEach(fn); }
+  function one(sel,fn){ var el=app.querySelector(sel); if(el) el.onclick=fn; }
+
+  function runFind(){
+    S.find.state='reading'; S.find.web={state:'idle',results:[]}; S.q=''; render();
+    setTimeout(function(){
+      var need=readEnquiry(S.find.text);
+      if(need.empty){ S.find.state='name'; S.q=S.find.text.trim(); }
+      else { S.find.need=need; S.find.state='done'; }
+      render();
+    },900);
+  }
+
+  function bind(){
+    // ── enquiry finder ──
+    var fi=$('findIn');
+    if(fi){ fi.value=S.find.text; fi.oninput=function(){ S.find.text=this.value; }; }
+    each('[data-find]',function(el){ el.onclick=function(){
+      if(this.getAttribute('data-find')==='clear'){
+        S.find={text:'',state:'idle',need:null,web:{state:'idle',results:[]}}; S.q=''; render(); return;
+      }
+      if(!String(S.find.text||'').trim()) return;
+      runFind();
+    };});
+    each('[data-fweb]',function(el){ el.onclick=function(){
+      if(this.getAttribute('data-fweb')==='reset'){ S.find.web={state:'idle',results:[]}; render(); return; }
+      S.find.web.state='searching'; render();
+      setTimeout(function(){
+        // Name mode has no parsed types — judge the query text itself.
+        var hint=(S.find.need&&S.find.need.types.length)?S.find.need.types.join(' '):S.find.text;
+        var key=/\bss\b|stainless|304|316/i.test(hint)?'SS':'generic';
+        S.find.web={state:'done',results:JSON.parse(JSON.stringify(WEB[key]))};
+        render();
+      },1100);
+    };});
+    each('[data-fwebadd]',function(el){ el.onclick=function(){
+      addFromWeb(S.find.web.results[Number(this.getAttribute('data-fwebadd'))],
+                 S.find.need?S.find.need.types:[]); }; });
+
+    // ── the new-address popup ──
+    each('[data-modal]',function(el){ el.onclick=function(e){
+      if(e.target!==this) return;                 // ignore clicks bubbling from inside the card
+      var a=this.getAttribute('data-modal');
+      if(a==='add') commitConfirm();
+      else if(a==='skip'){ S.compose[S.confirm.section].to.push({partnerId:null,company:'',emails:[S.confirm.email]}); S.confirm=null; }
+      else S.confirm=null;
+      render();
+    };});
+
+    // ── send-enquiry composers ──
+    ['material','transport'].forEach(function(sec){
+      var box=$('to-'+sec);
+      if(box){
+        box.oninput=function(){ S.compose[sec].draft=this.value; };
+        box.onkeydown=function(e){ if(e.key==='Enter'){ e.preventDefault(); addRecipient(sec); } };
+      }
+    });
+    each('[data-addto]',function(el){ el.onclick=function(){ addRecipient(this.getAttribute('data-addto')); }; });
+    each('[data-unchip]',function(el){ el.onclick=function(){
+      var a=this.getAttribute('data-unchip').split(':');
+      S.compose[a[0]].to.splice(Number(a[1]),1); render(); }; });
+    each('[data-send]',function(el){ el.onclick=function(){
+      var sec=this.getAttribute('data-send'), g=S.compose[sec].to;
+      alert('Prototype — this would send '+g.length+' separate email'+(g.length===1?'':'s')+':\n\n'
+        +g.map(function(x,i){
+          return (i+1)+'. To '+(x.company||x.emails[0])+'\n   '
+            +(x.emails.length>1
+              ? 'To/Cc: '+x.emails.join(', ')+'   (these two see each other)'
+              : 'To: '+x.emails[0]);
+        }).join('\n\n')
+        +'\n\nNo firm appears on another firm\'s email.');
+    };});
+    // Send Email on a ranked card: choose who at that firm, then they become one group.
+    each('[data-pick]',function(el){ el.onclick=function(){
+      var p=byId(Number(this.getAttribute('data-pick')));
+      if(!p) return;
+      var chosen={};
+      people(p).forEach(function(c,ci){ (c.emails||[]).forEach(function(e,ei){ if(e.v) chosen[ci+':'+ei]=true; }); });
+      S.sendPick={section:sectionFor(p), partnerId:p.id, chosen:chosen};
+      render();
+    };});
+    each('[data-sendpick]',function(el){ el.onchange=function(){
+      S.sendPick.chosen[this.getAttribute('data-sendpick')]=this.checked; render(); };});
+    one('[data-sendall]',function(){
+      var p=byId(S.sendPick.partnerId), all={}, missing=false;
+      people(p).forEach(function(c,ci){ (c.emails||[]).forEach(function(e,ei){
+        if(e.v){ all[ci+':'+ei]=true; if(!S.sendPick.chosen[ci+':'+ei]) missing=true; } }); });
+      S.sendPick.chosen = missing ? all : {};
+      render();
+    });
+    each('[data-send-modal]',function(el){ el.onclick=function(e){
+      if(e.target!==this) return;
+      if(this.getAttribute('data-send-modal')==='add') commitSendPick();
+      else S.sendPick=null;
+      render();
+    };});
+    each('[data-undo]',function(el){ el.onclick=function(){ undoChange(Number(this.getAttribute('data-undo'))); render(); }; });
+    each('[data-doc]',function(el){ el.onclick=function(e){
+      e.stopPropagation();
+      var v=this.getAttribute('data-doc');
+      S.openDoc = S.openDoc===v ? null : v;
+      render();
+    };});
+    each('[data-pending]',function(el){
+      var go=function(){
+        var id=el.getAttribute('data-pending');
+        if(S.openPending===id){ S.openPending=null; S.openId=null; }
+        else {
+          S.openPending=id;
+          var pi=S.pending.filter(function(x){return x.id===id;})[0];
+          var m=pi&&pi.matchEmail?knownEmail(pi.matchEmail):null;
+          S.openId=m?m.id:(pi?previewPartner(pi).id:null);
+          S.scan={open:false,reading:false,sample:null,picked:{}};
+        }
+        render();
+      };
+      el.onclick=go;
+      el.onkeydown=function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); go(); } };
+    });
+    each('[data-approve]',function(el){ el.onclick=function(){
+      approvePending(this.getAttribute('data-approve')); S.openPending=null; S.openId=null; render(); }; });
+    each('[data-discard]',function(el){ el.onclick=function(){
+      var id=this.getAttribute('data-discard');
+      S.pending=S.pending.filter(function(x){return x.id!==id;}); render(); }; });
+    // Opening a change opens that partner's record with it — same editor, same handlers,
+    // so `openId` has to move too or every field below would be dead.
+    each('[data-change]',function(el){
+      var go=function(){
+        var id=Number(el.getAttribute('data-change'));
+        var ch=S.changes.filter(function(x){return x.id===id;})[0];
+        if(S.openChange===id){ S.openChange=null; S.openId=null; }
+        else { S.openChange=id; S.openId=ch?ch.partnerId:null;
+               S.scan={open:false,reading:false,sample:null,picked:{}}; }
+        render();
+      };
+      el.onclick=go;
+      el.onkeydown=function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); go(); } };
+    });
+    each('[data-label]',function(el){ el.onclick=function(){
+      if(this.getAttribute('data-label')==='edit'){ S.labelEdit=true; }
+      else { var v=($('labelIn')||{}).value; if(String(v||'').trim()) S.label=v.trim(); S.labelEdit=false; }
+      render();
+    };});
+    each('[data-gmail]',function(el){ el.onclick=function(){
+      S.gmail='checking'; render();
+      setTimeout(function(){
+        S.gmail='idle';
+        if(S.inboxLeft.length) S.pending=S.pending.concat(S.inboxLeft.splice(0,1));
+        render();
+      },1200);
+    };});
+
+    var f=$('fFrom'); if(f) f.onchange=function(){ S.freightFrom=this.value; render(); };
+    // Freight composer fields. Typing does NOT re-render — that would steal the caret —
+    // so the draft is rebuilt only when the box is next drawn.
+    var fp=$('frtPickup'); if(fp) fp.oninput=function(){ S.frt.pickup=this.value; };
+    var fd=$('frtDrop');   if(fd) fd.oninput=function(){ S.frt.drop=this.value; };
+    var fk=$('frtKg');     if(fk) fk.oninput=function(){
+      var v=parseFloat(this.value); S.frt.kg=isNaN(v)?null:v; };
+    var fm=$('frtMsg');    if(fm) fm.oninput=function(){ S.frt.message=this.value; S.frt.messageEdited=true; };
+    var em=$('enqMsg');    if(em) em.oninput=function(){ S.enqMsg=this.value; };
+    one('[data-frtreset]',function(){ S.frt.kg=null; S.frt.messageEdited=false; render(); });
+    each('[data-qtab]',function(el){ el.onclick=function(){ S.qtab=this.getAttribute('data-qtab'); render(); }; });
+    each('[data-fold]',function(el){
+      var go=function(){ var k=el.getAttribute('data-fold');
+        if(k==='weight') S.wOpen=!S.wOpen; else S.fOpen=!S.fOpen; render(); };
+      el.onclick=go;
+      el.onkeydown=function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); go(); } };
+    });
+    each('[data-enq]',function(el){ el.onclick=function(){
+      var a=this.getAttribute('data-enq');
+      if(a==='make') S.enqMade=true;
+      else { S.enqMade=false; S.web={state:'idle',results:[]}; }
+      render();
+    };});
+    var qp=$('qPick'); if(qp) qp.onchange=function(){ S.quote=Number(this.value); S.web={state:'idle',results:[]};
+      S.ask={material:{q:'',state:'idle',asked:''},transport:{q:'',state:'idle',asked:''}};
+      S.freightFrom = Q().site==='Kochi' ? 'Mumbai' : 'Nashik'; render(); };
+
+    one('#bAdd',function(){
+      var id=Math.max.apply(null,P.map(function(p){return p.id;}))+1;
+      P.unshift(normalizePartner({id:id,role:'dealer',roleOther:'',company:'',person:'',email:'',phone:'',city:'',branches:'',
+        types:[],moq:0,products:[],routes:[],vehicles:'',partLoad:false,notes:[],images:[],
+        enq:0,rep:0,last:TODAY,checked:TODAY}));
+      S.openId=id; S.filter='all'; S.q='';
+      S.find={text:'',state:'idle',need:null,web:{state:'idle',results:[]}};
+      S.scan={open:false,reading:false,sample:null,picked:{}}; render();
+    });
+    each('[data-f]',function(el){ el.onclick=function(){ S.filter=this.getAttribute('data-f'); S.openId=null; render(); }; });
+    each('[data-open]',function(el){
+      var go=function(){ S.openId=Number(el.getAttribute('data-open')); S.scan={open:false,reading:false,sample:null,picked:{}}; render(); };
+      el.onclick=go;
+      el.onkeydown=function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); go(); } };
+    });
+    one('[data-close]',function(){ S.openId=null; S.openChange=null; render(); });
+
+    each('[data-web]',function(el){ el.onclick=function(){
+      if(this.getAttribute('data-web')==='reset'){ S.web={state:'idle',results:[]}; render(); return; }
+      S.web.state='searching'; render();
+      setTimeout(function(){
+        S.web={state:'done',results:JSON.parse(JSON.stringify(WEB[quoteNeed().types.indexOf('SS')!==-1?'SS':'generic']))};
+        render();
+      },1100);
+    };});
+    each('[data-webadd]',function(el){ el.onclick=function(){
+      addFromWeb(S.web.results[Number(this.getAttribute('data-webadd'))], quoteNeed().types); }; });
+
+    ['material','transport'].forEach(function(sec){
+      var box=$('ask-'+sec);
+      if(box){ box.oninput=function(){ S.ask[sec].q=this.value; };
+               box.onkeydown=function(e){ if(e.key==='Enter') runAsk(sec); }; }
+    });
+    each('[data-ask]',function(el){ el.onclick=function(){ runAsk(this.getAttribute('data-ask')); }; });
+    each('[data-askreset]',function(el){ el.onclick=function(){
+      S.ask[this.getAttribute('data-askreset')]={q:'',state:'idle',asked:''}; render(); }; });
+
+    var p=S.openId?byId(S.openId):null;
+    if(!p) return;
+
+    each('[data-scan]',function(el){ el.onclick=function(){
+      var a=this.getAttribute('data-scan');
+      if(a==='open') S.scan={open:true,reading:false,sample:null,picked:{}};
+      else if(a==='close') S.scan={open:false,reading:false,sample:null,picked:{}};
+      else if(a==='back'){ S.scan.sample=null; S.scan.picked={}; }
+      else if(a==='apply') applyScan(p);
+      render();
+    };});
+    each('[data-sample]',function(el){ el.onclick=function(){
+      var id=this.getAttribute('data-sample');
+      S.scan.sample=SAMPLES.filter(function(s){return s.id===id;})[0];
+      S.scan.reading=true; S.scan.picked={}; render();
+      setTimeout(function(){ S.scan.reading=false; render(); },1000);
+    };});
+    each('[data-find2]',function(el){ el.onchange=function(){ S.scan.picked[Number(this.getAttribute('data-find2'))]=this.checked; }; });
+    each('[data-delimg]',function(el){ el.onclick=function(e){ e.stopPropagation(); p.images.splice(Number(this.getAttribute('data-delimg')),1); render(); }; });
+    each('[data-reread]',function(el){ el.onclick=function(){
+      var s=SAMPLES.filter(function(x){return x.id===this.getAttribute('data-reread');},this)[0];
+      if(!s){ return; }
+      S.scan={open:true,reading:true,sample:s,picked:{}}; render();
+      setTimeout(function(){ S.scan.reading=false; render(); },1000);
+    };});
+
+    var ni=$('noteIn');
+    if(ni){ ni.value=S.noteDraft;
+            ni.oninput=function(){ S.noteDraft=this.value; };
+            ni.onkeydown=function(e){ if(e.key==='Enter') addNote(p); }; }
+    one('[data-addnote]',function(){ addNote(p); });
+    each('[data-delnote]',function(el){ el.onclick=function(){ p.notes.splice(Number(this.getAttribute('data-delnote')),1); render(); }; });
+
+    // Any edit stamps "last edited" — that field is never typed by hand.
+    var touched=function(){ p.checked=TODAY; };
+
+    each('[data-k]',function(el){
+      if(el.hasAttribute('data-pr')||el.hasAttribute('data-rt')||el.hasAttribute('data-pc')) return;
+      el.onchange=function(){
+        var k=this.getAttribute('data-k'), v=this.value;
+        if(k==='moq') p.moq=parseFloat(v)||0;
+        else if(k==='partLoad') p.partLoad=(v==='yes');
+        else p[k]=v;
+        touched(); render();
+      };
+    });
+    // people: name/role on the person, plus their own lists of numbers and addresses
+    each('[data-pc]',function(el){ el.onchange=function(){
+      var c=p.people[Number(this.getAttribute('data-pc'))], k=this.getAttribute('data-k');
+      if(this.hasAttribute('data-ph')) c.phones[Number(this.getAttribute('data-ph'))][k]=this.value;
+      else if(this.hasAttribute('data-em')) c.emails[Number(this.getAttribute('data-em'))][k]=this.value;
+      else c[k]=this.value;
+      touched();
+    };});
+    one('[data-addpc]',function(){
+      p.people=(p.people||[]).concat([{name:'',role:'',phones:[{label:'Mobile',v:''}],emails:[]}]);
+      touched(); render(); });
+    each('[data-delpc]',function(el){ el.onclick=function(){
+      p.people.splice(Number(this.getAttribute('data-delpc')),1); touched(); render(); };});
+    each('[data-addph]',function(el){ el.onclick=function(){
+      var c=p.people[Number(this.getAttribute('data-addph'))];
+      c.phones=(c.phones||[]).concat([{label:'Mobile',v:''}]); touched(); render(); };});
+    each('[data-addem]',function(el){ el.onclick=function(){
+      var c=p.people[Number(this.getAttribute('data-addem'))];
+      c.emails=(c.emails||[]).concat([{label:'Work',v:''}]); touched(); render(); };});
+    each('[data-delph]',function(el){ el.onclick=function(){
+      var a=this.getAttribute('data-delph').split(':');
+      p.people[Number(a[0])].phones.splice(Number(a[1]),1); touched(); render(); };});
+    each('[data-delem]',function(el){ el.onclick=function(){
+      var a=this.getAttribute('data-delem').split(':');
+      p.people[Number(a[0])].emails.splice(Number(a[1]),1); touched(); render(); };});
+
+    one('[data-addbranch]',function(){
+      p.branches=branchList(p).concat([{city:'',area:'',address:''}]); touched(); render(); });
+    each('[data-br]',function(el){ el.onchange=function(){
+      p.branches[Number(this.getAttribute('data-br'))][this.getAttribute('data-k')]=this.value;
+      touched(); render(); };});
+    each('[data-delbranch]',function(el){ el.onclick=function(){
+      p.branches.splice(Number(this.getAttribute('data-delbranch')),1); touched(); render(); };});
+
+    var tp=$('typePick');
+    if(tp) tp.onchange=function(){
+      S.typeOther = this.value==='__other' ? (S.typeOther||'') : null; render(); };
+    var toi=$('typeOtherIn');
+    if(toi){ toi.oninput=function(){ S.typeOther=this.value; };
+             toi.onkeydown=function(e){ if(e.key==='Enter'){ e.preventDefault(); addType(p); } }; }
+    one('[data-addtype]',function(){ addType(p); });
+    each('[data-deltype]',function(el){ el.onclick=function(){
+      p.types.splice(Number(this.getAttribute('data-deltype')),1); touched(); render(); };});
+
+    each('[data-pr]',function(el){ el.onchange=function(){
+      var i=Number(this.getAttribute('data-pr')), k=this.getAttribute('data-k');
+      if(this.hasAttribute('data-sz')) p.products[i].sizes[Number(this.getAttribute('data-sz'))][k]=this.value;
+      else p.products[i][k] = k==='moq' ? (parseFloat(this.value)||0) : this.value;
+      touched();
+      if(k==='spec') render();          // a new spec offers its standard size table
+    };});
+    each('[data-addsz]',function(el){ el.onclick=function(){
+      var pr=p.products[Number(this.getAttribute('data-addsz'))];
+      pr.sizes=(pr.sizes||[]).concat([{nb:'',inch:'',od:'',thk:''}]); touched(); render(); };});
+    each('[data-delsz]',function(el){ el.onclick=function(){
+      var a=this.getAttribute('data-delsz').split(':');
+      p.products[Number(a[0])].sizes.splice(Number(a[1]),1); touched(); render(); };});
+    // Load the whole IS 1239 table for the class named in the spec — the thickness comes from
+    // the standard per size, which is the entire reason sizes are a list and not a range.
+    each('[data-loadis]',function(el){ el.onclick=function(){
+      var pr=p.products[Number(this.getAttribute('data-loadis'))], cls=specClass(pr.spec);
+      if(!cls) return;
+      pr.sizes=IS1239.filter(function(r){ return r[cls]; })
+        .map(function(r){ return {nb:r.nb,inch:r.inch,od:r.od,thk:r[cls]}; });
+      touched(); render();
+    };});
+    each('[data-rt]',function(el){ el.onchange=function(){
+      p.routes[Number(this.getAttribute('data-rt'))][this.getAttribute('data-k')]=this.value; touched(); render(); };});
+    each('[data-orule]',function(el){ el.onchange=function(){
+      p.rules[Number(this.getAttribute('data-orule'))]=this.value; touched(); };});
+    one('[data-addorule]',function(){ p.rules=(p.rules||[]).concat(['']); touched(); render(); });
+    each('[data-delorule]',function(el){ el.onclick=function(){
+      p.rules.splice(Number(this.getAttribute('data-delorule')),1); touched(); render(); };});
+    one('[data-addpr]',function(){
+      p.products.push({p:'',spec:'',sizes:[],moq:0,rule:''}); touched(); render(); });
+    one('[data-addrt]',function(){ p.routes.push({from:'',to:''}); touched(); render(); });
+    each('[data-delpr]',function(el){ el.onclick=function(){ p.products.splice(Number(this.getAttribute('data-delpr')),1); touched(); render(); }; });
+    each('[data-delrt]',function(el){ el.onclick=function(){ p.routes.splice(Number(this.getAttribute('data-delrt')),1); touched(); render(); }; });
+  }
+
+  function addFromWeb(r,types){
+    if(!r||r.added) return;
+    r.added=true;
+    var id=Math.max.apply(null,P.map(function(p){return p.id;}))+1;
+    P.unshift(normalizePartner({id:id,role:'dealer',fromWeb:true,
+      company:r.company,person:'',email:'',phone:'',city:r.city,branches:r.city,
+      types:(types||[]).slice(),moq:0,products:[],routes:[],vehicles:'',partLoad:false,
+      notes:[{d:TODAY,t:r.what,src:'from web · '+r.src}],images:[],enq:0,rep:0,last:TODAY,checked:TODAY}));
+    logChange('Added '+r.company, r.city+' — found on '+r.src+', not vetted by you', 'Web search', id, null);
+    render();
+  }
+
+  // Typing an address: known one goes straight in, a new one asks first.
+  function addType(p){
+    var pick=(($('typePick')||{}).value||'').trim();
+    var v = pick==='__other' ? String(S.typeOther||'').trim() : pick;
+    if(!v) return;
+    if((p.types||[]).indexOf(v)===-1) p.types=(p.types||[]).concat([v]);
+    if(PIPE_TYPES.indexOf(v)===-1) PIPE_TYPES.push(v);   // offered to everyone from now on
+    S.typeOther=null; p.checked=TODAY; render();
+  }
+
+  // The ticked addresses become ONE group — one email with everybody on it CC'd.
+  function commitSendPick(){
+    var s=S.sendPick, p=byId(s.partnerId), picked=[];
+    people(p).forEach(function(c,ci){ (c.emails||[]).forEach(function(e,ei){
+      if(s.chosen[ci+':'+ei] && e.v) picked.push(e.v); }); });
+    if(!picked.length){ S.sendPick=null; return; }
+    var to=S.compose[s.section].to;
+    var existing=to.filter(function(g){ return g.partnerId===p.id; })[0];
+    if(existing) existing.emails=picked;                 // re-picking replaces, never duplicates
+    else to.push({partnerId:p.id, company:p.company, emails:picked});
+    S.sendPick=null;
+  }
+
+  function hasAddress(sec,v){
+    return S.compose[sec].to.some(function(g){ return g.emails.indexOf(v)!==-1; });
+  }
+
+  function addRecipient(sec){
+    var v=String(S.compose[sec].draft||'').trim().toLowerCase();
+    if(!isEmail(v)) return;
+    S.compose[sec].draft='';
+    if(hasAddress(sec,v)){ render(); return; }
+    var p=knownEmail(v);
+    if(p){
+      // A known address joins that firm's group, so it is CC'd with the rest of them.
+      var g=S.compose[sec].to.filter(function(x){ return x.partnerId===p.id; })[0];
+      if(g){ if(g.emails.indexOf(v)===-1) g.emails.push(v); }
+      else S.compose[sec].to.push({partnerId:p.id, company:p.company, emails:[v]});
+    }
+    else openConfirm(v,sec);
+    render();
+  }
+
+  // An empty box is a valid press — it means 'just show me who'.
+  function runAsk(sec){
+    var st=S.ask[sec];
+    st.asked=String(st.q||'').trim();
+    st.state='thinking'; render();
+    setTimeout(function(){ S.ask[sec].state='done'; render(); },1100);
+  }
+
+  function addNote(p){
+    var t=String(S.noteDraft||'').trim();
+    if(!t) return;
+    p.notes.unshift({d:TODAY,t:t,src:''});
+    S.noteDraft=''; render();
+  }
+
+  // Ticked findings: fields overwrite, products merge by name, notes are logged with where
+  // they came from — so you can always see the AI wrote them, not you.
+  function applyScan(p){
+    var s=S.scan.sample, applied=0;
+    var before=JSON.parse(JSON.stringify(p));   // so the change log can put it back
+    s.finds.forEach(function(x,i){
+      if(S.scan.picked[i]===false) return;
+      applied++;
+      applyFind(p,x,s.file);
+    });
+    var existing=(p.images||[]).filter(function(im){return im.n===s.file;})[0];
+    if(existing){ existing.count=applied; existing.d=TODAY; }
+    else p.images.unshift({n:s.file,kind:s.kind,d:TODAY,count:applied,sample:s.id});
+    p.checked=TODAY;
+    S.scan={open:false,reading:false,sample:null,picked:{}};
+    if(applied){
+      p.notes.unshift({d:TODAY,t:applied+' detail'+(applied===1?'':'s')+' read from '+s.file+' and applied.',src:'AI'});
+      logChange(p.company+' updated',
+        applied+' detail'+(applied===1?'':'s')+' read from '+s.file+' and applied',
+        'Document', p.id, before);
+    }
+  }
+
+  // Leaving a tab drops whatever was open in it, so nothing is half-open when you come back.
+  // That includes the AI panel: it stays put while you move between Freight and Enquiry on
+  // the same quote, but leaving the card closes it — otherwise it looks like it opened itself.
+  function goTab(v){ return function(){ S.view=v; S.openId=null; S.openChange=null; S.openPending=null;
+    S.scan={open:false,reading:false,sample:null,picked:{}};
+    S.ask={material:{q:'',state:'idle',asked:''},transport:{q:'',state:'idle',asked:''}};
+    render(); }; }
+  $('tabDir').onclick=goTab('dir');
+  $('tabQuote').onclick=goTab('quote');
+  $('tabChanges').onclick=goTab('changes');
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape'&&(S.confirm||S.sendPick)){ S.confirm=null; S.sendPick=null; render(); } });
+  $('bReset').onclick=function(){ reset(); render(); };
+  render();
+})();
+</script>
+
+</body>
+</html>

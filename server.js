@@ -139,11 +139,13 @@ const createRatesRouter      = require('./routes/rates');
 const createConfigRouter     = require('./routes/config');
 const createQuotationsRouter = require('./routes/quotations');
 const createGmailRouter      = require('./routes/gmail');
+const createContactsRouter   = require('./routes/contacts');
 
 app.use('/api', createRatesRouter({ openai, upload, storage, ratesDir }));
 app.use('/api', createConfigRouter({ storage }));
 app.use('/api', createQuotationsRouter({ ddbDocClient, ddbTableName, storage }));
 app.use('/api', createGmailRouter());
+app.use('/api', createContactsRouter({ storage, openai }));
 
 // API Routes
 
