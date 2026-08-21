@@ -24,8 +24,54 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   through — write no code and create no files until they explicitly say to build it. If they don't answer
   your scoping questions, that is *not* permission to proceed on assumed defaults.
 - **Never update CLAUDE.md or write tests for a feature without explicit user approval first.** When a feature is complete, ask in chat: "This looks done — want me to update CLAUDE.md and add tests?" Then wait for a clear yes before doing either.
+- **Ask before adding frontend code to `index.html`.** It is already ~11,900 lines. Work out first
+  whether the new thing deserves its own file, then ask in one sentence and wait — e.g. "This is about
+  300 lines for the partner directory; I'd put it in its own file rather than index.html. OK?" The test
+  for when a new file is warranted is under Modularity rules, in
+  "Frontend: ask before adding to `index.html`".
 - **Prototypes are not the app.** When the user asks for changes to a prototype (`prototypes/*.html`), change
   only that file. Do not implement it in `index.html` or the routes unless they ask for it in the app.
+
+## Before calling any change done — the five checks
+
+A review of all 365 commits (Jan–Aug 2026) found that nearly every bug in this project falls into one
+of five patterns. They recur because nothing forces a check for them. **Run these five against every
+change before saying it is finished**, and say which ones applied.
+
+1. **Could this lose work silently?**
+   Never persist a list *summary* through the whole-object save route — a `PutCommand` overwrite is how
+   six quotes lost their line items on 23 July. Use a field-only conditional read-modify-write (the
+   `cust-reply-pending` / freight / supplier / revision routes are the pattern). Flush pending edits
+   **synchronously** before any re-render; a debounce plus a re-render loses the edit.
+
+2. **Could a stale copy overwrite a fresh one?**
+   Assume two tabs, two devices, and a colleague editing at the same time. Server-owned fields must not
+   be reasserted from an old client copy (`SERVER_OWNED_LIST_FIELDS`). Clear any input once it has been
+   consumed — an uncleared file picker once blended two customers' enquiries into one wrong quotation.
+
+3. **Can this run twice?**
+   Every send / generate / submit needs an in-flight lock and a visibly disabled button. A double-click
+   or an impatient second click must be a no-op — not a second email to the customer, a second paid AI
+   run, or a third copy of the quote.
+
+4. **Does a failure actually look like a failure?**
+   Never show an empty-state message on an error ("No quotations approved yet" during a network failure
+   reads as *your quotes are gone*). Distinguish "nothing here" from "the request failed", and never
+   fire-and-forget a save that records something irreversible — if the email went out, the record of it
+   must be awaited, retried, and its failure surfaced.
+
+5. **Is any number guessed?**
+   Missing quantity or kg/m stays **blank and red**, never assumed (no 6 m pipe-length guess). Any trade
+   rule must be identical everywhere it appears — the 7% tolerance is **ERW/GI only, never seamless**,
+   in the Freight tab, the shared page and the PDF alike.
+
+Two supporting rules:
+
+- **A new test must be checked by breaking the code on purpose** — see "Every new test must be
+  mutation-checked" under Testing rules. A test that still passes with the behaviour sabotaged is
+  worthless; fix it before moving on. This has caught several fake tests in this repo already.
+- **Prove browser-visible changes before reporting them done** — use the `check-it` skill
+  (`.claude/skills/check-it/`) and show the user what happened, rather than asserting it works.
 
 ## Active project — unified per-quote flow (read `SESSION-HANDOFF.md` first)
 
@@ -66,6 +112,33 @@ New code must go in the appropriate existing file or a new file in the right fol
 | File storage logic | `storage/index.js` |
 | Gmail ingest sub-logic | `gmail-ingest/` (route.js, ingestLogic.js, htmlBuilder.js, attachmentUtils.js, descriptionFormatter.js) |
 
+### Frontend: ask before adding to `index.html`
+
+`index.html` already holds ~11,900 lines. **Before writing any frontend code, decide whether it belongs
+in a new file — and if it might, ask the user before writing anything.** The map at the top of
+`index.html` lists what is already there and which blocks are the next candidates to move out.
+
+It wants **its own file** if two or more of these are true:
+
+- It is a feature area a person would name out loud ("the Freight tab", "the Register").
+- It will run to more than roughly 150 lines.
+- It owns its own state or data, rather than editing what is already on the page.
+- It could be tested on its own, without loading the whole page.
+- It is used from one place, not scattered through the file.
+
+It **stays in `index.html`** when it is a small addition to a section already living there, or is bound
+tightly to rendering that also lives there — splitting those creates two files that must change
+together, which is worse than one.
+
+The existing modules are the pattern to follow: `weight-calculator.js`, `enquiry-preparer.js`,
+`freight-tab-weight-editor.js`, `quote-enquiry-tab.js`, `register.js` — each a named tool or tab, each
+loaded by a `<script src>` at the bottom of `index.html` with a `?v=` cache-buster, each with its own
+test file.
+
+**How to ask:** one sentence, before any code — e.g. *"This looks like about 300 lines for the partner
+directory — I'd put it in `partner-directory.js` rather than index.html. OK?"* Then wait. If the answer
+is to keep it in `index.html`, do that without arguing.
+
 `server.js` is for: Express/middleware setup, OpenAI + DynamoDB init, multer config, file-type helpers (`isWordEnquiryFile`, `isExcelEnquiryFile`, `isImageEnquiryFile`, `getImageDataUrl`, `extractTextFromWordFile`, `extractTextFromExcelFile`), and `handleGenerateQuotation` (the core AI function). No other business logic belongs there.
 
 Never use raw string literals for DynamoDB table keys, entity types, or config file names — always import from `utils/constants.js`.
@@ -104,6 +177,34 @@ jest --silent                            # quieter output (add to any command)
 ```
 
 Run the full suite (`npm test`) only when explicitly asked.
+
+### Every new test must be mutation-checked — no exceptions
+
+**A test is not finished when it passes. It is finished when you have proved it can fail.**
+
+After writing a test, deliberately sabotage the code it guards — delete the guard, flip the comparison,
+remove the deduction, return the wrong branch — re-run, and confirm the test **fails on that mutation**.
+Then restore the code. If the test still passes with the behaviour broken, the test is worthless: fix it
+before moving on, and say so.
+
+This is not theoretical. Tests in this repo have passed while the thing they claimed to guard was
+completely broken:
+
+- A freight test built a fixture (`lineItems` containing a row described "Freight") that the real app can
+  **never** produce, because freight rows carry `.freight-row` and are filtered out. It passed the whole
+  time the feature was broken.
+- `labelSentThread` negatives asserted `false` — which is what *every* input returns under jest, since
+  no `GMAIL_*` env vars means throw, then fail-soft catch. They could not fail.
+- Two source guards passed **with the guarded code deleted**: one regex made the sink argument optional,
+  the other also matched the module-level declaration.
+- `defaultUomFor` / `qtyHeadingOf` had zero real coverage — the suite runs under `@jest-environment node`,
+  where `document` is undefined and the function short-circuits before the logic under test.
+- A tolerance test only ever used an all-welded section, which reads identically whether the 7% is
+  deducted from welded only or from everything. The mixed case (100 kg seamless + 100 kg welded must
+  total 193, not 186) was the one that actually pinned the rule.
+
+When reporting test work, state how many mutations were applied and how many were caught. A mutation
+that escapes is a finding about the test, not a footnote.
 
 **Test patterns to know:**
 - `tests/unit.test.js` accesses server internals via `require('../server')._test` — functions that need testing but aren't exported normally are added to that `_test` object at the bottom of `server.js`.
