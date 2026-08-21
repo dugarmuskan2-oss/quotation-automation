@@ -1,148 +1,192 @@
 # Session handoff — unified per-quote flow rebuild
 
-> **Point-in-time state** (last updated 21 Jul 2026). Pairs with `UNIFIED-QUOTE-FLOW-PLAN.md`
+> **Point-in-time state** (last updated **19 Aug 2026**). Pairs with `UNIFIED-QUOTE-FLOW-PLAN.md`
 > (the roadmap/design) — this file is the *current state*: what's built, git state, and what's
 > pending. Read both when picking this up in a new session.
+>
+> ⚠ The previous version of this file was written 21 Jul and had gone a month stale. If anything
+> below contradicts your memory of an older session, this file wins.
 
-## NEW (21 Jul): Admin margin-allocation flow — BUILT on `Testing-other-features`, NOT yet on main
-Signed-off prototype: `prototypes/margin-allocation-demo.html`. Commits `da54bae`..HEAD:
-- **Margins-to-allocate desk** above the approval list (`#marginDeskSection`, `renderMarginDesk` in
-  `index.html`): quotes born with `adminStatus:'awaiting'` (both birth points: gmail-ingest
-  `buildQuotationToSave` + `buildQuotationData`). Per-type margin controls (Seamless: Price list /
-  Cost + %; ERW & GI: Cost + %), notes for staff, New company? + Assign-to (shared editable
-  **staff list**: `CONFIG_KEY_STAFF_LIST` + save/get in `routes/config.js`, editor in Configuration).
-- **Send to approval** → `POST /api/quotations/:id/apply-admin-margins` (server-side stamp via
-  `utils/calculations.js stampAdminMargins`, rebuilds tableHTML with the ingest builder,
-  `adminStatus:'ready'`). Card shows amber **"From the admin"** strip (`buildAdminMessage`).
-  Seamless cost-mode uses `costRate` per item when the AI extracted it, else falls back to unitRate
-  (⚠ AI extraction of costRate NOT yet added to instructions — margins still stamp correctly).
-- **Regret** → sends the FIXED regret reply in-thread (`mdkRegret`, uses `/api/send-email`
-  replyToMessageId) then `POST /api/quotations/:id/regret` (undo supported). No-thread quotes are
-  marked only. ⚠ Live email send untested (needs a real enquiry; transport = the tested send route).
-- **Enquiry attachments retained at ingest** (`persistEnquiryAttachments` → storage `enquiries/`
-  prefix, go-forward only) + `GET /api/view-enquiry-file` (in `routes/rates.js`) + clickable chips
-  + **Print enquiry** button (admin message first, then enquiry, then files).
-- **Enquiry register**: `GET /api/enquiry-register` (X-Ingest-Secret; REGRET/SENT/PENDING rows) +
-  `apps-script/EnquiryRegister.gs` (fills month tabs, per-day totals, includes unquoted
-  "Enquiry Client" emails as PENDING; menu + daily-7am trigger). ⚠ Owner must paste the script into
-  the register Sheet + set Script Properties (APP_URL, INGEST_SECRET).
-- Also: removed leftover debug-telemetry fetches (127.0.0.1:7704) from the default-margin functions.
-- Verified: full jest suite 22/551 green; desk/apply/regret round-tripped against a throwaway DB
-  quote (deleted after); register endpoint returned 277 real rows. Local `.env` IS S3-active
-  (bucket `quotationauto`, shared with prod — careful with test writes).
+## Git state (READ FIRST)
+
+| Ref | At | Meaning |
+|---|---|---|
+| `origin/main` | `1e316d1` (7 Aug) | **live in production** (Vercel) |
+| `origin/Testing-other-features` | `1e316d1` (7 Aug) | same commit as main |
+| local `main` | `1e316d1` (7 Aug) | in sync |
+| local `Testing-other-features` | `61157c4` (19 Aug) | **5 commits ahead of everything — unpushed** |
+
+Everything up to **7 Aug is deployed**. These five commits exist only on this machine:
+
+- `61157c4` The "Customer replied" badge now sticks (19 Aug)
+- `6d712bb` Supabase behind a switch: the app can run on either database (18 Aug)
+- `a6a29d4` A quote card notices when the quote changed on another device (13 Aug)
+- `c4851a5` Tests for the Cc/Bcc send semantics (12 Aug)
+- `2aec2e1` Cc and Bcc behave like ordinary email — either one is enough to send (11 Aug)
+
+**Uncommitted (untracked) in the working tree:**
+- `tests/quote-freshness.test.js` — the test file for `checkQuoteFreshness` (the `a6a29d4` work).
+  Written and passing; just never committed. Belongs with that feature.
+- `prototypes/partner-directory-demo.html` — a **new prototype, design discussion in flight**:
+  a "Partner directory" (transporters / suppliers) with reason-carrying pills, recipient chips and
+  an AI-read-back panel. Not signed off; nothing built from it in the app. Per the standing rule,
+  prototypes are not the app — build nothing from it until the owner says so.
+
+⚠ **Never push either branch without a fresh, explicit yes** (CLAUDE.md standing rule; `main`
+deploys to production on push). The owner has repeatedly chosen to defer pushing — that is a
+choice, not an oversight. Offer at a natural stopping point; don't nag.
 
 ## The big effort
-Unify the three tools (Weight Calculator, Enquiry Preparer, Quotation approval) into **one
-status-driven per-quote flow**. Target design = the signed-off prototype
-`prototypes/freight-sourcing-demo.html`. Full roadmap + 6-item backlog = `UNIFIED-QUOTE-FLOW-PLAN.md`.
-6 phases total.
 
-## Built + committed (Phases 1–5)
-- **P1** status-led list · **P2** Quote/Freight/History tabs · **P3** Freight tab (editable +
-  splittable weight panel `freight-tab-weight-editor.js` + Add-freight box wired to the FOR engine)
-  · **P4** revisions + History tab (auto-persist via whole-object save; `revised` / `everApproved` /
-  `custReplyPending` added to the list projection in `routes/quotations.js`) · **P5** conversation
-  panel: reply to customer (works today, `gmail.send`) + read thread (`gmail.readonly`, needs re-auth).
-- **Needs-attention rework (latest):** removed the two-group spotlight → **single list**;
-  needs-attention quotes get a **light-red highlight + "Needs attention: {reason}" badge** (reason =
-  customer replied / resend / transporter reply). **New/unreviewed is NOT flagged** (owner's call).
-  The old spotlight builders are *parked* (commented, unused) in `index.html`.
-- **Backlog done:** #1 soft-delete weights (row struck-through + "Add back", excluded from total &
-  Print), #3 reason badge, #5 "Send quote to customer" from the conversation panel. #4 (open inline)
-  is moot after the rework.
-- **kg/m extraction fix:** the AI was missing `kgPerMeter` on some items because
-  `handleGenerateQuotation` sent BOTH the configured system instructions AND a **hardcoded
-  user-message prompt** that framed kg/m as optional ("return empty string") with an empty example —
-  overriding the instructions. Fixed by gutting that hardcoded prompt (commit `d2f216b`); the
-  configured system instructions are now the single source of truth.
-- **Phase 6 (3 Jul, uncommitted): freight sourcing built into the Freight tab**
-  (`freight-tab-weight-editor.js`, prototype parity pass). The tab now = collapsible **Calculate
-  weight** + collapsible **Send freight enquiry** + always-open **Add freight** box. Enquiry:
-  transporter chips (reuses `attachContactAutocomplete`), pickup/drop, live weight chip, editable
-  draft; **one email per transporter** (own Gmail thread each) via `/api/send-email`; threads stored
-  on the quote as **`q.freightEnquiries`** (persisted via `saveQuotationToBackend` only when
-  `!hasUnsavedEdits` — no-autosave rule). **Check for replies** reads `/api/thread-messages`
-  (reply = any non-SENT message), sets **`q.transporterReplyIn`** (needs-attention badge),
-  parses a price (`parseFreightAmount`: Rs/INR/₹/"18,500/-") → **Use Rs X** fills the Add-freight
-  box and clears the flag. Also: **Request freight** button per weight section (scopes the enquiry
-  to a shipment when split — `enq.forSec`), **per-shipment freight amounts** when split
-  (amtA/amtB + Total freight line; engine still gets one summed row), Add-freight button/note now
-  announce revision behaviour ("Add freight & create Rev N" / "Update Rev N"). The owner's
-  transporter-email-source decision is now moot (recipients typed/autocompleted per enquiry).
-  A 20-agent adversarial review confirmed 11 issues — all fixed (incl. printWeights XSS escape,
-  active-tab preservation across `displayAllApprovedQuotations` rebuilds, per-thread `forSec`
-  scope for "Use Rs X", new-replies-only needs-attention flagging, reply truncation
-  `trimReplyForStorage`, check-failure vs no-replies messaging via `enq.checkResult`).
-- **Freight follow-ups (3 Jul, uncommitted):** (1) composer **total weight is editable**
-  (`enq.weightOverride`, "use calculated" reset link, cleared on rescope); (2) **missing
-  quantity = blank + red, never assumed** — `buildWeightExtractionInstructions` (server.js) now
-  forbids the AI's 6 m pipe-length guess; `weight-calculator.js` red-tints rows missing kg/m OR
-  qty (clears live); freight-tab rows store qty `null`, show blank+red *editable* qty ("no qty",
-  excluded from totals; quote-sourced qty stays readonly); (3) **remembered freight
-  suggestions (ROUTE-AWARE)** — `CONFIG_KEY_FREIGHT_SUGGESTIONS` config (JSON in S3 bucket
-  `quotationauto`) via `GET/POST /api/(get|save)-freight-suggestions`. Shape:
-  `{ transporters:[{email,count,lastUsed}], routes:[{pickup,drop,transporters:[…]}], pickups:[],
-  drops:[] }`. `mergeFreightUsage` (routes/config.js) bumps the global list AND the route bucket
-  keyed by normalized pickup+drop, recorded after each successful send. Frontend
-  `rememberedTransportersForRoute(query, pickup, drop)` ranks: exact pickup+drop → same pickup
-  (any drop) → global, deduped/filtered by typed text; passed to `attachContactAutocomplete`
-  (index.html gained optional 4th `localSuggest` param) as a closure reading the LIVE
-  `enq.pickup`/`enq.drop`, shown instantly (incl. on focus). **Pickup/drop are NOT auto-filled**
-  (owner: manual only) — they're still saved for the route key + a possible future dropdown.
+Unify the three original tools (Weight Calculator, Enquiry Preparer, Quotation approval) into
+**one status-driven per-quote flow**. Roadmap + backlog = `UNIFIED-QUOTE-FLOW-PLAN.md`.
+Signed-off target designs: `prototypes/freight-sourcing-demo.html`,
+`prototypes/margin-allocation-demo.html`, `prototypes/quote-enquiry-demo.html`.
 
-## Git state (IMPORTANT)
-- Branch **`Testing-other-features`**. **14 commits committed locally but NOT pushed** (top =
-  `d2f216b`). Push has been repeatedly deferred by the owner.
-- **Uncommitted in the working tree:**
-  - `index.html`, `routes/gmail.js`, `tools/gmail-auth.js`, `utils/gmail.js` — the **real-time
-    email autocomplete** (People-API, `attachContactAutocomplete()` + `GET /api/contact-suggestions`).
-    Owner once said "undo" but it was never reverted, and the new freight-enquiry composer now
-    **depends on it for suggestions** (degrades to manual typing without it) — recommend keep+commit.
-  - `freight-tab-weight-editor.js` — the whole **Phase 6 freight sourcing** build (see above).
-  - `SESSION-HANDOFF.md`, `CLAUDE.md` — handoff docs (CLAUDE.md edit was owner-approved).
+**All 6 phases are built, committed, and (through 7 Aug) deployed.** The month since has been
+features on top plus heavy end-to-end hardening — not phase work.
 
-## Pending OWNER actions (blockers)
-1. ~~Re-auth~~ **DONE (3 Jul)** — owner ran `node tools/gmail-auth.js` with the new scopes
-   (`gmail.send` + `gmail.readonly` + `contacts.readonly` + `contacts.other.readonly`).
-   Restart the app server so it picks up the new refresh token.
-2. **Enable the People API** in the Google Cloud project (for the autocomplete — suggestions
-   return empty until then; check DevTools → Network → `contact-suggestions` → `error` field).
-3. ~~Transporter-email source~~ moot — enquiry recipients are typed per enquiry (with autocomplete).
-4. **Push** the commits.
+## What's built (state, not history)
+
+**The quote card** — status-led list, Quote / Freight / Enquiry / History tabs, conversation panel.
+
+- **Freight tab** (`freight-tab-weight-editor.js`): editable + splittable weight panel, soft-deleted
+  rows (struck through, "Add back", excluded from totals and Print), Add-freight box wired to the
+  FOR engine, per-shipment amounts when split, **7% tolerance on ERW/GI only** (seamless bills
+  exact), a Send-freight-enquiry composer with transporter chips, **one email per transporter**
+  (own Gmail thread each), route-aware remembered suggestions, and a Check-for-replies that parses
+  a price (`parseFreightAmount`) and offers **"Use Rs X"** to fill the Add-freight box.
+- **Enquiry tab** (`quote-enquiry-tab.js`) — the **buying-side mirror** of the Freight tab: ask
+  suppliers/dealers for their best rate without leaving the quote. Reuses the standalone Enquiry
+  Preparer's row builder verbatim (`buildEnquiryRowModel` via its `_test` export) so the two
+  formats can never drift apart. Recipients go in **Bcc**, one email per supplier so each reply
+  lands in its own thread. Suppliers are remembered **per pipe type** (GI / ERW / Seamless).
+- **Cc/Bcc** behave like ordinary email across freight + supplier enquiries — **either one alone is
+  enough to send** (no To required); a Bcc-only mail is addressed to ourselves. Two boxes only.
+- **Revisions + History** — always-on Save-as-Revision, full-quote History view, `(Rev N)` on the
+  document, the email, the list and the number box; revision asks take rich text and pasted images.
+- **Freshness check** (`checkQuoteFreshness` in `index.html`) — on every re-open of a card, notices
+  the quote changed on another device (or under a colleague's hands) and refreshes it **without
+  clobbering unsaved edits here**. This is what cured "the revision app shows what was loaded prior".
+
+**Margin desk** (admin allocation, above the approval list) — per-type margin controls, shared staff
+list, admin note with rich paste, per-pipe-type include tick, soft-delete of accidental quotes with
+a 7-day auto-purge, Send-to-approval, and the fixed Regret reply sent in-thread.
+
+**Enquiry Register** (`register.js`, 4th tool tab) — live report over every quotation mirroring the
+Google-Sheet layout: merged enquiry-date cells, per-day totals, dual status (App + Manual), auto
+Checked By, Sent On, days enquiry→quote (**skips Sundays, keeps Saturdays**), value, plus the manual
+workflow columns saved per quote via `POST /api/quotations/:id/register-meta`. Loads **one month at
+a time** (`?month=YYYY-MM`) with a per-month localStorage cache. The Sheet mirror still uses `?days=N`.
+
+**Copy Link / shared quote page** — a full internal quote page: every version, weight, freight and
+supplier replies, one merged timeline (enquiry activity sits between the versions it explains), and
+the **real archived PDF per version**.
+
+**Replies** — global "Check all replies" sweep, auto-check on load, supplier replies pulled
+automatically when the app opens. The **"Customer replied" badge is now durable**: a field-only route
+`POST /quotations/:id/cust-reply-pending` (conditional read-modify-write, same pattern as the
+freight / supplier / revision routes) persists that one boolean for **list summaries too**, so the
+badge survives reloads and other devices. It cannot touch line items — deliberately, because the
+whole-object save is exactly how six quotes lost their items on 23 July. `custReplyPending` is in
+`SERVER_OWNED_LIST_FIELDS`, so a colleague clearing it by replying is picked up rather than
+overwritten by this tab's stale copy.
+
+**Ingest** — enquiry attachments retained at ingest, oversized PDFs turned into extracted text +
+page images rather than skipped, oversized photos compressed, a photographed enquiry shrunk instead
+of refused, every enquiry image sent to the AI.
+
+**Mobile** — the app is usable on a phone (`1e316d1`, the last deployed commit).
+
+**Supabase behind a switch (18 Aug — newest architecture change).**
+`storage/supabaseShim.js` is a drop-in stand-in for `DynamoDBDocumentClient` backed by Postgres.
+The routes keep issuing the exact DynamoDB commands they issue today; the shim translates them to
+SQL over **one table `ddb_items`** whose `item` column holds each record verbatim. Nothing in
+`routes/` or `gmail-ingest/` changes. It supports **only** the command shapes this codebase uses and
+**throws loudly** on anything else (a silent no-op would corrupt data). Dynamo semantics are kept
+where the app can tell the difference: `ConditionalCheckFailedException` by name, and
+`LastEvaluatedKey` / `ExclusiveStartKey` pagination in the same shape.
+
+- **The switch:** `QUOTES_DB=supabase` **plus** `SUPABASE_DB_URL` → Supabase at boot; anything else
+  (or unset) → DynamoDB. Rollback is flipping the env var back. A shim load failure falls back to
+  DynamoDB with a warning.
+- **Current local `.env`:** `SUPABASE_DB_URL` **is** set, `QUOTES_DB` is **not** → the app still
+  runs on **DynamoDB**. Nothing has been cut over.
+- `tools/ddb-to-supabase-sync.js` copies DynamoDB → Supabase (Scan only, **read-only on the AWS
+  side**), idempotent (upserts on id), prints no secrets.
+- ⚠ The local `.env` is **S3-active** (bucket `quotationauto`, **shared with production**) — be
+  careful with test writes.
+
+**Backlog status** (`UNIFIED-QUOTE-FLOW-PLAN.md`): **#1 done** (soft-delete weights), **#3 done**
+(reason badge), **#5 done** (send from the conversation panel), **#6 done** (`61157c4`; verified
+live — the flag reads back true, clears back to false, appears in the LIST payload, and the quote's
+11 line items + `tableHTML` were byte-identical before and after). **#4 is moot** after the
+needs-attention rework. **#2 (Complete/dismiss button) is the only one left** — no dismiss handler
+exists in `index.html` today.
+
+## Pending OWNER actions
+
+1. **Push the 5 commits** — needs an explicit yes (see Git state).
+2. **Decide on the Supabase cutover** — the switch is built and the sync script exists, but nothing
+   is cut over. Flipping it on production is a live-data decision and the owner's call alone.
+3. **People API** — the contact dropdown (`GET /api/contact-suggestions`) has been in active use in
+   both the freight and supplier composers since early Aug, so this looks resolved. If suggestions
+   ever come back empty, check DevTools → Network → `contact-suggestions` → `error` field; the fix
+   is enabling the People API in the Google Cloud project.
+4. Gmail **re-auth is done** (3 Jul; scopes `gmail.send` + `gmail.readonly` + `contacts.readonly`
+   + `contacts.other.readonly`).
 
 ## Remaining work
-- Resolve the autocomplete "undo" — recommend **keep+commit** (the freight-enquiry composer now
-  reuses `attachContactAutocomplete()` for transporter recipients).
-- **Commit** the Phase 6 freight-sourcing work + docs (owner asks for commits explicitly).
-- Backlog **#2** (Complete/dismiss button on a flagged folder) · **#6** (verify a Gmail-side reply
-  clears the flag after re-auth — `custReplyPending` is set **in memory only**, so the list won't
-  refresh without a small background save).
-- Live-verify Phase 5 thread-reading and Phase 6 send/check-replies now that re-auth is done
-  (all dev-env verification used stubbed fetch).
-- Optional: kg/m **truncate vs round** (`utils/calculations.js` uses `.toFixed(2)` = rounds; owner's
-  rule says truncate to 2 decimals).
-- Optional kg/m completeness backstop: a **standard size→kg/m fallback table**. Note the existing
-  matcher in `weight-calculator.js` keys on the *whole description* (broken) — a real fix extracts
-  size + class + type. See the diagnosis in the session where 3/12 → 12/12 with size extraction.
-- Optional Phase 6 polish: auto-suggest transporters from past freight enquiries; CLAUDE.md +
-  tests for the freight module (needs owner approval per standing rule).
+
+- **Commit** `tests/quote-freshness.test.js` alongside the freshness feature.
+- Backlog **#2** — a Complete/dismiss button on a flagged quote. Define per trigger what it clears.
+- **Partner directory** — prototype only, awaiting the owner's decision. Build nothing yet.
+- Optional: kg/m **truncate vs round** (`utils/calculations.js` uses `.toFixed(2)` = rounds; the
+  owner's rule says truncate to 2 decimals).
+- Optional kg/m backstop: a standard size→kg/m fallback table. Note the matcher in
+  `weight-calculator.js` keys on the **whole description** (broken) — a real fix extracts size +
+  class + type. `utils/pipeWeights.js` already does this properly from the uploaded price lists.
+- `costRate` extraction is still **not** in the AI instructions; seamless cost-mode falls back to
+  `unitRate` when it's missing (margins still stamp correctly).
 
 ## Key files
-`index.html` (SPA: list, tabbed card, needs-attention, conversation panel, recipient dialog +
-autocomplete), `freight-tab-weight-editor.js` (Freight tab weight panel), `utils/gmail.js` +
-`routes/gmail.js` (send / thread read / contact search), `routes/quotations.js` (persistence + list
-projection), `server.js` (`handleGenerateQuotation` + the extraction prompt), `tools/gmail-auth.js`
-(OAuth scopes), `UNIFIED-QUOTE-FLOW-PLAN.md` (roadmap + backlog), `prototypes/freight-sourcing-demo.html`
-(target design).
+
+`index.html` (the SPA — list, tabbed card, needs-attention, conversation panel, recipient dialog,
+contact autocomplete, `checkQuoteFreshness`) · `freight-tab-weight-editor.js` (Freight tab) ·
+`quote-enquiry-tab.js` (supplier Enquiry tab) · `enquiry-preparer.js` (standalone Preparer — the row
+builder both reuse) · `register.js` (Enquiry Register tab) · `weight-calculator.js` ·
+`routes/quotations.js` (persistence, list projection, field-only routes) · `routes/gmail.js` +
+`utils/gmail.js` (send / thread read / contact search) · `routes/config.js` (staff list, freight
+suggestions, defaults) · `server.js` (`handleGenerateQuotation`, DB init + the `QUOTES_DB` switch) ·
+`storage/supabaseShim.js` + `tools/ddb-to-supabase-sync.js` (the Supabase option) · `gmail-ingest/`
+(ingest) · `utils/pipeWeights.js` (price-list kg/m).
 
 ## Cross-cutting rules to respect
-No-autosave + save-gate (edits set `hasUnsavedEdits`; only explicit Save/Approve persists;
-Download/Send are gated). Approval-card inputs use **`data-field`, not `id`**. Modularity
-(routes→`routes/`, Gmail→`utils/gmail.js`, reusable freight/weight→`freight-tab-weight-editor.js`,
-never `server.js`). DynamoDB 400 KB item cap (keep `tableHTML` out of revision snapshots).
 
-## How things were verified (no live backend in the dev env)
-Preview server on `localhost:3000` + inject mock `approvedQuotations` via `preview_eval` + call the
-render functions; stub `fetch` for Gmail/People endpoints; backend checked with `node --check` + `jest`.
-**Live Gmail/People calls are untested** here (no credentials) — the owner verifies after re-auth.
-Test suites are green (~133 frontend-guard + 72 route/gmail).
+- **No autosave + save-gate.** Edits set `hasUnsavedEdits`; only explicit Save/Approve persists;
+  Download **and** Send stay gated. The field-only routes (`cust-reply-pending`, freight, supplier,
+  revision) are the exception — each writes one field via a conditional read-modify-write and
+  cannot clobber edits or items.
+- **Never save a list summary through the whole-object route.** A `PutCommand` overwrite is exactly
+  how six quotes lost their line items on 23 July.
+- Approval-card inputs use **`data-field`, not `id`**.
+- **Modularity** (CLAUDE.md): routes → `routes/`, Gmail → `utils/gmail.js`, freight/weight →
+  `freight-tab-weight-editor.js`, supplier enquiry → `quote-enquiry-tab.js`; never `server.js`.
+- **DynamoDB 400 KB item cap** — keep `tableHTML` out of revision snapshots.
+- **Prototypes are not the app.** A change asked for in `prototypes/*.html` stays in that file.
+- **Never** update CLAUDE.md or add tests for a feature without explicit owner approval.
+
+## How things are verified
+
+Full suite green as of 19 Aug: **58 suites, 1693 tests** (`npx jest --silent`, ~17s). The per-file
+mapping is in CLAUDE.md — run only the relevant file after a change.
+
+Frontend logic is tested by **extracting the real function out of `index.html`** (or a module's
+`_test` export) and running it against a scripted `fetch` plus a minimal DOM stand-in — alongside
+**source guards** that assert key markers still exist in `index.html`. Renaming a guarded function
+means updating its guard. UI is checked with the preview server on `localhost:3000` with a mock
+`approvedQuotations` injected.
+
+Live verification does now happen where it matters: the `cust-reply-pending` route was round-tripped
+against the live server on the Supabase copy, with the quote's line items and `tableHTML` compared
+byte-for-byte before and after.
