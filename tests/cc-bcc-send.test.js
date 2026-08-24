@@ -104,6 +104,24 @@ describe('supplier enquiry — Bcc mode is unchanged by the Cc-only feature', ()
         expect(st.sent.startsWith('ok:')).toBe(true);
     });
 
+    test('two people at ONE supplier ride on one email; a second supplier stays separate', async () => {
+        const h = harness(enquirySrc, 'doSend', {});
+        const firmA = 'rakesh@kalpatarusteel.com, nikhil@kalpatarusteel.com';
+        const firmB = 'sunil@msc.in';
+        const q = {}, st = { bcc: [firmA, firmB], cc: [], sending: true };
+        await h.run(q, null, st, 'Enq', st.bcc.slice(), { cc: '' });
+
+        expect(h.calls.posts).toHaveLength(2);              // one per FIRM, not per person
+        const toA = h.calls.posts.find((x) => (x.cc + x.bcc).includes('kalpataru'));
+        const toB = h.calls.posts.find((x) => (x.cc + x.bcc).includes('msc.in'));
+        expect(toA.cc).toBe('rakesh@kalpatarusteel.com, nikhil@kalpatarusteel.com');
+        expect(toA.bcc).toBe('');                           // colleagues see each other
+        expect(toB.bcc).toBe('sunil@msc.in');               // a lone supplier stays hidden
+        // Neither supplier learns the other was asked — the whole point of one email each.
+        expect(toA.cc + toA.bcc).not.toContain('msc.in');
+        expect(toB.cc + toB.bcc).not.toContain('kalpataru');
+    });
+
     test('a failed recipient stays in the Bcc box for retry; the rest are recorded', async () => {
         const h = harness(enquirySrc, 'doSend', { failFor: (p) => p.bcc === 'bad@steel.com' });
         const q = {}, st = { bcc: ['a@steel.com', 'bad@steel.com'], cc: [], sending: true };
@@ -183,6 +201,41 @@ describe('freight enquiry — the same two modes', () => {
         h.calls.posts.forEach((p) => { expect(p.to).toBe(''); expect(p.bcc).not.toContain(','); });
         expect(q.freightEnquiries.map((t) => t.forSec)).toEqual([2, 2]);
         expect(enq.bcc).toEqual([]);
+    });
+
+    test('two people at ONE firm ride on one email, Cc’d so they see each other', async () => {
+        const h = harness(freightSrc, 'freightSendAll', {});
+        const firm = 'manoj@sgroadlines.com, accounts@sgroadlines.com';
+        const q = {}, enq = { bcc: [firm], cc: [], sending: true };
+        await h.run(q, { }, null, enq, [firm], 'Freight', 'body', 0, { cc: 'ops@dscpipes.com' });
+
+        expect(h.calls.posts).toHaveLength(1);              // ONE email, not one per person
+        const p = h.calls.posts[0];
+        expect(p.bcc).toBe('');                             // not hidden from each other…
+        expect(p.cc).toContain('manoj@sgroadlines.com');    // …both openly on it
+        expect(p.cc).toContain('accounts@sgroadlines.com');
+        expect(p.cc).toContain('ops@dscpipes.com');         // our own copy still rides along
+    });
+
+    test('two FIRMS stay separate emails — neither can see the other was asked', async () => {
+        const h = harness(freightSrc, 'freightSendAll', {});
+        const firmA = 'manoj@sgroadlines.com, accounts@sgroadlines.com';
+        const firmB = 'prabhu@sakthicargo.com';
+        const q = {}, enq = { bcc: [firmA, firmB], cc: [], sending: true };
+        await h.run(q, { }, null, enq, [firmA, firmB], 'Freight', 'body', 0, { cc: '' });
+
+        expect(h.calls.posts).toHaveLength(2);
+        const toA = h.calls.posts.find((x) => (x.cc + x.bcc).includes('sgroadlines'));
+        const toB = h.calls.posts.find((x) => (x.cc + x.bcc).includes('sakthicargo'));
+        // The pair are grouped and visible to each other; the lone firm stays hidden on Bcc.
+        expect(toA.cc).toBe('manoj@sgroadlines.com, accounts@sgroadlines.com');
+        expect(toB.bcc).toBe('prabhu@sakthicargo.com');
+        // The rule that matters: no firm's address appears on the other firm's email.
+        expect(toA.cc + toA.bcc).not.toContain('sakthicargo');
+        expect(toB.cc + toB.bcc).not.toContain('sgroadlines');
+        // Both people at the grouped firm are still remembered individually.
+        expect(h.calls.usage).toContain('manoj@sgroadlines.com');
+        expect(h.calls.usage).toContain('accounts@sgroadlines.com');
     });
 
     test('Cc-only: one open email; one thread carrying the shipment scope', async () => {
