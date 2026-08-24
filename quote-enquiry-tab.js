@@ -59,6 +59,23 @@
     function apiBase() {
         return (typeof API_BASE_URL !== 'undefined' && API_BASE_URL) ? API_BASE_URL : '/api';
     }
+    // Tell the Partner Directory a supplier answered — the reply is detected here and
+    // nowhere else, so without this the directory's "replied %" never moves off 0.
+    function tellDirectoryReplied(threads) {
+        if (typeof window === 'undefined' || !window.partnerDirectory) return;
+        var emails = (threads || []).filter(function (t) { return t && t.replied && t.email; })
+            .reduce(function (acc, t) { return acc.concat(String(t.email).split(/[,;]+/)); }, [])
+            .map(function (s) { return s.trim(); }).filter(Boolean);
+        if (emails.length) window.partnerDirectory.recordUsage({ emails: emails, kind: 'reply', role: 'dealer' });
+    }
+
+    // One chip can hold several addresses from the SAME firm. They ride on one email and are
+    // Cc'd, so colleagues see each other; different chips are different firms and are always
+    // separate emails, so no supplier ever learns who else was asked.
+    function chipAddrs(chip) {
+        return String(chip || '').split(/[,;]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+    }
+
     function isEmail(v) {
         return typeof isValidEmailAddress === 'function'
             ? isValidEmailAddress(v)
@@ -398,6 +415,7 @@
             var newReplies = flags.filter(Boolean).length;
             if (newReplies) {
                 persistThreads(q);
+                tellDirectoryReplied(waiting);
                 // The sweep is background work, so its find has to reach an Enquiry tab that is
                 // already open — otherwise the tab keeps saying "Awaiting reply" over a reply
                 // that has already arrived, and the user concludes nobody answered.
@@ -510,7 +528,8 @@
     function chipsHtml(st, kind) {
         var list = listFor(st, kind);
         return list.map(function (a, i) {
-            var bad = !isEmail(a);
+            var parts = chipAddrs(a);
+            var bad = !parts.length || parts.some(function (one) { return !isEmail(one); });
             return '<span class="qet-chip' + (bad ? ' qet-chip-bad' : '') + '">' + escTxt(a)
                 + '<button class="qet-chip-x" data-kind="' + (kind || 'bcc') + '" data-i="' + i + '" title="Remove">&times;</button></span>';
         }).join('');
@@ -645,8 +664,12 @@
         var suggest = $('.qet-suggest');
         // Adding to any of the three lists. `kind` decides which one; the cursor goes back into
         // the SAME box afterwards, because render() rebuilds the tab and would otherwise drop it.
-        function addTo(kind, v) {
-            var email = String(v || '').trim().replace(/[;,]$/, '');
+        function addTo(kind, v, keepTogether) {
+            // A firm picked from the directory arrives pre-joined and must stay ONE chip, or
+            // its people end up on separate emails and never see each other.
+            var email = keepTogether
+                ? chipAddrs(v).join(', ')
+                : String(v || '').trim().replace(/[;,]$/, '');
             if (!email) return;
             var list = listFor(st, kind);
             if (list.indexOf(email) === -1) list.push(email);
@@ -669,7 +692,7 @@
                     items: enquiryNeedItems(quotation),
                     kg: enquiryNeedKg(quotation),
                     site: String(quotation.shipTo || ''),
-                }, function (chip) { String(chip).split(/,s*/).forEach(function (a) { addTo('bcc', a); }); });
+                }, function (chip) { addTo('bcc', chip, true); });
             };
         } else if (dirAsk) { dirAsk.style.display = 'none'; }
 
@@ -820,6 +843,7 @@
         var sends = ccOnly ? [extra.cc] : recipients;
 
         Promise.all(sends.map(function (addr) {
+            var firm = chipAddrs(addr);
             var payload = ccOnly
                 // One open email: the Cc list rides in the Cc header; server puts our own
                 // address in To so the message is well-formed.
@@ -827,6 +851,10 @@
                 // One email per supplier, that supplier alone on Bcc so nobody sees anyone else.
                 // `to` is left empty — the server addresses it to our own account.
                 // label tags the thread Quotation Automation/Enquiry Sent by us in Gmail.
+                // Several people at ONE firm: a single email with all of them on Cc, so they
+                // can see each other — which is the whole point of grouping them.
+                : firm.length > 1
+                ? { to: '', cc: [firm.join(', '), extra.cc].filter(Boolean).join(', '), bcc: '', subject: subject, bodyHtml: bodyHtml, label: 'supplier' }
                 : { to: '', cc: extra.cc, bcc: addr, subject: subject, bodyHtml: bodyHtml, label: 'supplier' };
             return fetch(apiBase() + '/send-email', {
                 method: 'POST',

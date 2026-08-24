@@ -723,9 +723,32 @@
     }
 
     // Cc and Bcc are checked too: a typo there fails the whole send, not just that copy.
+    // One chip can hold several addresses from the SAME firm. They ride on one email and are
+    // Cc'd, so colleagues see each other; different chips are different firms and are always
+    // separate emails, so no firm ever learns who else was asked.
+    function chipAddrs(chip) {
+        return String(chip || '').split(/[,;]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+    }
+
+
+    // Tell the Partner Directory a transporter answered. Without this the directory's
+    // "replied %" stays 0 for ever and the reply-rate part of its ranking does nothing.
+    function tellDirectoryReplied(threads) {
+        if (typeof window === 'undefined' || !window.partnerDirectory) return;
+        var emails = (threads || []).filter(function (t) { return t && t.replied && t.email; })
+            .reduce(function (acc, t) { return acc.concat(String(t.email).split(/[,;]+/)); }, [])
+            .map(function (s) { return s.trim(); }).filter(Boolean);
+        if (emails.length) window.partnerDirectory.recordUsage({ emails: emails, kind: 'reply', role: 'transporter' });
+    }
+
     function hasBadRecipient(enq) {
         var all = (enq.bcc || []).concat(enq.cc || []);
-        return all.some(function (a) { return typeof isValidEmailAddress === 'function' && !isValidEmailAddress(a); });
+        return all.some(function (a) {
+            var parts = chipAddrs(a);
+            return !parts.length || parts.some(function (one) {
+                return typeof isValidEmailAddress === 'function' && !isValidEmailAddress(one);
+            });
+        });
     }
 
     function enquiryThreadsHtml(q, st) {
@@ -885,8 +908,13 @@
         var ccOnly = !recipients.length;
         var sends = ccOnly ? [extra.cc] : recipients;
         Promise.all(sends.map(function (addr) {
+            var firm = chipAddrs(addr);
             var payload = ccOnly
                 ? { to: '', cc: addr, bcc: '', subject: subject, bodyHtml: bodyHtml, label: 'freight' }
+                // Several people at ONE firm: a single email with all of them on Cc, so they
+                // can see each other — which is the whole point of grouping them.
+                : firm.length > 1
+                ? { to: '', cc: [firm.join(', '), extra.cc].filter(Boolean).join(', '), bcc: '', subject: subject, bodyHtml: bodyHtml, label: 'freight' }
                 // One email per transporter, that transporter on Bcc so nobody sees anyone else.
                 // `to` is left empty — the server addresses it to our own account.
                 // label tags the thread Quotation Automation/Freight Enquiry in Gmail.
@@ -1001,6 +1029,7 @@
             if (newReplies) {
                 q.transporterReplyIn = true;   // flags "Needs attention: transporter reply" on the list
                 persistEnquiryThreads(q);
+                tellDirectoryReplied(waiting);
             }
             render(q, mountEl);
             // Refresh the list last — it rebuilds the cards, and the module state re-renders
@@ -1040,6 +1069,7 @@
         })).then(function (flags) {
             var newReplies = flags.filter(Boolean).length;
             if (newReplies) {
+                tellDirectoryReplied(waiting);
                 q.transporterReplyIn = true;
                 persistEnquiryThreads(q);
                 // The sweep runs in the background, so its find has to reach a Freight tab
@@ -1079,7 +1109,9 @@
         function bindAddressField(fieldEl, chipsEl, inputEl, list) {
             function renderChips() {
                 chipsEl.innerHTML = list.map(function (addr, i) {
-                    var bad = (typeof isValidEmailAddress === 'function' && !isValidEmailAddress(addr)) ? ' fwe-chip-bad' : '';
+                    var bad = chipAddrs(addr).some(function (one) {
+                        return typeof isValidEmailAddress === 'function' && !isValidEmailAddress(one);
+                    }) ? ' fwe-chip-bad' : '';
                     return '<span class="fwe-chip' + bad + '">' + escTxt(addr) + ' <span class="fwe-chip-x" data-i="' + i + '">×</span></span>';
                 }).join('');
                 chipsEl.querySelectorAll('.fwe-chip-x').forEach(function (x) {
@@ -1087,8 +1119,16 @@
                 });
                 syncSendBtn();
             }
-            function add(raw) {
+            function add(raw, keepTogether) {
                 var s = String(raw || '');
+                // A firm picked from the directory arrives pre-joined and must stay ONE chip,
+                // or its people end up on separate emails and never see each other.
+                if (keepTogether) {
+                    var joined = chipAddrs(s).join(', ');
+                    if (joined && list.indexOf(joined) === -1) list.push(joined);
+                    renderChips();
+                    return;
+                }
                 // Only split on whitespace for pasted address lists — typed names keep their
                 // spaces so "Ravi Transport" stays searchable / one chip.
                 var parts = s.indexOf('@') > -1 ? s.split(/[,;\s]+/) : s.split(/[,;\n]+/);
@@ -1126,7 +1166,7 @@
                 window.partnerDirectory.renderSuggestPanel(dirPanel, {
                     kind: 'transport', pickup: enq.pickup, drop: enq.drop,
                     kg: enqWeightUsable(st) ? Math.round(enqEffectiveWeight(st)) : 0,
-                }, function (chip) { String(chip).split(/,\s*/).forEach(function (a) { addBcc(a); }); });
+                }, function (chip) { addBcc(chip, true); });
             };
         } else if (dirAsk) { dirAsk.style.display = 'none'; }
         var ccField = mountEl.querySelector('.fwe-ccbox .fwe-enq-field[data-kind="cc"]');

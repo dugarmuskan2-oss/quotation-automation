@@ -138,14 +138,31 @@ function sanitizePartner(input) {
     };
 }
 
-/** Merge one partner into the list by id (never a whole-list overwrite). */
-function mergePartner(list, incoming) {
-    const partner = sanitizePartner(incoming);
+/**
+ * Merge one partner into the list by id (never a whole-list overwrite).
+ *
+ * With `fields` given, only those keys are taken from the incoming copy and the rest of the
+ * stored record is kept. That is what stops a second tab — holding a copy loaded minutes ago
+ * — from replacing a colleague's edit to a different part of the same firm.
+ */
+function mergePartner(list, incoming, fields) {
     const contacts = (Array.isArray(list) ? list : []).slice(0, MAX_CONTACTS);
-    const idx = contacts.findIndex(c => c && c.id === partner.id);
-    if (idx === -1) contacts.unshift(partner);
-    else contacts[idx] = partner;
-    return { contacts: contacts.slice(0, MAX_CONTACTS), partner };
+    const wanted = sanitizePartner(incoming);
+    const idx = contacts.findIndex(c => c && c.id === wanted.id);
+    if (idx === -1) {
+        contacts.unshift(wanted);
+        return { contacts: contacts.slice(0, MAX_CONTACTS), partner: wanted };
+    }
+    const only = Array.isArray(fields) ? fields.filter(f => typeof f === 'string' && f in wanted) : null;
+    if (!only || !only.length) {
+        contacts[idx] = wanted;
+        return { contacts: contacts.slice(0, MAX_CONTACTS), partner: wanted };
+    }
+    const merged = Object.assign({}, contacts[idx]);
+    only.forEach(f => { merged[f] = wanted[f]; });
+    merged.checked = wanted.checked;           // any edit stamps last-edited
+    contacts[idx] = merged;
+    return { contacts: contacts.slice(0, MAX_CONTACTS), partner: merged };
 }
 
 function findByEmail(list, email) {
@@ -210,6 +227,95 @@ function stubPartner(email, usage) {
         routes: (usage && usage.pickup) ? [{ from: usage.pickup, to: str(usage.drop) }] : [],
         fromEnquiry: true,
     });
+}
+
+// ── importing the memory the app already built ───────────────────────────────
+
+/**
+ * Turn the older auto-learned suggestion files into directory partners.
+ *
+ * freight-suggestions.json holds transporter addresses (global + per pickup/drop route);
+ * supplier-suggestions.json holds supplier addresses bucketed by pipe type. Both carry a
+ * usage `count` and `lastUsed` — real history worth keeping, so it seeds enq/last rather
+ * than starting every partner at zero.
+ *
+ * Anything already in the directory is left ALONE (matched on email): an import must never
+ * overwrite a card the owner has curated. Returns { contacts, added, skipped }.
+ */
+function importFromSuggestions(existing, freight, supplier) {
+    const contacts = (Array.isArray(existing) ? existing : []).slice();
+    const seed = {};   // email → partner draft, so one address is imported once
+
+    const note = (email, patch) => {
+        const key = lower(email);
+        if (!key || !isEmail(key) || !worthImporting(key)) return null;
+        if (!seed[key]) seed[key] = { email: key, count: 0, last: '', types: [], routes: [], role: 'dealer' };
+        Object.assign(seed[key], patch, {
+            count: Math.max(seed[key].count, num(patch.count, 0)),
+            last: (patch.last && patch.last > seed[key].last) ? patch.last : seed[key].last,
+            types: seed[key].types.concat(patch.types || []),
+            routes: seed[key].routes.concat(patch.routes || []),
+        });
+        return seed[key];
+    };
+
+    const f = (freight && typeof freight === 'object') ? freight : {};
+    (f.transporters || []).forEach(t => note(t.email, { role: 'transporter', count: t.count, last: t.lastUsed }));
+    (f.routes || []).forEach(r => (r.transporters || []).forEach(t => note(t.email, {
+        role: 'transporter', count: t.count, last: t.lastUsed,
+        routes: [{ from: str(r.pickup), to: str(r.drop) }],
+    })));
+
+    const s = (supplier && typeof supplier === 'object') ? supplier : {};
+    (s.suppliers || []).forEach(t => note(t.email, { role: 'dealer', count: t.count, last: t.lastUsed }));
+    Object.keys((s.byType) || {}).forEach(type => {
+        ((s.byType[type]) || []).forEach(t => note(t.email, {
+            role: 'dealer', count: t.count, last: t.lastUsed, types: [type.toUpperCase()],
+        }));
+    });
+
+    let added = 0, skipped = 0;
+    Object.keys(seed).forEach(email => {
+        if (findByEmail(contacts, email)) { skipped++; return; }
+        const d = seed[email];
+        const uniq = list => list.filter((v, i) => list.indexOf(v) === i);
+        contacts.unshift(sanitizePartner({
+            role: d.role,
+            company: companyFromEmail(email) || email,
+            people: [{ name: '', role: 'Main contact', emails: [{ label: 'Work', v: email }] }],
+            types: uniq(d.types),
+            routes: dedupeRoutes(d.routes),
+            fromEnquiry: true,
+            enq: d.count,
+            last: d.last ? String(d.last).slice(0, 10) : '',
+        }));
+        added++;
+    });
+    return { contacts: contacts.slice(0, MAX_CONTACTS), added, skipped };
+}
+
+/**
+ * Two kinds of address sit in the remembered files that must NOT become partners:
+ * our own (it lands there whenever an enquiry is copied to ourselves — importing it makes
+ * the firm appear to be its own supplier), and the example.com placeholders left by testing.
+ * OWN_EMAIL_DOMAINS is read from the env so the owner's domain is never hard-coded here.
+ */
+function worthImporting(email) {
+    if (/@example\.(com|org|net)$/i.test(email)) return false;
+    const own = String(process.env.OWN_EMAIL_DOMAINS || 'dscpipes.com')
+        .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+    const domain = email.split('@')[1] || '';
+    return own.indexOf(domain) === -1;
+}
+
+function dedupeRoutes(routes) {
+    const seen = {}, out = [];
+    (routes || []).forEach(r => {
+        const k = lower(r.from) + '|' + lower(r.to);
+        if (!r.from || seen[k]) return;
+        seen[k] = true; out.push(r);
+    });
+    return out;
 }
 
 // ── the change log: what the app did on its own, with enough to undo it ──────
@@ -290,6 +396,9 @@ function sanitizePendingItem(input) {
         file: str(src.file).slice(0, 200),
         kind: /pdf/i.test(str(src.kind) || str(src.file)) ? 'pdf' : 'photo',
         text: str(src.text).slice(0, 20000),
+        // The attachment itself, so a brochure can actually be read. Kept out of the stored
+        // queue item (see routes/contacts.js) — it is only needed during extraction.
+        fileBase64: str(src.fileBase64),
         finds: Array.isArray(src.finds) ? src.finds.slice(0, 40) : [],
         receivedAt: str(src.receivedAt) || new Date().toISOString(),
     };
@@ -331,6 +440,7 @@ module.exports = {
     findByEmail,
     allEmails,
     bumpUsage,
+    importFromSuggestions,
     companyFromEmail,
     changeEntry,
     pushChange,

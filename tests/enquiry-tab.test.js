@@ -1218,6 +1218,10 @@ describe('checkSupplierRepliesForQuote', () => {
             + 'function repaintOpenTab(){}\n'
             + 'var MAX_REPLY_CHARS = 2000;\n'
             + 'var fetch = fetchStub;\n'
+            // The REAL directory hook, not a stub: it must no-op safely without a DOM, and
+            // running it here is what proves that. A stub would hide exactly the bug it
+            // guards against (an unguarded window reference blowing up the reply sweep).
+            + cut('tellDirectoryReplied') + '\n'
             + cut('trimReplyForStorage') + '\n' + cut('checkSupplierRepliesForQuote') + '\n'
             + 'return checkSupplierRepliesForQuote;')(fetchStub, persisted);
     }

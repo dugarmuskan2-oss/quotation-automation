@@ -39,10 +39,15 @@ function sendDirectoryEmailsToApp() {
   return sent;
 }
 
+/** Attachments bigger than this can't be forwarded (Vercel caps the request at ~4.5 MB
+ *  and base64 inflates by a third). The name still travels, so nothing is silently lost. */
+var MAX_DIRECTORY_ATTACHMENT_BYTES = 3 * 1024 * 1024;
+
 /** POST one message to /api/contacts/pending. Returns true only on a 2xx response. */
 function postDirectoryEmail_(msg) {
   var attachments = msg.getAttachments() || [];
-  var firstFile = attachments.length ? attachments[0].getName() : '';
+  var first = pickReadableAttachment_(attachments);
+  var firstFile = first ? first.getName() : '';
   var payload = {
     from: extractAddress_(msg.getFrom()),
     subject: msg.getSubject() || '',
@@ -50,6 +55,12 @@ function postDirectoryEmail_(msg) {
     kind: /pdf$/i.test(firstFile) ? 'pdf' : 'photo',
     text: (msg.getPlainBody() || '').slice(0, 18000),
   };
+  // Send the brochure itself, not just its name — reading it is the entire point.
+  if (first && first.getSize() <= MAX_DIRECTORY_ATTACHMENT_BYTES) {
+    payload.fileBase64 = Utilities.base64Encode(first.getBytes());
+  } else if (first) {
+    payload.text += '\n\n[Attachment ' + firstFile + ' was too large to send for reading.]';
+  }
   var headers = {};
   var secret = getIngestSecret();
   if (secret) headers['X-Ingest-Secret'] = secret;
@@ -63,6 +74,18 @@ function postDirectoryEmail_(msg) {
   var ok = resp.getResponseCode() >= 200 && resp.getResponseCode() < 300;
   if (!ok) Logger.log('Directory ingest failed (' + resp.getResponseCode() + '): ' + resp.getContentText());
   return ok;
+}
+
+/** The first PDF or image — a signature logo is skipped, a brochure is not. */
+function pickReadableAttachment_(attachments) {
+  var best = null;
+  (attachments || []).forEach(function (a) {
+    var name = a.getName() || '';
+    if (!/\.(pdf|jpe?g|png)$/i.test(name)) return;
+    if (a.getSize() < 20000 && /logo|signature|image00/i.test(name)) return;  // inline sig art
+    if (!best || a.getSize() > best.getSize()) best = a;
+  });
+  return best;
 }
 
 /** "Rakesh Shah <sales@x.com>" → "sales@x.com". */

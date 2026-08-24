@@ -67,8 +67,12 @@ function harness(src, fnName, deps) {
         });
     }
     const keys = Object.keys(stubs);
+    // chipAddrs is a real collaborator of the sender (it decides whether a chip is one firm's
+    // several people or a single address), so the REAL one is extracted and run — stubbing it
+    // would leave the per-firm Cc behaviour untested.
+    const chipAddrsSrc = cut(src, 'chipAddrs');
     // eslint-disable-next-line no-new-func
-    const fn = new Function(...keys, body + '\nreturn ' + fnName + ';')(...keys.map((k) => stubs[k]));
+    const fn = new Function(...keys, chipAddrsSrc + '\n' + body + '\nreturn ' + fnName + ';')(...keys.map((k) => stubs[k]));
     return {
         calls,
         run: async (...args) => {

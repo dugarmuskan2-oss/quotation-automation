@@ -18,6 +18,8 @@ const express = require('express');
 const {
     CONFIG_KEY_CONTACTS,
     CONFIG_KEY_CONTACTS_PENDING,
+    CONFIG_KEY_FREIGHT_SUGGESTIONS,
+    CONFIG_KEY_SUPPLIER_SUGGESTIONS,
 } = require('../utils/constants');
 
 const contactsLib = require('../utils/contacts');
@@ -77,10 +79,13 @@ module.exports = function createContactsRouter({ storage, openai }) {
     });
 
     // Upsert ONE partner (merged into the stored list by id — no whole-list writes).
+    // `fields` narrows the write to just what the user touched, so a second tab editing a
+    // different part of the SAME partner does not have its work replaced by a stale copy.
     router.post('/contacts/save', express.json({ limit: '1mb' }), async (req, res) => {
         try {
             const dir = await loadDirectory();
-            const merged = contactsLib.mergePartner(dir.contacts, req.body && req.body.partner);
+            const { partner, fields } = req.body || {};
+            const merged = contactsLib.mergePartner(dir.contacts, partner, fields);
             await saveDirectory({ contacts: merged.contacts, changes: dir.changes });
             res.json({ ok: true, partner: merged.partner });
         } catch (error) {
@@ -97,6 +102,31 @@ module.exports = function createContactsRouter({ storage, openai }) {
             res.json({ ok: true });
         } catch (error) {
             res.status(500).json({ error: 'Could not delete the partner: ' + error.message });
+        }
+    });
+
+    // Pull in the addresses the app already remembered from years of sends. Safe to run
+    // twice: anything already in the directory is skipped, never overwritten.
+    router.post('/contacts/import-remembered', express.json(), async (req, res) => {
+        try {
+            const [dir, freightRaw, supplierRaw] = await Promise.all([
+                loadDirectory(),
+                storage.readText(CONFIG_KEY_FREIGHT_SUGGESTIONS),
+                storage.readText(CONFIG_KEY_SUPPLIER_SUGGESTIONS),
+            ]);
+            const result = contactsLib.importFromSuggestions(
+                dir.contacts, parseBlob(freightRaw, {}), parseBlob(supplierRaw, {}));
+            if (result.added) {
+                const entry = contactsLib.changeEntry(
+                    'Imported ' + result.added + ' remembered address' + (result.added === 1 ? '' : 'es'),
+                    'From the addresses the app had already learned from your sends'
+                    + (result.skipped ? ' · ' + result.skipped + ' already in the directory, left alone' : ''),
+                    'Import', '', null, null);
+                await saveDirectory({ contacts: result.contacts, changes: contactsLib.pushChange(dir.changes, entry) });
+            }
+            res.json({ ok: true, added: result.added, skipped: result.skipped });
+        } catch (error) {
+            res.status(500).json({ error: 'Could not import: ' + error.message });
         }
     });
 
@@ -137,6 +167,9 @@ module.exports = function createContactsRouter({ storage, openai }) {
             const item = contactsLib.sanitizePendingItem(req.body || {});
             if (!item.from && !item.text) return res.status(400).json({ error: 'Nothing to read: no sender and no text.' });
             if (!item.finds.length) item.finds = await extractFinds(item);
+            // The attachment has served its purpose — never store the base64 in the queue
+            // blob, or one brochure bloats the file past what storage will hold.
+            delete item.fileBase64;
             const items = await loadPending();
             if (!items.some(x => x.from === item.from && x.subject === item.subject && x.file === item.file)) {
                 items.unshift(item);
@@ -182,20 +215,46 @@ module.exports = function createContactsRouter({ storage, openai }) {
         }
     });
 
-    // Best-effort AI read of the email text. A failure returns [] — the owner still sees
-    // the raw email in the queue and fills the card by hand; it must never block ingest.
+    // Best-effort AI read of the email AND its attachment. A failure returns [] — the owner
+    // still sees the raw email in the queue and fills the card by hand; it must never block
+    // ingest. A brochure is the whole point, so the PDF/image goes to the model too, the same
+    // way an enquiry attachment does on the quote side.
     async function extractFinds(item) {
-        if (!openai || !item.text) return [];
+        if (!openai || (!item.text && !item.fileBase64)) return [];
         try {
+            const parts = [{ type: 'input_text', text: contactsLib.extractionPrompt(item) }];
+            const attached = await attachFilePart(item);
+            if (attached) parts.push(attached);
             const response = await openai.responses.create({
                 model: 'gpt-4o-mini',
-                input: contactsLib.extractionPrompt(item),
+                input: [{ role: 'user', content: parts }],
             });
             const text = String(response.output_text || '');
             const jsonMatch = text.match(/\{[\s\S]*\}/);
             return jsonMatch ? contactsLib.findsFromExtraction(JSON.parse(jsonMatch[0])) : [];
         } catch (error) {
+            console.error('Directory extraction failed:', error.message);
             return [];
+        }
+    }
+
+    // A PDF is uploaded and referenced by id; an image rides inline as a data URL. Either
+    // failing is survivable — we fall back to reading the email text alone.
+    async function attachFilePart(item) {
+        if (!item.fileBase64) return null;
+        try {
+            const buffer = Buffer.from(item.fileBase64, 'base64');
+            if (item.kind === 'pdf') {
+                const { toFile } = require('openai');
+                const upload = await toFile(buffer, item.file || 'brochure.pdf', { type: 'application/pdf' });
+                const created = await openai.files.create({ file: upload, purpose: 'assistants' });
+                return { type: 'input_file', file_id: created.id };
+            }
+            const mime = /\.png$/i.test(item.file) ? 'image/png' : 'image/jpeg';
+            return { type: 'input_image', image_url: 'data:' + mime + ';base64,' + item.fileBase64 };
+        } catch (error) {
+            console.error('Directory attachment read failed:', error.message);
+            return null;
         }
     }
 

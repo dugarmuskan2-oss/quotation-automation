@@ -394,7 +394,11 @@
             .catch(function (e) { D.saveError = e.message; render(); });
     }
 
-    function savePartner(p) { return postJson('/contacts/save', { partner: p }); }
+    // `fields` narrows the write to what was actually touched, so a second tab editing a
+    // different part of the same firm is not overwritten by this tab's older copy.
+    function savePartner(p, fields) {
+        return postJson('/contacts/save', { partner: p, fields: fields || null });
+    }
 
     // ── State for the tool page ───────────────────────────────────────────────
     var S = { tab: 'dir', filter: 'all', openId: null, openPending: null, openChange: null,
@@ -449,8 +453,23 @@
             return hay.indexOf(lower(S.find.text)) !== -1;
         });
         if (S.find.state === 'done' && S.find.need && !S.find.need.empty) return finderResults();
-        if (!list.length) return '<p class="pd-muted pd-empty">Nobody matches that.</p>';
+        // "Nobody matches that" on a directory that is simply empty reads like a failed
+        // search. Say which it is, and give the way out.
+        if (!list.length) return D.contacts.length ? '<p class="pd-muted pd-empty">Nobody matches that.</p>' : emptyStateHtml();
         return list.map(function (p) { return S.openId === p.id ? editCard(p) : rowCard(p); }).join('');
+    }
+
+    function emptyStateHtml() {
+        if (S.imported && S.imported.added === 0) {
+            return '<div class="pd-empty"><p class="pd-muted">Nothing to import — the app has no remembered addresses yet.</p>'
+                + '<p class="pd-tiny" style="margin-top:6px;">Press <b>+ Add partner</b> to type one in, or tag a supplier’s email in Gmail with the Add-to-Directory label.</p></div>';
+        }
+        return '<div class="pd-empty"><p class="pd-muted"><b>Your directory is empty.</b></p>'
+            + '<p class="pd-tiny" style="margin:6px 0 10px;">The app has been quietly remembering every address you have sent an enquiry to. '
+            + 'Pull those in to start with a real list, then tidy the details as you go.</p>'
+            + '<button class="pd-prim" data-pd-import="1"' + (S.importing ? ' disabled' : '') + '>'
+            + (S.importing ? 'Importing…' : '↓ Import the addresses I have already used') + '</button>'
+            + '<p class="pd-tiny" style="margin-top:8px;">Or press <b>+ Add partner</b> to type one in.</p></div>';
     }
 
     function rowCard(p) {
@@ -849,12 +868,22 @@
                 S.openId = null; render();
             };
         });
+        on(app, '[data-pd-import]', function () {
+            if (S.importing) return;                      // in-flight lock: no double import
+            S.importing = true; render();
+            postJson('/contacts/import-remembered', {}, function (d) {
+                S.importing = false; S.imported = d;
+                loadDirectory(render);
+            });
+        });
         on(app, '[data-pd-add]', function () {
+            if (S.adding) return;                         // in-flight lock: no blank duplicates
+            S.adding = true;
             // A real partner gets a real id at once ('p_…'); 'p_new_' is reserved for
             // pending-queue previews, which are never saved directly.
             var p = { id: 'p_' + Date.now(), role: 'dealer', company: '', people: [{ name: '', role: 'Main contact', phones: [], emails: [] }], branches: [], types: [], products: [], rules: [], routes: [], notes: [], images: [], partLoad: true };
             D.contacts.unshift(p); S.openId = p.id; S.filter = 'all'; S.find = { text: '', state: 'idle', need: null };
-            savePartner(p).then(function () { render(); });
+            savePartner(p).then(function () { S.adding = false; render(); });
             render();
         });
     }
@@ -885,12 +914,12 @@
         if (!card) return;
         var p = byId(card.getAttribute('data-pd-card'));
         if (!p) return;
-        var save = function (rerender) {
+        var save = function (rerender, fields) {
             p.checked = new Date().toISOString().slice(0, 10);
             // A pending-queue PREVIEW is never saved here — approval is its only write path.
             // (Otherwise editing one before approving stores a stray copy = a duplicate firm.)
             var inDirectory = D.contacts.some(function (x) { return x.id === p.id; });
-            if (inDirectory) savePartner(p);
+            if (inDirectory) savePartner(p, fields);
             if (rerender) render();
         };
         each(card, '[data-pd-k]', function (el) {
@@ -900,7 +929,7 @@
                 if (k === 'moq') p.moq = parseFloat(v) || 0;
                 else if (k === 'partLoad') p.partLoad = v === 'yes';
                 else p[k] = v;
-                save(k === 'role' || k === 'company');
+                save(k === 'role' || k === 'company', [k]);
             };
         });
         bindPeople(card, p, save); bindPlaces(card, p, save); bindSupply(card, p, save); bindNotes(card, p, save);
@@ -913,28 +942,28 @@
                 if (el.hasAttribute('data-pd-ph')) c.phones[Number(el.getAttribute('data-pd-ph'))][k] = el.value;
                 else if (el.hasAttribute('data-pd-em')) c.emails[Number(el.getAttribute('data-pd-em'))][k] = el.value;
                 else c[k] = el.value;
-                save(false);
+                save(false, ['people']);
             };
         });
-        on(card, '[data-pd-addperson]', function () { p.people.push({ name: '', role: '', phones: [{ label: 'Mobile', v: '' }], emails: [] }); save(true); });
-        each(card, '[data-pd-delperson]', function (el) { el.onclick = function () { p.people.splice(Number(el.getAttribute('data-pd-delperson')), 1); save(true); }; });
-        each(card, '[data-pd-addph]', function (el) { el.onclick = function () { var c = p.people[Number(el.getAttribute('data-pd-addph'))]; (c.phones = c.phones || []).push({ label: 'Mobile', v: '' }); save(true); }; });
-        each(card, '[data-pd-addem]', function (el) { el.onclick = function () { var c = p.people[Number(el.getAttribute('data-pd-addem'))]; (c.emails = c.emails || []).push({ label: 'Work', v: '' }); save(true); }; });
-        each(card, '[data-pd-delph]', function (el) { el.onclick = function () { var a = el.getAttribute('data-pd-delph').split(':'); p.people[+a[0]].phones.splice(+a[1], 1); save(true); }; });
-        each(card, '[data-pd-delem]', function (el) { el.onclick = function () { var a = el.getAttribute('data-pd-delem').split(':'); p.people[+a[0]].emails.splice(+a[1], 1); save(true); }; });
+        on(card, '[data-pd-addperson]', function () { p.people.push({ name: '', role: '', phones: [{ label: 'Mobile', v: '' }], emails: [] }); save(true, ['people']); });
+        each(card, '[data-pd-delperson]', function (el) { el.onclick = function () { p.people.splice(Number(el.getAttribute('data-pd-delperson')), 1); save(true, ['people']); }; });
+        each(card, '[data-pd-addph]', function (el) { el.onclick = function () { var c = p.people[Number(el.getAttribute('data-pd-addph'))]; (c.phones = c.phones || []).push({ label: 'Mobile', v: '' }); save(true, ['people']); }; });
+        each(card, '[data-pd-addem]', function (el) { el.onclick = function () { var c = p.people[Number(el.getAttribute('data-pd-addem'))]; (c.emails = c.emails || []).push({ label: 'Work', v: '' }); save(true, ['people']); }; });
+        each(card, '[data-pd-delph]', function (el) { el.onclick = function () { var a = el.getAttribute('data-pd-delph').split(':'); p.people[+a[0]].phones.splice(+a[1], 1); save(true, ['people']); }; });
+        each(card, '[data-pd-delem]', function (el) { el.onclick = function () { var a = el.getAttribute('data-pd-delem').split(':'); p.people[+a[0]].emails.splice(+a[1], 1); save(true, ['people']); }; });
     }
 
     function bindPlaces(card, p, save) {
-        on(card, '[data-pd-addbranch]', function () { (p.branches = p.branches || []).push({ city: '', area: '', address: '' }); save(true); });
+        on(card, '[data-pd-addbranch]', function () { (p.branches = p.branches || []).push({ city: '', area: '', address: '' }); save(true, ['branches', 'routes', 'city', 'address']); });
         each(card, '[data-pd-br]', function (el) {
-            el.onchange = function () { p.branches[Number(el.getAttribute('data-pd-br'))][el.getAttribute('data-pd-k')] = el.value; save(false); };
+            el.onchange = function () { p.branches[Number(el.getAttribute('data-pd-br'))][el.getAttribute('data-pd-k')] = el.value; save(false, ['branches', 'routes', 'city', 'address']); };
         });
-        each(card, '[data-pd-delbranch]', function (el) { el.onclick = function () { p.branches.splice(Number(el.getAttribute('data-pd-delbranch')), 1); save(true); }; });
-        on(card, '[data-pd-addroute]', function () { (p.routes = p.routes || []).push({ from: '', to: '' }); save(true); });
+        each(card, '[data-pd-delbranch]', function (el) { el.onclick = function () { p.branches.splice(Number(el.getAttribute('data-pd-delbranch')), 1); save(true, ['branches', 'routes', 'city', 'address']); }; });
+        on(card, '[data-pd-addroute]', function () { (p.routes = p.routes || []).push({ from: '', to: '' }); save(true, ['branches', 'routes', 'city', 'address']); });
         each(card, '[data-pd-rt]', function (el) {
-            el.onchange = function () { p.routes[Number(el.getAttribute('data-pd-rt'))][el.getAttribute('data-pd-k')] = el.value; save(false); };
+            el.onchange = function () { p.routes[Number(el.getAttribute('data-pd-rt'))][el.getAttribute('data-pd-k')] = el.value; save(false, ['branches', 'routes', 'city', 'address']); };
         });
-        each(card, '[data-pd-delroute]', function (el) { el.onclick = function () { p.routes.splice(Number(el.getAttribute('data-pd-delroute')), 1); save(true); }; });
+        each(card, '[data-pd-delroute]', function (el) { el.onclick = function () { p.routes.splice(Number(el.getAttribute('data-pd-delroute')), 1); save(true, ['branches', 'routes', 'city', 'address']); }; });
     }
 
     function bindSupply(card, p, save) {
@@ -946,11 +975,11 @@
             if (!v) return;
             if ((p.types = p.types || []).indexOf(v) === -1) p.types.push(v);
             if (PIPE_TYPES.indexOf(v) === -1) PIPE_TYPES.push(v);
-            save(true);
+            save(true, ['types', 'products', 'rules', 'moq']);
         });
-        each(card, '[data-pd-deltype]', function (el) { el.onclick = function () { p.types.splice(Number(el.getAttribute('data-pd-deltype')), 1); save(true); }; });
-        on(card, '[data-pd-addproduct]', function () { (p.products = p.products || []).push({ p: '', spec: '', sizes: [], moq: 0, rule: '' }); save(true); });
-        each(card, '[data-pd-delproduct]', function (el) { el.onclick = function () { p.products.splice(Number(el.getAttribute('data-pd-delproduct')), 1); save(true); }; });
+        each(card, '[data-pd-deltype]', function (el) { el.onclick = function () { p.types.splice(Number(el.getAttribute('data-pd-deltype')), 1); save(true, ['types', 'products', 'rules', 'moq']); }; });
+        on(card, '[data-pd-addproduct]', function () { (p.products = p.products || []).push({ p: '', spec: '', sizes: [], moq: 0, rule: '' }); save(true, ['types', 'products', 'rules', 'moq']); });
+        each(card, '[data-pd-delproduct]', function (el) { el.onclick = function () { p.products.splice(Number(el.getAttribute('data-pd-delproduct')), 1); save(true, ['types', 'products', 'rules', 'moq']); }; });
         each(card, '[data-pd-pr]', function (el) {
             el.onchange = function () {
                 var i = Number(el.getAttribute('data-pd-pr')), k = el.getAttribute('data-pd-k');
@@ -959,19 +988,19 @@
                 save(k === 'spec');
             };
         });
-        each(card, '[data-pd-addsz]', function (el) { el.onclick = function () { var pr = p.products[Number(el.getAttribute('data-pd-addsz'))]; (pr.sizes = pr.sizes || []).push({ nb: '', inch: '', od: '', thk: '' }); save(true); }; });
-        each(card, '[data-pd-delsz]', function (el) { el.onclick = function () { var a = el.getAttribute('data-pd-delsz').split(':'); p.products[+a[0]].sizes.splice(+a[1], 1); save(true); }; });
+        each(card, '[data-pd-addsz]', function (el) { el.onclick = function () { var pr = p.products[Number(el.getAttribute('data-pd-addsz'))]; (pr.sizes = pr.sizes || []).push({ nb: '', inch: '', od: '', thk: '' }); save(true, ['types', 'products', 'rules', 'moq']); }; });
+        each(card, '[data-pd-delsz]', function (el) { el.onclick = function () { var a = el.getAttribute('data-pd-delsz').split(':'); p.products[+a[0]].sizes.splice(+a[1], 1); save(true, ['types', 'products', 'rules', 'moq']); }; });
         each(card, '[data-pd-loadis]', function (el) {
             el.onclick = function () {
                 var pr = p.products[Number(el.getAttribute('data-pd-loadis'))], cls = specClass(pr.spec);
                 if (!cls) return;
                 pr.sizes = IS1239.filter(function (r) { return r[cls]; }).map(function (r) { return { nb: r.nb, inch: r.inch, od: r.od, thk: r[cls] }; });
-                save(true);
+                save(true, ['types', 'products', 'rules', 'moq']);
             };
         });
-        on(card, '[data-pd-addorule]', function () { (p.rules = p.rules || []).push(''); save(true); });
-        each(card, '[data-pd-orule]', function (el) { el.onchange = function () { p.rules[Number(el.getAttribute('data-pd-orule'))] = el.value; save(false); }; });
-        each(card, '[data-pd-delorule]', function (el) { el.onclick = function () { p.rules.splice(Number(el.getAttribute('data-pd-delorule')), 1); save(true); }; });
+        on(card, '[data-pd-addorule]', function () { (p.rules = p.rules || []).push(''); save(true, ['types', 'products', 'rules', 'moq']); });
+        each(card, '[data-pd-orule]', function (el) { el.onchange = function () { p.rules[Number(el.getAttribute('data-pd-orule'))] = el.value; save(false, ['types', 'products', 'rules', 'moq']); }; });
+        each(card, '[data-pd-delorule]', function (el) { el.onclick = function () { p.rules.splice(Number(el.getAttribute('data-pd-delorule')), 1); save(true, ['types', 'products', 'rules', 'moq']); }; });
     }
 
     function bindNotes(card, p, save) {
@@ -980,11 +1009,11 @@
             var t = input ? str(input.value) : '';
             if (!t) return;
             (p.notes = p.notes || []).unshift({ d: new Date().toISOString().slice(0, 10), t: t, src: '' });
-            save(true);
+            save(true, ['notes']);
         };
         on(card, '[data-pd-addnote]', add);
         if (input) input.onkeydown = function (e) { if (e.key === 'Enter') add(); };
-        each(card, '[data-pd-delnote]', function (el) { el.onclick = function () { p.notes.splice(Number(el.getAttribute('data-pd-delnote')), 1); save(true); }; });
+        each(card, '[data-pd-delnote]', function (el) { el.onclick = function () { p.notes.splice(Number(el.getAttribute('data-pd-delnote')), 1); save(true, ['notes']); }; });
     }
 
     function bindChanges(app) {
@@ -1073,10 +1102,26 @@
         var out = rows.filter(function (r) { return r.blocked; });
         return '<div class="pd-panel"><p class="pd-tiny" style="margin-bottom:8px;">' + head + '</p>'
             + (good.length ? good.map(function (r, i) { return panelCard(r, i); }).join('')
-                : '<p class="pd-muted pd-empty">Nobody in your directory fits this one — add them in the 📇 Partner Directory.</p>')
+                : deadEndHtml(need, opts))
             + (out.length ? '<p class="pd-tiny" style="margin:8px 0 5px;">Not suggested — but shown, so you can overrule it:</p>'
                 + out.map(function (r, i) { return panelCard(r, good.length + i); }).join('') : '')
             + '<p class="pd-tiny" style="margin-top:8px;">People at one firm go on <b>one</b> email, Cc\'d together. Different firms are <b>separate</b> emails — they never see each other.</p></div>';
+    }
+
+    // "Nobody fits" must never be the end of the road. Offer the two ways out that exist:
+    // look outside the directory on the web, or add the firm you already have in mind.
+    function deadEndHtml(need, opts) {
+        var what = opts.kind === 'transport'
+            ? 'transporters ' + (need.site ? 'to ' + need.site : 'for this route')
+            : ((need.types || []).join(' ') + ' pipe suppliers ' + (need.site ? 'near ' + need.site : '')).trim();
+        var query = encodeURIComponent(what + ' India supplier contact');
+        return '<div class="pd-empty"><p class="pd-muted"><b>Nobody in your directory fits this one.</b></p>'
+            + '<p class="pd-tiny" style="margin:6px 0 9px;">Either you have not added them yet, or this is outside what you normally buy.</p>'
+            + '<div class="pd-row">'
+            + '<a class="pd-prim" style="text-decoration:none;" target="_blank" rel="noopener noreferrer" '
+            + 'href="https://www.google.com/search?q=' + query + '">🌐 Search the web for ' + esc(what) + '</a>'
+            + '<button data-pd-goto-directory="1">Add them to the directory</button></div>'
+            + '<p class="pd-tiny" style="margin-top:7px;">Anything you find on the web is unvetted — ask for a written offer before you quote from it.</p></div>';
     }
 
     function panelCard(r, idx) {
@@ -1094,6 +1139,9 @@
     }
 
     function bindPanel(container, rows, onAddChip) {
+        each(container, '[data-pd-goto-directory]', function (el) {
+            el.onclick = function () { if (typeof window.switchToDirectoryTab === 'function') window.switchToDirectoryTab(); };
+        });
         each(container, '[data-pd-send]', function (el) {
             el.onclick = function () {
                 var idx = Number(el.getAttribute('data-pd-send'));
