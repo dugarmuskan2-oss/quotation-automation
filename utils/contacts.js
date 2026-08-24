@@ -104,11 +104,21 @@ function sanitizeStrings(list, max) {
 
 // ── the partner record ───────────────────────────────────────────────────────
 
+// A partner id must be unique even when a whole import is created inside one millisecond —
+// a timestamp alone is not, and duplicate ids make every partner sharing one impossible to
+// edit or delete on its own (they merge into, and delete with, each other).
+let idCounter = 0;
+function newPartnerId() {
+    idCounter = (idCounter + 1) % 1e6;
+    return 'p_' + Date.now().toString(36) + '_' + idCounter.toString(36)
+        + Math.random().toString(36).slice(2, 7);
+}
+
 function sanitizePartner(input) {
     const src = (input && typeof input === 'object') ? input : {};
     const now = new Date().toISOString();
     return {
-        id: str(src.id) || ('p_' + now.replace(/[^0-9]/g, '').slice(0, 17)),
+        id: str(src.id) || newPartnerId(),
         role: normalizeRole(src.role),
         roleOther: str(src.roleOther),
         company: str(src.company),

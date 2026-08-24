@@ -306,10 +306,13 @@
         return pts;
     }
 
+    // Not knowing where someone is must never score BETTER than knowing they are far —
+    // otherwise an untouched card outranks one you took the trouble to fill in, and the
+    // directory quietly rewards leaving it blank. Unknown sits between near and far.
     function scoreDistance(p, need, why) {
         var site = matchCity(need.site) || need.site;
         var nb = nearestBranch(p, site);
-        if (!nb) { why.push(['neutral', 'No city on their card — distance not used']); return 0; }
+        if (!nb) { why.push(['warn', 'No city on their card — add one and this ranks properly']); return -5; }
         if (nb.km <= 60) { why.push(['ok', 'In ' + nb.name + ' — right by the site']); return 35; }
         if (nb.km <= 250) { why.push(['ok', nb.name + ' branch, ' + nb.km + ' km from site']); return 20; }
         why.push(['warn', nb.name + ' — ' + nb.km + ' km away, freight will hurt']); return -10;
@@ -771,6 +774,10 @@
         if (!pi.preview) {
             var base = match ? JSON.parse(JSON.stringify(match))
                 : { id: 'p_new_' + pi.id, role: 'dealer', company: companyGuess(pi), people: [{ name: '', role: 'Main contact', phones: [], emails: pi.from ? [{ label: 'Work', v: pi.from }] : [] }], branches: [], types: [], products: [], rules: [], routes: [], notes: [], images: [], fromEnquiry: true };
+            // The preview must NOT share the live record's id, or byId() resolves to the live
+            // record and every correction typed here is written to it and then overwritten by
+            // the un-corrected preview on approve. Keep the real id aside for the save.
+            if (match) { base.matchId = match.id; base.id = 'p_new_' + pi.id; }
             pi.finds.forEach(function (x) { applyFind(base, x, pi.file); });
             if (pi.file && !(base.images || []).some(function (im) { return im.n === pi.file; })) {
                 (base.images = base.images || []).unshift({ n: pi.file, kind: pi.kind, d: new Date().toISOString().slice(0, 10), count: pi.finds.length });
@@ -881,7 +888,9 @@
             S.adding = true;
             // A real partner gets a real id at once ('p_…'); 'p_new_' is reserved for
             // pending-queue previews, which are never saved directly.
-            var p = { id: 'p_' + Date.now(), role: 'dealer', company: '', people: [{ name: '', role: 'Main contact', phones: [], emails: [] }], branches: [], types: [], products: [], rules: [], routes: [], notes: [], images: [], partLoad: true };
+            // Random suffix, not a bare timestamp: two devices adding in the same
+            // millisecond would otherwise share an id and merge into one record.
+            var p = { id: 'p_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), role: 'dealer', company: '', people: [{ name: '', role: 'Main contact', phones: [], emails: [] }], branches: [], types: [], products: [], rules: [], routes: [], notes: [], images: [], partLoad: true };
             D.contacts.unshift(p); S.openId = p.id; S.filter = 'all'; S.find = { text: '', state: 'idle', need: null };
             savePartner(p).then(function () { S.adding = false; render(); });
             render();
@@ -1039,7 +1048,11 @@
                 var pi = D.pending.filter(function (x) { return x.id === id; })[0];
                 if (!pi) return;
                 var partner = pendingPreview(pi, pi.from ? knownEmail(pi.from) : null);
-                if (partner.id.indexOf('p_new_') === 0) partner.id = '';   // server assigns
+                // Put the real id back for an update; leave it blank for a brand-new firm so
+                // the server assigns one. Either way what is saved is what was just reviewed.
+                partner = JSON.parse(JSON.stringify(partner));
+                partner.id = partner.matchId || '';
+                delete partner.matchId;
                 S.busy[id] = true; render();
                 postJson('/contacts/pending/approve', { id: id, partner: partner }, function () {
                     delete S.busy[id]; S.openPending = null; S.openId = null;
@@ -1088,10 +1101,15 @@
             };
             var from = str(opts.pickup) ? (matchCity(opts.pickup) || opts.pickup) : HOME;
             var rows = rankFor(opts.kind === 'transport' ? 'transport' : 'material', need, from);
+            if (D.loadError) { container.innerHTML = '<div class="pd-panel"><p class="pd-error">' + esc(D.loadError) + ' Nothing is missing — try again.</p></div>'; return; }
             container.innerHTML = panelHtml(rows, opts, need, from);
             bindPanel(container, rows, onAddChip);
         };
-        if (!D.loaded) loadDirectory(go); else go();
+        // Always re-read before suggesting. This panel is asked for by hand, once in a
+        // while — a cached copy risks suggesting a partner a colleague has since changed
+        // or removed, or missing one they added, and that goes out as a real email.
+        container.innerHTML = '<div class="pd-panel"><p class="pd-tiny">Reading your directory…</p></div>';
+        loadDirectory(go);
     }
 
     function panelHtml(rows, opts, need, from) {
