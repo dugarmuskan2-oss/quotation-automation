@@ -21,7 +21,12 @@
       "mcp__Claude_Browser__find",
       "mcp__Claude_Preview__preview_snapshot",
       "mcp__ccd_session_mgmt__list_sessions",
-      "mcp__Claude_Browser__preview_logs"
+      "mcp__Claude_Browser__preview_logs",
+      "mcp__Claude_Browser__preview_stop",
+      "mcp__Claude_Browser__resize_window",
+      "mcp__Claude_Browser__read_network_requests",
+      "mcp__Claude_Preview__preview_stop",
+      "mcp__Claude_Preview__preview_resize"
     ]
   }
 }

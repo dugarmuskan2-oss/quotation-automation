@@ -385,7 +385,14 @@
             .then(function () { then && then(); });
     }
 
-    function postJson(path, body, then) {
+    /**
+     * `then` runs on success only. `always` runs either way, and is where an in-flight lock
+     * must be released: a lock cleared only inside `then` stays set forever the moment a
+     * request fails, which left the Import button disabled and reading "Importing…" until
+     * the page was reloaded — a failure that looked like a hang.
+     */
+    function postJson(path, body, then, always) {
+        var failed = false;
         return fetch(apiBase() + path, {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
         }).then(function (r) {
@@ -394,7 +401,8 @@
                 return d;
             });
         }).then(function (d) { D.saveError = ''; then && then(d); return d; })
-            .catch(function (e) { D.saveError = e.message; render(); });
+            .catch(function (e) { D.saveError = e.message; failed = true; })
+            .then(function (d) { if (always) always(); if (always || failed) render(); return d; });
     }
 
     // `fields` narrows the write to what was actually touched, so a second tab editing a
@@ -879,9 +887,9 @@
             if (S.importing) return;                      // in-flight lock: no double import
             S.importing = true; render();
             postJson('/contacts/import-remembered', {}, function (d) {
-                S.importing = false; S.imported = d;
+                S.imported = d;
                 loadDirectory(render);
-            });
+            }, function () { S.importing = false; });      // released even if the import fails
         });
         on(app, '[data-pd-add]', function () {
             if (S.adding) return;                         // in-flight lock: no blank duplicates
@@ -994,7 +1002,7 @@
                 var i = Number(el.getAttribute('data-pd-pr')), k = el.getAttribute('data-pd-k');
                 if (el.hasAttribute('data-pd-sz')) p.products[i].sizes[Number(el.getAttribute('data-pd-sz'))][k] = el.value;
                 else p.products[i][k] = (k === 'moq') ? (parseFloat(el.value) || 0) : el.value;
-                save(k === 'spec');
+                save(k === 'spec', ['types', 'products', 'rules', 'moq']);
             };
         });
         each(card, '[data-pd-addsz]', function (el) { el.onclick = function () { var pr = p.products[Number(el.getAttribute('data-pd-addsz'))]; (pr.sizes = pr.sizes || []).push({ nb: '', inch: '', od: '', thk: '' }); save(true, ['types', 'products', 'rules', 'moq']); }; });
@@ -1055,9 +1063,9 @@
                 delete partner.matchId;
                 S.busy[id] = true; render();
                 postJson('/contacts/pending/approve', { id: id, partner: partner }, function () {
-                    delete S.busy[id]; S.openPending = null; S.openId = null;
+                    S.openPending = null; S.openId = null;
                     loadDirectory(render);
-                });
+                }, function () { delete S.busy[id]; });
             };
         });
         each(app, '[data-pd-discard]', function (el) {
@@ -1065,7 +1073,8 @@
                 var id = el.getAttribute('data-pd-discard');
                 if (S.busy[id]) return;
                 S.busy[id] = true; render();
-                postJson('/contacts/pending/discard', { id: id }, function () { delete S.busy[id]; loadDirectory(render); });
+                postJson('/contacts/pending/discard', { id: id }, function () { loadDirectory(render); },
+                    function () { delete S.busy[id]; });
             };
         });
         each(app, '[data-pd-change]', function (el) {
@@ -1082,7 +1091,8 @@
                 var id = el.getAttribute('data-pd-undo');
                 if (S.busy[id]) return;
                 S.busy[id] = true; render();
-                postJson('/contacts/change-undo', { id: id }, function () { delete S.busy[id]; loadDirectory(render); });
+                postJson('/contacts/change-undo', { id: id }, function () { loadDirectory(render); },
+                    function () { delete S.busy[id]; });
             };
         });
     }

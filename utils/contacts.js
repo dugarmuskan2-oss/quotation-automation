@@ -163,11 +163,16 @@ function mergePartner(list, incoming, fields) {
         contacts.unshift(wanted);
         return { contacts: contacts.slice(0, MAX_CONTACTS), partner: wanted };
     }
-    const only = Array.isArray(fields) ? fields.filter(f => typeof f === 'string' && f in wanted) : null;
-    if (!only || !only.length) {
+    // A full overwrite happens ONLY when the caller asked for one by passing no field list.
+    // If a list was given but nothing in it is a real field — a typo, or a field renamed and
+    // the caller not updated — the safe reading is "write nothing", never "write everything":
+    // falling through to the wholesale branch there would let a stale copy replace a
+    // colleague's work, which is the one thing this argument exists to prevent.
+    if (!Array.isArray(fields)) {
         contacts[idx] = wanted;
         return { contacts: contacts.slice(0, MAX_CONTACTS), partner: wanted };
     }
+    const only = fields.filter(f => typeof f === 'string' && f in wanted);
     const merged = Object.assign({}, contacts[idx]);
     only.forEach(f => { merged[f] = wanted[f]; });
     merged.checked = wanted.checked;           // any edit stamps last-edited
@@ -216,14 +221,20 @@ function bumpUsage(list, usage) {
     const reply = (usage && usage.kind) === 'reply';
     let contacts = (Array.isArray(list) ? list : []).slice();
     sanitizeStrings(usage && usage.emails, 50).map(lower).filter(isEmail).forEach(email => {
-        let target = findByEmail(contacts, email);
-        if (!target) {
-            target = stubPartner(email, usage);
-            contacts.unshift(target);
-        }
+        const idx = contacts.findIndex(c => allEmails(c).indexOf(email) !== -1);
+        // Our own address rides on nearly every enquiry (we copy ourselves), and test
+        // placeholders sit in old records. Inventing a card for either makes the firm look
+        // like its own supplier — the same guard the one-off import has always had, which
+        // this everyday path was missing. An address the owner DELIBERATELY put in the
+        // directory still gets its stats, so only card CREATION is refused.
+        if (idx === -1 && !worthImporting(email)) return;
+        // Replace rather than write through: `list` holds the caller's objects, and a stale
+        // copy of one being mutated in place is exactly the hazard the directory avoids.
+        const target = Object.assign({}, idx === -1 ? stubPartner(email, usage) : contacts[idx]);
         if (reply) { target.rep = num(target.rep, 0) + 1; }
         else { target.enq = num(target.enq, 0) + 1; }
         target.last = now;
+        if (idx === -1) contacts.unshift(target); else contacts[idx] = target;
     });
     return contacts.slice(0, MAX_CONTACTS);
 }
@@ -330,9 +341,19 @@ function dedupeRoutes(routes) {
 
 // ── the change log: what the app did on its own, with enough to undo it ──────
 
+// Undo finds a change by its id, so two changes sharing one means pressing undo restores
+// the wrong partner. A batch of entries can easily be logged inside a single millisecond,
+// so the id carries a counter as well as the clock — same reason as newPartnerId.
+let changeCounter = 0;
+function newChangeId() {
+    changeCounter = (changeCounter + 1) % 1e6;
+    return 'ch_' + Date.now().toString(36) + '_' + changeCounter.toString(36)
+        + Math.random().toString(36).slice(2, 7);
+}
+
 function changeEntry(title, detail, source, partnerId, before, after) {
     return {
-        id: 'ch_' + Date.now() + '_' + Math.floor(Math.random() * 1e6),
+        id: newChangeId(),
         at: new Date().toISOString(),
         title: str(title), detail: str(detail), source: str(source),
         partnerId: str(partnerId), undone: false,
