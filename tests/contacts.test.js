@@ -13,20 +13,32 @@
  *  - the change log/undo failing to put a bad import back the way it was
  *  - a blank find row inventing a value the email never contained (CLAUDE.md check #5)
  *
+ * And the two rules the owner stated in their own words, which the module now enforces:
+ *  - "even when you import, it must sit under the approval space — dont add anything without
+ *    approval": NOTHING reaches the directory except through approval. The import queues
+ *    drafts; bumpUsage no longer turns an unknown address into a card.
+ *  - "same companies must not create multiple": one firm, one card. Four addresses at
+ *    jindalhissar.com are four colleagues at one mill — offering them as four suppliers put
+ *    four separate enquiries in front of people who could not see each other.
+ *
  * House rule for this file: a negative assertion (`not.toContain`) is never left to carry a
  * behaviour on its own — deleting the behaviour only makes a negative MORE true. Every field
  * the module tracks has a POSITIVE assertion somewhere below.
  */
 
+const fs = require('fs');
+const path = require('path');
+
 const contactsLib = require('../utils/contacts');
 
 const {
     ROLES, sanitizePartner, mergePartner, findByEmail, allEmails, bumpUsage,
-    importFromSuggestions, companyFromEmail, changeEntry, pushChange, diffLines,
+    pendingFromSuggestions, pendingFromUsage, dropAlreadyQueued, MAX_PENDING,
+    companyFromEmail, changeEntry, pushChange, diffLines,
     undoChange, sanitizePendingItem, extractionPrompt, findsFromExtraction,
 } = contactsLib;
 
-const { normalizeRole, sanitizePerson, sanitizePeople } = contactsLib._test;
+const { normalizeRole, sanitizePerson, sanitizePeople, firmKeyOf } = contactsLib._test;
 
 /** Today, read at the moment it is needed — a module-load constant flakes across midnight. */
 function todayStamp() { return new Date().toISOString().slice(0, 10); }
@@ -39,10 +51,13 @@ function expectStampedToday(value, before) {
     expect([before, todayStamp()]).toContain(value);
 }
 
-/** Every address held anywhere on a card, flattened — used to assert who got imported. */
-function emailsOf(contacts) {
-    return (contacts || []).reduce((acc, c) => acc.concat(allEmails(c)), []);
+/** Every address across the previews of a queue of pending items, flattened. */
+function queuedEmails(items) {
+    return (items || []).reduce((acc, it) => acc.concat(allEmails(it.preview)), []);
 }
+
+/** The domain half of an address — the thing that must not appear on two cards at once. */
+function domainOf(email) { return String(email).split('@')[1] || ''; }
 
 function person(name, emails) {
     return { name, role: 'Main contact', emails: (emails || []).map(v => ({ label: 'Work', v })) };
@@ -109,14 +124,20 @@ describe('partner ids are unique', () => {
         expect(id.endsWith('rk000')).toBe(true);   // (0.7654321).toString(36).slice(2, 7)
     });
 
-    test('a 22-address import (the batch that broke) yields 22 distinct ids', () => {
+    test('a 22-firm import (the batch that broke) yields 22 distinct queue ids and 22 distinct preview ids', () => {
+        // Same bug, now one step earlier: the import builds QUEUE items, and the card the owner
+        // reviews is `preview`, whose id is derived from the item id. Colliding ids here mean
+        // approving one item edits or approves another firm's draft.
         const res = withFrozenEntropy(1756000000000, () => 0.5, () => {
             const transporters = [];
             for (let i = 0; i < 22; i++) transporters.push({ email: 'office' + i + '@carrier' + i + '.in', count: 1 });
-            return importFromSuggestions([], { transporters }, null);
+            return pendingFromSuggestions([], { transporters }, null);
         });
-        expect(res.added).toBe(22);
-        expect(new Set(res.contacts.map(c => c.id)).size).toBe(22);
+        expect(res.queued).toBe(22);
+        expect(res.items).toHaveLength(22);
+        expect(new Set(res.items.map(it => it.id)).size).toBe(22);
+        expect(new Set(res.items.map(it => it.preview.id)).size).toBe(22);
+        res.items.forEach(it => { expect(it.preview.id).toBe('p_new_' + it.id); });
     });
 
     test('an id already on the record is kept, never re-issued', () => {
@@ -288,7 +309,7 @@ describe('storage caps — the directory is a single JSON blob, so every list is
         expect(p.rules).toHaveLength(20);
     });
 
-    test('the directory itself never exceeds 2000 cards, whichever door adds one', () => {
+    test('the directory itself never exceeds 2000 cards — approve is now the only door', () => {
         const base = manyCards(2000);
 
         const merged = mergePartner(base, { company: 'Newest Traders' }, ['company']);
@@ -296,20 +317,23 @@ describe('storage caps — the directory is a single JSON blob, so every list is
         expect(merged.contacts[0].company).toBe('Newest Traders');
         expect(merged.contacts[1999].company).toBe('Firm 1998');   // the oldest fell off the end
 
+        // The two automatic doors are shut: neither grows the directory at all any more.
         const bumped = bumpUsage(base, { emails: ['brand.new@nowhere.in'] });
-        expect(bumped).toHaveLength(2000);
-
-        const imported = importFromSuggestions(base, {
-            transporters: [{ email: 'brand.new@nowhere.in', count: 1 }],
-        }, null);
-        expect(imported.added).toBe(1);
-        expect(imported.contacts).toHaveLength(2000);
+        expect(bumped.contacts).toHaveLength(2000);
+        expect(bumped.contacts[0].company).toBe('Firm 0');
+        expect(bumped.unknown).toEqual(['brand.new@nowhere.in']);
     });
 
     test('bumpUsage reads at most 50 addresses from one send', () => {
         const emails = [];
         for (let i = 0; i < 60; i++) emails.push('bulk' + i + '@carrier' + i + '.in');
-        expect(bumpUsage([], { emails })).toHaveLength(50);
+        expect(bumpUsage([], { emails }).unknown).toHaveLength(50);
+    });
+
+    test('the approval queue holds a whole import at once — 300, not the old 50', () => {
+        // A 24-firm import behind whatever was already queued would have had its tail silently
+        // dropped by the route's old inline cap of 50. Room for the biggest realistic import.
+        expect(MAX_PENDING).toBe(300);
     });
 });
 
@@ -432,9 +456,41 @@ describe('mergePartner — a stale copy must not overwrite a fresh one', () => {
     });
 });
 
-// ── importFromSuggestions ────────────────────────────────────────────────────
+// ── one firm, one card ───────────────────────────────────────────────────────
 
-describe('importFromSuggestions — the auto-learned files become partners, safely', () => {
+describe('firmKeyOf — a business domain IS the firm, a free-mail address is only a person', () => {
+    test('two people at one mill share a key; two gmail users never do', () => {
+        expect(firmKeyOf('manish@jcopipe.com')).toBe(firmKeyOf('cp@jcopipe.com'));
+        expect(firmKeyOf('ravi@gmail.com')).not.toBe(firmKeyOf('suresh@gmail.com'));
+    });
+
+    test('two different mills do not share a key', () => {
+        expect(firmKeyOf('sales@jcopipe.com')).not.toBe(firmKeyOf('sales@jindalhissar.com'));
+    });
+
+    test('the sub-domain is part of the firm, and case is not', () => {
+        expect(firmKeyOf('Sales@Mail.JcoPipe.com')).toBe(firmKeyOf('other@mail.jcopipe.com'));
+        expect(firmKeyOf('sales@mail.jcopipe.com')).not.toBe(firmKeyOf('sales@jcopipe.com'));
+    });
+
+    test('two DIFFERENT mills behind the same sub-domain label stay apart', () => {
+        // The whole domain is the firm, not its first label. Keying on the label alone reads
+        // both of these as a firm called "Mail" — one card holding two mills' staff, so an
+        // enquiry meant for one goes to the other's people. Every assertion above survives
+        // that mutation; this is the one that does not.
+        expect(firmKeyOf('a@mail.jcopipe.com')).not.toBe(firmKeyOf('b@mail.jindalhissar.com'));
+    });
+
+    test('every free-mail provider stays per-person, not one giant "Gmail" supplier', () => {
+        ['gmail.com', 'yahoo.co.in', 'rediffmail.com', 'hotmail.com', 'outlook.com'].forEach(host => {
+            expect(firmKeyOf('ravi@' + host)).not.toBe(firmKeyOf('suresh@' + host));
+        });
+    });
+});
+
+// ── pendingFromSuggestions ───────────────────────────────────────────────────
+
+describe('pendingFromSuggestions — the remembered addresses WAIT for approval', () => {
     const ENV_KEY = 'OWN_EMAIL_DOMAINS';
     let savedOwn;
     beforeEach(() => { savedOwn = process.env[ENV_KEY]; });
@@ -443,22 +499,168 @@ describe('importFromSuggestions — the auto-learned files become partners, safe
         else process.env[ENV_KEY] = savedOwn;
     });
 
-    test('a transporter address becomes a transporter card carrying its address', () => {
-        const res = importFromSuggestions([], {
+    test('a transporter address becomes a review item whose preview is the draft card', () => {
+        const res = pendingFromSuggestions([], {
             transporters: [{ email: 'ravi@srilogistics.com', count: 3, lastUsed: '2026-08-01' }],
         }, null);
-        expect(res.added).toBe(1);
-        const p = res.contacts[0];
+        expect(res.items).toHaveLength(1);
+        expect(res.queued).toBe(1);
+
+        const item = res.items[0];
+        expect(item.origin).toBe('import');
+        expect(item.from).toBe('ravi@srilogistics.com');
+        expect(item.subject).toBe('Sri Logistics');
+        expect(item.finds).toEqual([{
+            kind: 'field', key: 'email',
+            label: 'Address you have used', value: 'ravi@srilogistics.com',
+        }]);
+        expect(Number.isNaN(Date.parse(item.receivedAt))).toBe(false);
+
+        const p = item.preview;
         expect(p.role).toBe('transporter');
         expect(p.company).toBe('Sri Logistics');
         expect(allEmails(p)).toEqual(['ravi@srilogistics.com']);
         expect(p.fromEnquiry).toBe(true);
+        expect(p.enq).toBe(3);
+        expect(p.last).toBe('2026-08-01');
+        expect(p.id).toBe('p_new_' + item.id);
     });
 
-    test('an address already in the directory is skipped — matched on ANY person on the card', () => {
-        // The address the app remembers is often a person's second address, not the first one
-        // on the card. Matching only people[0].emails[0] would import a duplicate and, worse,
-        // let an import stamp over a card the owner curated.
+    test('THE DIRECTORY IS NOT TOUCHED — the import returns queue items, never partners', () => {
+        // The owner's rule in their own words: "even when you import, it must sit under the
+        // approval space — dont add anything without approval". The old importFromSuggestions
+        // wrote straight into the directory, and no test could catch it because the function
+        // returned the directory. Now the list handed in must come back out unchanged.
+        const existing = [sanitizePartner({
+            id: 'p_a', company: 'Curated A', people: [person('X', ['x@curated-a.in'])],
+        })];
+        const snapshot = JSON.parse(JSON.stringify(existing));
+        const before = existing[0];
+
+        const res = pendingFromSuggestions(existing, {
+            transporters: [{ email: 'ravi@srilogistics.com', count: 2 }],
+        }, { suppliers: [{ email: 'sales@kalpatarusteel.com', count: 1 }] });
+
+        expect(existing).toHaveLength(1);
+        expect(existing[0]).toBe(before);
+        expect(existing).toEqual(snapshot);
+
+        // Nothing that comes back is a partner list, and no item is a partner record: the only
+        // partner-shaped thing on an item is the `preview` the owner has yet to approve.
+        expect(res.contacts).toBeUndefined();
+        expect(res.added).toBeUndefined();
+        expect(Object.keys(res).sort()).toEqual(['items', 'queued', 'skippedAddresses', 'skippedFirms']);
+        expect(res.items).toHaveLength(2);
+        res.items.forEach(it => {
+            expect(it.id).toMatch(/^pd_/);
+            expect(it.origin).toBe('import');
+            expect(it.people).toBeUndefined();
+            expect(it.company).toBeUndefined();
+            expect(it.preview.people.length).toBeGreaterThan(0);
+        });
+    });
+
+    test('a firm that hauls for us AND sells to us stays a transporter', () => {
+        // The SAME address sits in both remembered files for a firm we use both ways. The
+        // later "dealer" entry used to bury the earlier "transporter", and the firm then never
+        // appeared in the transporter list at all — so it stopped being offered for freight.
+        const res = pendingFromSuggestions([],
+            { transporters: [{ email: 'ops@speedelexpress.com', count: 4, lastUsed: '2026-08-01' }] },
+            { suppliers: [{ email: 'ops@speedelexpress.com', count: 1, lastUsed: '2026-07-01' }] });
+
+        expect(res.items).toHaveLength(1);
+        expect(res.items[0].preview.role).toBe('transporter');
+
+        // and the same however the two files are read — a firm listed as a supplier first
+        // must not end up a dealer just because freight came second
+        const other = pendingFromSuggestions([],
+            { transporters: [{ email: 'ops@srilogistics.com', count: 1 }] },
+            { byType: { erw: [{ email: 'ops@srilogistics.com', count: 9 }] } });
+        expect(other.items[0].preview.role).toBe('transporter');
+    });
+
+    test('ONE FIRM, ONE CARD — four colleagues at one mill are one item, not four suppliers', () => {
+        // The live bug the owner hit: the directory offered "Jindalhissar" FOUR times. Sending
+        // would have put four separate enquiries in front of four colleagues at one mill, none
+        // of them able to see the others — the exact opposite of the rule they stated.
+        const res = pendingFromSuggestions([], {
+            transporters: [
+                { email: 'ops@speedelexpress.com', count: 5, lastUsed: '2026-08-01' },
+                { email: 'billing@speedelexpress.com', count: 1, lastUsed: '2026-07-01' },
+            ],
+        }, {
+            suppliers: [
+                { email: 'sales@jindalhissar.com', count: 9, lastUsed: '2026-08-10' },
+                { email: 'marketing@jindalhissar.com', count: 4, lastUsed: '2026-08-02' },
+                { email: 'exports@jindalhissar.com', count: 2, lastUsed: '2026-07-20' },
+                { email: 'accounts@jindalhissar.com', count: 1, lastUsed: '2026-06-01' },
+                { email: 'manish@jcopipe.com', count: 3, lastUsed: '2026-08-05' },
+                { email: 'cp@jcopipe.com', count: 2, lastUsed: '2026-08-06' },
+                { email: 'ravi.stockist@gmail.com', count: 4, lastUsed: '2026-08-07' },
+                { email: 'suresh.tubes@gmail.com', count: 2, lastUsed: '2026-08-08' },
+                { email: 'kumar.pipes@gmail.com', count: 1, lastUsed: '2026-08-09' },
+            ],
+        });
+
+        // three real firms + three unrelated gmail people = six cards to approve
+        expect(res.items).toHaveLength(6);
+        expect(res.queued).toBe(6);
+
+        const jindal = res.items.filter(it => it.preview.company === 'Jindalhissar');
+        expect(jindal).toHaveLength(1);
+        expect(jindal[0].preview.people).toHaveLength(4);
+        expect(allEmails(jindal[0].preview).sort()).toEqual([
+            'accounts@jindalhissar.com', 'exports@jindalhissar.com',
+            'marketing@jindalhissar.com', 'sales@jindalhissar.com',
+        ]);
+        // The firm's history is the best of its people's, not whichever address came first.
+        expect(jindal[0].preview.enq).toBe(9);
+        expect(jindal[0].preview.last).toBe('2026-08-10');
+
+        const jco = res.items.filter(it => it.preview.company === 'Jco Pipe');
+        expect(jco).toHaveLength(1);
+        expect(allEmails(jco[0].preview).sort()).toEqual(['cp@jcopipe.com', 'manish@jcopipe.com']);
+
+        const speedel = res.items.filter(it => it.preview.company === 'Speedelexpress');
+        expect(speedel).toHaveLength(1);
+        expect(allEmails(speedel[0].preview)).toHaveLength(2);
+
+        // A gmail address proves nothing about the firm, so each stays on its own card —
+        // merging them would put two unrelated people into one supplier.
+        const gmailItems = res.items.filter(it => allEmails(it.preview).some(e => domainOf(e) === 'gmail.com'));
+        expect(gmailItems).toHaveLength(3);
+        expect(gmailItems.map(it => it.preview.company).sort())
+            .toEqual(['kumar.pipes@gmail.com', 'ravi.stockist@gmail.com', 'suresh.tubes@gmail.com']);
+
+        // The negative that actually pins it: NO business domain may appear on two cards.
+        // (firmKeyOf returning the whole address would put each jindalhissar person on their own.)
+        const cardsPerDomain = {};
+        res.items.forEach(it => allEmails(it.preview).forEach(e => {
+            const d = domainOf(e);
+            if (d === 'gmail.com') return;
+            cardsPerDomain[d] = (cardsPerDomain[d] || []).concat([it.id]);
+        }));
+        expect(Object.keys(cardsPerDomain).sort())
+            .toEqual(['jcopipe.com', 'jindalhissar.com', 'speedelexpress.com']);
+        Object.keys(cardsPerDomain).forEach(d => {
+            expect([d, new Set(cardsPerDomain[d]).size]).toEqual([d, 1]);
+        });
+    });
+
+    test('used as a transporter even once, the whole firm is a transporter', () => {
+        // Role decides which list the firm appears in. One address at the firm used for freight
+        // and another for supply must not leave the card filed as a dealer.
+        const res = pendingFromSuggestions([],
+            { transporters: [{ email: 'ops@speedelexpress.com', count: 2 }] },
+            { suppliers: [{ email: 'billing@speedelexpress.com', count: 1 }] });
+        expect(res.items).toHaveLength(1);
+        expect(res.items[0].preview.role).toBe('transporter');
+    });
+
+    test('a firm with SOME addresses already held is proposed as an UPDATE to that card', () => {
+        // Matching looks at every person on the card, because the remembered address is often
+        // a person's second address. The curated card must gain the missing colleague — not
+        // find a duplicate firm sitting beside it.
         const existing = sanitizePartner({
             id: 'p_sri',
             company: 'Sri Logistics (curated by owner)',
@@ -468,135 +670,179 @@ describe('importFromSuggestions — the auto-learned files become partners, safe
             ],
         });
 
-        const res = importFromSuggestions([existing], {
+        const res = pendingFromSuggestions([existing], {
             transporters: [
                 { email: 'ravi@srilogistics.com', count: 9, lastUsed: '2026-08-10' },
-                { email: 'vrl@vrlgroup.in', count: 2, lastUsed: '2026-08-11' },
+                { email: 'accounts@srilogistics.com', count: 3, lastUsed: '2026-08-11' },
             ],
         }, null);
 
-        expect(res.added).toBe(1);
-        expect(res.skipped).toBe(1);
-        expect(res.contacts).toHaveLength(2);
-        const kept = res.contacts.find(c => c.id === 'p_sri');
-        expect(kept.company).toBe('Sri Logistics (curated by owner)');
-        expect(kept.enq).toBe(0);            // the curated card is left completely alone
+        expect(res.items).toHaveLength(1);            // one firm, one card — not a second "Sri"
+        expect(res.skippedFirms).toBe(0);
+        expect(res.skippedAddresses).toBe(1);         // ravi@ was already held
+
+        const p = res.items[0].preview;
+        expect(p.matchId).toBe('p_sri');              // approve UPDATES the existing card
+        expect(p.id).toBe('p_new_' + res.items[0].id);   // ...but the draft is not that card
+        expect(p.company).toBe('Sri Logistics (curated by owner)');
+        expect(p.people).toHaveLength(3);             // the two curated people, plus the new one
+        expect(allEmails(p)).toEqual([
+            'front.desk@srilogistics.com',
+            'ravi.office@srilogistics.com', 'ravi@srilogistics.com',
+            'accounts@srilogistics.com',
+        ]);
+        // Only the genuinely new address is offered — the known one is not re-added.
+        expect(res.items[0].finds.map(f => f.value)).toEqual(['accounts@srilogistics.com']);
+        expect(existing.people).toHaveLength(2);      // the stored card itself is untouched
     });
 
-    test('the caller\'s own list is not modified — the import returns a new one', () => {
-        const existing = [sanitizePartner({ id: 'p_a', company: 'A', people: [person('X', ['x@a.in'])] })];
-        const res = importFromSuggestions(existing, { transporters: [{ email: 'new@b.in' }] }, null);
-        expect(existing).toHaveLength(1);
-        expect(res.contacts).toHaveLength(2);
+    test('a firm whose addresses are ALL already held is skipped entirely', () => {
+        const existing = sanitizePartner({
+            id: 'p_sri',
+            company: 'Sri Logistics (curated by owner)',
+            people: [person('Ravi', ['ravi@srilogistics.com', 'accounts@srilogistics.com'])],
+        });
+
+        const res = pendingFromSuggestions([existing], {
+            transporters: [
+                { email: 'ravi@srilogistics.com', count: 9 },
+                { email: 'accounts@srilogistics.com', count: 3 },
+                { email: 'vrl@vrlgroup.in', count: 2 },
+            ],
+        }, null);
+
+        expect(res.items).toHaveLength(1);
+        expect(queuedEmails(res.items)).toEqual(['vrl@vrlgroup.in']);
+        expect(res.queued).toBe(1);
+        expect(res.skippedFirms).toBe(1);
+        expect(res.skippedAddresses).toBe(2);
     });
 
     test('our own domain is excluded — dscpipes.com by default', () => {
         // Our address lands in the remembered files whenever an enquiry is copied to ourselves.
-        // Importing it makes the firm look like its own supplier.
+        // Queueing it invites the owner to approve their own firm as its own supplier.
         delete process.env[ENV_KEY];
-        const res = importFromSuggestions([], {
+        const res = pendingFromSuggestions([], {
             transporters: [{ email: 'info@dscpipes.com' }, { email: 'ravi@srilogistics.com' }],
         }, null);
-        expect(emailsOf(res.contacts)).toEqual(['ravi@srilogistics.com']);
-        expect(res.added).toBe(1);
+        expect(queuedEmails(res.items)).toEqual(['ravi@srilogistics.com']);
+        expect(res.queued).toBe(1);
     });
 
     test('OWN_EMAIL_DOMAINS overrides the default, and takes a comma list', () => {
         process.env[ENV_KEY] = 'mypipes.in, second.co';
-        const res = importFromSuggestions([], {
+        const res = pendingFromSuggestions([], {
             transporters: [
                 { email: 'a@mypipes.in' },
                 { email: 'b@second.co' },
                 { email: 'info@dscpipes.com' },   // no longer "ours" once the env names others
             ],
         }, null);
-        expect(emailsOf(res.contacts)).toEqual(['info@dscpipes.com']);
-        expect(res.added).toBe(1);
+        expect(queuedEmails(res.items)).toEqual(['info@dscpipes.com']);
+        expect(res.queued).toBe(1);
     });
 
     test('example.com / example.org placeholders are excluded', () => {
-        const res = importFromSuggestions([], {
+        const res = pendingFromSuggestions([], {
             transporters: [
                 { email: 'test@example.com' },
                 { email: 'demo@example.org' },
                 { email: 'ravi@srilogistics.com' },
             ],
         }, null);
-        expect(emailsOf(res.contacts)).toEqual(['ravi@srilogistics.com']);
-        expect(res.added).toBe(1);
+        expect(queuedEmails(res.items)).toEqual(['ravi@srilogistics.com']);
+        expect(res.queued).toBe(1);
     });
 
     test('one address seen twice keeps the HIGHEST count and the NEWEST date', () => {
         // Real history is the whole reason for the import: this transporter was asked 7 times,
         // most recently in August. The global entry is read first and the route entry second,
         // so a merge that simply keeps whatever it saw first would report the July date.
-        const res = importFromSuggestions([], {
+        const res = pendingFromSuggestions([], {
             transporters: [{ email: 'ravi@srilogistics.com', count: 7, lastUsed: '2026-07-01' }],
             routes: [{
                 pickup: 'Chennai', drop: 'Hyderabad',
                 transporters: [{ email: 'ravi@srilogistics.com', count: 2, lastUsed: '2026-08-01' }],
             }],
         }, null);
-        expect(res.contacts).toHaveLength(1);
-        expect(res.contacts[0].enq).toBe(7);
-        expect(res.contacts[0].last).toBe('2026-08-01');
+        expect(res.items).toHaveLength(1);
+        expect(res.items[0].preview.enq).toBe(7);
+        expect(res.items[0].preview.last).toBe('2026-08-01');
     });
 
     test('and the other way round — the newest date wins whichever order it arrives in', () => {
-        const res = importFromSuggestions([], {
+        const res = pendingFromSuggestions([], {
             transporters: [{ email: 'ravi@srilogistics.com', count: 2, lastUsed: '2026-08-01' }],
             routes: [{
                 pickup: 'Chennai', drop: 'Hyderabad',
                 transporters: [{ email: 'ravi@srilogistics.com', count: 7, lastUsed: '2026-07-01' }],
             }],
         }, null);
-        expect(res.contacts[0].enq).toBe(7);
-        expect(res.contacts[0].last).toBe('2026-08-01');
+        expect(res.items[0].preview.enq).toBe(7);
+        expect(res.items[0].preview.last).toBe('2026-08-01');
     });
 
     test('last comes from lastUsed as a date only, not the full timestamp', () => {
-        const res = importFromSuggestions([], {
+        const res = pendingFromSuggestions([], {
             transporters: [{ email: 'ravi@srilogistics.com', count: 1, lastUsed: '2026-08-01T09:30:00.000Z' }],
         }, null);
-        expect(res.contacts[0].last).toBe('2026-08-01');
+        expect(res.items[0].preview.last).toBe('2026-08-01');
     });
 
     test('routes are deduped (case/spacing ignored), keeping each distinct lane once', () => {
-        const res = importFromSuggestions([], {
+        const res = pendingFromSuggestions([], {
             routes: [
                 { pickup: 'Chennai', drop: 'Hyderabad', transporters: [{ email: 'ravi@srilogistics.com' }] },
                 { pickup: 'chennai', drop: 'HYDERABAD', transporters: [{ email: 'ravi@srilogistics.com' }] },
                 { pickup: 'Chennai', drop: 'Mumbai', transporters: [{ email: 'ravi@srilogistics.com' }] },
             ],
         }, null);
-        expect(res.contacts).toHaveLength(1);
-        expect(res.contacts[0].routes).toEqual([
+        expect(res.items).toHaveLength(1);
+        expect(res.items[0].preview.routes).toEqual([
+            { from: 'Chennai', to: 'Hyderabad' },
+            { from: 'Chennai', to: 'Mumbai' },
+        ]);
+    });
+
+    test('two people at one firm pool their lanes onto the single card', () => {
+        // The dedupe has to survive the grouping: one firm's card carries every lane its people
+        // were used for, each lane once.
+        const res = pendingFromSuggestions([], {
+            routes: [
+                { pickup: 'Chennai', drop: 'Hyderabad', transporters: [{ email: 'ops@speedelexpress.com' }] },
+                { pickup: 'Chennai', drop: 'Hyderabad', transporters: [{ email: 'billing@speedelexpress.com' }] },
+                { pickup: 'Chennai', drop: 'Mumbai', transporters: [{ email: 'billing@speedelexpress.com' }] },
+            ],
+        }, null);
+        expect(res.items).toHaveLength(1);
+        expect(res.items[0].preview.routes).toEqual([
             { from: 'Chennai', to: 'Hyderabad' },
             { from: 'Chennai', to: 'Mumbai' },
         ]);
     });
 
     test('pipe types are uppercased and deduped', () => {
-        const res = importFromSuggestions([], null, {
+        const res = pendingFromSuggestions([], null, {
             byType: {
                 erw: [{ email: 'sales@kalpatarusteel.com', count: 1 }],
                 ERW: [{ email: 'sales@kalpatarusteel.com', count: 1 }],
                 gi: [{ email: 'sales@kalpatarusteel.com', count: 1 }],
             },
         });
-        expect(res.contacts).toHaveLength(1);
-        expect(res.contacts[0].types).toEqual(['ERW', 'GI']);
-        expect(res.contacts[0].role).toBe('dealer');
+        expect(res.items).toHaveLength(1);
+        expect(res.items[0].preview.types).toEqual(['ERW', 'GI']);
+        expect(res.items[0].preview.role).toBe('dealer');
     });
 
-    test('added + skipped describe what actually happened', () => {
+    test('queued + skippedFirms + skippedAddresses describe what actually happened', () => {
         const existing = sanitizePartner({ company: 'Known', people: [person('X', ['known@x.in'])] });
-        const res = importFromSuggestions([existing], {
+        const res = pendingFromSuggestions([existing], {
             transporters: [{ email: 'known@x.in' }, { email: 'new1@y.in' }],
         }, { suppliers: [{ email: 'new2@z.in' }, { email: 'known@x.in' }] });
-        expect(res.added).toBe(2);
-        expect(res.skipped).toBe(1);          // one address, seen twice, is one skip
-        expect(res.contacts).toHaveLength(3);
+        expect(res.queued).toBe(2);
+        expect(res.items).toHaveLength(2);
+        expect(res.skippedFirms).toBe(1);      // x.in — its only address is already held
+        expect(res.skippedAddresses).toBe(1);  // one address, seen twice, is one skip
     });
 });
 
@@ -648,80 +894,326 @@ describe('bumpUsage — the directory learns from what we send and receive', () 
         });
     }
 
+    const ENV_KEY = 'OWN_EMAIL_DOMAINS';
+    let savedOwn;
+    beforeEach(() => { savedOwn = process.env[ENV_KEY]; });
+    afterEach(() => {
+        if (savedOwn === undefined) delete process.env[ENV_KEY];
+        else process.env[ENV_KEY] = savedOwn;
+    });
+
     test("kind:'reply' counts a reply, not an enquiry", () => {
-        const list = bumpUsage([known()], { emails: ['ravi@srilogistics.com'], kind: 'reply' });
-        expect(list[0].rep).toBe(1);
-        expect(list[0].enq).toBe(0);
+        const res = bumpUsage([known()], { emails: ['ravi@srilogistics.com'], kind: 'reply' });
+        expect(res.contacts[0].rep).toBe(1);
+        expect(res.contacts[0].enq).toBe(0);
+        expect(res.unknown).toEqual([]);
     });
 
     test('anything else counts an enquiry, not a reply', () => {
-        const list = bumpUsage([known()], { emails: ['ravi@srilogistics.com'], kind: 'enquiry' });
-        expect(list[0].enq).toBe(1);
-        expect(list[0].rep).toBe(0);
+        const res = bumpUsage([known()], { emails: ['ravi@srilogistics.com'], kind: 'enquiry' });
+        expect(res.contacts[0].enq).toBe(1);
+        expect(res.contacts[0].rep).toBe(0);
         const noKind = bumpUsage([known()], { emails: ['ravi@srilogistics.com'] });
-        expect(noKind[0].enq).toBe(1);
+        expect(noKind.contacts[0].enq).toBe(1);
+        expect(noKind.contacts[0].rep).toBe(0);
     });
 
-    test('an address we have never seen becomes a stub partner rather than being dropped', () => {
-        const list = bumpUsage([], {
+    test('an address we have never seen NO LONGER becomes a partner — it waits for approval', () => {
+        // The owner's rule: "dont add anything without approval". A stub card used to appear
+        // in the directory the moment an enquiry went out to a new address. Both halves matter:
+        // the directory gained nothing, AND the address is handed back to be queued for review.
+        const res = bumpUsage([], {
             emails: ['ops@vrlgroup.in'], kind: 'enquiry', role: 'transporter',
             pipeTypes: ['ERW'], pickup: 'Chennai', drop: 'Hyderabad',
         });
-        expect(list).toHaveLength(1);
-        expect(allEmails(list[0])).toEqual(['ops@vrlgroup.in']);
-        expect(list[0].role).toBe('transporter');
-        expect(list[0].fromEnquiry).toBe(true);
-        expect(list[0].enq).toBe(1);
-        expect(list[0].routes).toEqual([{ from: 'Chennai', to: 'Hyderabad' }]);
+        expect(res.contacts).toEqual([]);
+        expect(res.unknown).toEqual(['ops@vrlgroup.in']);
     });
 
-    test('the stub carries the pipe types the enquiry was about', () => {
-        // Without these the stub is a nameless address and the owner has no idea what it was
-        // for — the whole point of a self-filling directory is that it arrives with context.
-        const list = bumpUsage([], {
-            emails: ['sales@kalpatarusteel.com'], kind: 'enquiry', pipeTypes: ['ERW', 'GI'],
+    test('a known firm is bumped and a new address queued in the same send', () => {
+        // The realistic case: an enquiry to five transporters, two of them already on file.
+        const res = bumpUsage([known()], {
+            emails: ['ravi@srilogistics.com', 'ops@vrlgroup.in'], kind: 'enquiry',
         });
-        expect(list[0].types).toEqual(['ERW', 'GI']);
+        expect(res.contacts).toHaveLength(1);
+        expect(res.contacts[0].enq).toBe(1);
+        expect(res.unknown).toEqual(['ops@vrlgroup.in']);
     });
 
-    test('the stub guesses the firm name from the domain, same as the import does', () => {
-        // A card titled "ops@vrlgroup.in" is unreadable in the list. Both doors into the
-        // directory call companyFromEmail for exactly this reason; only one was ever tested.
-        const list = bumpUsage([], { emails: ['ops@vrlgroup.in'] });
-        expect(list[0].company).toBe('Vrl Group');
+    test('our own domain and example.com never even reach the approval queue', () => {
+        // Copying ourselves on an enquiry must not offer our own firm as a supplier, and the
+        // test placeholders left in the remembered files are not partners either.
+        delete process.env[ENV_KEY];
+        const res = bumpUsage([], {
+            emails: ['info@dscpipes.com', 'test@example.com', 'demo@example.org', 'ops@vrlgroup.in'],
+        });
+        expect(res.contacts).toEqual([]);
+        expect(res.unknown).toEqual(['ops@vrlgroup.in']);
     });
 
-    test('a free-mail stub falls back to the address, because the domain says nothing', () => {
-        const list = bumpUsage([], { emails: ['ravi.transport@gmail.com'] });
-        expect(list[0].company).toBe('ravi.transport@gmail.com');
+    test('OWN_EMAIL_DOMAINS decides which domain is "ours" for the queue too', () => {
+        process.env[ENV_KEY] = 'mypipes.in';
+        const res = bumpUsage([], { emails: ['a@mypipes.in', 'info@dscpipes.com'] });
+        expect(res.unknown).toEqual(['info@dscpipes.com']);
+    });
+
+    test('an excluded address the owner DELIBERATELY added is still bumped', () => {
+        // Exclusion decides what gets OFFERED, never what gets counted. A colleague's
+        // dscpipes.com address put on a card by hand is a real partner and its stats must move.
+        delete process.env[ENV_KEY];
+        const ours = sanitizePartner({
+            id: 'p_ours', company: 'Our Hosur Depot',
+            people: [person('Depot', ['depot@dscpipes.com'])],
+        });
+        const res = bumpUsage([ours], { emails: ['depot@dscpipes.com'], kind: 'enquiry' });
+        expect(res.contacts).toHaveLength(1);
+        expect(res.contacts[0].enq).toBe(1);
+        expect(res.unknown).toEqual([]);
     });
 
     test("'last' is stamped with today", () => {
         const at = todayStamp();
-        const list = bumpUsage([known()], { emails: ['ravi@srilogistics.com'], kind: 'reply' });
-        expectStampedToday(list[0].last, at);
+        const res = bumpUsage([known()], { emails: ['ravi@srilogistics.com'], kind: 'reply' });
+        expectStampedToday(res.contacts[0].last, at);
     });
 
     test('an address already on a card is counted there, never duplicated', () => {
         let list = [known()];
-        list = bumpUsage(list, { emails: ['RAVI@srilogistics.com'], kind: 'enquiry' });
-        list = bumpUsage(list, { emails: ['ravi@srilogistics.com'], kind: 'enquiry' });
+        list = bumpUsage(list, { emails: ['RAVI@srilogistics.com'], kind: 'enquiry' }).contacts;
+        list = bumpUsage(list, { emails: ['ravi@srilogistics.com'], kind: 'enquiry' }).contacts;
         expect(list).toHaveLength(1);
         expect(list[0].id).toBe('p_known');
         expect(list[0].enq).toBe(2);
     });
 
-    test("the caller's list is not grown in place — a new list comes back", () => {
-        const stored = [known()];
-        const out = bumpUsage(stored, { emails: ['brand.new@nowhere.in'] });
+    test("the caller's list and the caller's card are not edited in place", () => {
+        // CLAUDE.md check #2 — the route writes back what bumpUsage returns, so a bump that
+        // also mutated the list the caller read means a failed write still changed the record.
+        const card = known();
+        const stored = [card];
+        const res = bumpUsage(stored, { emails: ['ravi@srilogistics.com'], kind: 'enquiry' });
         expect(stored).toHaveLength(1);
-        expect(out).toHaveLength(2);
+        expect(stored[0]).toBe(card);
+        expect(card.enq).toBe(0);
+        expect(res.contacts[0].enq).toBe(1);
+        expect(res.contacts).toHaveLength(1);
     });
 
-    test('rubbish that is not an address creates nothing', () => {
-        const list = bumpUsage([], { emails: ['not-an-email', '   ', 'ravi@srilogistics.com'] });
-        expect(list).toHaveLength(1);
-        expect(allEmails(list[0])).toEqual(['ravi@srilogistics.com']);
+    test('rubbish that is not an address creates nothing and queues nothing', () => {
+        const res = bumpUsage([], { emails: ['not-an-email', '   ', 'ravi@srilogistics.com'] });
+        expect(res.contacts).toEqual([]);
+        expect(res.unknown).toEqual(['ravi@srilogistics.com']);
+    });
+});
+
+// ── pendingFromUsage and dropAlreadyQueued ───────────────────────────────────
+
+describe('pendingFromUsage — a new address we just wrote to waits for approval', () => {
+    const ENV_KEY = 'OWN_EMAIL_DOMAINS';
+    let savedOwn;
+    beforeEach(() => { savedOwn = process.env[ENV_KEY]; });
+    afterEach(() => {
+        if (savedOwn === undefined) delete process.env[ENV_KEY];
+        else process.env[ENV_KEY] = savedOwn;
+    });
+
+    const usage = {
+        kind: 'enquiry', role: 'transporter', pipeTypes: ['ERW'],
+        pickup: 'Chennai', drop: 'Hyderabad',
+    };
+
+    test('the queued draft arrives with the context of the enquiry that found it', () => {
+        // A nameless address the owner cannot place is a card they will never approve.
+        const items = pendingFromUsage([], [], ['ops@vrlgroup.in'], usage);
+        expect(items).toHaveLength(1);
+        const item = items[0];
+        expect(item.origin).toBe('import');
+        expect(item.from).toBe('ops@vrlgroup.in');
+        expect(item.preview.company).toBe('Vrl Group');       // guessed from the domain
+        expect(item.preview.role).toBe('transporter');
+        expect(item.preview.types).toEqual(['ERW']);
+        expect(item.preview.routes).toEqual([{ from: 'Chennai', to: 'Hyderabad' }]);
+        expect(allEmails(item.preview)).toEqual(['ops@vrlgroup.in']);
+        expect(item.preview.id).toBe('p_new_' + item.id);
+    });
+
+    test('a free-mail draft falls back to the address, because the domain says nothing', () => {
+        const items = pendingFromUsage([], [], ['ravi.transport@gmail.com'], usage);
+        expect(items[0].preview.company).toBe('ravi.transport@gmail.com');
+    });
+
+    test('a colleague at a firm we ALREADY hold is an update to that card, never a second firm', () => {
+        // The owner's rule leaked here: this path matched on the exact address, so emailing
+        // a new person at a firm already in the directory queued a brand-new firm. Approving
+        // it put a duplicate mill beside the card the owner had curated.
+        const held = sanitizePartner({
+            company: 'Jco Pipe (curated by owner)', city: 'Mumbai',
+            people: [{ name: 'Manish', emails: [{ label: 'Work', v: 'manish@jcopipe.com' }] }],
+        });
+        const items = pendingFromUsage([held], [], ['cp@jcopipe.com'], usage);
+
+        expect(items).toHaveLength(1);
+        expect(items[0].preview.matchId).toBe(held.id);       // an UPDATE, not a new firm
+        expect(items[0].subject).toBe('Jco Pipe (curated by owner)');
+        expect(items[0].preview.company).toBe('Jco Pipe (curated by owner)');
+        expect(items[0].preview.city).toBe('Mumbai');         // what they typed is kept
+        expect(allEmails(items[0].preview).sort())
+            .toEqual(['cp@jcopipe.com', 'manish@jcopipe.com']);
+    });
+
+    test('the same firm reached again on a later send is not queued a second time', () => {
+        // Monday to manish@, Tuesday to cp@ — one mill, one card to approve, not two.
+        const monday = pendingFromUsage([], [], ['manish@jcopipe.com'], usage);
+        const tuesday = pendingFromUsage([], monday, ['cp@jcopipe.com'], usage);
+        expect(tuesday).toHaveLength(0);
+        // and a genuinely different firm in the same send still gets through
+        const mixed = pendingFromUsage([], monday, ['cp@jcopipe.com', 'ops@vrlgroup.in'], usage);
+        expect(mixed).toHaveLength(1);
+        expect(mixed[0].preview.company).toBe('Vrl Group');
+    });
+
+    test('several new people at ONE new firm queue as ONE item', () => {
+        // Same rule as the import: emailing three colleagues at a mill must offer one card
+        // with three people, not three suppliers nobody can Cc together.
+        const items = pendingFromUsage([], [],
+            ['manish@jcopipe.com', 'cp@jcopipe.com', 'exports@jcopipe.com'], usage);
+        expect(items).toHaveLength(1);
+        expect(items[0].preview.people).toHaveLength(3);
+        expect(allEmails(items[0].preview).sort())
+            .toEqual(['cp@jcopipe.com', 'exports@jcopipe.com', 'manish@jcopipe.com']);
+    });
+
+    test('two gmail addresses stay two cards — nothing proves they are one firm', () => {
+        const items = pendingFromUsage([], [], ['ravi@gmail.com', 'suresh@gmail.com'], usage);
+        expect(items).toHaveLength(2);
+    });
+
+    test('an address already in the directory is not queued', () => {
+        const existing = sanitizePartner({
+            id: 'p_sri', company: 'Sri Logistics',
+            people: [person('Ravi', ['ravi@srilogistics.com'])],
+        });
+        const items = pendingFromUsage([existing], [],
+            ['ravi@srilogistics.com', 'ops@vrlgroup.in'], usage);
+        expect(items).toHaveLength(1);
+        expect(items[0].from).toBe('ops@vrlgroup.in');
+    });
+
+    test('two enquiries to the same new address queue it ONCE', () => {
+        // Sending on Monday and again on Tuesday must leave one card to approve, not two.
+        const first = pendingFromUsage([], [], ['ops@vrlgroup.in'], usage);
+        expect(first).toHaveLength(1);
+        const second = pendingFromUsage([], first, ['ops@vrlgroup.in'], usage);
+        expect(second).toEqual([]);
+    });
+
+    // NOT GUARDED HERE, deliberately — two real gaps found while writing these tests, both the
+    // same "one firm, one card" rule leaking on the USAGE path only (the import path handles
+    // both). `pendingFromUsage` matches on the exact address, never on the firm:
+    //   1. enquiry Monday to manish@jcopipe.com, Tuesday to cp@jcopipe.com → TWO cards to
+    //      approve for one mill;
+    //   2. jcopipe.com already in the directory under manish@, enquiry to cp@ → the draft has
+    //      no `matchId`, so approving creates a duplicate firm beside the curated card.
+    // Writing a passing test for either would mean asserting the wrong answer is right, so
+    // they are reported instead of pinned. Both are fixed by keying `already`/the directory
+    // lookup on firmKeyOf, the same way pendingFromSuggestions does.
+
+    test('one address repeated inside a single send queues once', () => {
+        const items = pendingFromUsage([], [],
+            ['ops@vrlgroup.in', 'OPS@vrlgroup.in'], usage);
+        expect(items).toHaveLength(1);
+        expect(allEmails(items[0].preview)).toEqual(['ops@vrlgroup.in']);
+    });
+
+    test('our own domain, example.com and rubbish are never queued', () => {
+        delete process.env[ENV_KEY];
+        const items = pendingFromUsage([], [],
+            ['info@dscpipes.com', 'test@example.com', 'not-an-email', '   '], usage);
+        expect(items).toEqual([]);
+    });
+
+    test('a gmail-queued item blocks the same address arriving from the label', () => {
+        // The Gmail-label queue item has no preview, only `from`. It must still count as
+        // "already waiting", or the same firm sits in the queue twice.
+        const fromLabel = sanitizePendingItem({ from: 'ops@vrlgroup.in', subject: 'Our rates' });
+        expect(fromLabel.preview).toBeNull();
+        expect(pendingFromUsage([], [fromLabel], ['ops@vrlgroup.in'], usage)).toEqual([]);
+    });
+});
+
+describe('dropAlreadyQueued — pressing Import twice must not stack the same card up', () => {
+    function suggestions() {
+        return {
+            transporters: [
+                { email: 'ops@speedelexpress.com', count: 5, lastUsed: '2026-08-01' },
+                { email: 'billing@speedelexpress.com', count: 1, lastUsed: '2026-07-01' },
+                { email: 'vrl@vrlgroup.in', count: 2, lastUsed: '2026-08-02' },
+            ],
+        };
+    }
+
+    test('the first press queues everything, the second press queues nothing', () => {
+        const first = pendingFromSuggestions([], suggestions(), null).items;
+        expect(dropAlreadyQueued([], first)).toHaveLength(2);
+
+        // The route re-runs the import from scratch, so the second run builds NEW items with
+        // new ids for the same firms. Matching must be on the addresses, not the item id.
+        const second = pendingFromSuggestions([], suggestions(), null).items;
+        expect(second.map(it => it.id)).not.toEqual(first.map(it => it.id));
+        expect(dropAlreadyQueued(first, second)).toEqual([]);
+    });
+
+    test('a firm not yet in the queue still gets through', () => {
+        const queued = pendingFromSuggestions([], {
+            transporters: [{ email: 'vrl@vrlgroup.in', count: 2 }],
+        }, null).items;
+        const proposed = pendingFromSuggestions([], suggestions(), null).items;
+
+        const fresh = dropAlreadyQueued(queued, proposed);
+        expect(queuedEmails(fresh).sort())
+            .toEqual(['billing@speedelexpress.com', 'ops@speedelexpress.com']);
+    });
+
+    test('ANY address on the draft matching the queue is enough — a colleague is not a new firm', () => {
+        // The queued card holds two people. A proposal that arrives holding only one of them
+        // is the same firm and must be dropped.
+        const queued = pendingFromSuggestions([], suggestions(), null).items;
+        const proposed = pendingFromSuggestions([], {
+            transporters: [{ email: 'billing@speedelexpress.com', count: 1 }],
+        }, null).items;
+        expect(proposed).toHaveLength(1);
+        expect(dropAlreadyQueued(queued, proposed)).toEqual([]);
+    });
+
+    test('an item held from the Gmail label blocks a proposal for that same address', () => {
+        const fromLabel = sanitizePendingItem({ from: 'vrl@vrlgroup.in', subject: 'Our rates' });
+        const proposed = pendingFromSuggestions([], suggestions(), null).items;
+        const fresh = dropAlreadyQueued([fromLabel], proposed);
+        expect(queuedEmails(fresh).sort())
+            .toEqual(['billing@speedelexpress.com', 'ops@speedelexpress.com']);
+    });
+
+    test("the proposal's OTHER addresses count too — the item may be filed under a colleague", () => {
+        // A labelled email arrived from billing@, so that is what the queue holds. The import
+        // then proposes the whole firm, and files its draft under ops@ (the first address it
+        // found). Comparing only the draft's `from` misses the overlap and queues the firm
+        // twice — one card per address, which is the duplicate-firm bug all over again.
+        const fromLabel = sanitizePendingItem({ from: 'billing@speedelexpress.com', subject: 'Our rates' });
+        const proposed = pendingFromSuggestions([], suggestions(), null).items;
+        const speedel = proposed.find(it => it.from === 'ops@speedelexpress.com');
+        expect(speedel).toBeTruthy();
+        expect(allEmails(speedel.preview)).toContain('billing@speedelexpress.com');
+
+        const fresh = dropAlreadyQueued([fromLabel], proposed);
+        expect(queuedEmails(fresh)).toEqual(['vrl@vrlgroup.in']);
+    });
+
+    test('an empty queue drops nothing, and nothing proposed is not an error', () => {
+        const proposed = pendingFromSuggestions([], suggestions(), null).items;
+        expect(dropAlreadyQueued([], proposed)).toHaveLength(2);
+        expect(dropAlreadyQueued(null, proposed)).toHaveLength(2);
+        expect(dropAlreadyQueued(proposed, [])).toEqual([]);
+        expect(dropAlreadyQueued(proposed, null)).toEqual([]);
     });
 });
 
@@ -997,6 +1489,39 @@ describe('sanitizePendingItem', () => {
         expect(item.finds[0]).toEqual({ kind: 'note', label: 'Note', value: 'n0' });
     });
 
+    test('origin says where the item came from, and defaults to the Gmail label', () => {
+        // The card the owner sees is drawn differently for the two: an 'import' item shows the
+        // ready-made preview, a 'gmail' one is built from `finds` one address at a time.
+        expect(sanitizePendingItem({}).origin).toBe('gmail');
+        expect(sanitizePendingItem({ from: 'a@b.in' }).origin).toBe('gmail');
+        expect(sanitizePendingItem({ origin: 'import' }).origin).toBe('import');
+        expect(sanitizePendingItem({ origin: 'somewhere else' }).origin).toBe('gmail');
+    });
+
+    test('the preview survives a re-sanitise, with every person at the firm still on it', () => {
+        // The queue item is re-written whenever the queue changes. An import item that lost its
+        // preview would leave the owner approving a blank card — and losing the colleagues that
+        // grouping put together in the first place is exactly the duplicate-firm bug returning.
+        const built = pendingFromSuggestions([], {
+            transporters: [
+                { email: 'ops@speedelexpress.com', count: 5, lastUsed: '2026-08-01' },
+                { email: 'billing@speedelexpress.com', count: 1, lastUsed: '2026-07-01' },
+            ],
+        }, null).items[0];
+
+        const again = sanitizePendingItem(built);
+        expect(again.origin).toBe('import');
+        expect(again.preview).toEqual(built.preview);
+        expect(allEmails(again.preview).sort())
+            .toEqual(['billing@speedelexpress.com', 'ops@speedelexpress.com']);
+        expect(again.preview.id).toBe('p_new_' + built.id);
+    });
+
+    test('a gmail-label item has no preview at all, and rubbish is not kept as one', () => {
+        expect(sanitizePendingItem({ from: 'a@b.in' }).preview).toBeNull();
+        expect(sanitizePendingItem({ from: 'a@b.in', preview: 'Sri Logistics' }).preview).toBeNull();
+    });
+
     test('always has an id and a receivedAt, and keeps the ones it is given', () => {
         const fresh = sanitizePendingItem({});
         expect(fresh.id).toMatch(/^pd_/);
@@ -1117,6 +1642,43 @@ describe('role and people sanitising', () => {
     test('a card always has at least one person row to type into', () => {
         expect(sanitizePeople([])).toHaveLength(1);
         expect(sanitizePeople(undefined)[0].role).toBe('Main contact');
+    });
+});
+
+// ── the route really uses all this ───────────────────────────────────────────
+
+describe('routes/contacts.js is wired to the approval path, not the old write-through one', () => {
+    // Everything above proves the module behaves. These prove the ROUTE calls it that way —
+    // the gap that let two "guarded" behaviours in this repo pass with the code deleted.
+    const source = fs.readFileSync(path.join(__dirname, '..', 'routes', 'contacts.js'), 'utf8');
+
+    test('the import route queues drafts and never writes partners', () => {
+        expect(source).toContain('contactsLib.pendingFromSuggestions(');
+        // saveDirectory must not appear anywhere in the import-remembered handler.
+        const handler = source.slice(source.indexOf("'/contacts/import-remembered'"),
+            source.indexOf("'/contacts/usage'"));
+        expect(handler).toContain('contactsLib.pendingFromSuggestions(');
+        expect(handler).toContain('savePending(');
+        expect(handler).not.toContain('saveDirectory(');
+    });
+
+    test('the usage route hands bumpUsage\'s unknown addresses to the approval queue', () => {
+        // If the route dropped `bumped.unknown` on the floor, every new address an enquiry went
+        // to would vanish — no card, no queue item, nothing for the owner to approve.
+        expect(source).toMatch(/const bumped = contactsLib\.bumpUsage\(dir\.contacts, usage\)/);
+        expect(source).toMatch(
+            /contactsLib\.pendingFromUsage\(\s*dir\.contacts,\s*items,\s*bumped\.unknown,\s*usage\s*\)/);
+    });
+
+    test('the import route drops what is already queued before saving', () => {
+        expect(source).toMatch(/contactsLib\.dropAlreadyQueued\(\s*items,\s*result\.items\s*\)/);
+    });
+
+    test('the queue cap is the shared MAX_PENDING, never an inline number', () => {
+        expect(source).toContain('const MAX_PENDING = contactsLib.MAX_PENDING;');
+        expect(source.match(/\.slice\(0, MAX_PENDING\)/g)).toHaveLength(3);
+        // The old inline cap of 50 would silently drop the tail of a 24-firm import.
+        expect(source).not.toMatch(/savePending\([^;]*slice\(0,\s*\d/);
     });
 });
 

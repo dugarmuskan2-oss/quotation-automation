@@ -938,7 +938,16 @@ describe('source guard — importing remembered addresses', () => {
     });
 
     test('and the button visibly disables itself', () => {
-        expect(bodyOf('emptyStateHtml')).toContain("(S.importing ? ' disabled' : '')");
+        // CLAUDE.md check #3 wants the button visibly disabled, not only guarded in code.
+        expect(bodyOf('importButtonHtml')).toContain("(S.importing ? ' disabled' : '')");
+    });
+
+    test('the import stays reachable once the directory is no longer empty', () => {
+        // It used to live ONLY inside emptyStateHtml, so one enquiry sent from a quote — which
+        // queues a firm on its own — hid years of remembered addresses behind an empty state
+        // that could never be reached again.
+        expect(bodyOf('dirView')).toContain('importButtonHtml()');
+        expect(bodyOf('emptyStateHtml')).toContain('importButtonHtml()');
     });
 });
 

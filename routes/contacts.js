@@ -23,6 +23,7 @@ const {
 } = require('../utils/constants');
 
 const contactsLib = require('../utils/contacts');
+const MAX_PENDING = contactsLib.MAX_PENDING;
 
 function parseBlob(content, fallback) {
     try {
@@ -105,38 +106,43 @@ module.exports = function createContactsRouter({ storage, openai }) {
         }
     });
 
-    // Pull in the addresses the app already remembered from years of sends. Safe to run
-    // twice: anything already in the directory is skipped, never overwritten.
+    // Queue the addresses the app already remembered from years of sends — ONE item per firm,
+    // waiting for approval. Nothing reaches the directory here: approval is the only write
+    // path, the same as for an email arriving on the Gmail label. Safe to run twice; an
+    // address already in the directory or already in the queue is not offered again.
     router.post('/contacts/import-remembered', express.json(), async (req, res) => {
         try {
-            const [dir, freightRaw, supplierRaw] = await Promise.all([
+            const [dir, items, freightRaw, supplierRaw] = await Promise.all([
                 loadDirectory(),
+                loadPending(),
                 storage.readText(CONFIG_KEY_FREIGHT_SUGGESTIONS),
                 storage.readText(CONFIG_KEY_SUPPLIER_SUGGESTIONS),
             ]);
-            const result = contactsLib.importFromSuggestions(
+            const result = contactsLib.pendingFromSuggestions(
                 dir.contacts, parseBlob(freightRaw, {}), parseBlob(supplierRaw, {}));
-            if (result.added) {
-                const entry = contactsLib.changeEntry(
-                    'Imported ' + result.added + ' remembered address' + (result.added === 1 ? '' : 'es'),
-                    'From the addresses the app had already learned from your sends'
-                    + (result.skipped ? ' · ' + result.skipped + ' already in the directory, left alone' : ''),
-                    'Import', '', null, null);
-                await saveDirectory({ contacts: result.contacts, changes: contactsLib.pushChange(dir.changes, entry) });
-            }
-            res.json({ ok: true, added: result.added, skipped: result.skipped });
+            const fresh = contactsLib.dropAlreadyQueued(items, result.items);
+            if (fresh.length) await savePending(fresh.concat(items).slice(0, MAX_PENDING));
+            res.json({
+                ok: true, queued: fresh.length,
+                alreadyQueued: result.items.length - fresh.length,
+                skippedFirms: result.skippedFirms, skippedAddresses: result.skippedAddresses,
+            });
         } catch (error) {
-            res.status(500).json({ error: 'Could not import: ' + error.message });
+            res.status(500).json({ error: 'Could not read the remembered addresses: ' + error.message });
         }
     });
 
-    // Bump asked/replied stats; unknown addresses become review-me stubs.
+    // Bump asked/replied stats on firms we already hold. An address the directory has never
+    // seen is QUEUED for approval, never turned into a card behind the owner's back.
     router.post('/contacts/usage', express.json(), async (req, res) => {
         try {
-            const dir = await loadDirectory();
-            const contacts = contactsLib.bumpUsage(dir.contacts, req.body || {});
-            await saveDirectory({ contacts, changes: dir.changes });
-            res.json({ ok: true });
+            const usage = req.body || {};
+            const [dir, items] = await Promise.all([loadDirectory(), loadPending()]);
+            const bumped = contactsLib.bumpUsage(dir.contacts, usage);
+            await saveDirectory({ contacts: bumped.contacts, changes: dir.changes });
+            const proposed = contactsLib.pendingFromUsage(dir.contacts, items, bumped.unknown, usage);
+            if (proposed.length) await savePending(proposed.concat(items).slice(0, MAX_PENDING));
+            res.json({ ok: true, queued: proposed.length });
         } catch (error) {
             res.status(500).json({ error: 'Could not record the usage: ' + error.message });
         }
@@ -174,7 +180,7 @@ module.exports = function createContactsRouter({ storage, openai }) {
             if (!items.some(x => x.from === item.from && x.subject === item.subject && x.file === item.file)) {
                 items.unshift(item);
             }
-            await savePending(items.slice(0, 50));
+            await savePending(items.slice(0, MAX_PENDING));
             res.json({ ok: true, id: item.id, finds: item.finds.length });
         } catch (error) {
             res.status(500).json({ error: 'Could not store the email: ' + error.message });

@@ -16,6 +16,9 @@
 const ROLES = ['dealer', 'manufacturer', 'transporter', 'fabricator', 'other'];
 const MAX_CONTACTS = 2000;
 const MAX_CHANGES = 200;
+// Room for a whole import to wait for approval at once — the old cap of 50 would have
+// silently dropped the tail of a 24-firm import behind whatever was already queued.
+const MAX_PENDING = 300;
 
 function str(v) { return String(v == null ? '' : v).trim(); }
 function lower(v) { return str(v).toLowerCase(); }
@@ -219,53 +222,91 @@ function companyFromEmail(email) {
 function bumpUsage(list, usage) {
     const now = new Date().toISOString().slice(0, 10);
     const reply = (usage && usage.kind) === 'reply';
-    let contacts = (Array.isArray(list) ? list : []).slice();
+    const contacts = (Array.isArray(list) ? list : []).slice();
+    const unknown = [];
     sanitizeStrings(usage && usage.emails, 50).map(lower).filter(isEmail).forEach(email => {
         const idx = contacts.findIndex(c => allEmails(c).indexOf(email) !== -1);
-        // Our own address rides on nearly every enquiry (we copy ourselves), and test
-        // placeholders sit in old records. Inventing a card for either makes the firm look
-        // like its own supplier — the same guard the one-off import has always had, which
-        // this everyday path was missing. An address the owner DELIBERATELY put in the
-        // directory still gets its stats, so only card CREATION is refused.
-        if (idx === -1 && !worthImporting(email)) return;
+        if (idx === -1) {
+            // Nothing enters the directory unasked. An address we have not seen becomes an
+            // item WAITING FOR APPROVAL (see pendingFromUsage), not a card that silently
+            // appears. Our own address and test placeholders are dropped outright — copying
+            // ourselves on an enquiry must never make the firm its own supplier.
+            if (worthImporting(email)) unknown.push(email);
+            return;
+        }
         // Replace rather than write through: `list` holds the caller's objects, and a stale
         // copy of one being mutated in place is exactly the hazard the directory avoids.
-        const target = Object.assign({}, idx === -1 ? stubPartner(email, usage) : contacts[idx]);
+        const target = Object.assign({}, contacts[idx]);
         if (reply) { target.rep = num(target.rep, 0) + 1; }
         else { target.enq = num(target.enq, 0) + 1; }
         target.last = now;
-        if (idx === -1) contacts.unshift(target); else contacts[idx] = target;
+        contacts[idx] = target;
     });
-    return contacts.slice(0, MAX_CONTACTS);
+    return { contacts: contacts.slice(0, MAX_CONTACTS), unknown };
 }
 
-function stubPartner(email, usage) {
-    return sanitizePartner({
-        role: (usage && usage.role) || 'dealer',
-        company: companyFromEmail(email) || email,
-        people: [{ name: '', role: 'Main contact', emails: [{ label: 'Work', v: email }] }],
-        types: sanitizeStrings(usage && usage.pipeTypes, 6),
-        routes: (usage && usage.pickup) ? [{ from: usage.pickup, to: str(usage.drop) }] : [],
-        fromEnquiry: true,
+/**
+ * Which FIRMS the app already knows about — held on a card, or already waiting for approval.
+ *
+ * Keyed by firm, never by address. Keying on the exact address was the leak: an enquiry to
+ * manish@jcopipe.com on Monday and cp@jcopipe.com on Tuesday left TWO cards to approve for
+ * one mill, and a colleague at a firm already in the directory queued as a brand-new firm
+ * that would sit beside the curated card once approved.
+ */
+function firmsAlreadyKnown(existing, queued) {
+    const held = {}, inQueue = {};
+    (Array.isArray(existing) ? existing : []).forEach(p => {
+        allEmails(p).forEach(e => { held[firmKeyOf(e)] = p; });
     });
+    (Array.isArray(queued) ? queued : []).forEach(item => {
+        const mails = (item && item.preview) ? allEmails(item.preview) : [];
+        if (item && item.from) mails.push(lower(item.from));
+        mails.forEach(e => { if (e) inQueue[firmKeyOf(e)] = true; });
+    });
+    return { held, inQueue };
+}
+
+/**
+ * Addresses an enquiry went to that the directory has never seen, queued for review.
+ *
+ * Grouped by firm on the way in, so emailing three people at one new mill offers ONE card
+ * with three people on it — not three suppliers. A firm already in the queue is not queued
+ * again however many enquiries go out to it, and a new colleague at a firm we already hold
+ * is offered as an UPDATE to that card rather than as a second firm beside it.
+ */
+function pendingFromUsage(existing, queued, emails, usage) {
+    const known = firmsAlreadyKnown(existing, queued);
+    const firms = {};
+    sanitizeStrings(emails, 50).map(lower).filter(isEmail).forEach(email => {
+        if (!worthImporting(email) || findByEmail(existing, email)) return;
+        const key = firmKeyOf(email);
+        if (known.inQueue[key]) return;
+        if (!firms[key]) {
+            firms[key] = {
+                key, emails: [], count: 0, last: '',
+                match: known.held[key] || null,
+                role: (usage && usage.role) || 'dealer',
+                types: sanitizeStrings(usage && usage.pipeTypes, 6),
+                routes: (usage && usage.pickup) ? [{ from: str(usage.pickup), to: str(usage.drop) }] : [],
+            };
+        }
+        if (firms[key].emails.indexOf(email) === -1) firms[key].emails.push(email);
+    });
+    return Object.keys(firms).map(key => importPendingItem(firms[key], firms[key].emails, firms[key].match));
 }
 
 // ── importing the memory the app already built ───────────────────────────────
 
 /**
- * Turn the older auto-learned suggestion files into directory partners.
+ * Read the older auto-learned suggestion files into one draft per ADDRESS.
  *
  * freight-suggestions.json holds transporter addresses (global + per pickup/drop route);
  * supplier-suggestions.json holds supplier addresses bucketed by pipe type. Both carry a
  * usage `count` and `lastUsed` — real history worth keeping, so it seeds enq/last rather
  * than starting every partner at zero.
- *
- * Anything already in the directory is left ALONE (matched on email): an import must never
- * overwrite a card the owner has curated. Returns { contacts, added, skipped }.
  */
-function importFromSuggestions(existing, freight, supplier) {
-    const contacts = (Array.isArray(existing) ? existing : []).slice();
-    const seed = {};   // email → partner draft, so one address is imported once
+function seedFromSuggestionFiles(freight, supplier) {
+    const seed = {};
 
     const note = (email, patch) => {
         const key = lower(email);
@@ -276,6 +317,11 @@ function importFromSuggestions(existing, freight, supplier) {
             last: (patch.last && patch.last > seed[key].last) ? patch.last : seed[key].last,
             types: seed[key].types.concat(patch.types || []),
             routes: seed[key].routes.concat(patch.routes || []),
+            // One address can sit in BOTH remembered files — a firm that hauls for us and also
+            // sells pipe. A plain overwrite let the later 'dealer' patch bury 'transporter',
+            // and the firm then never appeared in the transporter list at all.
+            role: (seed[key].role === 'transporter' || patch.role === 'transporter')
+                ? 'transporter' : (patch.role || seed[key].role),
         });
         return seed[key];
     };
@@ -294,25 +340,134 @@ function importFromSuggestions(existing, freight, supplier) {
             role: 'dealer', count: t.count, last: t.lastUsed, types: [type.toUpperCase()],
         }));
     });
+    return seed;
+}
 
-    let added = 0, skipped = 0;
+/**
+ * Which FIRM an address belongs to.
+ *
+ * A business email domain IS the firm: manish@jcopipe.com and cp@jcopipe.com are two people
+ * at Jco Pipe, not two suppliers. Importing them as separate partners broke the owner's rule
+ * outright — the directory offered "Jindalhissar" four times, and sending would have put four
+ * separate enquiries in front of four colleagues at one mill, none of them able to see the
+ * others. One firm, one card, everyone Cc'd together.
+ *
+ * A free-mail address (gmail, yahoo, rediffmail…) says nothing about the firm, so each one
+ * stays on its own card. Two of those may well be the same firm — but nothing in the address
+ * proves it, and guessing would merge two unrelated people into one supplier.
+ */
+function firmKeyOf(email) {
+    const domain = lower(email).split('@')[1] || '';
+    const label = domain.split('.')[0] || '';
+    return (label && !FREE_MAIL.test(label)) ? 'd:' + domain : 'e:' + lower(email);
+}
+
+function groupSeedsIntoFirms(seed) {
+    const firms = {};
     Object.keys(seed).forEach(email => {
-        if (findByEmail(contacts, email)) { skipped++; return; }
+        const key = firmKeyOf(email);
         const d = seed[email];
-        const uniq = list => list.filter((v, i) => list.indexOf(v) === i);
-        contacts.unshift(sanitizePartner({
-            role: d.role,
-            company: companyFromEmail(email) || email,
-            people: [{ name: '', role: 'Main contact', emails: [{ label: 'Work', v: email }] }],
-            types: uniq(d.types),
-            routes: dedupeRoutes(d.routes),
-            fromEnquiry: true,
-            enq: d.count,
-            last: d.last ? String(d.last).slice(0, 10) : '',
-        }));
-        added++;
+        if (!firms[key]) firms[key] = { key, emails: [], role: 'dealer', count: 0, last: '', types: [], routes: [] };
+        const firm = firms[key];
+        firm.emails.push(email);
+        firm.count = Math.max(firm.count, num(d.count, 0));
+        if (d.last && d.last > firm.last) firm.last = d.last;
+        firm.types = firm.types.concat(d.types || []);
+        firm.routes = firm.routes.concat(d.routes || []);
+        // Used as a transporter even once and it is a transporter — that is the role that
+        // changes which list a firm appears in, so it must not be lost to a later 'dealer'.
+        if (d.role === 'transporter') firm.role = 'transporter';
     });
-    return { contacts: contacts.slice(0, MAX_CONTACTS), added, skipped };
+    return firms;
+}
+
+function uniqStrings(list) {
+    return (list || []).filter((v, i) => list.indexOf(v) === i);
+}
+
+/**
+ * Turn the remembered addresses into items WAITING FOR APPROVAL — never into partners.
+ *
+ * Nothing reaches the directory without the owner saying yes, so the import queues one
+ * reviewable draft per firm alongside the ones arriving from the Gmail label. Approving is
+ * the only write path, exactly as it is for a labelled brochure.
+ *
+ * A firm whose addresses are ALL already in the directory is skipped. A firm with some new
+ * and some known addresses is proposed as an UPDATE to the card that already exists, so the
+ * curated card gains the missing person instead of a duplicate appearing beside it.
+ */
+function pendingFromSuggestions(existing, freight, supplier) {
+    const firms = groupSeedsIntoFirms(seedFromSuggestionFiles(freight, supplier));
+    const items = [];
+    let skippedFirms = 0, skippedAddresses = 0;
+
+    Object.keys(firms).forEach(key => {
+        const firm = firms[key];
+        const fresh = firm.emails.filter(e => !findByEmail(existing, e));
+        skippedAddresses += firm.emails.length - fresh.length;
+        if (!fresh.length) { skippedFirms++; return; }
+        const match = firm.emails.map(e => findByEmail(existing, e)).find(Boolean) || null;
+        items.push(importPendingItem(firm, fresh, match));
+    });
+    return { items, queued: items.length, skippedFirms, skippedAddresses };
+}
+
+/**
+ * Drop proposals for addresses already sitting in the queue. Pressing Import twice, or
+ * sending a second enquiry to the same new firm, must not stack up the same card to approve
+ * over and over.
+ */
+function dropAlreadyQueued(queued, proposed) {
+    const inQueue = firmsAlreadyKnown([], queued).inQueue;
+    return (Array.isArray(proposed) ? proposed : []).filter(item => {
+        // By FIRM, not by address, and across every address on the draft: a brochure already
+        // queued from billing@ must block the whole firm, not just that one person.
+        const mine = item.preview ? allEmails(item.preview) : [];
+        if (item.from) mine.push(lower(item.from));
+        return !mine.some(e => inQueue[firmKeyOf(e)]);
+    });
+}
+
+let pendingCounter = 0;
+function newPendingId() {
+    pendingCounter = (pendingCounter + 1) % 1e6;
+    return 'pd_' + Date.now().toString(36) + '_' + pendingCounter.toString(36)
+        + Math.random().toString(36).slice(2, 7);
+}
+
+function importPendingItem(firm, fresh, match) {
+    const id = newPendingId();
+    const company = (match && match.company) || companyFromEmail(fresh[0]) || fresh[0];
+    const people = fresh.map((email, i) => ({
+        name: '', role: i === 0 && !match ? 'Main contact' : '',
+        phones: [], emails: [{ label: 'Work', v: email }],
+    }));
+    // Built here rather than on the client: a firm carries several addresses, and the client's
+    // preview builder only knows how to place the ONE address a labelled email arrives from.
+    const preview = sanitizePartner(match
+        ? Object.assign({}, match, { people: (match.people || []).concat(people) })
+        : {
+            role: firm.role, company,
+            people,
+            types: uniqStrings(firm.types),
+            routes: dedupeRoutes(firm.routes),
+            fromEnquiry: true,
+            enq: firm.count,
+            last: firm.last ? String(firm.last).slice(0, 10) : '',
+        });
+    preview.id = 'p_new_' + id;
+    if (match) preview.matchId = match.id;
+
+    return {
+        id,
+        origin: 'import',
+        from: fresh[0],
+        subject: company,
+        file: '', kind: 'photo', text: '',
+        finds: fresh.map(email => ({ kind: 'field', key: 'email', label: 'Address you have used', value: email })),
+        receivedAt: new Date().toISOString(),
+        preview,
+    };
 }
 
 /**
@@ -421,7 +576,12 @@ function undoChange(contacts, changes, changeId) {
 function sanitizePendingItem(input) {
     const src = (input && typeof input === 'object') ? input : {};
     return {
-        id: str(src.id) || ('pd_' + Date.now() + '_' + Math.floor(Math.random() * 1e6)),
+        id: str(src.id) || newPendingId(),
+        // 'import' items come from the addresses the app already remembered, and carry a
+        // ready-made preview holding every person at the firm. 'gmail' items are built from
+        // `finds` on the client, one address at a time.
+        origin: str(src.origin) === 'import' ? 'import' : 'gmail',
+        preview: (src.preview && typeof src.preview === 'object') ? src.preview : null,
         from: lower(src.from),
         subject: str(src.subject).slice(0, 300),
         file: str(src.file).slice(0, 200),
@@ -471,7 +631,10 @@ module.exports = {
     findByEmail,
     allEmails,
     bumpUsage,
-    importFromSuggestions,
+    pendingFromSuggestions,
+    pendingFromUsage,
+    dropAlreadyQueued,
+    MAX_PENDING,
     companyFromEmail,
     changeEntry,
     pushChange,
@@ -480,5 +643,6 @@ module.exports = {
     sanitizePendingItem,
     extractionPrompt,
     findsFromExtraction,
-    _test: { normalizeRole, sanitizePerson, sanitizePeople, stubPartner, splitTradeWord, isEmail },
+    _test: { normalizeRole, sanitizePerson, sanitizePeople, splitTradeWord, isEmail,
+        firmKeyOf, firmsAlreadyKnown, groupSeedsIntoFirms, seedFromSuggestionFiles, importPendingItem },
 };

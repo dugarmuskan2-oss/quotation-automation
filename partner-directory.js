@@ -449,6 +449,7 @@
             }).join('');
         return finderBlock()
             + '<div class="pd-filters">' + chips + '<span class="pd-sp"></span>'
+            + (D.contacts.length ? importButtonHtml() : '')
             + '<button class="pd-prim" data-pd-add="1">+ Add partner</button></div>'
             + listHtml();
     }
@@ -471,16 +472,27 @@
     }
 
     function emptyStateHtml() {
-        if (S.imported && S.imported.added === 0) {
-            return '<div class="pd-empty"><p class="pd-muted">Nothing to import — the app has no remembered addresses yet.</p>'
+        if (S.imported && !S.imported.queued) {
+            return '<div class="pd-empty"><p class="pd-muted">'
+                + (S.imported.alreadyQueued
+                    ? 'Those are already waiting for you under <b>Recent changes</b>.'
+                    : 'Nothing to bring in — the app has no remembered addresses yet.') + '</p>'
                 + '<p class="pd-tiny" style="margin-top:6px;">Press <b>+ Add partner</b> to type one in, or tag a supplier’s email in Gmail with the Add-to-Directory label.</p></div>';
         }
         return '<div class="pd-empty"><p class="pd-muted"><b>Your directory is empty.</b></p>'
             + '<p class="pd-tiny" style="margin:6px 0 10px;">The app has been quietly remembering every address you have sent an enquiry to. '
-            + 'Pull those in to start with a real list, then tidy the details as you go.</p>'
-            + '<button class="pd-prim" data-pd-import="1"' + (S.importing ? ' disabled' : '') + '>'
-            + (S.importing ? 'Importing…' : '↓ Import the addresses I have already used') + '</button>'
+            + 'Bring those in and they wait under <b>Recent changes</b> for you to approve, one firm at a time — '
+            + 'nothing is added until you say so.</p>'
+            + importButtonHtml()
             + '<p class="pd-tiny" style="margin-top:8px;">Or press <b>+ Add partner</b> to type one in.</p></div>';
+    }
+
+    // Kept reachable at all times, not only while the directory is empty: one enquiry sent
+    // from the quote side queues a firm, and the button used to vanish for good the moment
+    // anything existed — taking years of remembered addresses with it.
+    function importButtonHtml() {
+        return '<button class="pd-prim" data-pd-import="1"' + (S.importing ? ' disabled' : '') + '>'
+            + (S.importing ? 'Reading…' : '↓ Bring in the addresses I have already used') + '</button>';
     }
 
     function rowCard(p) {
@@ -740,9 +752,11 @@
     function changesView() {
         return '<div class="pd-sec">Waiting for you'
             + (D.pending.length ? ' <span class="pd-pill pd-pill-warn">' + D.pending.length + '</span>' : '') + '</div>'
-            + '<div class="pd-read" style="margin-bottom:10px;"><p class="pd-tiny">Watching the Gmail label '
-            + '<b>Quotation Automation/Add to Directory</b> — tag a brochure, rate list or card photo there and it turns up '
-            + 'here on the next run. <b>Nothing is saved until you approve it.</b></p></div>'
+            + '<div class="pd-read" style="margin-bottom:10px;"><p class="pd-tiny">Everything the app has found waits here — '
+            + 'addresses you have already sent enquiries to, and anything tagged in Gmail with '
+            + '<b>Quotation Automation/Add to Directory</b> (a brochure, rate list or card photo). '
+            + 'One card per firm, so everyone at the same firm stays together. '
+            + '<b>Nothing is added to your directory until you approve it.</b></p></div>'
             + (D.pending.length ? D.pending.map(pendingStrip).join('')
                 : '<p class="pd-muted pd-empty">Nothing waiting.</p>')
             + '<div class="pd-sec" style="margin-top:18px;">Already applied</div>'
@@ -753,22 +767,39 @@
     }
 
     function pendingStrip(pi) {
-        var match = pi.from ? knownEmail(pi.from) : null;
+        var imported = pi.origin === 'import';
+        var match = imported ? matchedPartner(pi) : (pi.from ? knownEmail(pi.from) : null);
         var open = S.openPending === pi.id;
         var busy = S.busy[pi.id];
         return '<div class="pd-src-strip' + (open ? ' on' : '') + '" data-pd-pending="' + esc(pi.id) + '" tabindex="0" role="button">'
             + '<div class="pd-row"><span class="pd-tiny">' + (open ? '▾' : '▸') + '</span>'
-            + '<b>' + esc(match ? match.company : (companyGuess(pi) || pi.from)) + '</b>'
+            + '<b>' + esc(match ? match.company : (imported ? pi.subject : (companyGuess(pi) || pi.from))) + '</b>'
             + (match ? '<span class="pd-pill">Updates someone you have</span>' : '<span class="pd-pill pd-pill-warn">New</span>')
             + '<span class="pd-sp"></span><span class="pd-tiny">' + ago(pi.receivedAt) + '</span></div>'
-            + '<p class="pd-tiny" style="margin-left:20px;">From <b>' + esc(pi.from) + '</b> · “' + esc(pi.subject) + '”'
-            + (pi.file ? ' · 📎 ' + esc(pi.file) : '') + ' · read into ' + pi.finds.length + ' field' + (pi.finds.length === 1 ? '' : 's') + '</p>'
+            + '<p class="pd-tiny" style="margin-left:20px;">' + (imported ? importedStripLine(pi)
+                : 'From <b>' + esc(pi.from) + '</b> · “' + esc(pi.subject) + '”'
+                    + (pi.file ? ' · 📎 ' + esc(pi.file) : '')
+                    + ' · read into ' + pi.finds.length + ' field' + (pi.finds.length === 1 ? '' : 's')) + '</p>'
             + '</div>'
             + (open ? editCard(pendingPreview(pi, match)) : '')
             + '<div class="pd-row" style="margin:0 0 14px;">'
             + '<button class="pd-prim" data-pd-approve="' + esc(pi.id) + '"' + (busy ? ' disabled' : '') + '>'
             + (busy ? 'Saving…' : 'Approve — ' + (match ? 'update ' + esc(match.company) : 'add them')) + '</button>'
             + '<button data-pd-discard="' + esc(pi.id) + '"' + (busy ? ' disabled' : '') + '>Discard</button></div>';
+    }
+
+    // An imported firm has no email to quote — it has the addresses themselves, and the
+    // count is the point: "3 people at this firm" is what stops three separate enquiries.
+    function importedStripLine(pi) {
+        var mails = pi.preview ? allEmails(pi.preview) : [pi.from];
+        var head = mails.length + ' address' + (mails.length === 1 ? '' : 'es') + ' you have used before';
+        return head + ' · ' + mails.map(esc).join(', ')
+            + (pi.preview && pi.preview.enq ? ' · asked ' + pi.preview.enq + ' time' + (pi.preview.enq === 1 ? '' : 's') : '');
+    }
+
+    function matchedPartner(pi) {
+        var id = pi.preview && pi.preview.matchId;
+        return id ? (D.contacts.filter(function (x) { return x.id === id; })[0] || null) : null;
     }
 
     function companyGuess(pi) {
@@ -888,6 +919,8 @@
             S.importing = true; render();
             postJson('/contacts/import-remembered', {}, function (d) {
                 S.imported = d;
+                // They go to the queue, not the directory — so land the owner where the work is.
+                if (d && d.queued) S.tab = 'changes';
                 loadDirectory(render);
             }, function () { S.importing = false; });      // released even if the import fails
         });
