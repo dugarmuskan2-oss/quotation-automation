@@ -162,26 +162,64 @@ function mergePartner(list, incoming, fields) {
     const contacts = (Array.isArray(list) ? list : []).slice(0, MAX_CONTACTS);
     const wanted = sanitizePartner(incoming);
     const idx = contacts.findIndex(c => c && c.id === wanted.id);
-    if (idx === -1) {
-        contacts.unshift(wanted);
-        return { contacts: contacts.slice(0, MAX_CONTACTS), partner: wanted };
-    }
+    const settle = (result, at) => {
+        // ONE ADDRESS, ONE COMPANY — checked on the merged result, so every write path is
+        // covered by the one guard. Refusing is the only honest answer: dropping the address
+        // would lose what was typed without saying so, and letting it through is how a firm
+        // ends up on two cards, asked twice, each copy telling a different story.
+        const clash = emailConflict(contacts, result, at);
+        if (clash) return { contacts, partner: contacts[at] || null, conflict: clash };
+        if (at === -1) contacts.unshift(result); else contacts[at] = result;
+        return { contacts: contacts.slice(0, MAX_CONTACTS), partner: result, conflict: null };
+    };
+    if (idx === -1) return settle(wanted, -1);
     // A full overwrite happens ONLY when the caller asked for one by passing no field list.
     // If a list was given but nothing in it is a real field — a typo, or a field renamed and
     // the caller not updated — the safe reading is "write nothing", never "write everything":
     // falling through to the wholesale branch there would let a stale copy replace a
     // colleague's work, which is the one thing this argument exists to prevent.
-    if (!Array.isArray(fields)) {
-        contacts[idx] = wanted;
-        return { contacts: contacts.slice(0, MAX_CONTACTS), partner: wanted };
-    }
+    if (!Array.isArray(fields)) return settle(wanted, idx);
     const only = fields.filter(f => typeof f === 'string' && f in wanted);
     const merged = Object.assign({}, contacts[idx]);
     only.forEach(f => { merged[f] = wanted[f]; });
     merged.checked = wanted.checked;           // any edit stamps last-edited
-    contacts[idx] = merged;
-    return { contacts: contacts.slice(0, MAX_CONTACTS), partner: merged };
+    return settle(merged, idx);
 }
+
+/**
+ * The first address on `candidate` that another card already holds, or null.
+ * `skipIndex` is the candidate's own place in the list, so a card never clashes with itself.
+ */
+function emailConflict(contacts, candidate, skipIndex) {
+    const mine = allEmails(candidate);
+    if (!mine.length) return null;
+    for (let i = 0; i < contacts.length; i++) {
+        if (i === skipIndex || !contacts[i]) continue;
+        const theirs = allEmails(contacts[i]);
+        const hit = mine.find(e => theirs.indexOf(e) !== -1);
+        if (hit) return { email: hit, id: contacts[i].id, company: contacts[i].company };
+    }
+    return null;
+}
+
+/**
+ * Every address the directory holds on more than one card. Empty is the healthy answer —
+ * this exists so duplicates that pre-date the one-address-one-company rule can be found and
+ * cleared, rather than sitting there splitting a firm's history in two.
+ */
+function duplicateEmails(contacts) {
+    const seen = {}, clashes = {};
+    (Array.isArray(contacts) ? contacts : []).forEach(p => {
+        if (!p) return;
+        uniqStrings(allEmails(p)).forEach(e => {
+            if (seen[e]) (clashes[e] = clashes[e] || [seen[e]]).push(cardRef(p));
+            else seen[e] = cardRef(p);
+        });
+    });
+    return Object.keys(clashes).map(email => ({ email, cards: clashes[email] }));
+}
+
+function cardRef(p) { return { id: p.id, company: p.company }; }
 
 function findByEmail(list, email) {
     const wanted = lower(email);
@@ -628,6 +666,7 @@ module.exports = {
     ROLES,
     sanitizePartner,
     mergePartner,
+    duplicateEmails,
     findByEmail,
     allEmails,
     bumpUsage,
@@ -644,5 +683,6 @@ module.exports = {
     extractionPrompt,
     findsFromExtraction,
     _test: { normalizeRole, sanitizePerson, sanitizePeople, splitTradeWord, isEmail,
-        firmKeyOf, firmsAlreadyKnown, groupSeedsIntoFirms, seedFromSuggestionFiles, importPendingItem },
+        firmKeyOf, firmsAlreadyKnown, groupSeedsIntoFirms, seedFromSuggestionFiles, importPendingItem,
+        emailConflict },
 };

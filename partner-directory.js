@@ -369,13 +369,14 @@
     }
 
     // ── Data layer ────────────────────────────────────────────────────────────
-    var D = { contacts: [], changes: [], pending: [], loaded: false, loadError: '', saveError: '' };
+    var D = { contacts: [], changes: [], pending: [], duplicates: [], loaded: false, loadError: '', saveError: '' };
 
     function loadDirectory(then) {
         fetch(apiBase() + '/contacts')
             .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function (d) {
                 D.contacts = d.contacts || []; D.changes = d.changes || []; D.pending = d.pending || [];
+                D.duplicates = d.duplicates || [];
                 D.loaded = true; D.loadError = '';
             })
             .catch(function (e) {
@@ -447,11 +448,27 @@
                 return '<button class="pd-chip' + (S.filter === c[0] ? ' on' : '') + '" data-pd-filter="' + c[0] + '">'
                     + esc(c[1]) + ' ' + (counts[c[0]] || 0) + '</button>';
             }).join('');
-        return finderBlock()
+        return duplicateWarningHtml()
+            + finderBlock()
             + '<div class="pd-filters">' + chips + '<span class="pd-sp"></span>'
             + (D.contacts.length ? importButtonHtml() : '')
             + '<button class="pd-prim" data-pd-add="1">+ Add partner</button></div>'
             + listHtml();
+    }
+
+    // An address on two cards splits one firm's history in two and gets them asked twice.
+    // New ones are refused on save; anything older is shown here with a way straight to it.
+    function duplicateWarningHtml() {
+        if (!D.duplicates.length) return '';
+        return '<div class="pd-error"><b>The same address is on more than one card.</b>'
+            + ' One address belongs to one company — open each and remove it from the wrong one.'
+            + D.duplicates.slice(0, 10).map(function (d) {
+                return '<p class="pd-tiny" style="margin-top:6px;"><b>' + esc(d.email) + '</b> — '
+                    + d.cards.map(function (c) {
+                        return '<button data-pd-open="' + esc(c.id) + '" class="pd-linkish">'
+                            + esc(c.company || '(no name)') + '</button>';
+                    }).join(' · ') + '</p>';
+            }).join('') + '</div>';
     }
 
     function listHtml() {
@@ -782,10 +799,41 @@
                     + ' · read into ' + pi.finds.length + ' field' + (pi.finds.length === 1 ? '' : 's')) + '</p>'
             + '</div>'
             + (open ? editCard(pendingPreview(pi, match)) : '')
+            + clashNoteHtml(pi, match)
             + '<div class="pd-row" style="margin:0 0 14px;">'
-            + '<button class="pd-prim" data-pd-approve="' + esc(pi.id) + '"' + (busy ? ' disabled' : '') + '>'
+            + '<button class="pd-prim" data-pd-approve="' + esc(pi.id) + '"'
+            + (busy || clashingCard(pi, match) ? ' disabled' : '') + '>'
             + (busy ? 'Saving…' : 'Approve — ' + (match ? 'update ' + esc(match.company) : 'add them')) + '</button>'
             + '<button data-pd-discard="' + esc(pi.id) + '"' + (busy ? ' disabled' : '') + '>Discard</button></div>';
+    }
+
+    // One address belongs to one company, so say so BEFORE the button is pressed — pressing
+    // Approve only to be refused is a worse way to learn it. The other card is one click away.
+    function clashingCard(pi, match) {
+        // Compared lowercased on BOTH sides, the way the server does. allEmails keeps the
+        // address as typed because the chips and the picker show it — so comparing raw let
+        // MANISH@Mill.com slip past a stored manish@mill.com, and the owner pressed Approve
+        // only to meet the refusal this warning exists to spare them.
+        var mine = (pi.preview ? allEmails(pi.preview) : (pi.from ? [pi.from] : [])).map(lower);
+        var keepId = (pi.preview && pi.preview.matchId) || (match && match.id) || '';
+        for (var i = 0; i < D.contacts.length; i++) {
+            var c = D.contacts[i];
+            if (!c || c.id === keepId) continue;
+            var theirs = allEmails(c).map(lower);
+            for (var j = 0; j < mine.length; j++) {
+                if (theirs.indexOf(mine[j]) !== -1) return { card: c, email: mine[j] };
+            }
+        }
+        return null;
+    }
+
+    function clashNoteHtml(pi, match) {
+        var clash = clashingCard(pi, match);
+        if (!clash) return '';
+        return '<div class="pd-error" style="margin:0 0 8px;"><b>' + esc(clash.email) + '</b> is already on '
+            + '<button data-pd-open="' + esc(clash.card.id) + '" class="pd-linkish">'
+            + esc(clash.card.company || '(no name)') + '</button>. '
+            + 'One address belongs to one company — remove it there first, or discard this one.</div>';
     }
 
     // An imported firm has no email to quote — it has the addresses themselves, and the
@@ -940,7 +988,14 @@
 
     function bindListAndCard(app) {
         each(app, '[data-pd-open]', function (el) {
-            var go = function () { S.openId = el.getAttribute('data-pd-open'); S.find.state = S.find.state === 'done' ? 'idle' : S.find.state; render(); };
+            var go = function () {
+                S.openId = el.getAttribute('data-pd-open');
+                S.find.state = S.find.state === 'done' ? 'idle' : S.find.state;
+                // Reachable from a clash note on the Recent-changes tab, where the card it
+                // opens is not rendered — go to where it lives, or the click does nothing.
+                S.tab = 'dir'; S.filter = 'all';
+                render();
+            };
             el.onclick = go;
             el.onkeydown = function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } };
         });

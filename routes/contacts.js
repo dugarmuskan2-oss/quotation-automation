@@ -25,6 +25,18 @@ const {
 const contactsLib = require('../utils/contacts');
 const MAX_PENDING = contactsLib.MAX_PENDING;
 
+// One address belongs to ONE company. Say which one already has it, so the owner can act
+// instead of guessing — refusing without naming the other card is a dead end.
+function conflictMessage(clash) {
+    // An imported card often has no name yet, so its company IS the address — "x@y.com is
+    // already on x@y.com" reads like a glitch. Name the card only when it says something new.
+    const name = String(clash.company || '').trim();
+    const where = (!name || name.toLowerCase() === String(clash.email).toLowerCase())
+        ? 'another card' : name;
+    return clash.email + ' is already on ' + where
+        + '. One address belongs to one company — remove it there first, or add this person to that card.';
+}
+
 function parseBlob(content, fallback) {
     try {
         const parsed = JSON.parse(content);
@@ -73,7 +85,13 @@ module.exports = function createContactsRouter({ storage, openai }) {
         try {
             const dir = await loadDirectory();
             const pending = await loadPending();
-            res.json({ contacts: dir.contacts, changes: dir.changes, pending });
+            res.json({
+                contacts: dir.contacts, changes: dir.changes, pending,
+                // Should always be empty now the rule is enforced on write. Sent anyway so a
+                // duplicate that pre-dates it cannot sit there unnoticed, quietly splitting
+                // one firm's history across two cards.
+                duplicates: contactsLib.duplicateEmails(dir.contacts),
+            });
         } catch (error) {
             res.status(500).json({ error: 'Could not load the directory: ' + error.message });
         }
@@ -87,6 +105,7 @@ module.exports = function createContactsRouter({ storage, openai }) {
             const dir = await loadDirectory();
             const { partner, fields } = req.body || {};
             const merged = contactsLib.mergePartner(dir.contacts, partner, fields);
+            if (merged.conflict) return res.status(409).json({ error: conflictMessage(merged.conflict) });
             await saveDirectory({ contacts: merged.contacts, changes: dir.changes });
             res.json({ ok: true, partner: merged.partner });
         } catch (error) {
@@ -198,6 +217,9 @@ module.exports = function createContactsRouter({ storage, openai }) {
             const dir = await loadDirectory();
             const before = dir.contacts.find(p => p && p.id === (partner && partner.id)) || null;
             const merged = contactsLib.mergePartner(dir.contacts, partner);
+            // The item stays in the queue on a clash — nothing is half-applied, and the owner
+            // can fix the other card and approve again.
+            if (merged.conflict) return res.status(409).json({ error: conflictMessage(merged.conflict) });
             const entry = contactsLib.changeEntry(
                 (before ? merged.partner.company + ' updated' : 'Added ' + merged.partner.company),
                 item.finds.length + ' detail' + (item.finds.length === 1 ? '' : 's') + ' from “' + item.subject + '” (' + item.file + ')',

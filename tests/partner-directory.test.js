@@ -987,6 +987,235 @@ describe('source guard — reviewing a pending email never writes to the live ca
     });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 10. One address belongs to one company — driven through a real render
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The server refuses a clashing address with a 409. That is the backstop, not the
+ * experience: pressing Approve only to be told no is a worse way to learn it than being
+ * told before you press. So the page has to say it up front and disable the button.
+ *
+ * These are behaviour tests, not source guards. The page is rendered for real through
+ * window.switchToDirectoryTab() — the same entry point the sidebar button uses — with a
+ * stand-in for #partnerDirectoryApp that records the HTML and hands back clickable stubs
+ * for the [data-pd-…] buttons the module binds.
+ */
+function fakeAppEl() {
+    // One stub per attribute+value, reused across renders — the element the module bound a
+    // click to must be the same object the test then clicks, or nothing is being tested.
+    const stubs = {};
+    const app = {
+        innerHTML: '', style: {},
+        querySelector: () => null,
+        // The module only ever asks for whole-attribute selectors, so scanning the HTML it
+        // just wrote is a faithful enough stand-in for the DOM it would have got.
+        querySelectorAll: (sel) => {
+            const m = /^\[(data-pd-[a-z]+)\]$/.exec(sel);
+            if (!m) return [];
+            const attr = m[1];
+            const re = new RegExp(attr + '="([^"]*)"', 'g');
+            const out = [];
+            let hit;
+            while ((hit = re.exec(app.innerHTML)) !== null) {
+                const key = attr + '|' + hit[1];
+                if (!stubs[key]) {
+                    const value = hit[1];
+                    stubs[key] = {
+                        getAttribute: (k) => (k === attr ? value : null),
+                        hasAttribute: () => false,
+                    };
+                }
+                out.push(stubs[key]);
+            }
+            return out;
+        },
+    };
+    return app;
+}
+
+describe('the partner directory refuses a duplicate address before Approve is pressed', () => {
+    const { S } = _state();
+    let realGetElementById;
+    let app;
+
+    beforeEach(() => {
+        realGetElementById = global.document.getElementById;
+        app = fakeAppEl();
+        global.document.getElementById = (id) => (id === 'partnerDirectoryApp' ? app : null);
+        S.tab = 'dir'; S.filter = 'all'; S.openId = null; S.openPending = null; S.busy = {};
+    });
+
+    afterEach(() => {
+        global.document.getElementById = realGetElementById;
+        FETCH = () => Promise.reject(new Error('no network in unit tests'));
+        S.tab = 'dir'; S.filter = 'all'; S.openId = null; S.openPending = null; S.busy = {};
+        setContacts([]);
+    });
+
+    /** Serve one directory payload and open the tool the way the sidebar button does. */
+    async function open(payload, tab) {
+        S.tab = tab || 'dir';
+        FETCH = () => Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve(Object.assign(
+                { contacts: [], changes: [], pending: [], duplicates: [] }, payload)),
+        });
+        global.window.switchToDirectoryTab();
+        await flush();
+        return app.innerHTML;
+    }
+
+    const KALP = partner({
+        id: 'p_kalp', company: 'Kalpataru Steel', city: 'Nashik', role: 'manufacturer',
+        people: [{ name: 'Manish', role: 'Sales', phones: [], emails: [{ label: 'Work', v: 'manish@kalpatarusteel.com' }] }],
+    });
+    const SRI = partner({
+        id: 'p_sri', company: 'Sri Logistics', city: 'Chennai', role: 'transporter',
+        people: [{ name: 'Ravi', role: 'Sales', phones: [], emails: [{ label: 'Work', v: 'ravi@srilogistics.com' }] }],
+    });
+
+    /** A queued draft, exactly as routes/contacts.js stores an imported one. */
+    function queued(previewOver) {
+        return {
+            id: 'pd_1', origin: 'import', from: 'manish@kalpatarusteel.com',
+            subject: 'Kalpataru Steel', file: '', kind: 'photo', text: '',
+            finds: [{ kind: 'field', key: 'email', label: 'Address you have used', value: 'manish@kalpatarusteel.com' }],
+            receivedAt: new Date().toISOString(),
+            preview: partner(Object.assign({ id: 'p_new_pd_1' }, previewOver)),
+        };
+    }
+
+    function approveButton(html) {
+        const m = html.match(/<button class="pd-prim" data-pd-approve="pd_1"[^>]*>/);
+        if (!m) throw new Error('no Approve button rendered:\n' + html);
+        return m[0];
+    }
+
+    test('a draft that UPDATES the card already holding the address is not a clash', () => {
+        // The one case a naive "is this address in the directory" check gets wrong — and it
+        // is the common case: a second colleague at a mill we already deal with. Flagging it
+        // would disable Approve on every genuine update the import proposes.
+        return open({
+            contacts: [KALP],
+            pending: [queued({
+                company: 'Kalpataru Steel', matchId: 'p_kalp',
+                people: [
+                    { name: 'Manish', role: '', phones: [], emails: [{ label: 'Work', v: 'manish@kalpatarusteel.com' }] },
+                    { name: '', role: '', phones: [], emails: [{ label: 'Work', v: 'cp@kalpatarusteel.com' }] },
+                ],
+            })],
+        }, 'changes').then((html) => {
+            expect(html).toContain('data-pd-approve="pd_1"');   // the strip really rendered
+            expect(html).not.toContain('is already on');
+            expect(approveButton(html)).not.toContain('disabled');
+        });
+    });
+
+    test('a draft colliding with a DIFFERENT card is flagged, and Approve is disabled', async () => {
+        // Updating Sri Logistics, but carrying Kalpataru's address across with it.
+        const html = await open({
+            contacts: [KALP, SRI],
+            pending: [queued({
+                company: 'Sri Logistics', matchId: 'p_sri',
+                people: [
+                    { name: 'Ravi', role: '', phones: [], emails: [{ label: 'Work', v: 'ravi@srilogistics.com' }] },
+                    { name: 'M', role: '', phones: [], emails: [{ label: 'Work', v: 'manish@kalpatarusteel.com' }] },
+                ],
+            })],
+        }, 'changes');
+
+        expect(html).toContain('<b>manish@kalpatarusteel.com</b> is already on');
+        expect(html).toContain('One address belongs to one company');
+        // The other card is one click away — a refusal with nowhere to go is a dead end.
+        expect(html).toContain('data-pd-open="p_kalp"');
+        expect(html).toContain('>Kalpataru Steel</button>');
+        expect(approveButton(html)).toContain(' disabled');
+    });
+
+    test('the same address in different capitals is still the same address', async () => {
+        // allEmails keeps an address exactly as typed, because the chips and the picker show
+        // it — so comparing raw let MANISH@KalpataruSteel.com slip past a stored
+        // manish@kalpatarusteel.com. The data stayed safe (the server refuses either way),
+        // but the owner pressed Approve only to meet the refusal this warning exists to spare
+        // them. Both sides are lowercased before comparing, exactly as the server does.
+        const html = await open({
+            contacts: [KALP],
+            pending: [queued({
+                company: 'Manish Trading Co',
+                people: [{ name: 'Manish', role: 'Main contact', phones: [], emails: [{ label: 'Work', v: 'MANISH@KalpataruSteel.com' }] }],
+            })],
+        }, 'changes');
+
+        expect(html).toContain('is already on');
+        expect(html).toContain('data-pd-open="p_kalp"');
+        expect(approveButton(html)).toContain(' disabled');
+    });
+
+    test('a brand-new firm draft carrying someone else\'s address is flagged too', async () => {
+        // No matchId at all: nothing to keep, so every card in the directory is a candidate
+        // for the clash. A guard that only ran on updates would wave this one straight in.
+        const html = await open({
+            contacts: [KALP],
+            pending: [queued({
+                company: 'Manish Trading Co',
+                people: [{ name: 'Manish', role: 'Main contact', phones: [], emails: [{ label: 'Work', v: 'manish@kalpatarusteel.com' }] }],
+            })],
+        }, 'changes');
+
+        expect(html).toContain('<b>manish@kalpatarusteel.com</b> is already on');
+        expect(approveButton(html)).toContain(' disabled');
+    });
+
+    test('the card named in the clash note can actually be opened from the changes tab', async () => {
+        // The button sits on Recent changes, where the card it points at is not rendered at
+        // all. Without switching tab and clearing the role filter the click does nothing —
+        // which reads as a broken button on the one screen that needed to be helpful.
+        await open({
+            contacts: [KALP, SRI],
+            pending: [queued({
+                company: 'Sri Logistics', matchId: 'p_sri',
+                people: [{ name: 'M', role: '', phones: [], emails: [{ label: 'Work', v: 'manish@kalpatarusteel.com' }] }],
+            })],
+        }, 'changes');
+        S.filter = 'transporter';   // as it would be if they had filtered the list earlier
+
+        const link = app.querySelectorAll('[data-pd-open]')
+            .filter((el) => el.getAttribute('data-pd-open') === 'p_kalp')[0];
+        expect(link).toBeTruthy();
+        link.onclick();
+
+        expect(S.openId).toBe('p_kalp');
+        expect(S.tab).toBe('dir');
+        expect(S.filter).toBe('all');
+        expect(app.innerHTML).toContain('data-pd-card="p_kalp"');   // the card is on screen
+    });
+
+    test('duplicates that pre-date the rule are shown at the top of the directory', async () => {
+        // Enforcing the rule on write stops NEW ones. Anything written before it would sit
+        // there for ever, splitting one firm's history across two cards, unless the page says so.
+        const html = await open({
+            contacts: [KALP, SRI],
+            duplicates: [{
+                email: 'manish@kalpatarusteel.com',
+                cards: [{ id: 'p_kalp', company: 'Kalpataru Steel' }, { id: 'p_sri', company: 'Sri Logistics' }],
+            }],
+        }, 'dir');
+
+        expect(html).toContain('The same address is on more than one card.');
+        expect(html).toContain('<b>manish@kalpatarusteel.com</b>');
+        expect(html).toContain('data-pd-open="p_kalp"');
+        expect(html).toContain('data-pd-open="p_sri"');
+    });
+
+    test('a clean directory shows no duplicate banner at all', async () => {
+        // The negative that stops the banner becoming wallpaper nobody reads.
+        const html = await open({ contacts: [KALP, SRI], duplicates: [] }, 'dir');
+        expect(html).toContain('data-pd-add');                       // the page really rendered
+        expect(html).not.toContain('The same address is on more than one card.');
+    });
+});
+
 describe('source guard — the IS 1239 thickness table', () => {
     test('2" NB still carries its own light / medium / heavy thicknesses', () => {
         // These are the numbers the "Load IS 1239 sizes" button writes onto a product
@@ -994,5 +1223,42 @@ describe('source guard — the IS 1239 thickness table', () => {
         // thickness per class — a copied-down value is a wrong spec in an offer.
         expect(src).toContain("{ nb: '50', inch: '2\"', od: '60.3', light: '2.9', medium: '3.6', heavy: '4.5' },");
         expect(src).toContain("{ nb: '150', inch: '6\"', od: '165.1', light: '', medium: '4.85', heavy: '5.4' },");
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The working area must sit BESIDE the tool icons, never underneath them
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('layout — the floating tool switcher must not cover the page', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+    const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+
+    // The switcher is position:fixed at left:10px and 44px wide, so it floats over whatever
+    // is at that spot. The four original tools reserved 70px for it by NAME; the Partner
+    // Directory was added as a fifth and nobody remembered to add it to the list, so it
+    // rendered underneath the icons. Reserving the space on the shared class instead means a
+    // sixth tool cannot repeat it — which is the only thing worth pinning here.
+    test('the space is reserved on the shared .container class, not a list of ids', () => {
+        expect(css).toMatch(/\.container\s*\{\s*padding-left:\s*70px;\s*\}/);
+        expect(css).not.toMatch(/#quotationApp,\s*\n?\s*#weightCalculatorApp[\s\S]{0,120}padding-left:\s*70px/);
+    });
+
+    test('every tool page actually carries that class', () => {
+        const ids = ['quotationApp', 'weightCalculatorApp', 'enquiryPreparerApp',
+            'partnerDirectoryApp', 'registerApp'];
+        ids.forEach((id) => {
+            // class first, then id — the order index.html uses on all five.
+            expect(html).toContain('class="container" id="' + id + '"');
+        });
+    });
+
+    test('on a phone the bar moves to the bottom and every page clears it', () => {
+        // Reserving 70px on a 375px screen left the quote about 200px to live in, so the bar
+        // moves to the bottom instead — which means the reserved space has to move too, or
+        // the last button on the page sits under it.
+        const mobile = css.slice(css.indexOf('.main-tools-bar {', css.indexOf('@media')));
+        expect(mobile).toMatch(/\.container\s*\{[^}]*padding-bottom:\s*calc\(80px/);
+        expect(mobile).not.toMatch(/#quotationApp,\s*#weightCalculatorApp[^{]*\{[^}]*padding-bottom/);
     });
 });

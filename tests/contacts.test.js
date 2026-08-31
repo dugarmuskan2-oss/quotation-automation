@@ -1708,3 +1708,393 @@ describe('a saved partner really goes through those helpers', () => {
         expect(sanitizePartner({}).people).toHaveLength(1);
     });
 });
+
+// ── one address belongs to ONE company ───────────────────────────────────────
+
+/**
+ * The owner's words: "we need to make sure duplicates dont exist — maybe one email can
+ * exist only within one company and not multiple."
+ *
+ * An address on two cards is not untidiness, it is a firm asked twice: two cards, two
+ * histories, two enquiries to the same person who cannot see the other. So the rule is
+ * enforced at the single write path (mergePartner), and a clash is REFUSED — never
+ * "reported and written anyway", and never "quietly written without the offending
+ * address", which loses what was typed with no error to explain it.
+ *
+ * Every test below therefore asserts BOTH halves: the conflict names the right address
+ * and the right card, AND the stored list came back byte-identical.
+ */
+describe('mergePartner — one address belongs to one company', () => {
+    const { duplicateEmails } = contactsLib;
+
+    function kalpataru(people) {
+        return sanitizePartner({
+            id: 'p_kalp', company: 'Kalpataru Steel', city: 'Nashik',
+            people: people || [person('Manish', ['manish@kalpatarusteel.com'])],
+        });
+    }
+    function sri(people) {
+        return sanitizePartner({
+            id: 'p_sri', company: 'Sri Logistics', role: 'transporter', city: 'Chennai',
+            people: people || [person('Ravi', ['ravi@srilogistics.com'])],
+        });
+    }
+    /** Two firms, no shared address — the healthy directory every test starts from. */
+    function twoFirms() { return [kalpataru(), sri()]; }
+
+    /** JSON is the honest byte-for-byte comparison here: the blob is what gets stored. */
+    const frozen = (list) => JSON.stringify(list);
+
+    test('a FIELD-SCOPED save that types another card\'s address is refused, and writes nothing', () => {
+        // Sri Logistics is edited to add "Manish" — but that address is Kalpataru's. The
+        // whole point is that the list must come back exactly as it went in: a mutation that
+        // reports the clash and writes anyway, and one that strips the offending address and
+        // writes the rest, both change this string.
+        const list = twoFirms();
+        const before = frozen(list);
+        const stale = Object.assign({}, list[1], {
+            people: [person('Ravi', ['ravi@srilogistics.com']), person('Manish', ['manish@kalpatarusteel.com'])],
+        });
+
+        const res = mergePartner(list, stale, ['people']);
+
+        expect(res.conflict).toEqual({
+            email: 'manish@kalpatarusteel.com', id: 'p_kalp', company: 'Kalpataru Steel',
+        });
+        expect(frozen(res.contacts)).toBe(before);
+        // What comes back as `partner` is the STORED card, not the rejected edit — the route
+        // echoes it to the client, and echoing the refused version would look like a save.
+        expect(allEmails(res.partner)).toEqual(['ravi@srilogistics.com']);
+    });
+
+    test('a WHOLESALE save of the same edit is refused too, and writes nothing', () => {
+        // No `fields` = "replace the whole record". A guard placed only on the field-scoped
+        // branch would let this one straight through.
+        const list = twoFirms();
+        const before = frozen(list);
+        const stale = Object.assign({}, list[1], {
+            company: 'Sri Logistics Pvt Ltd',
+            people: [person('Manish', ['manish@kalpatarusteel.com'])],
+        });
+
+        const res = mergePartner(list, stale);
+
+        expect(res.conflict).toEqual({
+            email: 'manish@kalpatarusteel.com', id: 'p_kalp', company: 'Kalpataru Steel',
+        });
+        expect(frozen(res.contacts)).toBe(before);
+        expect(res.contacts[1].company).toBe('Sri Logistics');   // the rename did not land either
+    });
+
+    test('a BRAND-NEW card carrying an address someone already holds is refused, and is not added', () => {
+        // The third write path: an id that is not in the list at all (a hand-added partner, or
+        // an approved queue item for a firm we do not hold yet).
+        const list = twoFirms();
+        const before = frozen(list);
+
+        const res = mergePartner(list, {
+            company: 'Manish Trading Co',
+            people: [person('Manish', ['MANISH@KalpataruSteel.com'])],
+        });
+
+        expect(res.conflict.email).toBe('manish@kalpatarusteel.com');   // matched case-blind
+        expect(res.conflict.company).toBe('Kalpataru Steel');
+        expect(res.conflict.id).toBe('p_kalp');
+        expect(res.partner).toBeNull();
+        expect(frozen(res.contacts)).toBe(before);
+        expect(res.contacts).toHaveLength(2);
+    });
+
+    test('a card keeping its OWN address is not a clash — editing the city still saves', () => {
+        // The assertion that stops a lazy "is this address anywhere in the list" check: every
+        // card holds its own addresses, so that reading refuses every edit ever made.
+        const list = twoFirms();
+
+        const scoped = mergePartner(list, Object.assign({}, list[1], { city: 'Madurai' }), ['city']);
+        expect(scoped.conflict).toBeNull();
+        expect(scoped.partner.city).toBe('Madurai');
+        expect(allEmails(scoped.contacts[1])).toEqual(['ravi@srilogistics.com']);
+
+        // Wholesale takes the other route through the merge, carrying the people from the
+        // incoming copy rather than the stored one — it must skip its own slot as well.
+        const whole = mergePartner(list, Object.assign({}, list[1], { city: 'Madurai' }));
+        expect(whole.conflict).toBeNull();
+        expect(whole.partner.city).toBe('Madurai');
+        expect(allEmails(whole.contacts[1])).toEqual(['ravi@srilogistics.com']);
+    });
+
+    test('a genuinely new colleague at a firm we already hold is added, not refused', () => {
+        // One firm, one card: cp@ joining manish@ on Kalpataru is the whole point of the
+        // directory. Refusing this would push the owner into making a second card.
+        const list = twoFirms();
+        const grown = Object.assign({}, list[0], {
+            people: [person('Manish', ['manish@kalpatarusteel.com']), person('CP', ['cp@kalpatarusteel.com'])],
+        });
+
+        const res = mergePartner(list, grown, ['people']);
+
+        expect(res.conflict).toBeNull();
+        expect(allEmails(res.partner)).toEqual(['manish@kalpatarusteel.com', 'cp@kalpatarusteel.com']);
+        expect(allEmails(res.contacts[0])).toEqual(['manish@kalpatarusteel.com', 'cp@kalpatarusteel.com']);
+    });
+
+    test('the clash is found whatever the case, and on ANY person of either card', () => {
+        // Both cards carry the shared address on their SECOND person, and in different case.
+        // A check that reads only people[0], or compares the addresses as typed, misses it —
+        // and the duplicate it was built to stop walks straight in.
+        const list = [
+            kalpataru([person('Reception', ['front@kalpatarusteel.com']),
+                person('Manish', ['Manish@KalpataruSteel.com'])]),
+            sri(),
+        ];
+        const before = frozen(list);
+        const stale = Object.assign({}, list[1], {
+            people: [person('Ravi', ['ravi@srilogistics.com']),
+                person('M', ['manish@KALPATARUSTEEL.com'])],
+        });
+
+        const res = mergePartner(list, stale, ['people']);
+
+        expect(res.conflict).toEqual({
+            email: 'manish@kalpatarusteel.com', id: 'p_kalp', company: 'Kalpataru Steel',
+        });
+        expect(frozen(res.contacts)).toBe(before);
+    });
+
+    // ── finding the duplicates that pre-date the rule ────────────────────────
+
+    describe('duplicateEmails', () => {
+        test('finds an address held twice and names BOTH cards', () => {
+            // Written before the rule existed, these sit there splitting one firm's history
+            // in two — so the directory has to be able to point at them.
+            const list = [kalpataru(), sri([person('Ravi', ['ravi@srilogistics.com']),
+                person('Manish', ['manish@kalpatarusteel.com'])])];
+
+            expect(duplicateEmails(list)).toEqual([{
+                email: 'manish@kalpatarusteel.com',
+                cards: [{ id: 'p_kalp', company: 'Kalpataru Steel' },
+                    { id: 'p_sri', company: 'Sri Logistics' }],
+            }]);
+        });
+
+        test('a healthy directory reports nothing at all', () => {
+            expect(duplicateEmails(twoFirms())).toEqual([]);
+            expect(duplicateEmails([])).toEqual([]);
+        });
+
+        test('one address on two people of the SAME card is not a duplicate', () => {
+            // A shared office address listed against two colleagues on one card breaks no
+            // rule — the firm still has exactly one card. Flagging it would put a red banner
+            // on the directory that nothing can ever clear.
+            const shared = kalpataru([person('Manish', ['office@kalpatarusteel.com']),
+                person('CP', ['office@kalpatarusteel.com'])]);
+            expect(duplicateEmails([shared, sri()])).toEqual([]);
+        });
+
+        test('three cards sharing one address list all three', () => {
+            const third = sanitizePartner({
+                id: 'p_third', company: 'Third Firm',
+                people: [person('X', ['manish@kalpatarusteel.com'])],
+            });
+            const dups = duplicateEmails([kalpataru(), sri([person('Ravi',
+                ['manish@kalpatarusteel.com'])]), third]);
+
+            expect(dups).toHaveLength(1);
+            expect(dups[0].email).toBe('manish@kalpatarusteel.com');
+            expect(dups[0].cards.map(c => c.id)).toEqual(['p_kalp', 'p_sri', 'p_third']);
+            expect(dups[0].cards.map(c => c.company))
+                .toEqual(['Kalpataru Steel', 'Sri Logistics', 'Third Firm']);
+        });
+    });
+});
+
+// ── the routes refuse the clash, and refuse it BEFORE they write ─────────────
+
+describe('routes/contacts.js — a clash is a 409 and nothing is stored', () => {
+    const express = require('express');
+    const request = require('supertest');
+    const createContactsRouter = require('../routes/contacts');
+    const { CONFIG_KEY_CONTACTS, CONFIG_KEY_CONTACTS_PENDING } = require('../utils/constants');
+
+    const KALP = sanitizePartner({
+        id: 'p_kalp', company: 'Kalpataru Steel',
+        people: [person('Manish', ['manish@kalpatarusteel.com'])],
+    });
+    const SRI = sanitizePartner({
+        id: 'p_sri', company: 'Sri Logistics', role: 'transporter',
+        people: [person('Ravi', ['ravi@srilogistics.com'])],
+    });
+
+    const QUEUED = {
+        id: 'pd_1', origin: 'gmail', from: 'manish@kalpatarusteel.com',
+        subject: 'Rate list', file: 'rates.pdf', kind: 'pdf', text: '',
+        finds: [{ kind: 'field', key: 'company', label: 'Company', value: 'Manish Trading Co' }],
+        receivedAt: '2026-08-27T10:00:00.000Z', preview: null,
+    };
+
+    /** The real router over an in-memory storage layer — the same two blobs it reads live. */
+    function makeApp() {
+        const blobs = {
+            [CONFIG_KEY_CONTACTS]: JSON.stringify({ contacts: [KALP, SRI], changes: [] }),
+            [CONFIG_KEY_CONTACTS_PENDING]: JSON.stringify({ items: [QUEUED] }),
+        };
+        const written = [];
+        const storage = {
+            readText: async (key) => (key in blobs ? blobs[key] : ''),
+            saveText: async (key, text) => { written.push(key); blobs[key] = text; },
+        };
+        const app = express();
+        app.use('/api', createContactsRouter({ storage, openai: null }));
+        return { app, blobs, written, before: Object.assign({}, blobs) };
+    }
+
+    test('POST /contacts/save refuses an address another card holds, and stores nothing', async () => {
+        const { app, blobs, written, before } = makeApp();
+
+        const res = await request(app).post('/api/contacts/save').send({
+            partner: Object.assign({}, SRI, { people: [person('M', ['manish@kalpatarusteel.com'])] }),
+            fields: ['people'],
+        });
+
+        expect(res.status).toBe(409);
+        // Refusing without naming the other card is a dead end — the owner cannot act on it.
+        expect(res.body.error).toContain('manish@kalpatarusteel.com');
+        expect(res.body.error).toContain('Kalpataru Steel');
+        expect(written).toEqual([]);
+        expect(blobs[CONFIG_KEY_CONTACTS]).toBe(before[CONFIG_KEY_CONTACTS]);
+    });
+
+    test('POST /contacts/save still saves a clean edit — the guard is not a blanket refusal', async () => {
+        // Without this the 409 test above passes just as well against a route that refuses
+        // everything, and "nothing was written" would mean nothing.
+        const { app, blobs, written } = makeApp();
+
+        const res = await request(app).post('/api/contacts/save')
+            .send({ partner: Object.assign({}, SRI, { city: 'Madurai' }), fields: ['city'] });
+
+        expect(res.status).toBe(200);
+        expect(written).toEqual([CONFIG_KEY_CONTACTS]);
+        expect(JSON.parse(blobs[CONFIG_KEY_CONTACTS]).contacts
+            .find(p => p.id === 'p_sri').city).toBe('Madurai');
+    });
+
+    test('POST /contacts/pending/approve refuses too — and leaves the item IN the queue', async () => {
+        // Half-applying is the failure that matters here: dropping the queue item while
+        // refusing the write loses the email altogether, and the owner never learns a firm
+        // wrote in. It stays queued so they can fix the other card and approve again.
+        const { app, blobs, written, before } = makeApp();
+
+        const res = await request(app).post('/api/contacts/pending/approve').send({
+            id: 'pd_1',
+            partner: { company: 'Manish Trading Co', people: [person('Manish', ['manish@kalpatarusteel.com'])] },
+        });
+
+        expect(res.status).toBe(409);
+        expect(res.body.error).toContain('manish@kalpatarusteel.com');
+        expect(res.body.error).toContain('Kalpataru Steel');
+        expect(written).toEqual([]);
+        expect(blobs[CONFIG_KEY_CONTACTS]).toBe(before[CONFIG_KEY_CONTACTS]);
+        expect(blobs[CONFIG_KEY_CONTACTS_PENDING]).toBe(before[CONFIG_KEY_CONTACTS_PENDING]);
+        expect(JSON.parse(blobs[CONFIG_KEY_CONTACTS_PENDING]).items.map(i => i.id)).toEqual(['pd_1']);
+    });
+
+    test('POST /contacts/pending/approve still adds a firm with a fresh address', async () => {
+        const { app, blobs, written } = makeApp();
+
+        const res = await request(app).post('/api/contacts/pending/approve').send({
+            id: 'pd_1',
+            partner: { company: 'Vikas Tubes', people: [person('Vikas', ['sales@vikastubes.in'])] },
+        });
+
+        expect(res.status).toBe(200);
+        expect(written).toContain(CONFIG_KEY_CONTACTS);
+        expect(JSON.parse(blobs[CONFIG_KEY_CONTACTS]).contacts.map(p => p.company))
+            .toContain('Vikas Tubes');
+        expect(JSON.parse(blobs[CONFIG_KEY_CONTACTS_PENDING]).items).toEqual([]);
+    });
+
+    test('a card with no name yet is called "another card", not its own address twice', async () => {
+        // An imported card starts with the address AS its company. "x@y.com is already on
+        // x@y.com" reads like a glitch, and tells the owner nothing they can act on.
+        const { app, blobs } = makeApp();
+        blobs[CONFIG_KEY_CONTACTS] = JSON.stringify({
+            changes: [],
+            contacts: [sanitizePartner({
+                id: 'p_stub', company: 'manish@kalpatarusteel.com',
+                people: [person('', ['manish@kalpatarusteel.com'])],
+            })],
+        });
+
+        const res = await request(app).post('/api/contacts/save').send({
+            partner: { company: 'Manish Trading Co', people: [person('M', ['manish@kalpatarusteel.com'])] },
+        });
+
+        expect(res.status).toBe(409);
+        expect(res.body.error).toBe('manish@kalpatarusteel.com is already on another card.'
+            + ' One address belongs to one company — remove it there first, or add this person to that card.');
+    });
+
+    test('GET /contacts hands the duplicates that pre-date the rule to the browser', async () => {
+        // The rule stops NEW ones. Anything written before it has to be visible, or it sits
+        // there for ever quietly splitting one firm across two cards.
+        const { app } = makeApp();
+        const res = await request(app).get('/api/contacts');
+        expect(res.status).toBe(200);
+        expect(res.body.duplicates).toEqual([]);          // this fixture is clean
+
+        const dirty = makeApp();
+        dirty.blobs[CONFIG_KEY_CONTACTS] = JSON.stringify({
+            changes: [],
+            contacts: [KALP, Object.assign({}, SRI, {
+                people: [person('Ravi', ['manish@kalpatarusteel.com'])],
+            })],
+        });
+        const res2 = await request(dirty.app).get('/api/contacts');
+        expect(res2.body.duplicates).toEqual([{
+            email: 'manish@kalpatarusteel.com',
+            cards: [{ id: 'p_kalp', company: 'Kalpataru Steel' },
+                { id: 'p_sri', company: 'Sri Logistics' }],
+        }]);
+    });
+});
+
+describe('source guard — the conflict is checked BEFORE the write, not after it', () => {
+    // The behavioural tests above cannot see one particular mutation on /contacts/save:
+    // moving the 409 return BELOW `await saveDirectory(...)` writes the SAME contacts back
+    // (mergePartner hands the untouched list back on a clash), so the stored blob is
+    // unchanged either way. What is pinned here is therefore the ORDER — an early return —
+    // not the presence of the number 409 anywhere in the file.
+    const source = fs.readFileSync(path.join(__dirname, '..', 'routes', 'contacts.js'), 'utf8');
+    const GUARD = 'if (merged.conflict) return res.status(409).json({ error: conflictMessage(merged.conflict) });';
+
+    function handler(from, to) {
+        const a = source.indexOf(from);
+        const b = source.indexOf(to, a + 1);
+        if (a === -1 || b === -1) throw new Error('handler markers not found: ' + from);
+        return source.slice(a, b);
+    }
+
+    test('/contacts/save returns 409 and returns before saveDirectory', () => {
+        const body = handler("'/contacts/save'", "'/contacts/delete'");
+        const guard = body.indexOf(GUARD);
+        const write = body.indexOf('await saveDirectory(');
+        expect(guard).toBeGreaterThan(-1);
+        expect(write).toBeGreaterThan(-1);
+        expect(guard).toBeLessThan(write);
+    });
+
+    test('/contacts/pending/approve returns 409 before it touches EITHER blob', () => {
+        // Two writes here, and the queue one is the dangerous half: writing the filtered
+        // queue first drops the email while refusing the partner.
+        const body = handler("'/contacts/pending/approve'", "'/contacts/pending/discard'");
+        const guard = body.indexOf(GUARD);
+        const writeDir = body.indexOf('await saveDirectory(');
+        const writeQueue = body.indexOf('await savePending(');
+        expect(guard).toBeGreaterThan(-1);
+        expect(writeDir).toBeGreaterThan(-1);
+        expect(writeQueue).toBeGreaterThan(-1);
+        expect(guard).toBeLessThan(writeDir);
+        expect(guard).toBeLessThan(writeQueue);
+    });
+
+});
