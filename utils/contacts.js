@@ -172,7 +172,13 @@ function mergePartner(list, incoming, fields) {
         if (at === -1) contacts.unshift(result); else contacts[at] = result;
         return { contacts: contacts.slice(0, MAX_CONTACTS), partner: result, conflict: null };
     };
-    if (idx === -1) return settle(wanted, -1);
+    // Never CREATE a card with nothing on it. Editing an existing one down to nothing is the
+    // owner's business, but a blank new row is only ever an accident — a stray "+ Add partner"
+    // press, or a client that saved before anything was typed.
+    if (idx === -1) {
+        if (partnerIsEmpty(wanted)) return { contacts, partner: null, conflict: null, empty: true };
+        return settle(wanted, -1);
+    }
     // A full overwrite happens ONLY when the caller asked for one by passing no field list.
     // If a list was given but nothing in it is a real field — a typo, or a field renamed and
     // the caller not updated — the safe reading is "write nothing", never "write everything":
@@ -220,6 +226,15 @@ function duplicateEmails(contacts) {
 }
 
 function cardRef(p) { return { id: p.id, company: p.company }; }
+
+/** No firm name and nobody you could reach — there is nothing here to keep. */
+function partnerIsEmpty(p) {
+    if (str(p && p.company)) return false;
+    const people = (p && Array.isArray(p.people)) ? p.people : [];
+    return !people.some(c => str(c && c.name)
+        || ((c && c.phones) || []).some(x => str(x && x.v))
+        || ((c && c.emails) || []).some(x => str(x && x.v)));
+}
 
 function findByEmail(list, email) {
     const wanted = lower(email);
@@ -666,6 +681,7 @@ module.exports = {
     ROLES,
     sanitizePartner,
     mergePartner,
+    partnerIsEmpty,
     duplicateEmails,
     findByEmail,
     allEmails,

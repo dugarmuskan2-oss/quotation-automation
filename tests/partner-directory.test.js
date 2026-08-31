@@ -908,14 +908,126 @@ describe('source guard — adding a partner by hand', () => {
         expect(addHandler).not.toMatch(/id:\s*'p_'\s*\+\s*Date\.now\(\)\s*[,}]/);
     });
 
-    test('the lock is only released when the save comes back, not on the next line', () => {
-        // CLAUDE.md check 3. Clearing S.adding synchronously keeps all three literals a
-        // looser guard would look for, while a double click still writes two blank
-        // partners — so what is pinned is WHERE the flag is cleared, inside the callback.
-        expect(addHandler).toContain('if (S.adding) return;');
-        expect(addHandler).toContain('S.adding = true;');
-        expect(addHandler.match(/S\.adding = false;/g)).toHaveLength(1);
-        expect(addHandler).toMatch(/savePartner\(p\)\s*\.then\(\s*function \(\)\s*\{[^{}]*S\.adding = false;/);
+    test('editing a card still blank does not write it either', () => {
+        // Guard, not behaviour: the gate lives inside bindCardFields, which needs real inputs.
+        // The exact conjunction is what matters — dropping `!isBlankCard(p)` puts the empty
+        // row straight back, this time on the first keystroke that leaves the card still blank
+        // (picking a role, ticking part-load). Proved by applying that exact mutation.
+        const saveFn = sliceBetween('var save = function (rerender, fields)', 'each(card,');
+        expect(saveFn).toContain('if (inDirectory && !isBlankCard(p)) savePartner(p, fields);');
+    });
+
+    test('pressing it does not write anything — there is nothing to write yet', () => {
+        // The old code saved a blank card on the click and guarded the double-press with an
+        // in-flight lock. A lock only covers the request: press it again once that returned
+        // and a SECOND empty row was written, permanently. Reported live by the owner.
+        // Now the click is local-only, so there is no request to double up.
+        expect(addHandler).not.toContain('savePartner(p)');
+        expect(addHandler).toContain('D.contacts.unshift(p);');
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// + Add partner — behavioural: press it as many times as you like
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('+ Add partner — nothing is stored until something is typed', () => {
+    const { S } = _state();
+    let realGetElementById;
+    let app;
+    let posts;
+
+    /**
+     * Like fakeAppEl, plus the querySelector that on() uses to bind a single button, and
+     * empty children on each stub so bindCardFields can walk an open card without blowing up.
+     */
+    function clickableApp() {
+        const base = fakeAppEl();
+        const raw = base.querySelectorAll;
+        base.querySelectorAll = (sel) => raw(sel).map((stub) => {
+            if (!stub.querySelectorAll) {
+                stub.querySelectorAll = () => [];
+                stub.querySelector = () => null;
+            }
+            return stub;
+        });
+        base.querySelector = (sel) => base.querySelectorAll(sel)[0] || null;
+        return base;
+    }
+
+    beforeEach(() => {
+        realGetElementById = global.document.getElementById;
+        app = clickableApp();
+        global.document.getElementById = (id) => (id === 'partnerDirectoryApp' ? app : null);
+        S.tab = 'dir'; S.filter = 'all'; S.openId = null; S.busy = {};
+        posts = [];
+        FETCH = (url, opts) => {
+            if (opts && opts.method === 'POST') {
+                posts.push(url);
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
+            }
+            return Promise.resolve({
+                ok: true,
+                json: () => Promise.resolve({ contacts: [], changes: [], pending: [], duplicates: [] }),
+            });
+        };
+    });
+
+    afterEach(() => {
+        global.document.getElementById = realGetElementById;
+        FETCH = () => Promise.reject(new Error('no network in unit tests'));
+        S.tab = 'dir'; S.filter = 'all'; S.openId = null; S.busy = {};
+        setContacts([]);
+    });
+
+    const press = () => app.querySelectorAll('[data-pd-add]')[0].onclick();
+
+    test('three presses leave ONE blank card, and nothing is sent to the server', async () => {
+        global.window.switchToDirectoryTab();
+        await flush();
+
+        press(); press(); press();
+        await flush();
+
+        expect(D.contacts).toHaveLength(1);
+        expect(posts).toEqual([]);          // the card exists on screen only
+        expect(S.openId).toBe(D.contacts[0].id);
+    });
+
+    test('a blank card left over from before is reused, not added beside', async () => {
+        // The old bug already put empty rows in real directories. Pressing Add should tidy
+        // one of those up rather than stack another on top of it.
+        const leftover = partner({ id: 'p_blank', company: '', people: [{ name: '', role: '', phones: [], emails: [] }] });
+        FETCH = (url, opts) => {
+            if (opts && opts.method === 'POST') { posts.push(url); return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) }); }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ contacts: [leftover], changes: [], pending: [], duplicates: [] }) });
+        };
+        global.window.switchToDirectoryTab();
+        await flush();
+
+        press();
+        await flush();
+
+        expect(D.contacts).toHaveLength(1);
+        expect(S.openId).toBe('p_blank');
+    });
+
+    test('a card with a person on it is NOT treated as blank', async () => {
+        // The guard must look at every way a card can be worth keeping, or pressing Add
+        // would hijack a real partner whose company name simply is not filled in yet.
+        const named = partner({ id: 'p_real', company: '', people: [{ name: 'Ravi', role: '', phones: [], emails: [] }] });
+        FETCH = (url, opts) => {
+            if (opts && opts.method === 'POST') { posts.push(url); return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) }); }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ contacts: [named], changes: [], pending: [], duplicates: [] }) });
+        };
+        global.window.switchToDirectoryTab();
+        await flush();
+
+        press();
+        await flush();
+
+        expect(D.contacts).toHaveLength(2);           // a fresh blank, beside the real one
+        expect(S.openId).not.toBe('p_real');
     });
 });
 

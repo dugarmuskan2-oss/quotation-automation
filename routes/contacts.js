@@ -106,6 +106,9 @@ module.exports = function createContactsRouter({ storage, openai }) {
             const { partner, fields } = req.body || {};
             const merged = contactsLib.mergePartner(dir.contacts, partner, fields);
             if (merged.conflict) return res.status(409).json({ error: conflictMessage(merged.conflict) });
+            // Nothing typed yet, so nothing to keep. Not an error the owner should see — there
+            // is no lost work in refusing to store an empty card.
+            if (merged.empty) return res.json({ ok: true, skipped: 'empty' });
             await saveDirectory({ contacts: merged.contacts, changes: dir.changes });
             res.json({ ok: true, partner: merged.partner });
         } catch (error) {

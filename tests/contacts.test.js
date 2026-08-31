@@ -431,6 +431,48 @@ describe('mergePartner — a stale copy must not overwrite a fresh one', () => {
         expect(emptyFields.partner.notes).toEqual(stored.notes);
     });
 
+    test('a brand-new card with nothing on it is never created', () => {
+        // The owner pressed "+ Add partner" twice and got two empty rows: the client wrote a
+        // blank card on the click. The client no longer does, and the server refuses to create
+        // one either — a blank new row is only ever an accident.
+        const held = storedCard();
+        const res = mergePartner([held], {
+            company: '', people: [{ name: '', role: 'Main contact', phones: [], emails: [] }],
+        });
+        expect(res.empty).toBe(true);
+        expect(res.partner).toBeNull();
+        expect(res.contacts).toHaveLength(1);
+        expect(res.contacts[0].id).toBe(held.id);
+    });
+
+    test('anything that says who they are IS worth creating', () => {
+        // The mixed set is what pins it — a guard that refused everything, or accepted
+        // everything, fails on one of these four.
+        const worth = [
+            { what: 'a firm name', card: { company: 'Balaji Tubes' } },
+            { what: 'a person', card: { company: '', people: [{ name: 'Ravi', phones: [], emails: [] }] } },
+            { what: 'a phone', card: { company: '', people: [{ name: '', phones: [{ label: 'Mobile', v: '9840012345' }], emails: [] }] } },
+            { what: 'an address', card: { company: '', people: [{ name: '', phones: [], emails: [{ label: 'Work', v: 'ravi@balajitubes.com' }] }] } },
+        ];
+        worth.forEach(({ what, card }) => {
+            const res = mergePartner([], card);
+            expect(`${what}: ${res.empty === true}`).toBe(`${what}: false`);
+            expect(res.contacts).toHaveLength(1);
+        });
+    });
+
+    test('emptying a card that already exists is still the owner\'s business', () => {
+        // The refusal is on CREATION only. Clearing a card they already have is a deliberate
+        // act, and blocking it would be us overruling them on their own data.
+        const held = storedCard();
+        const res = mergePartner([held], Object.assign({}, held, {
+            company: '', people: [{ name: '', role: '', phones: [], emails: [] }],
+        }));
+        expect(res.empty).toBeUndefined();
+        expect(res.contacts).toHaveLength(1);
+        expect(res.partner.company).toBe('');
+    });
+
     test("the caller's list and the caller's stored card are both left untouched", () => {
         // CLAUDE.md check #2. The route handler holds the list it just read from storage and
         // writes back what mergePartner returns; if the merge also edited that list in place,

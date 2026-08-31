@@ -973,16 +973,36 @@
             }, function () { S.importing = false; });      // released even if the import fails
         });
         on(app, '[data-pd-add]', function () {
-            if (S.adding) return;                         // in-flight lock: no blank duplicates
-            S.adding = true;
+            // Nothing is written until something is typed. Saving a blank card on the click
+            // was the bug: an in-flight lock only covers the request, so a second press once
+            // it returned left a second empty row in the directory for good.
+            var blank = D.contacts.filter(isBlankCard)[0];
+            if (blank) { openCard(blank.id); return; }    // one empty card is enough
             // A real partner gets a real id at once ('p_…'); 'p_new_' is reserved for
             // pending-queue previews, which are never saved directly.
             // Random suffix, not a bare timestamp: two devices adding in the same
             // millisecond would otherwise share an id and merge into one record.
             var p = { id: 'p_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), role: 'dealer', company: '', people: [{ name: '', role: 'Main contact', phones: [], emails: [] }], branches: [], types: [], products: [], rules: [], routes: [], notes: [], images: [], partLoad: true };
-            D.contacts.unshift(p); S.openId = p.id; S.filter = 'all'; S.find = { text: '', state: 'idle', need: null };
-            savePartner(p).then(function () { S.adding = false; render(); });
-            render();
+            D.contacts.unshift(p);
+            openCard(p.id);
+        });
+    }
+
+    function openCard(id) {
+        S.openId = id; S.filter = 'all'; S.find = { text: '', state: 'idle', need: null };
+        render();
+    }
+
+    /**
+     * A card with nothing on it: no firm name, and nobody you could reach. Worth no row in
+     * the directory — and an abandoned one disappears by itself on the next load, because it
+     * was never written.
+     */
+    function isBlankCard(p) {
+        if (!p || str(p.company)) return false;
+        return !people(p).some(function (c) {
+            return str(c.name) || (c.phones || []).some(function (x) { return str(x.v); })
+                || (c.emails || []).some(function (x) { return str(x.v); });
         });
     }
 
@@ -1024,7 +1044,10 @@
             // A pending-queue PREVIEW is never saved here — approval is its only write path.
             // (Otherwise editing one before approving stores a stray copy = a duplicate firm.)
             var inDirectory = D.contacts.some(function (x) { return x.id === p.id; });
-            if (inDirectory) savePartner(p, fields);
+            // A brand-new card is only written once it says something. Typing the firm name
+            // (or a person, or a number) is what creates it; until then there is nothing to
+            // store, and storing it anyway is what left blank rows behind.
+            if (inDirectory && !isBlankCard(p)) savePartner(p, fields);
             if (rerender) render();
         };
         each(card, '[data-pd-k]', function (el) {
