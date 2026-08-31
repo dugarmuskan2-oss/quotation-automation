@@ -240,4 +240,42 @@ describe('source guards — index.html hooks the freight features depend on', ()
         expect(html).toContain('activeTab: contentEl.dataset.activeTab');
         expect(html).toContain('if (folder.activeTab) contentEl.dataset.activeTab = folder.activeTab');
     });
+
+    // The save-time weight sync is tested for behaviour in flow-sweep, but that proves only that
+    // the function works — not that anything calls it. These pin the wiring, and they check WHERE
+    // the call sits, not just that it exists: a plain toContain would pass happily with the call
+    // stranded inside the `if (!ok)` failure branch, which is the one place it must never run
+    // (syncing after a rejected write would blank a weight on a change the server never stored).
+    const bodyOfFunction = (name) => {
+        const i = html.indexOf('function ' + name + '(');
+        if (i === -1) throw new Error('function not found in index.html: ' + name);
+        const open = html.indexOf('{', i);
+        let depth = 0;
+        for (let k = open; k < html.length; k++) {
+            if (html[k] === '{') depth++;
+            else if (html[k] === '}') { depth--; if (!depth) return html.slice(i, k + 1); }
+        }
+        throw new Error('unterminated function body: ' + name);
+    };
+
+    ['saveQuotationChanges', 'saveQuotation'].forEach((fn) => {
+        test(fn + ' calls the weight sync, on the success side of the write', () => {
+            const body = bodyOfFunction(fn);
+            const call = body.indexOf('window.syncFreightWeightsOnQuoteSaved(quotation)');
+            expect(call).toBeGreaterThan(-1);
+
+            const failBranch = body.indexOf('if (!ok) {');
+            expect(failBranch).toBeGreaterThan(-1);
+            const bailOut = body.indexOf('return;', failBranch);
+            expect(bailOut).toBeGreaterThan(-1);
+            // Both the branch and its `return;` come first, so the call is unreachable on failure.
+            expect(bailOut).toBeLessThan(call);
+        });
+    });
+
+    test('the freight module exposes the hook index.html calls, and asks for the save-only sync', () => {
+        const src = fs.readFileSync(FWE_PATH, 'utf8');
+        expect(src).toContain('window.syncFreightWeightsOnQuoteSaved = function');
+        expect(src).toContain('syncRowsWithQuote(q, st, { onSave: true })');
+    });
 });
