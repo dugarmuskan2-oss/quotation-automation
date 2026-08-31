@@ -95,7 +95,16 @@
     // the Quote tab left the freight weight computed from the old figures — with qty locked
     // read-only, there was no way to correct it. Anything the user owns here (added rows,
     // removals, split assignment, a typed sizing qty, an edited description) is preserved.
-    function syncRowsWithQuote(q, st) {
+    // What the quote said about a line last time we followed it. Description AND pipe type,
+    // because 2" Heavy ERW -> 2" Heavy GI is a different pipe at a different weight.
+    function quoteRowKey(li) {
+        return liDesc(li) + '|' + String(li.identifiedPipeType || '');
+    }
+    function syncRowsWithQuote(q, st, opts) {
+        // onSave: the quote has just been persisted, so this is the moment to follow a changed
+        // row. Deliberately NOT done on every render — an edit half-typed on the Quote tab must
+        // not reach the weight panel until it is saved.
+        var onSave = !!(opts && opts.onSave);
         var items = Array.isArray(q.lineItems) ? q.lineItems : [];
         var live = {};
         items.forEach(function (li, idx) {
@@ -105,18 +114,31 @@
             if (!r) {
                 st.rows.push({
                     id: id, d: liDesc(li), type: String(li.identifiedPipeType || ''),
-                    qty: qtyOrNull(li.quantity), kgm: num(li.kgPerMeter), sec: 1, fromQuote: true
+                    qty: qtyOrNull(li.quantity), kgm: num(li.kgPerMeter), sec: 1, fromQuote: true,
+                    qKey: quoteRowKey(li)
                 });
                 return;
             }
             r.fromQuote = true;
             r.type = String(li.identifiedPipeType || '');
-            if (!r.dEdited) r.d = liDesc(li);
             // Only follow the quote where the quote actually has a number: a quantity typed
             // here for sizing (because the quote had none) must survive.
             var qty = qtyOrNull(li.quantity);
             if (qty != null) r.qty = qty;
             if (num(li.kgPerMeter)) r.kgm = num(li.kgPerMeter);
+            if (!onSave) return;
+            // The row changed on the Quote tab. Take the new description across and drop a
+            // weight that belonged to the OLD size: carrying 2" kg/m onto an 8" row silently
+            // misprices the freight, and a wrong number shows no warning where a blank goes red.
+            var key = quoteRowKey(li);
+            if (r.qKey != null && r.qKey !== key) {
+                r.d = liDesc(li);
+                r.dEdited = false;          // the quote is newer than anything typed here
+                r.kgm = num(li.kgPerMeter) || null;
+            } else if (r.qKey == null && !r.dEdited) {
+                r.d = liDesc(li);           // row predates key tracking — adopt without blanking
+            }
+            r.qKey = key;
         });
         // A line deleted on the Quote tab must stop adding weight to the freight enquiry.
         // Rows the user added here by hand (no fromQuote) are left alone.
@@ -1089,6 +1111,16 @@
         try { render(q, mountEl); } catch (e) { /* a repaint must never break the sweep */ }
     }
 
+    // Called once a quote has actually been persisted. Rows whose size changed take the new
+    // description and lose the old weight, so the Freight tab can never bill an 8" pipe at 2"
+    // weight. Runs on save only — never mid-edit — and never on a save that failed.
+    function syncOnQuoteSaved(q) {
+        if (!q || q.id == null) return;
+        var st = getState(q);
+        syncRowsWithQuote(q, st, { onSave: true });
+        repaintOpenPanel(q);
+    }
+
     function bindEnquiry(q, st, mountEl) {
         var enq = st.enquiry;
         var toggle = mountEl.querySelector('.fwe-enq-toggle');
@@ -1417,6 +1449,11 @@
         };
         // Used by the global "Check all replies" sweep in index.html.
         window.checkFreightRepliesForQuote = checkFreightRepliesForQuote;
+        // Called by Save / Approve in index.html once the write has been accepted.
+        window.syncFreightWeightsOnQuoteSaved = function (quotation) {
+            try { syncOnQuoteSaved(quotation); }
+            catch (e) { console.error('FWE save-sync error', e); }
+        };
     }
 
     // Pure helpers exposed for unit testing in Node (see tests/freight-tab.test.js).
@@ -1447,6 +1484,7 @@
             // the full re-render (which used to eat the first click after any edit).
             syncRowsWithQuote: syncRowsWithQuote,
             quoteRowId: quoteRowId,
+            quoteRowKey: quoteRowKey,
             rowWeightHtml: rowWeightHtml,
             sectionTitleHtml: sectionTitleHtml,
             totalRowHtml: totalRowHtml,

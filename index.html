@@ -9826,6 +9826,12 @@
                     }
                     return;
                 }
+                // The write went through, so the Freight tab may now follow the quote: a row
+                // whose size changed takes the new description and loses the old kg/m. Only
+                // here — never mid-edit, and never after a save the server rejected.
+                if (typeof window.syncFreightWeightsOnQuoteSaved === 'function') {
+                    window.syncFreightWeightsOnQuoteSaved(quotation);
+                }
                 if (madeRevision) {
                     alert('Saved as Revision ' + currentRevisionNumber(quotation) + '. The version the customer has is kept in History.');
                 } else {
@@ -9984,6 +9990,10 @@
                     displayAllApprovedQuotations();
                     alert('Could not approve "' + filename + '" — the server did not accept the save.\n\nYour changes are still on screen. Please try Approve again.');
                     return;
+                }
+                // Same as Save: only once the write landed may the Freight tab follow the quote.
+                if (typeof window.syncFreightWeightsOnQuoteSaved === 'function') {
+                    window.syncFreightWeightsOnQuoteSaved(quotation);
                 }
                 displayAllApprovedQuotations();
                 var folderElement = document.getElementById('folder-' + quotationId);
@@ -11973,7 +11983,7 @@
     </script>
     <script src="weight-calculator.js?v=20260529-1"></script>
     <script src="enquiry-preparer.js?v=20260529-1"></script>
-    <script src="freight-tab-weight-editor.js?v=20260624-4"></script>
+    <script src="freight-tab-weight-editor.js?v=20260831-1"></script>
     <script src="quote-enquiry-tab.js?v=20260731-1"></script>
     <script src="register.js?v=20260722-5"></script>
     <script src="partner-directory.js?v=20260821-1"></script>

@@ -80,15 +80,58 @@ describe('syncRowsWithQuote — the panel follows the quote without losing your 
         expect(st.rows[0].qty).toBe(120);
     });
 
-    test('a description edited here is kept; an untouched one follows the quote', () => {
+    test('a description follows the quote on SAVE only — never mid-edit', () => {
+        // The panel used to follow the quote on every render, so a half-typed size on the Quote
+        // tab reached the freight weight before anyone had committed to it.
         const st = { rows: [] };
-        syncRowsWithQuote(quoteWith([li('a1', 'Original text', 10, 1), li('a2', 'Follows me', 10, 1)]), st);
+        syncRowsWithQuote(quoteWith([li('a1', 'Original text', 10, 1), li('a2', 'Follows me', 10, 1)]), st, { onSave: true });
+
+        syncRowsWithQuote(quoteWith([li('a1', 'Original text', 10, 1), li('a2', 'Changed too', 10, 1)]), st);
+        expect(st.rows[1].d).toBe('Follows me');            // a render must not move it
+
+        syncRowsWithQuote(quoteWith([li('a1', 'Original text', 10, 1), li('a2', 'Changed too', 10, 1)]), st, { onSave: true });
+        expect(st.rows[1].d).toBe('Changed too');           // the save does
+    });
+
+    test('a description edited here is kept — until the quote row itself changes', () => {
+        const st = { rows: [] };
+        syncRowsWithQuote(quoteWith([li('a1', 'Original text', 10, 1)]), st, { onSave: true });
         st.rows[0].d = 'My own wording';
         st.rows[0].dEdited = true;
 
-        syncRowsWithQuote(quoteWith([li('a1', 'Changed on quote', 10, 1), li('a2', 'Changed too', 10, 1)]), st);
+        // A save that leaves this row alone must not touch the wording.
+        syncRowsWithQuote(quoteWith([li('a1', 'Original text', 10, 1)]), st, { onSave: true });
         expect(st.rows[0].d).toBe('My own wording');
-        expect(st.rows[1].d).toBe('Changed too');
+
+        // But once the row really changes, the quote wins: the hand-written label described a
+        // pipe that is no longer on the quote, so keeping it would mislabel the freight.
+        syncRowsWithQuote(quoteWith([li('a1', 'Changed on quote', 10, 1)]), st, { onSave: true });
+        expect(st.rows[0].d).toBe('Changed on quote');
+        expect(st.rows[0].dEdited).toBe(false);
+    });
+
+    test('a changed row loses the weight that belonged to the OLD size', () => {
+        // The bug this guards: change 2" to 8" and the panel kept 2"'s kg/m, so the freight was
+        // billed on the wrong pipe. A blank goes red; a wrong number shows nothing.
+        const st = { rows: [] };
+        syncRowsWithQuote(quoteWith([li('a1', '2" NB X Heavy', 100, 6.19, 'ERW')]), st, { onSave: true });
+        expect(st.rows[0].kgm).toBe(6.19);
+
+        syncRowsWithQuote(quoteWith([li('a1', '8" NB X 10 MM', 100, '', 'ERW')]), st, { onSave: true });
+        expect(st.rows[0].kgm).toBeNull();
+        expect(st.rows[0].qty).toBe(100);                   // quantity is not collateral damage
+
+        // A pipe-type swap at the same size is also a different pipe, and a different weight.
+        const st2 = { rows: [] };
+        syncRowsWithQuote(quoteWith([li('b1', '2" NB X Heavy', 100, 6.19, 'ERW')]), st2, { onSave: true });
+        syncRowsWithQuote(quoteWith([li('b1', '2" NB X Heavy', 100, '', 'GI')]), st2, { onSave: true });
+        expect(st2.rows[0].kgm).toBeNull();
+
+        // When the quote itself supplies the new weight, that is what the panel takes.
+        const st3 = { rows: [] };
+        syncRowsWithQuote(quoteWith([li('c1', '2" NB X Heavy', 100, 6.19, 'ERW')]), st3, { onSave: true });
+        syncRowsWithQuote(quoteWith([li('c1', '8" NB X 10 MM', 100, 85.29, 'ERW')]), st3, { onSave: true });
+        expect(st3.rows[0].kgm).toBe(85.29);
     });
 
     test('a kg/m typed here is kept while the quote has none, and follows the quote when it has', () => {
