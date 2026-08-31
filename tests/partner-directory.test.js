@@ -994,6 +994,63 @@ describe('+ Add partner — nothing is stored until something is typed', () => {
         expect(S.openId).toBe(D.contacts[0].id);
     });
 
+    test('a new person shows one phone box and one email box, with + for more', async () => {
+        // Asked for directly: typing a number should not start with hunting for a "+ phone"
+        // button. One of each is there from the start.
+        global.window.switchToDirectoryTab();
+        await flush();
+        press();
+        await flush();
+
+        const html = app.innerHTML;
+        expect((html.match(/data-pd-ph="0"/g) || []).length).toBeGreaterThan(0);
+        expect((html.match(/data-pd-em="0"/g) || []).length).toBeGreaterThan(0);
+        expect(html).toContain('data-pd-addph=');     // + phone, for a second one
+        expect(html).toContain('data-pd-addem=');     // + email
+        // exactly one of each — not two, and not a blank row per label
+        expect(html).not.toContain('data-pd-ph="1"');
+        expect(html).not.toContain('data-pd-em="1"');
+        // and the empty pair is NOT what gets stored
+        expect(posts).toEqual([]);
+    });
+
+    test('the blank pair does not make an empty card look filled in', async () => {
+        // The rows are added for the eye only. If they counted as content, pressing Add twice
+        // would be back to stacking empty rows, and the server would store them.
+        global.window.switchToDirectoryTab();
+        await flush();
+        press(); await flush();
+        press(); await flush();
+
+        expect(D.contacts).toHaveLength(1);
+        expect(posts).toEqual([]);
+    });
+
+    test('a person who really has two numbers still shows both', async () => {
+        // The default must fill a gap, never trim what is there.
+        const twoNumbers = partner({
+            id: 'p_two', company: 'Sri Logistics',
+            people: [{
+                name: 'Ravi', role: 'Sales',
+                phones: [{ label: 'Mobile', v: '9840000001' }, { label: 'Office', v: '4428000002' }],
+                emails: [{ label: 'Work', v: 'ravi@srilogistics.com' }],
+            }],
+        });
+        FETCH = () => Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ contacts: [twoNumbers], changes: [], pending: [], duplicates: [] }),
+        });
+        global.window.switchToDirectoryTab();
+        await flush();
+        S.openId = 'p_two';
+        global.window.switchToDirectoryTab();
+        await flush();
+
+        expect(app.innerHTML).toContain('data-pd-ph="1"');    // the second number survived
+        expect(app.innerHTML).toContain('9840000001');
+        expect(app.innerHTML).toContain('4428000002');
+    });
+
     test('a blank card left over from before is reused, not added beside', async () => {
         // The old bug already put empty rows in real directories. Pressing Add should tidy
         // one of those up rather than stack another on top of it.

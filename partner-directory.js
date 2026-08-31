@@ -649,7 +649,20 @@
             + '<p class="pd-tiny" style="margin-top:6px;">The first address on the first person is where enquiries go — but <b>every</b> address is matched against incoming email.</p>';
     }
 
-    function personCard(c, i) {
+    /**
+     * Every person shows one phone box and one email box straight away, with + for more.
+     * Typing a number should not start with hunting for a button. Blank rows are dropped on
+     * save (sanitizeLines), so an untouched pair is never stored — which is also what keeps
+     * "a card with nothing on it" still counting as blank.
+     */
+    function withOneOfEach(c) {
+        if (!(c.phones || []).length) c.phones = [{ label: 'Mobile', v: '' }];
+        if (!(c.emails || []).length) c.emails = [{ label: 'Work', v: '' }];
+        return c;
+    }
+
+    function personCard(person, i) {
+        var c = withOneOfEach(person);
         var lineRows = function (kind, labels, arr) {
             return (arr || []).map(function (x, j) {
                 return '<div class="pd-cline">'
@@ -1084,7 +1097,7 @@
                 save(false, ['people']);
             };
         });
-        on(card, '[data-pd-addperson]', function () { p.people.push({ name: '', role: '', phones: [{ label: 'Mobile', v: '' }], emails: [] }); save(true, ['people']); });
+        on(card, '[data-pd-addperson]', function () { p.people.push({ name: '', role: '', phones: [{ label: 'Mobile', v: '' }], emails: [{ label: 'Work', v: '' }] }); save(true, ['people']); });
         each(card, '[data-pd-delperson]', function (el) { el.onclick = function () { p.people.splice(Number(el.getAttribute('data-pd-delperson')), 1); save(true, ['people']); }; });
         each(card, '[data-pd-addph]', function (el) { el.onclick = function () { var c = p.people[Number(el.getAttribute('data-pd-addph'))]; (c.phones = c.phones || []).push({ label: 'Mobile', v: '' }); save(true, ['people']); }; });
         each(card, '[data-pd-addem]', function (el) { el.onclick = function () { var c = p.people[Number(el.getAttribute('data-pd-addem'))]; (c.emails = c.emails || []).push({ label: 'Work', v: '' }); save(true, ['people']); }; });
