@@ -294,7 +294,8 @@ module.exports = function createContactsRouter({ storage, openai }) {
         }
         try {
             const dir = await loadDirectory();
-            const parsed = await readAddition({ text, fileBase64, fileName }, dir.contacts);
+            const raw = await readAddition({ text, fileBase64, fileName }, dir.contacts);
+            const parsed = contactsLib.groundInText(raw, text, !!str(fileBase64));
             res.json(addDraftReply(parsed, dir.contacts, fileName, str(matchId)));
         } catch (error) {
             // Loud on purpose. A read that FAILED must never come back looking like "found
@@ -392,11 +393,18 @@ module.exports = function createContactsRouter({ storage, openai }) {
         // with an empty change list and a reassuring sentence. Nothing to show means nothing
         // was understood — say so, and leave nothing to approve (CLAUDE.md check #4).
         if (!lines.length) {
+            // Two very different silences. "I read it and it is all already there" must not be
+            // reported as "I could not read it" — the owner would rewrite a sentence that was
+            // perfectly clear.
+            const understood = contactsLib.findsFromExtraction(parsed).length > 0;
             return Object.assign({}, decided, {
                 mode: 'nothing', before, after: null, lines: [],
-                read: str(fileName)
-                    ? 'I could not make anything out of ' + str(fileName) + '. Try a clearer photo, or type what it says.'
-                    : 'I could not find a firm, a person or a product in that. Try writing it as a sentence, like "MSL now has 24 inch pipes too".',
+                read: understood
+                    ? (before ? 'Everything in that is already on ' + str(before.company) + '’s card. Nothing to change.'
+                        : 'I read that, but there was nothing in it to store.')
+                    : str(fileName)
+                        ? 'I could not make anything out of ' + str(fileName) + '. Try a clearer photo, or type what it says.'
+                        : 'I could not find a firm, a person or a product in that. Try writing it as a sentence, like "MSL now has 24 inch pipes too".',
             });
         }
         return Object.assign({}, decided, {

@@ -771,6 +771,12 @@ const ADD_JSON_SHAPE = '{"mode":"new|update|unsure","matchId":"","questions":[],
 
 const ADD_RULES = [
     'Never guess. Leave EMPTY anything you are not sure of, and never invent a number — not a price, a size, a minimum order or a phone number.',
+    'Fill ONLY the fields the text actually talks about. Every other field stays empty. If the text does not say what kind of firm they are, leave "role" EMPTY — do not work it out from what they sell.',
+    'A pipe, a size or a class the firm sells or stocks is a PRODUCT. Put it in "products", never in "notes". "24 inch pipes", "2 inch heavy GI", "sch 40 seamless" are all products.',
+    '"types" is only the broad family — GI, ERW, Seamless, SS, MS, Alloy — and only when the text names one. Do not work the family out from a size.',
+    'A person is "person", their number is "phone", their address is "email". One person per read.',
+    '"notes" is the LAST resort: only for something that fits none of the other fields, such as a credit term or a delivery habit. If it is a product, a person, a number, a place or a route, it belongs in that field and NOT in notes.',
+    'Never repeat in "notes" something you have already put in another field.',
     'Answer "update" ONLY when the text clearly names one firm in the list above. Copy that firm\'s id exactly into matchId.',
     'If it could be two of those firms, or you cannot tell whether it is one of them at all, answer "unsure": leave matchId empty, put the ids of the firms it might be in candidates, and put a short question in questions.',
     'Answer "new" only when the firm is plainly not in the list above. Leave matchId empty.',
@@ -778,6 +784,35 @@ const ADD_RULES = [
     '"read" is ONE short plain-English sentence saying what you understood, for a reader who is not technical. Example: "MSL already in your directory - adding 24 inch to their product range."',
     'Return the JSON and nothing else.',
 ];
+
+/**
+ * Worked examples, because the rules alone were not enough. Live, "MSL now has 24 inch pipes
+ * also" came back as a NOTE plus an invented role change — the one sentence the owner is most
+ * likely to type, filed in the one place it does not belong.
+ */
+const ADD_EXAMPLES = [
+    ['MSL now has 24 inch pipes also',
+        '{"mode":"update","matchId":"<MSL id>","products":[{"p":"24 inch pipes","spec":"","moq":0,"rule":""}],'
+        + '"notes":[],"read":"MSL already in your directory - adding 24 inch pipes to their range."}'],
+    ['new number for Ravi at Sri Balaji - 98400 12345',
+        '{"mode":"update","matchId":"<Sri Balaji id>","person":"Ravi","phone":"98400 12345",'
+        + '"notes":[],"read":"Adding a number for Ravi at Sri Balaji."}'],
+    ['Kumar has joined MSL, kumar@msl.com, he handles sales',
+        '{"mode":"update","matchId":"<MSL id>","person":"Kumar","email":"kumar@msl.com",'
+        + '"notes":[],"read":"Adding Kumar at MSL."}'],
+    ['Sri Balaji Steels, Coimbatore, they run lorries to Chennai, Ravi 98400 12345',
+        '{"mode":"new","company":"Sri Balaji Steels","city":"Coimbatore","role":"transporter",'
+        + '"person":"Ravi","phone":"98400 12345","routes":[{"from":"Coimbatore","to":"Chennai"}],'
+        + '"notes":[],"read":"Adding Sri Balaji Steels of Coimbatore as a new transporter."}'],
+    ['MSL want payment in 30 days now',
+        '{"mode":"update","matchId":"<MSL id>","notes":["Payment in 30 days"],'
+        + '"read":"Noting MSL\'s payment terms."}'],
+];
+
+function addExampleBlock() {
+    return ADD_EXAMPLES.map(([said, json]) =>
+        'Owner types: ' + said + '\nYou return: ' + json).join('\n\n');
+}
 
 function addPrompt({ text, fileName, firms }) {
     return 'A pipe dealership is adding a trade partner to its own directory by hand.\n'
@@ -787,6 +822,8 @@ function addPrompt({ text, fileName, firms }) {
         + firmLines(Array.isArray(firms) ? firms : []) + '\n\n'
         + 'Return STRICT JSON only, in exactly this shape:\n' + ADD_JSON_SHAPE + '\n\n'
         + 'Rules:\n' + ADD_RULES.map(r => '- ' + r).join('\n') + '\n\n'
+        + 'Examples (note how little is filled in — every untouched field stays empty):\n\n'
+        + addExampleBlock() + '\n\n'
         + (str(fileName) ? 'Attached file: ' + str(fileName) + '\n\n' : '')
         + 'What the owner typed or pasted:\n' + str(text);
 }
@@ -802,6 +839,33 @@ const ADD_DEFAULT_QUESTION = 'Is this a firm you already have, or a new one? '
  * through as a new card for a firm the owner already has. An id we cannot vouch for becomes
  * a question instead, which is the honest answer.
  */
+/**
+ * Drop anything the typed text does not actually support.
+ *
+ * The prompt is the first line and the model still steps over it: "MSL now has 24 inch pipes"
+ * came back proposing the firm was a DEALER, about a card that says transporter — from a
+ * sentence that says nothing about what they are. A value the owner never wrote is a guess,
+ * and a guess must not reach a card that already holds the truth.
+ *
+ * Only applied to TYPED text. When a file was attached the words are inside it, so there is
+ * nothing here to check against and the popup is what stands guard instead.
+ */
+// Stems, not whole words: the owner writes "lorries", "traders", "mills", "hauls".
+const ROLE_WORDS = /manufact|mill|plant|transport|lorr|truck|haul|freight|logistic|cargo|roadline|carrier|fabricat|deal|stockist|trad|suppl|distribut|fleet/i;
+
+function groundInText(parsed, text, hasFile) {
+    const p = Object.assign({}, (parsed && typeof parsed === 'object') ? parsed : {});
+    if (hasFile || !str(text)) return p;
+    const hay = lower(text).replace(/[^a-z0-9 ]+/g, ' ');
+    const says = v => {
+        const want = lower(v).replace(/[^a-z0-9 ]+/g, ' ').trim();
+        return !want || hay.indexOf(want) !== -1;
+    };
+    if (str(p.role) && !ROLE_WORDS.test(text)) p.role = '';
+    ['company', 'city', 'vehicles'].forEach(k => { if (str(p[k]) && !says(p[k])) p[k] = ''; });
+    return p;
+}
+
 function addDraftMode(parsed, firms, settledId) {
     const p = (parsed && typeof parsed === 'object') ? parsed : {};
     const list = (Array.isArray(firms) ? firms : []).filter(f => f && str(f.id));
@@ -996,6 +1060,7 @@ module.exports = {
     findsFromExtraction,
     firmsForPrompt,
     addPrompt,
+    groundInText,
     addDraftMode,
     addAfterCard,
     _test: { normalizeRole, sanitizePerson, sanitizePeople, splitTradeWord, isEmail,
@@ -1003,5 +1068,5 @@ module.exports = {
         emailConflict,
         addCandidates, applyAddFind, mergeStrings, mergeBranches, mergeProductInto,
         mergeRoutesInto, addNoteInto, addPersonInto, personIndexFor, splitList, firmLines,
-        sameFirmName, firmNameKey, diffPeople, personLine },
+        sameFirmName, firmNameKey, diffPeople, personLine, addExampleBlock },
 };
