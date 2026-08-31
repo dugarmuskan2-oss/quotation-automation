@@ -20,6 +20,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   Lead with the point in ordinary words, a few short lines or bullets — not sections and headers. Keep
   code detail brief or leave it out. Short matters as much as simple: a long reply in plain words still
   fails. Put any question for the user at the end, in one sentence.
+- **Super simple is the standard — write it the way you would say it out loud.** Plain words are not
+  enough on their own; these are the habits that actually make a reply land:
+  - **One idea per sentence.** If a sentence has a comma-then-because-then-however in it, split it.
+  - **Say the thing, not your reasoning about the thing.** "It uses AWS" — not "that's what this
+    machine reads, and it's almost certainly the same elsewhere, but I'd rather not claim both."
+    Uncertainty gets ONE short sentence: what you checked, what you didn't. Never a paragraph
+    explaining how you know or why you are being careful.
+  - **Everyday nouns.** *your computer* not "this machine"; *the live website* not "production";
+    *your price list* not "the rate file index"; *saved* not "persisted". If a word only exists
+    inside software, it does not belong in the reply.
+  - **Numbers beat adjectives.** "23 of 24 rows matched" is worth more than "it matched well".
+  - **Answer, then stop.** Don't add the walkthrough, the caveat and the offer unless asked. One
+    closing question, or none.
+  - Tables are good for lists of things to do or compare. Prose paragraphs longer than three lines
+    are not.
 - **A new feature idea is a discussion, not a build order.** When the user raises something new, talk it
   through — write no code and create no files until they explicitly say to build it. If they don't answer
   your scoping questions, that is *not* permission to proceed on assumed defaults.
