@@ -802,9 +802,13 @@ const ADD_DEFAULT_QUESTION = 'Is this a firm you already have, or a new one? '
  * through as a new card for a firm the owner already has. An id we cannot vouch for becomes
  * a question instead, which is the honest answer.
  */
-function addDraftMode(parsed, firms) {
+function addDraftMode(parsed, firms, settledId) {
     const p = (parsed && typeof parsed === 'object') ? parsed : {};
     const list = (Array.isArray(firms) ? firms : []).filter(f => f && str(f.id));
+    // The owner has already told us which firm this is by pressing its name. That settles it
+    // — asking the model again, or re-checking the name it guessed, can only unsettle it.
+    const settled = str(settledId) ? list.find(f => f.id === str(settledId)) : null;
+    if (settled) return { mode: 'update', matchId: settled.id, questions: [], candidates: [] };
     const match = list.find(f => f.id === str(p.matchId)) || null;
     const mode = lower(p.mode);
     const named = str(p.company);
@@ -886,6 +890,10 @@ function applyAddFind(card, x, src) {
     if (['person', 'phone', 'email'].indexOf(x.key) !== -1) return;
     if (x.key === 'types') { card.types = mergeStrings(card.types, splitList(x.value)); return; }
     if (x.key === 'branches') { card.branches = mergeBranches(card.branches, splitList(x.value)); return; }
+    // "other" is what we store when nobody knows what they are, so it is never news. Seen
+    // live: a line about 24 inch pipes turned a known TRANSPORTER into "other", which would
+    // have dropped them out of the freight list altogether.
+    if (x.key === 'role' && normalizeRole(x.value) === 'other' && str(card.role)) return;
     card[x.key] = x.value;
 }
 

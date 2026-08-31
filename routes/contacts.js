@@ -279,7 +279,7 @@ module.exports = function createContactsRouter({ storage, openai }) {
     // ran and Express answered with an HTML stack trace — for the headline case, a photo of a
     // visiting card.
     router.post('/contacts/add-draft', express.json({ limit: '8mb' }), async (req, res) => {
-        const { text, fileBase64, fileName } = req.body || {};
+        const { text, fileBase64, fileName, matchId } = req.body || {};
         if (!str(text) && !str(fileBase64)) {
             return res.status(400).json({ error: 'Nothing to read yet — type or paste something, or attach a file.' });
         }
@@ -295,7 +295,7 @@ module.exports = function createContactsRouter({ storage, openai }) {
         try {
             const dir = await loadDirectory();
             const parsed = await readAddition({ text, fileBase64, fileName }, dir.contacts);
-            res.json(addDraftReply(parsed, dir.contacts, fileName));
+            res.json(addDraftReply(parsed, dir.contacts, fileName, str(matchId)));
         } catch (error) {
             // Loud on purpose. A read that FAILED must never come back looking like "found
             // nothing here" — the owner would file it away as done and the firm never gets in.
@@ -377,8 +377,12 @@ module.exports = function createContactsRouter({ storage, openai }) {
         return JSON.parse(match[0]);
     }
 
-    function addDraftReply(parsed, contacts, fileName) {
-        const decided = contactsLib.addDraftMode(parsed, contactsLib.firmsForPrompt(contacts));
+    function addDraftReply(parsed, contacts, fileName, settledId) {
+        const decided = contactsLib.addDraftMode(
+            parsed, contactsLib.firmsForPrompt(contacts), settledId);
+        // Pressing a firm's name means "add this to THAT card", never "rename it to whatever
+        // the text called them" — the two names differing is why they were asked in the first place.
+        if (str(settledId) && parsed && typeof parsed === 'object') parsed = Object.assign({}, parsed, { company: '' });
         const before = decided.matchId
             ? (contacts.find(p => p && p.id === decided.matchId) || null) : null;
         const source = str(fileName) ? 'read from ' + str(fileName) : 'typed in';

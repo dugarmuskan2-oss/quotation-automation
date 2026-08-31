@@ -848,7 +848,7 @@
         if (!(list || []).length) return '';
         return '<p class="pd-tiny" style="margin:9px 0 5px;">If it is one of these, press it and it is read again for that firm:</p>'
             + list.map(function (c) {
-                return '<button data-pd-addpick="' + esc(c.company) + '" style="margin:0 5px 5px 0;">'
+                return '<button data-pd-addpick="' + esc(c.id) + '" style="margin:0 5px 5px 0;">'
                     + esc(c.company || '(no name)') + '</button>';
             }).join('');
     }
@@ -904,8 +904,10 @@
         render();
         var body = { text: str(a.text) };
         if (a.fileB64) { body.fileBase64 = a.fileB64; body.fileName = a.fileName; }
+        if (a.pickedId) body.matchId = a.pickedId;
         postJson('/contacts/add-draft', body, function (d) { S.add.draft = d; }, function () {
             S.add.reading = false;
+            S.add.pickedId = '';        // answered; a later read starts from the question again
             // This tab's failures belong beside its own box — the directory's banner says
             // "your last edit is NOT stored", and nothing was being edited here.
             S.add.error = D.saveError; D.saveError = '';
@@ -947,8 +949,11 @@
         on(app, '[data-pd-addapply]', applyAdd);
         each(app, '[data-pd-addpick]', function (el) {
             el.onclick = function () {
-                var name = el.getAttribute('data-pd-addpick');
-                S.add.text = (str(S.add.text) + '\nThis is about ' + name + '.').trim();
+                // Send the firm's ID and leave what was typed exactly as it is. Appending
+                // "This is about X." and re-asking put the answer INTO the question: the model
+                // read the added sentence as the whole message and came back having found
+                // nothing, so pressing the firm's own name lost the enquiry.
+                S.add.pickedId = el.getAttribute('data-pd-addpick');
                 readAdd();
             };
         });
