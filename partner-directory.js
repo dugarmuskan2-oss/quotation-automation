@@ -414,7 +414,7 @@
 
     // ── State for the tool page ───────────────────────────────────────────────
     var S = { tab: 'dir', filter: 'all', openId: null, openPending: null, openChange: null,
-              find: { text: '', state: 'idle', need: null }, busy: {} };
+              find: { text: '', state: 'idle', need: null }, busy: {}, add: freshAdd() };
 
     function byId(id) {
         var p = D.contacts.filter(function (x) { return x.id === id; })[0];
@@ -431,12 +431,13 @@
         app.innerHTML = '<h1>📇 Partner Directory</h1>'
             + '<div class="pd-tabs">'
             + '<button class="pd-tab' + (S.tab === 'dir' ? ' on' : '') + '" data-pd-tab="dir">Directory</button>'
+            + '<button class="pd-tab' + (S.tab === 'add' ? ' on' : '') + '" data-pd-tab="add">Add</button>'
             + '<button class="pd-tab' + (S.tab === 'changes' ? ' on' : '') + '" data-pd-tab="changes">Recent changes'
             + (waiting ? ' <span class="pd-pill pd-pill-warn">' + waiting + '</span>' : '') + '</button></div>'
             + (D.saveError ? '<div class="pd-error">Save failed: ' + esc(D.saveError) + ' — your last edit is NOT stored. Edit the field again to retry.</div>' : '')
             + (D.loadError ? '<div class="pd-error">' + esc(D.loadError) + ' <button data-pd-reload="1">Try again</button></div>'
                 : !D.loaded ? '<p class="pd-muted" style="padding:20px;text-align:center;">Loading…</p>'
-                    : (S.tab === 'dir' ? dirView() : changesView()));
+                    : S.tab === 'dir' ? dirView() : S.tab === 'add' ? addView() : changesView());
         bind(app);
     }
 
@@ -784,6 +785,186 @@
     }
     function ro(label, v) { return '<div class="pd-fld"><label>' + esc(label) + '</label><div class="pd-ro">' + esc(v) + '</div></div>'; }
 
+    // ── The Add tab: one box in, a popup you must approve, then it is stored ──
+    // Everything here is for partners found OUTSIDE the Gmail label — a brochure handed
+    // over at a shop, a rate list, a visiting card, or just what someone said on the phone.
+    // The server reads it and proposes; nothing reaches the directory without the popup.
+
+    var MAX_ADD_FILE = 3 * 1024 * 1024;   // beyond this the request is refused server-side
+
+    function freshAdd() {
+        return { text: '', fileName: '', fileB64: '', reading: false, applying: false,
+                 error: '', applyError: '', notice: '', draft: null };
+    }
+
+    function addView() {
+        return '<div class="pd-read"><p class="pd-tiny">Anything you picked up away from your inbox — a brochure, '
+            + 'a rate list, a photo of a visiting card, or just what someone told you on the phone. '
+            + 'Put it in below and press <b>Read it</b>. You will be shown exactly what would be added or '
+            + 'changed, and <b>nothing is stored until you press Apply</b>. If it cannot tell, it will ask.</p></div>'
+            + addBoxHtml()
+            + (S.add.error ? '<div class="pd-error">' + esc(S.add.error) + '</div>' : '')
+            + (S.add.notice ? '<div class="pd-read"><p class="pd-muted">' + esc(S.add.notice) + '</p></div>' : '')
+            + addNothingHtml() + addQuestionsHtml() + addPopupHtml();
+    }
+
+    function addBoxHtml() {
+        var a = S.add;
+        return '<div class="pd-addbox">'
+            + '<textarea id="pdAddIn" placeholder="Type it or paste it — e.g. MSL now has 24 inch pipes also. '
+            + 'Or: Sri Balaji Steels, Coimbatore, Ravi 98400 12345, deals in GI and ERW.">' + esc(a.text) + '</textarea>'
+            + '<div class="pd-row" style="margin-top:9px;">'
+            + '<label class="pd-addline pd-file">📎 Choose a file<input type="file" id="pdAddFile" hidden></label>'
+            + (a.fileName
+                ? '<span class="pd-tag">' + esc(a.fileName) + ' <span class="pd-x" data-pd-addfileclear="1">✕</span></span>'
+                : '<span class="pd-tiny">A PDF or a photo, up to 3 MB.</span>')
+            + '<span class="pd-sp"></span>'
+            + '<button class="pd-prim" data-pd-addread="1"' + (a.reading ? ' disabled' : '') + '>'
+            + (a.reading ? 'Reading…' : 'Read it') + '</button></div></div>';
+    }
+
+    // Nothing was understood. Say it plainly, and offer nothing to approve — an empty change
+    // list under an Apply button is the worst of both.
+    function addNothingHtml() {
+        var d = S.add.draft;
+        if (!d || d.mode !== 'nothing') return '';
+        return '<div class="pd-read"><p class="pd-muted">' + esc(d.read) + '</p>'
+            + '<p class="pd-tiny" style="margin-top:6px;">Nothing was added.</p></div>';
+    }
+
+    function addQuestionsHtml() {
+        var d = S.add.draft;
+        if (!d || d.mode !== 'unsure') return '';
+        return '<div class="pd-read">'
+            + (d.read ? '<p class="pd-muted" style="margin-bottom:7px;">' + esc(d.read) + '</p>' : '')
+            + '<p class="pd-tiny">Nothing was added — this has to be settled first:</p>'
+            + (d.questions || []).map(function (q) { return '<p class="pd-q">• ' + esc(q) + '</p>'; }).join('')
+            + addCandidatesHtml(d.candidates)
+            + '<p class="pd-tiny" style="margin-top:9px;">Or answer in the box above and press <b>Read it</b> again.</p></div>';
+    }
+
+    // Naming the firm turns a guess into a settled question — the next read is answering it.
+    function addCandidatesHtml(list) {
+        if (!(list || []).length) return '';
+        return '<p class="pd-tiny" style="margin:9px 0 5px;">If it is one of these, press it and it is read again for that firm:</p>'
+            + list.map(function (c) {
+                return '<button data-pd-addpick="' + esc(c.company) + '" style="margin:0 5px 5px 0;">'
+                    + esc(c.company || '(no name)') + '</button>';
+            }).join('');
+    }
+
+    // The approval step. Nothing may reach the directory except through this.
+    function addPopupHtml() {
+        var d = S.add.draft;
+        if (!d || (d.mode !== 'new' && d.mode !== 'update')) return '';
+        return '<div class="pd-modal" data-pd-addcancel="backdrop">'
+            + '<div class="pd-modal-box" role="dialog" aria-modal="true">'
+            + '<div class="pd-sec" style="margin-top:0;">Check this before it goes in</div>'
+            + (d.read ? '<p class="pd-muted">' + esc(d.read) + '</p>' : '')
+            + '<p class="pd-modal-what">' + addPopupHeadHtml(d) + '</p>'
+            + diffHtml({ lines: d.lines })
+            + (S.add.applyError ? '<div class="pd-error">' + esc(S.add.applyError) + '</div>' : '')
+            + '<div class="pd-row" style="margin-top:12px;"><span class="pd-sp"></span>'
+            + '<button data-pd-addcancel="1"' + (S.add.applying ? ' disabled' : '') + '>Cancel</button>'
+            + '<button class="pd-prim" data-pd-addapply="1"' + (S.add.applying ? ' disabled' : '') + '>'
+            + (S.add.applying ? 'Adding…' : 'Apply') + '</button></div></div></div>';
+    }
+
+    function addPopupHeadHtml(d) {
+        var after = str(d.after && d.after.company) || '(no name given)';
+        if (d.mode === 'new') return 'This <b>adds a new firm</b> — ' + esc(after) + '.';
+        return 'This <b>updates ' + esc(str(d.before && d.before.company) || after) + '</b>, a firm you already have.';
+    }
+
+    // ── The Add tab: reading and applying ─────────────────────────────────────
+
+    function chooseAddFile(f) {
+        if (!f) return;
+        if (f.size > MAX_ADD_FILE) {
+            S.add.fileName = ''; S.add.fileB64 = '';
+            S.add.error = 'That file is ' + (f.size / 1048576).toFixed(1) + ' MB. Only 3 MB can be read at once — '
+                + 'take the photo smaller, or use just the page that matters.';
+            render(); return;
+        }
+        var r = new FileReader();
+        r.onload = function () {
+            S.add.fileName = f.name;
+            S.add.fileB64 = String(r.result || '').split(',')[1] || '';
+            S.add.error = ''; render();
+        };
+        r.onerror = function () { S.add.error = 'That file could not be opened. Try another one.'; render(); };
+        r.readAsDataURL(f);
+    }
+
+    function readAdd() {
+        var a = S.add;
+        if (a.reading) return;   // a second click must never buy a second paid AI run
+        if (!str(a.text) && !a.fileB64) { a.error = 'Type something, or choose a file, first.'; render(); return; }
+        a.reading = true; a.error = ''; a.notice = ''; a.applyError = ''; a.draft = null;
+        render();
+        var body = { text: str(a.text) };
+        if (a.fileB64) { body.fileBase64 = a.fileB64; body.fileName = a.fileName; }
+        postJson('/contacts/add-draft', body, function (d) { S.add.draft = d; }, function () {
+            S.add.reading = false;
+            // This tab's failures belong beside its own box — the directory's banner says
+            // "your last edit is NOT stored", and nothing was being edited here.
+            S.add.error = D.saveError; D.saveError = '';
+        });
+    }
+
+    function applyAdd() {
+        var d = S.add.draft;
+        if (S.add.applying || !d) return;   // one Apply is one write, however many times it is pressed
+        S.add.applying = true; S.add.applyError = ''; render();
+        postJson('/contacts/add-apply', { after: d.after, matchId: d.matchId || '' }, addApplied, function () {
+            S.add.applying = false;
+            S.add.applyError = D.saveError; D.saveError = '';
+        });
+    }
+
+    function addApplied(r) {
+        if (r && r.skipped) {
+            S.add.draft = null;
+            S.add.notice = 'There was not enough there to make a card, so nothing was added. '
+                + 'Give it a firm name or someone to contact and read it again.';
+            return;
+        }
+        var id = r && r.partner && r.partner.id;
+        S.add = freshAdd();                 // the box is emptied, so the same file cannot go in twice
+        S.tab = 'dir';
+        loadDirectory(function () { if (id) openCard(id); else render(); });
+    }
+
+    function bindAdd(app) {
+        var box = $('pdAddIn');
+        if (box) box.oninput = function () { S.add.text = this.value; };
+        var file = $('pdAddFile');
+        // Cleared the moment it is read: a picker left holding yesterday's brochure is how
+        // one firm's details end up on another firm's card.
+        if (file) file.onchange = function () { var f = this.files && this.files[0]; this.value = ''; chooseAddFile(f); };
+        on(app, '[data-pd-addfileclear]', function () { S.add.fileName = ''; S.add.fileB64 = ''; render(); });
+        on(app, '[data-pd-addread]', readAdd);
+        on(app, '[data-pd-addapply]', applyAdd);
+        each(app, '[data-pd-addpick]', function (el) {
+            el.onclick = function () {
+                var name = el.getAttribute('data-pd-addpick');
+                S.add.text = (str(S.add.text) + '\nThis is about ' + name + '.').trim();
+                readAdd();
+            };
+        });
+        bindAddCancel(app);
+    }
+
+    function bindAddCancel(app) {
+        each(app, '[data-pd-addcancel]', function (el) {
+            el.onclick = function (e) {
+                if (S.add.applying) return;
+                if (el.getAttribute('data-pd-addcancel') === 'backdrop' && e.target !== el) return;
+                S.add.draft = null; S.add.applyError = ''; render();
+            };
+        });
+    }
+
     // ── Recent changes: the pending queue + the applied log ───────────────────
     function changesView() {
         return '<div class="pd-sec">Waiting for you'
@@ -964,7 +1145,7 @@
         });
         on(app, '[data-pd-reload]', function () { loadDirectory(render); });
         each(app, '[data-pd-filter]', function (el) { el.onclick = function () { S.filter = el.getAttribute('data-pd-filter'); S.openId = null; render(); }; });
-        bindFinder(app); bindListAndCard(app); bindChanges(app);
+        bindFinder(app); bindAdd(app); bindListAndCard(app); bindChanges(app);
     }
 
     function bindFinder(app) {

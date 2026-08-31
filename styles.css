@@ -1383,9 +1383,23 @@
 .pd-pickrow { display: flex; gap: 8px; align-items: flex-start; padding: 5px 0; cursor: pointer; font-size: 13px; }
 .pd-pickrow input { width: auto; margin-top: 3px; }
 .pd-note-line { font-style: italic; }
+
+/* The Add tab: one box, and the popup that must be approved before anything is stored. */
+.pd-addbox { border: 1px solid #C9B8E8; background: #F8F5FE; border-radius: 10px; padding: 12px 13px; }
+.pd-addbox textarea { min-height: 92px; resize: vertical; }
+.pd-file { cursor: pointer; }
+.pd-q { font-size: 13px; margin: 4px 0; color: #20201d; }
+.pd-modal { position: fixed; top: 0; right: 0; bottom: 0; left: 0; background: rgba(20,20,18,.45);
+    display: flex; align-items: center; justify-content: center; padding: 18px; z-index: 9000; }
+.pd-modal-box { background: #fff; border-radius: 12px; padding: 16px 18px; width: 100%; max-width: 560px;
+    max-height: 84vh; overflow-y: auto; box-shadow: 0 12px 40px rgba(0,0,0,.28); }
+.pd-modal-what { font-size: 13.5px; margin: 9px 0 0; color: #20201d; }
+
 @media (max-width: 640px) {
     .pd-grid2, .pd-grid3, .pd-person-cols { grid-template-columns: 1fr; }
     .pd-person-top { grid-template-columns: 1fr auto; }
     .pd-person-top > input:first-child { grid-column: 1 / -1; }
     .pd-szrow { grid-template-columns: 46px 60px 60px 1fr 22px; }
+    .pd-modal { padding: 10px; align-items: flex-start; }
+    .pd-modal-box { max-height: 90vh; }
 }

@@ -37,6 +37,29 @@ function conflictMessage(clash) {
         + '. One address belongs to one company — remove it there first, or add this person to that card.';
 }
 
+function str(v) { return String(v == null ? '' : v).trim(); }
+
+/**
+ * What an Add-tab apply is allowed to write onto a card that already exists.
+ *
+ * Everything the AI can propose, and nothing else. A wholesale write would put back the
+ * browser's minutes-old copy of the fields the APP maintains — enq, rep, last — so an
+ * enquiry that went out between pressing Read and pressing Apply would have its count
+ * silently rolled back. `checked` is stamped by mergePartner on every scoped write, which
+ * is right: reading a fresh brochure into a card IS checking it.
+ */
+const ADD_FIELDS = ['company', 'role', 'roleOther', 'city', 'address', 'branches', 'types',
+    'moq', 'products', 'rules', 'routes', 'vehicles', 'partLoad', 'notes', 'people', 'images'];
+
+/**
+ * Only what the reader can actually see. Anything else was base64'd as a fake JPEG and sent
+ * to the model anyway, which comes back having read nothing — and a Word or Excel rate list
+ * is a perfectly normal thing to hand it, since the quote side accepts both.
+ */
+function readableFile(name) {
+    return /\.(pdf|jpe?g|png|webp|gif)$/i.test(str(name));
+}
+
 function parseBlob(content, fallback) {
     try {
         const parsed = JSON.parse(content);
@@ -245,6 +268,139 @@ module.exports = function createContactsRouter({ storage, openai }) {
             res.status(500).json({ error: 'Could not discard the item: ' + error.message });
         }
     });
+
+    // ── the Add tab: partners the owner sources by hand ───────────────────────
+
+    // READ ONLY. The owner drops in a file and/or types into the one box; the AI works out
+    // whether this is a new firm or more detail about one already held, and we hand back
+    // exactly what WOULD change. Nothing is written here — not the directory, not the queue.
+    // 8mb, not 4: base64 makes a file about a third bigger, so the 3 MB photo the browser
+    // accepts arrives as ~4.2 MB of JSON. At a 4mb limit body-parser threw before the handler
+    // ran and Express answered with an HTML stack trace — for the headline case, a photo of a
+    // visiting card.
+    router.post('/contacts/add-draft', express.json({ limit: '8mb' }), async (req, res) => {
+        const { text, fileBase64, fileName } = req.body || {};
+        if (!str(text) && !str(fileBase64)) {
+            return res.status(400).json({ error: 'Nothing to read yet — type or paste something, or attach a file.' });
+        }
+        if (str(fileBase64) && !readableFile(fileName)) {
+            return res.status(400).json({
+                error: 'I can read a PDF or a photo (jpg, png). "' + str(fileName) + '" is neither — '
+                    + 'export it as a PDF, or take a photo of the page.',
+            });
+        }
+        if (!openai) {
+            return res.status(500).json({ error: 'The AI reader is switched off, so nothing could be read. You can still add this firm by hand in the Directory tab.' });
+        }
+        try {
+            const dir = await loadDirectory();
+            const parsed = await readAddition({ text, fileBase64, fileName }, dir.contacts);
+            res.json(addDraftReply(parsed, dir.contacts, fileName));
+        } catch (error) {
+            // Loud on purpose. A read that FAILED must never come back looking like "found
+            // nothing here" — the owner would file it away as done and the firm never gets in.
+            res.status(500).json({
+                error: 'Could not read that: ' + error.message
+                    + '. Nothing was changed — try again, or add the firm by hand in the Directory tab.',
+            });
+        }
+    });
+
+    // The ONLY write from the Add tab, and only once the owner has seen the change and
+    // pressed Apply. Goes through mergePartner (one address, one company) and logs a change
+    // entry so it can be undone from Recent changes.
+    router.post('/contacts/add-apply', express.json({ limit: '1mb' }), async (req, res) => {
+        try {
+            const { after, matchId } = req.body || {};
+            const dir = await loadDirectory();
+            const before = str(matchId) ? (dir.contacts.find(p => p && p.id === str(matchId)) || null) : null;
+            if (str(matchId) && !before) {
+                return res.status(404).json({ error: 'That firm is no longer in your directory — it may have been deleted. Read this again to add it fresh.' });
+            }
+            const merged = contactsLib.mergePartner(
+                dir.contacts, addTarget(after, before), before ? ADD_FIELDS : null);
+            if (merged.conflict) return res.status(409).json({ error: conflictMessage(merged.conflict) });
+            if (merged.empty) return res.json({ ok: true, skipped: 'empty' });
+            await saveDirectory(logAddition(dir, merged, before));
+            res.json({ ok: true, partner: merged.partner });
+        } catch (error) {
+            res.status(500).json({ error: 'Could not add that to the directory: ' + error.message });
+        }
+    });
+
+    // The STORED card decides which firm this is, never the id on the copy the browser sent
+    // back: a tab left open since before a rename must not be able to aim the write elsewhere.
+    // With no match the id is left alone on purpose — pressing Apply twice then lands on the
+    // card the first press created, instead of standing up a second copy of the same firm.
+    function addTarget(after, before) {
+        const card = (after && typeof after === 'object') ? after : {};
+        return before ? Object.assign({}, card, { id: before.id }) : card;
+    }
+
+    function logAddition(dir, merged, before) {
+        const entry = contactsLib.changeEntry(
+            before ? merged.partner.company + ' updated' : 'Added ' + merged.partner.company,
+            addChangeDetail(before, merged.partner), 'Added by hand',
+            merged.partner.id, before, merged.partner);
+        return { contacts: merged.contacts, changes: contactsLib.pushChange(dir.changes, entry) };
+    }
+
+    function addChangeDetail(before, after) {
+        const n = contactsLib.diffLines(before, after).length;
+        return n ? n + ' detail' + (n === 1 ? '' : 's') + ' you checked and applied'
+            : 'Applied from the Add tab.';
+    }
+
+    // Throws rather than returning nothing — see the handler's catch above.
+    async function readAddition(input, contacts) {
+        const firms = contactsLib.firmsForPrompt(contacts);
+        const parts = [{ type: 'input_text', text: contactsLib.addPrompt({
+            text: input.text, fileName: input.fileName, firms }) }];
+        const attached = await attachFilePart({
+            fileBase64: str(input.fileBase64),
+            file: str(input.fileName) || 'attachment',
+            kind: /\.pdf$/i.test(str(input.fileName)) ? 'pdf' : 'photo',
+        });
+        // Reading the typed text while quietly dropping the attached brochure would look like
+        // a clean read of half the information. Say it failed instead.
+        if (str(input.fileBase64) && !attached) throw new Error('the attached file could not be read');
+        if (attached) parts.push(attached);
+        const response = await openai.responses.create({
+            model: 'gpt-4o-mini', input: [{ role: 'user', content: parts }],
+        });
+        return parseAddJson(String(response.output_text || ''));
+    }
+
+    function parseAddJson(text) {
+        const match = text.match(/\{[\s\S]*\}/);
+        if (!match) throw new Error('the reply did not come back in the expected form');
+        return JSON.parse(match[0]);
+    }
+
+    function addDraftReply(parsed, contacts, fileName) {
+        const decided = contactsLib.addDraftMode(parsed, contactsLib.firmsForPrompt(contacts));
+        const before = decided.matchId
+            ? (contacts.find(p => p && p.id === decided.matchId) || null) : null;
+        const source = str(fileName) ? 'read from ' + str(fileName) : 'typed in';
+        const after = contactsLib.addAfterCard(parsed, before, source);
+        const lines = contactsLib.diffLines(before, after);
+        // A blurry photo the model made nothing of used to come back as a confident "new firm"
+        // with an empty change list and a reassuring sentence. Nothing to show means nothing
+        // was understood — say so, and leave nothing to approve (CLAUDE.md check #4).
+        if (!lines.length) {
+            return Object.assign({}, decided, {
+                mode: 'nothing', before, after: null, lines: [],
+                read: str(fileName)
+                    ? 'I could not make anything out of ' + str(fileName) + '. Try a clearer photo, or type what it says.'
+                    : 'I could not find a firm, a person or a product in that. Try writing it as a sentence, like "MSL now has 24 inch pipes too".',
+            });
+        }
+        return Object.assign({}, decided, {
+            before, after, lines,
+            read: str(parsed && parsed.read).slice(0, 300)
+                || 'Read what you gave me — check the change below before applying.',
+        });
+    }
 
     // Best-effort AI read of the email AND its attachment. A failure returns [] — the owner
     // still sees the raw email in the queue and fills the card by hand; it must never block

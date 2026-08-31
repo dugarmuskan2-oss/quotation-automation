@@ -582,17 +582,78 @@ function diffLines(before, now) {
     const was = k => str(b[k]);
     [['company', 'Company'], ['city', 'City'], ['address', 'Address'], ['vehicles', 'Vehicles']]
         .forEach(([k, label]) => { if (was(k) !== str(now[k])) out.push({ label, from: was(k), to: str(now[k]) }); });
+    diffRole(out, b, now, !before);
     if (num(b.moq, 0) !== num(now.moq, 0)) out.push({ label: 'Overall MOQ', from: num(b.moq, 0) + ' T', to: num(now.moq, 0) + ' T' });
     diffList(out, 'Pipe types', (b.types || []).join(', '), (now.types || []).join(', '));
     diffProducts(out, b, now);
+    diffPeople(out, b, now);
     diffAdditions(out, b, now);
     return out;
+}
+
+/**
+ * Whether they are a dealer or a transporter decides which list they appear in, so it belongs
+ * on the approval screen. Shown for a brand-new card even when it fell back to "dealer" — the
+ * owner should see the guess before it becomes a fact, not discover it in the rankings.
+ */
+function diffRole(out, b, now, isNew) {
+    if (!isNew && (!str(b.role) || str(b.role) === str(now.role))) return;
+    if (isNew && !str(now.role)) return;
+    out.push({ label: 'They are a', from: str(b.role), to: str(now.role) });
+}
+
+/**
+ * People, phones and addresses — the commonest thing anyone adds, and for a long time the
+ * one thing this list said nothing about. A blank "what would change" screen is worse than
+ * no screen: the owner is being asked to approve something they cannot see.
+ */
+function diffPeople(out, b, now) {
+    const held = {};
+    (b.people || []).forEach(c => { held[personKey(c)] = c; });
+    (now.people || []).forEach(c => {
+        const had = held[personKey(c)];
+        if (!had) {
+            if (personLine(c)) out.push({ label: 'Contact added', from: '', to: personLine(c) });
+            return;
+        }
+        diffLinesOf(out, 'Phone added', had.phones, c.phones, c);
+        diffLinesOf(out, 'Address added', had.emails, c.emails, c);
+    });
+}
+
+function personKey(c) { return lower((c && c.name) || '') || '(no name)'; }
+
+/**
+ * Empty when there is no actual person here. Every card carries a placeholder row whose only
+ * content is the words "Main contact" — reporting that as a contact added would put a line on
+ * the approval screen for a card that says nothing at all.
+ */
+function personLine(c) {
+    const reach = [];
+    ((c && c.phones) || []).forEach(x => { if (str(x.v)) reach.push(str(x.v)); });
+    ((c && c.emails) || []).forEach(x => { if (str(x.v)) reach.push(str(x.v)); });
+    if (!str(c && c.name) && !reach.length) return '';
+    const bits = [str(c && c.name) || '(no name)'];
+    if (str(c && c.role)) bits.push(str(c.role));
+    return bits.concat(reach).join(' · ');
+}
+
+function diffLinesOf(out, label, hadList, nowList, person) {
+    const had = (hadList || []).map(x => lower(x.v));
+    (nowList || []).forEach(x => {
+        if (!str(x.v) || had.indexOf(lower(x.v)) !== -1) return;
+        out.push({ label, from: '', to: str(x.v) + ' — ' + (str(person && person.name) || 'no name') });
+    });
 }
 
 function diffList(out, label, a, bVal) { if (a !== bVal) out.push({ label, from: a, to: bVal }); }
 
 function diffProducts(out, b, now) {
-    const line = y => 'min ' + num(y.moq, 0) + ' T' + (y.rule ? ' · ' + y.rule : '');
+    // "min 0 T" is a guessed number wearing a fact's clothes: zero is what we store when
+    // nobody said what the minimum is, and a pipe trader reads it as "no minimum order".
+    // Say we do not know instead (CLAUDE.md check #5).
+    const line = y => (num(y.moq, 0) > 0 ? 'min ' + num(y.moq, 0) + ' T' : 'no minimum given')
+        + (y.rule ? ' · ' + y.rule : '');
     const had = {};
     (b.products || []).forEach(x => { had[lower(x.p)] = x; });
     (now.products || []).forEach(x => {
@@ -677,6 +738,233 @@ function findsFromExtraction(parsed) {
     return out;
 }
 
+// ── the Add tab: added by hand, outside the Gmail label ─────────────────────
+
+/**
+ * The firms the model is allowed to match against — id, name, city, pipe types.
+ *
+ * Every card goes in, never a slice of them. A firm left out of this list is a firm the model
+ * reports as brand new, and the owner ends up with a second card for a partner they already
+ * have — the exact duplicate the whole directory is built to prevent. A longer prompt is the
+ * cheaper mistake.
+ */
+function firmsForPrompt(contacts) {
+    return (Array.isArray(contacts) ? contacts : [])
+        .filter(p => p && str(p.id))
+        .map(p => ({
+            id: str(p.id), company: str(p.company), city: str(p.city),
+            types: (p.types || []).join(', '),
+        }));
+}
+
+function firmLines(firms) {
+    if (!firms.length) return '(the directory is empty — anything you read is a new firm)';
+    return firms.map(f => f.id + ' | ' + (f.company || '(no name yet)')
+        + (f.city ? ' | ' + f.city : '') + (f.types ? ' | ' + f.types : '')).join('\n');
+}
+
+const ADD_JSON_SHAPE = '{"mode":"new|update|unsure","matchId":"","questions":[],"candidates":[],'
+    + '"company":"","role":"dealer|manufacturer|transporter|fabricator|other","city":"",'
+    + '"types":"comma list of GI/ERW/Seamless/SS/MS/Alloy","person":"","phone":"","email":"",'
+    + '"products":[{"p":"","spec":"","moq":0,"rule":""}],"routes":[{"from":"","to":""}],'
+    + '"notes":["short facts worth keeping"],"read":""}';
+
+const ADD_RULES = [
+    'Never guess. Leave EMPTY anything you are not sure of, and never invent a number — not a price, a size, a minimum order or a phone number.',
+    'Answer "update" ONLY when the text clearly names one firm in the list above. Copy that firm\'s id exactly into matchId.',
+    'If it could be two of those firms, or you cannot tell whether it is one of them at all, answer "unsure": leave matchId empty, put the ids of the firms it might be in candidates, and put a short question in questions.',
+    'Answer "new" only when the firm is plainly not in the list above. Leave matchId empty.',
+    'Questions must be plain English a pipe trader can answer in one line. No jargon, no ids, no field names.',
+    '"read" is ONE short plain-English sentence saying what you understood, for a reader who is not technical. Example: "MSL already in your directory - adding 24 inch to their product range."',
+    'Return the JSON and nothing else.',
+];
+
+function addPrompt({ text, fileName, firms }) {
+    return 'A pipe dealership is adding a trade partner to its own directory by hand.\n'
+        + 'Read what the owner gave you below (and any attached file) and decide whether it is a\n'
+        + 'NEW firm, an UPDATE to a firm they already hold, or whether you cannot tell.\n\n'
+        + 'FIRMS ALREADY IN THE DIRECTORY (id | company | city | pipe types):\n'
+        + firmLines(Array.isArray(firms) ? firms : []) + '\n\n'
+        + 'Return STRICT JSON only, in exactly this shape:\n' + ADD_JSON_SHAPE + '\n\n'
+        + 'Rules:\n' + ADD_RULES.map(r => '- ' + r).join('\n') + '\n\n'
+        + (str(fileName) ? 'Attached file: ' + str(fileName) + '\n\n' : '')
+        + 'What the owner typed or pasted:\n' + str(text);
+}
+
+const ADD_DEFAULT_QUESTION = 'Is this a firm you already have, or a new one? '
+    + 'Tell me which firm it is and I will read it again.';
+
+/**
+ * Which firm the model actually landed on — checked against the real directory, never taken
+ * on trust.
+ *
+ * A model answering "update" with an id the directory does not hold would otherwise sail
+ * through as a new card for a firm the owner already has. An id we cannot vouch for becomes
+ * a question instead, which is the honest answer.
+ */
+function addDraftMode(parsed, firms) {
+    const p = (parsed && typeof parsed === 'object') ? parsed : {};
+    const list = (Array.isArray(firms) ? firms : []).filter(f => f && str(f.id));
+    const match = list.find(f => f.id === str(p.matchId)) || null;
+    const mode = lower(p.mode);
+    const named = str(p.company);
+    // The model will happily answer "update" pointing at whichever card is nearest, even when
+    // the firm in the text is not in the directory at all. Seen live: "MSL now has 24 inch
+    // pipes" came back as an update to ARC LIMITED, renaming it. The id existing is not
+    // evidence it is the right firm — the NAME has to agree, or we ask instead of guessing.
+    if (mode === 'update' && match && named && !sameFirmName(named, match.company)) {
+        return {
+            mode: 'unsure', matchId: '',
+            questions: ['You wrote “' + named + '”, but the closest card I have is “'
+                + str(match.company) + '”. Is this the same firm, or one you have not added yet?'],
+            candidates: addCandidates([match.company].concat(p.candidates || []), list),
+        };
+    }
+    if (mode === 'update' && match) return { mode: 'update', matchId: match.id, questions: [], candidates: [] };
+    if (mode === 'new' && !match) return { mode: 'new', matchId: '', questions: [], candidates: [] };
+    const asked = sanitizeStrings(p.questions, 5).map(q => q.slice(0, 300));
+    return {
+        mode: 'unsure',
+        matchId: match ? match.id : '',
+        questions: asked.length ? asked : [ADD_DEFAULT_QUESTION],
+        candidates: addCandidates(p.candidates, list),
+    };
+}
+
+/**
+ * Loose enough for the ways one firm gets written — "MSL" for "M S L Tubes", "Jco Pipe" for
+ * "JCO PIPE PVT LTD" — and strict enough that two different firms never read as one. Trade
+ * suffixes carry no identity, so they are dropped before comparing.
+ */
+const NAME_NOISE = /\b(pvt|private|ltd|limited|llp|inc|co|company|and|the|&)\b/g;
+function firmNameKey(name) {
+    return lower(name).replace(/[^a-z0-9 ]+/g, ' ').replace(NAME_NOISE, ' ')
+        .replace(/\s+/g, ' ').trim();
+}
+function sameFirmName(a, b) {
+    const x = firmNameKey(a), y = firmNameKey(b);
+    if (!x || !y) return true;              // nothing to disagree about
+    if (x === y) return true;
+    const squashed = s => s.replace(/ /g, '');
+    return squashed(x).indexOf(squashed(y)) === 0 || squashed(y).indexOf(squashed(x)) === 0;
+}
+
+/** Only firms that really exist — a made-up name in `candidates` is dropped, not shown. */
+function addCandidates(raw, firms) {
+    const out = [];
+    (Array.isArray(raw) ? raw : []).slice(0, 8).forEach(c => {
+        const key = lower(c && typeof c === 'object' ? (c.id || c.company) : c);
+        const hit = key && firms.find(f => lower(f.id) === key || (f.company && lower(f.company) === key));
+        if (hit && !out.some(o => o.id === hit.id)) out.push({ id: hit.id, company: str(hit.company) });
+    });
+    return out;
+}
+
+/**
+ * The card as it WOULD look: the BEFORE card with what was read written onto it. Pure.
+ *
+ * Additive on purpose. A blank the model left never erases something stored, and pipe types,
+ * branches, routes, products and notes are ADDED to what is there. The owner said "MSL now
+ * has 24 inch also" — they are adding to a card, not retyping it. Taking something away is
+ * done in the Directory tab, where they can see what they are taking away.
+ */
+function addAfterCard(parsed, before, source) {
+    const card = before ? JSON.parse(JSON.stringify(before)) : {};
+    const src = str(source) || 'added by hand';
+    findsFromExtraction(parsed).forEach(x => applyAddFind(card, x, src));
+    addPersonInto(card, parsed);
+    return sanitizePartner(card);
+}
+
+function applyAddFind(card, x, src) {
+    if (x.kind === 'product') return mergeProductInto(card, x.product);
+    if (x.kind === 'routes') return mergeRoutesInto(card, x.routes);
+    if (x.kind === 'note') return addNoteInto(card, x.value, src);
+    if (x.kind !== 'field') return;
+    // A name, a number and an address read off one letterhead belong on ONE person row, so
+    // they are placed together by addPersonInto rather than scattered across three finds.
+    if (['person', 'phone', 'email'].indexOf(x.key) !== -1) return;
+    if (x.key === 'types') { card.types = mergeStrings(card.types, splitList(x.value)); return; }
+    if (x.key === 'branches') { card.branches = mergeBranches(card.branches, splitList(x.value)); return; }
+    card[x.key] = x.value;
+}
+
+function splitList(v) { return str(v).split(/[,;/]+/).map(str).filter(Boolean); }
+
+function mergeStrings(existing, added) {
+    const out = (Array.isArray(existing) ? existing : []).map(str).filter(Boolean);
+    const seen = {};
+    out.forEach(v => { seen[lower(v)] = true; });
+    added.forEach(v => { if (!seen[lower(v)]) { seen[lower(v)] = true; out.push(v); } });
+    return out;
+}
+
+function mergeBranches(existing, cities) {
+    const out = (Array.isArray(existing) ? existing : []).slice();
+    cities.forEach(city => {
+        if (!out.some(b => lower(b && b.city) === lower(city))) out.push({ city, area: '', address: '' });
+    });
+    return out;
+}
+
+/** Fill a product in, never flatten it — a blank the model left keeps whatever is stored. */
+function mergeProductInto(card, incoming) {
+    const list = (card.products = Array.isArray(card.products) ? card.products : []);
+    const at = list.findIndex(pr => pr && lower(pr.p) === lower(incoming.p));
+    if (at === -1) { list.push(incoming); return; }
+    const merged = Object.assign({}, list[at]);
+    ['spec', 'rule'].forEach(k => { if (str(incoming[k])) merged[k] = incoming[k]; });
+    if (num(incoming.moq, 0) > 0) merged.moq = num(incoming.moq, 0);
+    if ((incoming.sizes || []).length) merged.sizes = incoming.sizes;
+    list[at] = merged;
+}
+
+function mergeRoutesInto(card, routes) {
+    const list = (card.routes = Array.isArray(card.routes) ? card.routes : []);
+    (routes || []).forEach(r => {
+        const same = e => lower(e && e.from) === lower(r.from) && lower(e && e.to) === lower(r.to);
+        if (!list.some(same)) list.push({ from: str(r.from), to: str(r.to) });
+    });
+}
+
+function addNoteInto(card, text, src) {
+    const list = (card.notes = Array.isArray(card.notes) ? card.notes : []);
+    // Reading the same brochure twice must not leave the same note on the card twice.
+    if (list.some(n => n && str(n.t) === str(text))) return;
+    list.unshift({ d: new Date().toISOString().slice(0, 10), t: str(text), src });
+}
+
+function addPersonInto(card, parsed) {
+    const p = (parsed && typeof parsed === 'object') ? parsed : {};
+    const name = str(p.person), phone = str(p.phone), email = lower(p.email);
+    if (!name && !phone && !email) return;
+    const people = (card.people = Array.isArray(card.people) ? card.people : []);
+    const at = personIndexFor(people, name, email);
+    const row = at === -1 ? { name: '', role: 'Main contact', phones: [], emails: [] } : people[at];
+    // Never rename somebody already stored: an unfamiliar name is a NEW colleague at the firm,
+    // not a correction, and overwriting is how a contact quietly disappears.
+    if (name && !str(row.name)) row.name = name;
+    if (phone) pushContactLines(row.phones = row.phones || [], 'Mobile', phone);
+    if (email && isEmail(email)) pushContactLines(row.emails = row.emails || [], 'Work', email);
+    if (at === -1) people.push(row);
+}
+
+function personIndexFor(people, name, email) {
+    if (email) {
+        const at = people.findIndex(c => ((c && c.emails) || []).some(e => lower(e && e.v) === email));
+        if (at !== -1) return at;
+    }
+    if (name) return people.findIndex(c => c && lower(c.name) === lower(name));
+    // A number or an address with nobody named belongs to the main contact.
+    return people.length ? 0 : -1;
+}
+
+function pushContactLines(list, label, value) {
+    splitList(value).forEach(v => {
+        if (!list.some(e => lower(e && e.v) === lower(v))) list.push({ label, v });
+    });
+}
+
 module.exports = {
     ROLES,
     sanitizePartner,
@@ -698,7 +986,14 @@ module.exports = {
     sanitizePendingItem,
     extractionPrompt,
     findsFromExtraction,
+    firmsForPrompt,
+    addPrompt,
+    addDraftMode,
+    addAfterCard,
     _test: { normalizeRole, sanitizePerson, sanitizePeople, splitTradeWord, isEmail,
         firmKeyOf, firmsAlreadyKnown, groupSeedsIntoFirms, seedFromSuggestionFiles, importPendingItem,
-        emailConflict },
+        emailConflict,
+        addCandidates, applyAddFind, mergeStrings, mergeBranches, mergeProductInto,
+        mergeRoutesInto, addNoteInto, addPersonInto, personIndexFor, splitList, firmLines,
+        sameFirmName, firmNameKey, diffPeople, personLine },
 };
