@@ -795,7 +795,7 @@
     function freshAdd() {
         return { text: '', fileName: '', fileB64: '', reading: false, applying: false,
                  error: '', applyError: '', notice: '', draft: null,
-                 pickedId: '', dropped: [] };   // dropped = changes the owner has unticked
+                 pickedId: '', dropped: [], newName: '', answers: {} };  // dropped = unticked
     }
 
     function addView() {
@@ -841,7 +841,23 @@
             + '<p class="pd-tiny">Nothing was added — this has to be settled first:</p>'
             + (d.questions || []).map(function (q) { return '<p class="pd-q">• ' + esc(q) + '</p>'; }).join('')
             + addCandidatesHtml(d.candidates)
+            + addAsNewHtml(d)
             + '<p class="pd-tiny" style="margin-top:9px;">Or answer in the box above and press <b>Read it</b> again.</p></div>';
+    }
+
+    /**
+     * The other honest answer to "which firm is this?": none of them, it is new.
+     *
+     * The reading is already worked out — the draft carries what a brand-new card would look
+     * like — so this needs no second read, only the name. Without this the question was a
+     * dead end whenever the firm genuinely was not in the directory yet.
+     */
+    function addAsNewHtml(d) {
+        if (!(d.changes || []).length) return '';
+        return '<p class="pd-tiny" style="margin:11px 0 5px;">Or it is a firm you have not added yet:</p>'
+            + '<div class="pd-row"><input id="pdAddNewName" placeholder="Their name — e.g. MSL Tubes" '
+            + 'value="' + esc(S.add.newName || str(d.after && d.after.company)) + '" style="max-width:260px;">'
+            + '<button class="pd-prim" data-pd-addasnew="1">Add as a new firm</button></div>';
     }
 
     // Naming the firm turns a guess into a settled question — the next read is answering it.
@@ -880,21 +896,46 @@
     function addChangePickerHtml(d) {
         var changes = d.changes || [];
         if (!changes.length) return diffHtml({ lines: d.lines });
-        if (changes.length === 1) return diffHtml({ lines: changes[0].lines });
+        // One change needs no tick-box — but it may still need its question answered.
+        if (changes.length === 1) return diffHtml({ lines: changes[0].lines }) + askHtml(changes[0]);
         return '<p class="pd-tiny" style="margin:8px 0 5px;">Untick anything you do not want:</p>'
             + changes.map(function (c) {
                 var on = S.add.dropped.indexOf(c.id) === -1;
                 return '<label class="pd-pickrow"><input type="checkbox"' + (on ? ' checked' : '')
                     + ' data-pd-addkeep="' + esc(c.id) + '"><span>' + diffHtml({ lines: c.lines })
-                    + '</span></label>';
+                    + askHtml(c) + '</span></label>';
             }).join('');
+    }
+
+    // "24 inch" tells you nothing about a firm that deals in GI, ERW and Seamless. Ask here,
+    // where the change is, rather than storing a size nobody can act on.
+    function askHtml(c) {
+        if (!c.ask) return '';
+        var chosen = S.add.answers[c.id];
+        if (chosen) {
+            return '<p class="pd-tiny" style="margin-top:4px;">in <b>' + esc(chosen) + '</b> '
+                + '<button class="pd-linkish" data-pd-addunask="' + esc(c.id) + '">change</button></p>';
+        }
+        return '<p class="pd-tiny" style="margin-top:4px;">' + esc(c.ask.question) + ' '
+            + c.ask.options.map(function (o) {
+                return '<button data-pd-addask="' + esc(c.id) + '|' + esc(o) + '" '
+                    + 'style="margin:0 4px 4px 0;">' + esc(o) + '</button>';
+            }).join('') + '</p>';
     }
 
     function keptAddSteps() {
         var d = S.add.draft;
         if (!d || !(d.changes || []).length) return d && d.after ? [{}] : [];
         return d.changes.filter(function (c) { return S.add.dropped.indexOf(c.id) === -1; })
-            .map(function (c) { return c.step; });
+            .map(function (c) {
+                var answer = S.add.answers[c.id];
+                if (!answer || !c.ask) return c.step;
+                // Answered questions ride on the step itself, so what is written is what the
+                // owner settled — not the blank the model left.
+                var step = JSON.parse(JSON.stringify(c.step));
+                step.product[c.ask.key] = answer;
+                return step;
+            });
     }
 
     function addApplyLabel(d) {
@@ -935,7 +976,7 @@
         if (a.reading) return;   // a second click must never buy a second paid AI run
         if (!str(a.text) && !a.fileB64) { a.error = 'Type something, or choose a file, first.'; render(); return; }
         a.reading = true; a.error = ''; a.notice = ''; a.applyError = ''; a.draft = null;
-        a.dropped = [];      // a new reading is a new set of choices, all ticked again
+        a.dropped = []; a.newName = ''; a.answers = {};  // a new reading, all ticked again
         render();
         var body = { text: str(a.text) };
         if (a.fileB64) { body.fileBase64 = a.fileB64; body.fileName = a.fileName; }
@@ -989,6 +1030,39 @@
         on(app, '[data-pd-addfileclear]', function () { S.add.fileName = ''; S.add.fileB64 = ''; render(); });
         on(app, '[data-pd-addread]', readAdd);
         on(app, '[data-pd-addapply]', applyAdd);
+        var newName = app.querySelector('#pdAddNewName');
+        if (newName) newName.oninput = function () { S.add.newName = this.value; };
+        on(app, '[data-pd-addasnew]', function () {
+            var d = S.add.draft;
+            var name = str(S.add.newName) || str(d && d.after && d.after.company);
+            if (!name) { S.add.error = 'Type their name first, so the card has one.'; render(); return; }
+            // The reading already stands as a NEW card — the question was only which firm it
+            // belonged to. Answer "a new one", give it a name, and the popup opens on that.
+            S.add.draft = {
+                mode: 'new', matchId: '', before: null, after: d.after, source: d.source,
+                read: 'Adding ' + name + ' as a new firm.',
+                changes: [{ id: 'name', lines: [{ label: 'Company', from: '', to: name }],
+                    step: { id: 'name', kind: 'field', key: 'company', value: name } }]
+                    .concat(d.changes || []),
+            };
+            S.add.dropped = []; S.add.error = '';
+            render();
+        });
+        each(app, '[data-pd-addask]', function (el) {
+            el.onclick = function (e) {
+                e.preventDefault(); e.stopPropagation();   // the row is a label; do not toggle its tick
+                var a = el.getAttribute('data-pd-addask').split('|');
+                S.add.answers[a[0]] = a[1];
+                render();
+            };
+        });
+        each(app, '[data-pd-addunask]', function (el) {
+            el.onclick = function (e) {
+                e.preventDefault(); e.stopPropagation();
+                delete S.add.answers[el.getAttribute('data-pd-addunask')];
+                render();
+            };
+        });
         each(app, '[data-pd-addkeep]', function (el) {
             el.onclick = function () {
                 var id = el.getAttribute('data-pd-addkeep');

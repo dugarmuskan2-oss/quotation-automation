@@ -1021,9 +1021,29 @@ function addChangeList(before, steps, source) {
     (Array.isArray(steps) ? steps : []).forEach(s => {
         const next = applyAddSteps(card, [s], src);
         const lines = diffLines(card, next);
-        if (lines.length) { out.push({ id: str(s.id), lines, step: s }); card = next; }
+        if (!lines.length) return;
+        const row = { id: str(s.id), lines, step: s };
+        const ask = pipeTypeAsk(s, next);
+        if (ask) row.ask = ask;
+        out.push(row);
+        card = next;
     });
     return out;
+}
+
+/**
+ * A firm that deals in GI, ERW and Seamless has told us nothing when it says "24 inch".
+ * Storing that with no type is a half-fact: the card says they have it, and cannot say in
+ * what. So ask — but only when there is a real choice to make. One pipe type, or a size the
+ * owner already qualified, needs no question.
+ */
+function pipeTypeAsk(step, card) {
+    if (!step || step.kind !== 'product' || str(step.product && step.product.spec)) return null;
+    const types = uniqStrings((card.types || []).map(str).filter(Boolean));
+    if (types.length < 2) return null;
+    const named = str(step.product && step.product.p);
+    if (types.some(t => new RegExp('\\b' + t.replace(/[^a-z0-9]/gi, '') + '\\b', 'i').test(named))) return null;
+    return { key: 'spec', question: 'Which of these is the ' + named + '?', options: types };
 }
 
 function applyAddFind(card, x, src) {
