@@ -794,7 +794,8 @@
 
     function freshAdd() {
         return { text: '', fileName: '', fileB64: '', reading: false, applying: false,
-                 error: '', applyError: '', notice: '', draft: null };
+                 error: '', applyError: '', notice: '', draft: null,
+                 pickedId: '', dropped: [] };   // dropped = changes the owner has unticked
     }
 
     function addView() {
@@ -862,12 +863,45 @@
             + '<div class="pd-sec" style="margin-top:0;">Check this before it goes in</div>'
             + (d.read ? '<p class="pd-muted">' + esc(d.read) + '</p>' : '')
             + '<p class="pd-modal-what">' + addPopupHeadHtml(d) + '</p>'
-            + diffHtml({ lines: d.lines })
+            + addChangePickerHtml(d)
             + (S.add.applyError ? '<div class="pd-error">' + esc(S.add.applyError) + '</div>' : '')
             + '<div class="pd-row" style="margin-top:12px;"><span class="pd-sp"></span>'
             + '<button data-pd-addcancel="1"' + (S.add.applying ? ' disabled' : '') + '>Cancel</button>'
-            + '<button class="pd-prim" data-pd-addapply="1"' + (S.add.applying ? ' disabled' : '') + '>'
-            + (S.add.applying ? 'Adding…' : 'Apply') + '</button></div></div></div>';
+            + '<button class="pd-prim" data-pd-addapply="1"'
+            + (S.add.applying || !keptAddSteps().length ? ' disabled' : '') + '>'
+            + addApplyLabel(d) + '</button></div></div></div>';
+    }
+
+    /**
+     * One tick-box per change, all ticked to begin with. A reading often carries several
+     * things at once and only some of them are right — taking the lot or none of it means
+     * cancelling the whole read to be rid of one wrong line.
+     */
+    function addChangePickerHtml(d) {
+        var changes = d.changes || [];
+        if (!changes.length) return diffHtml({ lines: d.lines });
+        if (changes.length === 1) return diffHtml({ lines: changes[0].lines });
+        return '<p class="pd-tiny" style="margin:8px 0 5px;">Untick anything you do not want:</p>'
+            + changes.map(function (c) {
+                var on = S.add.dropped.indexOf(c.id) === -1;
+                return '<label class="pd-pickrow"><input type="checkbox"' + (on ? ' checked' : '')
+                    + ' data-pd-addkeep="' + esc(c.id) + '"><span>' + diffHtml({ lines: c.lines })
+                    + '</span></label>';
+            }).join('');
+    }
+
+    function keptAddSteps() {
+        var d = S.add.draft;
+        if (!d || !(d.changes || []).length) return d && d.after ? [{}] : [];
+        return d.changes.filter(function (c) { return S.add.dropped.indexOf(c.id) === -1; })
+            .map(function (c) { return c.step; });
+    }
+
+    function addApplyLabel(d) {
+        var kept = keptAddSteps().length, all = (d.changes || []).length;
+        if (S.add.applying) return 'Adding…';
+        if (!kept) return 'Nothing ticked';
+        return (all > 1 && kept < all) ? 'Apply ' + kept + ' of ' + all : 'Apply';
     }
 
     function addPopupHeadHtml(d) {
@@ -901,6 +935,7 @@
         if (a.reading) return;   // a second click must never buy a second paid AI run
         if (!str(a.text) && !a.fileB64) { a.error = 'Type something, or choose a file, first.'; render(); return; }
         a.reading = true; a.error = ''; a.notice = ''; a.applyError = ''; a.draft = null;
+        a.dropped = [];      // a new reading is a new set of choices, all ticked again
         render();
         var body = { text: str(a.text) };
         if (a.fileB64) { body.fileBase64 = a.fileB64; body.fileName = a.fileName; }
@@ -917,8 +952,15 @@
     function applyAdd() {
         var d = S.add.draft;
         if (S.add.applying || !d) return;   // one Apply is one write, however many times it is pressed
+        var steps = keptAddSteps();
+        if (!steps.length) return;          // nothing ticked is nothing to do
         S.add.applying = true; S.add.applyError = ''; render();
-        postJson('/contacts/add-apply', { after: d.after, matchId: d.matchId || '' }, addApplied, function () {
+        // The ticked steps, not the whole card: the server rebuilds them onto the card as it
+        // stands now, so an untick really means "do not write that".
+        postJson('/contacts/add-apply', {
+            after: d.after, matchId: d.matchId || '',
+            steps: (d.changes || []).length ? steps : undefined, source: d.source || '',
+        }, addApplied, function () {
             S.add.applying = false;
             S.add.applyError = D.saveError; D.saveError = '';
         });
@@ -947,6 +989,14 @@
         on(app, '[data-pd-addfileclear]', function () { S.add.fileName = ''; S.add.fileB64 = ''; render(); });
         on(app, '[data-pd-addread]', readAdd);
         on(app, '[data-pd-addapply]', applyAdd);
+        each(app, '[data-pd-addkeep]', function (el) {
+            el.onclick = function () {
+                var id = el.getAttribute('data-pd-addkeep');
+                var at = S.add.dropped.indexOf(id);
+                if (at === -1) S.add.dropped.push(id); else S.add.dropped.splice(at, 1);
+                render();
+            };
+        });
         each(app, '[data-pd-addpick]', function (el) {
             el.onclick = function () {
                 // Send the firm's ID and leave what was typed exactly as it is. Appending

@@ -312,14 +312,23 @@ module.exports = function createContactsRouter({ storage, openai }) {
     // entry so it can be undone from Recent changes.
     router.post('/contacts/add-apply', express.json({ limit: '1mb' }), async (req, res) => {
         try {
-            const { after, matchId } = req.body || {};
+            const { after, matchId, steps, source } = req.body || {};
             const dir = await loadDirectory();
             const before = str(matchId) ? (dir.contacts.find(p => p && p.id === str(matchId)) || null) : null;
             if (str(matchId) && !before) {
                 return res.status(404).json({ error: 'That firm is no longer in your directory — it may have been deleted. Read this again to add it fresh.' });
             }
+            // Rebuild from the steps the owner ticked, against the card as it is stored NOW.
+            // Better than taking the whole card back from the browser: only what was ticked
+            // can land, and anything a colleague changed in the meantime is still there.
+            const wanted = Array.isArray(steps)
+                ? contactsLib.applyAddSteps(before, steps, str(source))
+                : addTarget(after, before);
+            if (Array.isArray(steps) && !steps.length) {
+                return res.json({ ok: true, skipped: 'nothing-kept' });
+            }
             const merged = contactsLib.mergePartner(
-                dir.contacts, addTarget(after, before), before ? ADD_FIELDS : null);
+                dir.contacts, addTarget(wanted, before), before ? ADD_FIELDS : null);
             if (merged.conflict) return res.status(409).json({ error: conflictMessage(merged.conflict) });
             if (merged.empty) return res.json({ ok: true, skipped: 'empty' });
             await saveDirectory(logAddition(dir, merged, before));
@@ -387,8 +396,12 @@ module.exports = function createContactsRouter({ storage, openai }) {
         const before = decided.matchId
             ? (contacts.find(p => p && p.id === decided.matchId) || null) : null;
         const source = str(fileName) ? 'read from ' + str(fileName) : 'typed in';
-        const after = contactsLib.addAfterCard(parsed, before, source);
-        const lines = contactsLib.diffLines(before, after);
+        // Broken into the separate things it would do, so the owner can keep some and drop
+        // others. `after` is built from exactly the steps that survived, so what the popup
+        // lists and what Apply would write can never drift apart.
+        const changes = contactsLib.addChangeList(before, contactsLib.addSteps(parsed), source);
+        const after = contactsLib.applyAddSteps(before, changes.map(c => c.step), source);
+        const lines = changes.reduce((all, c) => all.concat(c.lines), []);
         // A blurry photo the model made nothing of used to come back as a confident "new firm"
         // with an empty change list and a reassuring sentence. Nothing to show means nothing
         // was understood — say so, and leave nothing to approve (CLAUDE.md check #4).
@@ -408,7 +421,7 @@ module.exports = function createContactsRouter({ storage, openai }) {
             });
         }
         return Object.assign({}, decided, {
-            before, after, lines,
+            before, after, lines, changes, source,
             read: str(parsed && parsed.read).slice(0, 300)
                 || 'Read what you gave me — check the change below before applying.',
         });

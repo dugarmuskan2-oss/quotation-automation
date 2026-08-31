@@ -937,11 +937,56 @@ function addCandidates(raw, firms) {
  * done in the Directory tab, where they can see what they are taking away.
  */
 function addAfterCard(parsed, before, source) {
+    return applyAddSteps(before, addSteps(parsed), source);
+}
+
+/**
+ * One reading broken into the separate things it would do, so the owner can keep some and
+ * drop others rather than taking the whole lot or none of it.
+ *
+ * The person step stays whole on purpose: a name, a number and an address read off one
+ * letterhead are one fact, and letting the number in while refusing the name it belongs to
+ * would put a loose number on the card.
+ */
+function addSteps(parsed) {
+    const steps = findsFromExtraction(parsed)
+        .filter(x => !(x.kind === 'field' && ['person', 'phone', 'email'].indexOf(x.key) !== -1))
+        .map((x, i) => Object.assign({ id: 's' + i }, x));
+    const p = (parsed && typeof parsed === 'object') ? parsed : {};
+    if (str(p.person) || str(p.phone) || str(p.email)) {
+        steps.push({
+            id: 'person', kind: 'person',
+            person: str(p.person), phone: str(p.phone), email: str(p.email),
+        });
+    }
+    return steps;
+}
+
+function applyAddSteps(before, steps, source) {
     const card = before ? JSON.parse(JSON.stringify(before)) : {};
     const src = str(source) || 'added by hand';
-    findsFromExtraction(parsed).forEach(x => applyAddFind(card, x, src));
-    addPersonInto(card, parsed);
+    (Array.isArray(steps) ? steps : []).forEach(s => {
+        if (s && s.kind === 'person') addPersonInto(card, s);
+        else applyAddFind(card, s, src);
+    });
     return sanitizePartner(card);
+}
+
+/**
+ * What each step would change, on its own. Applied one at a time against the card as it
+ * stands after the steps before it, so the list reads in the order the owner will see it and
+ * a step that turns out to change nothing is dropped rather than shown as an empty tick-box.
+ */
+function addChangeList(before, steps, source) {
+    const src = str(source) || 'added by hand';
+    let card = sanitizePartner(before ? JSON.parse(JSON.stringify(before)) : {});
+    const out = [];
+    (Array.isArray(steps) ? steps : []).forEach(s => {
+        const next = applyAddSteps(card, [s], src);
+        const lines = diffLines(card, next);
+        if (lines.length) { out.push({ id: str(s.id), lines, step: s }); card = next; }
+    });
+    return out;
 }
 
 function applyAddFind(card, x, src) {
@@ -1061,6 +1106,9 @@ module.exports = {
     firmsForPrompt,
     addPrompt,
     groundInText,
+    addSteps,
+    applyAddSteps,
+    addChangeList,
     addDraftMode,
     addAfterCard,
     _test: { normalizeRole, sanitizePerson, sanitizePeople, splitTradeWord, isEmail,
