@@ -296,7 +296,7 @@ module.exports = function createContactsRouter({ storage, openai }) {
             const dir = await loadDirectory();
             const raw = await readAddition({ text, fileBase64, fileName }, dir.contacts);
             const parsed = contactsLib.groundInText(raw, text, !!str(fileBase64));
-            res.json(addDraftReply(parsed, dir.contacts, fileName, str(matchId)));
+            res.json(addDraftReply(parsed, dir.contacts, fileName, str(matchId), str(text)));
         } catch (error) {
             // Loud on purpose. A read that FAILED must never come back looking like "found
             // nothing here" — the owner would file it away as done and the firm never gets in.
@@ -387,9 +387,12 @@ module.exports = function createContactsRouter({ storage, openai }) {
         return JSON.parse(match[0]);
     }
 
-    function addDraftReply(parsed, contacts, fileName, settledId) {
+    function addDraftReply(parsed, contacts, fileName, settledId, text) {
+        // The typed words go in too: they are the only evidence that the firm the model picked
+        // is the firm the owner meant. Not passed when a file was attached — the name is
+        // inside it, and the popup is what stands guard there.
         const decided = contactsLib.addDraftMode(
-            parsed, contactsLib.firmsForPrompt(contacts), settledId);
+            parsed, contactsLib.firmsForPrompt(contacts), settledId, str(fileName) ? '' : text);
         // Pressing a firm's name means "add this to THAT card", never "rename it to whatever
         // the text called them" — the two names differing is why they were asked in the first place.
         if (str(settledId) && parsed && typeof parsed === 'object') parsed = Object.assign({}, parsed, { company: '' });

@@ -866,7 +866,35 @@ function groundInText(parsed, text, hasFile) {
     return p;
 }
 
-function addDraftMode(parsed, firms, settledId) {
+/**
+ * The words that could be a firm's name on a card — its own name, and for an imported card
+ * whose only name is an address, the part before the @. Domain words carry no identity.
+ */
+const MAIL_NOISE = { yahoo: 1, gmail: 1, hotmail: 1, outlook: 1, rediffmail: 1, com: 1, co: 1, in: 1, net: 1, org: 1 };
+function firmNameTokens(company) {
+    const name = str(company);
+    const base = name.indexOf('@') === -1 ? name : name.split('@')[0];
+    return firmNameKey(base).split(' ')
+        .filter(t => t.length >= 3 && !MAIL_NOISE[t]);
+}
+
+/**
+ * Does the owner's own text point at THIS card?
+ *
+ * Reported live: "add 24 inch to msl" proposed updating adarshroadcarriers@yahoo.com. The
+ * model answered "update" with a real id and no company name at all, so the name check had
+ * nothing to compare and waved it through. A matching id is not evidence — the owner's words
+ * have to point at the card, or we ask.
+ */
+function textPointsAtFirm(text, company) {
+    const hay = ' ' + lower(text).replace(/[^a-z0-9]+/g, ' ').trim() + ' ';
+    const tokens = firmNameTokens(company);
+    if (!tokens.length) return true;            // a card with no usable name cannot disagree
+    return tokens.some(t => hay.indexOf(' ' + t + ' ') !== -1
+        || hay.replace(/ /g, '').indexOf(t) !== -1);
+}
+
+function addDraftMode(parsed, firms, settledId, text) {
     const p = (parsed && typeof parsed === 'object') ? parsed : {};
     const list = (Array.isArray(firms) ? firms : []).filter(f => f && str(f.id));
     // The owner has already told us which firm this is by pressing its name. That settles it
@@ -885,6 +913,15 @@ function addDraftMode(parsed, firms, settledId) {
             mode: 'unsure', matchId: '',
             questions: ['You wrote “' + named + '”, but the closest card I have is “'
                 + str(match.company) + '”. Is this the same firm, or one you have not added yet?'],
+            candidates: addCandidates([match.company].concat(p.candidates || []), list),
+        };
+    }
+    // The same guard, for when the model names no firm at all — which is when it went wrong.
+    if (mode === 'update' && match && str(text) && !textPointsAtFirm(text, match.company)) {
+        return {
+            mode: 'unsure', matchId: '',
+            questions: ['Which firm is that about? Nothing in your directory matches the name you wrote — '
+                + 'the closest is “' + str(match.company) + '”.'],
             candidates: addCandidates([match.company].concat(p.candidates || []), list),
         };
     }
