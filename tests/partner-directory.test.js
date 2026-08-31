@@ -1204,6 +1204,30 @@ describe('the partner directory refuses a duplicate address before Approve is pr
         return m[0];
     }
 
+    test('a card waiting for approval offers Discard, never a dead "Delete this partner"', async () => {
+        // Reported by the owner as "delete this partner isn't working". It was wired to the
+        // preview's 'p_new_…' id, which the directory has never seen: the button deleted
+        // nothing, and the reload it triggered threw away the corrections being typed. Discard
+        // is the action for a waiting card, and it was already sitting right below.
+        S.openPending = 'pd_1';                       // the owner has opened it to review
+        const queuedHtml = await open({
+            contacts: [KALP],
+            pending: [queued({ company: 'Balaji Tubes', people: [{ name: '', role: '', phones: [], emails: [{ label: 'Work', v: 'sales@balajitubes.com' }] }] })],
+        }, 'changes');
+        expect(queuedHtml).toContain('data-pd-card="p_new_pd_1"');   // the review really opened
+        expect(queuedHtml).not.toContain('data-pd-delete');
+        expect(queuedHtml).toContain('data-pd-discard="pd_1"');
+
+        // ...while a card the directory really holds keeps Delete, or there is no way to
+        // remove a partner at all.
+        const realHtml = await open({ contacts: [KALP] }, 'dir');
+        expect(realHtml).toContain('data-pd-open="p_kalp"');
+        S.openId = 'p_kalp';
+        global.window.switchToDirectoryTab();
+        await flush();
+        expect(app.innerHTML).toContain('data-pd-delete="p_kalp"');
+    });
+
     test('a draft that UPDATES the card already holding the address is not a clash', () => {
         // The one case a naive "is this address in the directory" check gets wrong — and it
         // is the common case: a second colleague at a mill we already deal with. Flagging it

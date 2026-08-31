@@ -622,8 +622,14 @@
             + peopleBlock(p) + placesBlock(p)
             + (p.role === 'transporter' ? transporterBlock(p) : supplierBlock(p))
             + notesBlock(p) + autoBlock(p)
-            + '<div class="pd-row" style="margin-top:12px;"><span class="pd-sp"></span>'
-            + '<button class="pd-danger" data-pd-delete="' + esc(p.id) + '">Delete this partner</button></div>'
+            // Only a card that really is IN the directory can be deleted from it. A card
+            // waiting for approval has a 'p_new_…' id the directory has never seen, so the
+            // button deleted nothing and threw away the corrections being typed on the way
+            // out. Discard is the action for those, and it is already on the strip below.
+            + (isInDirectory(p)
+                ? '<div class="pd-row" style="margin-top:12px;"><span class="pd-sp"></span>'
+                    + '<button class="pd-danger" data-pd-delete="' + esc(p.id) + '">Delete this partner</button></div>'
+                : '')
             + '</div>';
     }
 
@@ -998,6 +1004,11 @@
      * the directory — and an abandoned one disappears by itself on the next load, because it
      * was never written.
      */
+    /** True only for a card the directory actually holds — not a queue preview. */
+    function isInDirectory(p) {
+        return !!p && D.contacts.some(function (x) { return x.id === p.id; });
+    }
+
     function isBlankCard(p) {
         if (!p || str(p.company)) return false;
         return !people(p).some(function (c) {
@@ -1043,7 +1054,7 @@
             p.checked = new Date().toISOString().slice(0, 10);
             // A pending-queue PREVIEW is never saved here — approval is its only write path.
             // (Otherwise editing one before approving stores a stray copy = a duplicate firm.)
-            var inDirectory = D.contacts.some(function (x) { return x.id === p.id; });
+            var inDirectory = isInDirectory(p);
             // A brand-new card is only written once it says something. Typing the firm name
             // (or a person, or a number) is what creates it; until then there is nothing to
             // store, and storing it anyway is what left blank rows behind.
