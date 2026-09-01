@@ -335,6 +335,411 @@ describe('splitAddressList / bareAddress — pasting addresses out of an email c
     });
 });
 
+// ── Send can only fire once ──────────────────────────────────────────────────
+// After a successful send the transporters are cleared but a Cc'd colleague is not, and the
+// old test (bcc.length || cc.length) left Send blue. A second, impatient press then emailed
+// that colleague ALONE, listed them under "Sent to / Awaiting reply" as if they were a
+// transporter, and recorded them in the directory as a firm that had been asked.
+describe('canSendEnquiry — the one gate behind the Send button', () => {
+    const { canSendEnquiry } = require('../freight-tab-weight-editor')._test;
+    // One row with a real weight, so the weight gate is satisfied and only the send state varies.
+    const stWith = (enq) => ({
+        split: false,
+        rows: [{ sec: 1, qty: 10, kgm: 2.5 }],
+        enquiry: Object.assign({ bcc: [], cc: [], sending: false, justSent: false, weightOverride: null, forSec: 0 }, enq),
+    });
+
+    test('a transporter in Bcc and a good weight -> Send is live', () => {
+        expect(canSendEnquiry(stWith({ bcc: ['ravi@sri.in'] }))).toBe(true);
+    });
+
+    test('nobody to send to -> dead', () => {
+        expect(canSendEnquiry(stWith({}))).toBe(false);
+    });
+
+    test('a send already in flight -> dead (no double click)', () => {
+        expect(canSendEnquiry(stWith({ bcc: ['ravi@sri.in'], sending: true }))).toBe(false);
+    });
+
+    test('after a clean send, a leftover Cc colleague does NOT keep Send live', () => {
+        // This is the state freightSendAll leaves behind: recipients cleared, copies kept.
+        expect(canSendEnquiry(stWith({ bcc: [], cc: ['office@dscpipes.com'], justSent: true }))).toBe(false);
+    });
+
+    test('adding another transporter after that send brings it back', () => {
+        expect(canSendEnquiry(stWith({ bcc: ['vrl@mum.in'], cc: ['office@dscpipes.com'], justSent: false }))).toBe(true);
+    });
+
+    test('an incomplete weight still blocks it, whatever else is true', () => {
+        const st = stWith({ bcc: ['ravi@sri.in'] });
+        st.rows = [{ sec: 1, qty: null, kgm: 2.5 }];   // no quantity -> weight cannot be calculated
+        expect(canSendEnquiry(st)).toBe(false);
+    });
+});
+
+// The owner's absolute rule is that transporters must never see each other. With Bcc empty,
+// two or more addresses in Cc go out as ONE open email — the grey note said so in the same
+// grey as everything else.
+describe('ccOpenEmailRisk / ccNoteText — warn before an open email, not after', () => {
+    const { ccOpenEmailRisk, ccNoteText, ccAddressCount } = require('../freight-tab-weight-editor')._test;
+
+    test('Bcc empty and two firms in Cc -> risky', () => {
+        expect(ccOpenEmailRisk({ bcc: [], cc: ['a@x.com', 'b@y.com'] })).toBe(true);
+    });
+
+    test('Bcc filled -> Cc is only a copy, not the send', () => {
+        expect(ccOpenEmailRisk({ bcc: ['ravi@sri.in'], cc: ['a@x.com', 'b@y.com'] })).toBe(false);
+    });
+
+    test('one address in Cc -> nobody to be exposed to', () => {
+        expect(ccOpenEmailRisk({ bcc: [], cc: ['a@x.com'] })).toBe(false);
+    });
+
+    test('the risky note names the count and says what to do', () => {
+        const note = ccNoteText({ bcc: [], cc: ['a@x.com', 'b@y.com', 'c@z.com'] });
+        expect(note).toContain('3');
+        expect(note).toContain('ONE open email');
+        expect(note).toContain('Bcc');
+    });
+
+    test('the safe note does not shout', () => {
+        expect(ccNoteText({ bcc: ['ravi@sri.in'], cc: ['a@x.com'] })).not.toContain('Careful');
+    });
+
+    // One chip can hold a whole firm — "a@x.com, b@x.com" arrives as ONE chip when it is
+    // pasted or picked from the directory. Counting chips printed a number the reader could
+    // see was wrong: two names on screen and a warning saying "these 1 will go out".
+    test('one chip holding two people counts as two, and is a risk', () => {
+        const enq = { bcc: [], cc: ['a@x.com, b@x.com'] };
+        expect(ccAddressCount(enq)).toBe(2);
+        expect(ccOpenEmailRisk(enq)).toBe(true);
+        expect(ccNoteText(enq)).toContain('these 2 ');
+    });
+
+    test('two chips holding three people between them print 3, not 2', () => {
+        const enq = { bcc: [], cc: ['a@x.com, b@x.com', 'c@y.com'] };
+        expect(ccAddressCount(enq)).toBe(3);
+        expect(ccNoteText(enq)).toContain('these 3 ');
+    });
+
+    test('one chip holding one person is still not a risk', () => {
+        expect(ccOpenEmailRisk({ bcc: [], cc: ['solo@x.com'] })).toBe(false);
+        expect(ccAddressCount({ bcc: [], cc: ['solo@x.com'] })).toBe(1);
+    });
+});
+
+// The red Cc warning is written once by render(), but chips change without one. It is
+// repainted by the SAME function that re-checks the Send button, so the two can never
+// disagree — and deleting the repaint used to leave every test green while the warning
+// froze on screen saying the opposite of the truth.
+describe('syncComposerLive — Send and the Cc warning are repainted together', () => {
+    const { syncComposerLive } = require('../freight-tab-weight-editor')._test;
+
+    const composer = () => {
+        const sendBtn = { disabled: null };
+        const note = { textContent: 'untouched', style: { color: 'untouched' } };
+        return {
+            sendBtn, note,
+            querySelector: (sel) => sel === '.fwe-enq-send' ? sendBtn
+                : sel === '.fwe-cc-note' ? note : null,
+        };
+    };
+    // One row with a real weight, so only the recipient state varies.
+    const stWith = (enq) => ({
+        split: false,
+        rows: [{ sec: 1, qty: 10, kgm: 2.5 }],
+        enquiry: Object.assign({ bcc: [], cc: [], sending: false, justSent: false, weightOverride: null, forSec: 0 }, enq),
+    });
+
+    test('two firms in Cc with Bcc empty -> the warning turns red and says Careful', () => {
+        const m = composer();
+        syncComposerLive(m, stWith({ cc: ['a@x.com', 'b@y.com'] }));
+        expect(m.note.textContent).toContain('Careful');
+        expect(m.note.style.color).toBe('#A32D2D');
+    });
+
+    test('moving them to Bcc takes the red away again', () => {
+        const m = composer();
+        syncComposerLive(m, stWith({ cc: ['a@x.com', 'b@y.com'] }));
+        syncComposerLive(m, stWith({ bcc: ['a@x.com', 'b@y.com'], cc: [] }));
+        expect(m.note.textContent).not.toContain('Careful');
+        expect(m.note.style.color).toBe('#9b988e');
+    });
+
+    test('the same repaint sets the Send button: live with a transporter…', () => {
+        const m = composer();
+        syncComposerLive(m, stWith({ bcc: ['ravi@sri.in'] }));
+        expect(m.sendBtn.disabled).toBe(false);
+    });
+
+    test('…and dead once that enquiry has gone out', () => {
+        const m = composer();
+        syncComposerLive(m, stWith({ bcc: [], cc: ['office@dscpipes.com'], justSent: true }));
+        expect(m.sendBtn.disabled).toBe(true);
+    });
+
+    test('a composer with neither element on the page -> no throw', () => {
+        expect(() => syncComposerLive({ querySelector: () => null }, stWith({}))).not.toThrow();
+    });
+});
+
+// The ranking is scored on the pickup, drop and weight that were in the box when Ask AI was
+// pressed. Change any of them and the list is about a different job — but it stayed on screen,
+// clickable, and a click on it sends a real enquiry.
+describe('staleDirPanel — an out-of-date ranking is taken off the screen', () => {
+    const { staleDirPanel } = require('../freight-tab-weight-editor')._test;
+    // Minimal stand-in for the panel: staleDirPanel only ever reads/writes .innerHTML.
+    const mountWith = (html) => {
+        const panel = { innerHTML: html };
+        return { panel, querySelector: (sel) => (sel === '.fwe-dir-panel' ? panel : null) };
+    };
+
+    test('an open ranking is replaced by "press Ask AI again"', () => {
+        const m = mountWith('<div class="pd-card">Ravi Transport — Runs Chennai to Hosur regularly</div>');
+        staleDirPanel(m);
+        expect(m.panel.innerHTML).not.toContain('Ravi Transport');
+        expect(m.panel.innerHTML).toContain('Ask AI again');
+    });
+
+    test('a panel that was never opened stays empty (no note out of nowhere)', () => {
+        const m = mountWith('');
+        staleDirPanel(m);
+        expect(m.panel.innerHTML).toBe('');
+    });
+
+    test('no panel on the page -> does nothing, never throws', () => {
+        expect(() => staleDirPanel({ querySelector: () => null })).not.toThrow();
+    });
+});
+
+// Wired straight to oninput, the FIRST character of a re-typed town blanked the whole Ask AI
+// list under the user's hands. Typing is not a decision — wait for a pause.
+describe('staleDirPanelSoon — typing does not blank the ranking, changing it does', () => {
+    const { staleDirPanelSoon } = require('../freight-tab-weight-editor')._test;
+    const mountWith = (html) => {
+        const panel = { innerHTML: html };
+        return { panel, querySelector: (sel) => (sel === '.fwe-dir-panel' ? panel : null) };
+    };
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    test('one keystroke leaves the list alone', () => {
+        const m = mountWith('<div class="pd-card">Ravi Transport</div>');
+        staleDirPanelSoon(m);
+        expect(m.panel.innerHTML).toContain('Ravi Transport');
+    });
+
+    test('after the typing stops, the list is taken off the screen', () => {
+        const m = mountWith('<div class="pd-card">Ravi Transport</div>');
+        staleDirPanelSoon(m);
+        jest.advanceTimersByTime(700);
+        expect(m.panel.innerHTML).not.toContain('Ravi Transport');
+        expect(m.panel.innerHTML).toContain('Ask AI again');
+    });
+
+    test('each further keystroke restarts the pause — typing a whole town keeps the list', () => {
+        const m = mountWith('<div class="pd-card">Ravi Transport</div>');
+        for (let i = 0; i < 6; i++) { staleDirPanelSoon(m); jest.advanceTimersByTime(500); }
+        expect(m.panel.innerHTML).toContain('Ravi Transport');
+        jest.advanceTimersByTime(700);
+        expect(m.panel.innerHTML).toContain('Ask AI again');
+    });
+
+    test('no mount -> does nothing, never throws', () => {
+        expect(() => staleDirPanelSoon(null)).not.toThrow();
+    });
+});
+
+// The wiring itself, not just the pieces: deleting staleDirPanelSoon (or the draft refresh, or
+// the Send re-check) out of the route handler left every test green last time.
+describe('onRouteEdited — what typing a pickup or drop actually does', () => {
+    const { onRouteEdited } = require('../freight-tab-weight-editor')._test;
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    const routeMount = () => {
+        const panel = { innerHTML: '<div class="pd-card">Ravi Transport — runs Chennai to Hosur</div>' };
+        const msg = { value: 'stale draft' };
+        const sendBtn = { disabled: null };
+        const note = { textContent: '', style: { color: '' } };
+        return {
+            panel, msg, sendBtn, note,
+            querySelector: (sel) => sel === '.fwe-dir-panel' ? panel
+                : sel === '.fwe-enq-msg' ? msg
+                : sel === '.fwe-enq-send' ? sendBtn
+                : sel === '.fwe-cc-note' ? note : null,
+        };
+    };
+    const stWith = (over) => ({
+        split: false,
+        rows: [{ sec: 1, qty: 10, kgm: 2.5 }],
+        enquiry: Object.assign({
+            bcc: ['ravi@sri.in'], cc: [], pickup: 'Chennai', drop: 'Hosur',
+            message: '', messageEdited: false, weightOverride: null,
+            sending: false, justSent: false, forSec: 0,
+        }, over),
+    });
+
+    test('the draft follows the new route', () => {
+        const m = routeMount();
+        onRouteEdited({}, stWith({ drop: 'Hosur' }), m);
+        expect(m.msg.value).toContain('Drop: Hosur');
+        expect(m.msg.value).not.toBe('stale draft');
+    });
+
+    test('a message the user wrote themselves is left alone', () => {
+        const m = routeMount();
+        m.msg.value = 'My own wording';
+        onRouteEdited({}, stWith({ messageEdited: true }), m);
+        expect(m.msg.value).toBe('My own wording');
+    });
+
+    test('the ranking survives the keystroke, then goes once the typing stops', () => {
+        const m = routeMount();
+        onRouteEdited({}, stWith({}), m);
+        expect(m.panel.innerHTML).toContain('Ravi Transport');
+        jest.advanceTimersByTime(700);
+        expect(m.panel.innerHTML).toContain('Ask AI again');
+    });
+
+    test('Send is re-checked on the way through', () => {
+        const m = routeMount();
+        onRouteEdited({}, stWith({}), m);
+        expect(m.sendBtn.disabled).toBe(false);
+        const m2 = routeMount();
+        onRouteEdited({}, stWith({ justSent: true, bcc: [], cc: ['office@dscpipes.com'] }), m2);
+        expect(m2.sendBtn.disabled).toBe(true);
+    });
+
+    test('editing the route does NOT bring a spent Send button back', () => {
+        // Only a new recipient does. A route edit changes what the enquiry says, not who it
+        // is for — and with the transporters cleared, Send would fire at the Cc'd colleague.
+        const st = stWith({ justSent: true, bcc: [], cc: ['office@dscpipes.com'] });
+        onRouteEdited({}, st, routeMount());
+        expect(st.enquiry.justSent).toBe(true);
+    });
+});
+
+// Ask AI re-reads the directory before it writes, so its list lands late. Typing a new town
+// while it loads cleared the panel — and then the stale list was painted back over the
+// clearing, live and clickable, ranked for a route that no longer existed.
+describe('dirPanelSlot — a late Ask AI list cannot land back on a cleared panel', () => {
+    const { dirPanelSlot, staleDirPanel } = require('../freight-tab-weight-editor')._test;
+
+    // Enough DOM to model the one thing that matters: clearing the panel detaches its children.
+    beforeEach(() => {
+        global.document = {
+            createElement: () => {
+                const el = { className: '', innerHTML: '' };
+                Object.defineProperty(el, 'outerHTML', {
+                    get: () => '<div class="' + el.className + '">' + el.innerHTML + '</div>',
+                });
+                return el;
+            },
+        };
+    });
+    afterEach(() => { delete global.document; });
+
+    const panelMount = () => {
+        const panel = {
+            own: '', kids: [],
+            get innerHTML() { return this.own + this.kids.map(k => k.outerHTML).join(''); },
+            set innerHTML(v) { this.kids = []; this.own = v; },
+            appendChild(k) { this.kids.push(k); return k; },
+        };
+        return { panel, querySelector: (sel) => (sel === '.fwe-dir-panel' ? panel : null) };
+    };
+
+    test('the list Ask AI writes shows in the panel', () => {
+        const m = panelMount();
+        const slot = dirPanelSlot(m);
+        slot.innerHTML = '<div class="pd-card">Ravi Transport</div>';   // the async write
+        expect(m.panel.innerHTML).toContain('Ravi Transport');
+    });
+
+    test('a list that arrives after the panel was cleared never reaches the screen', () => {
+        const m = panelMount();
+        const slot = dirPanelSlot(m);
+        slot.innerHTML = '<p>Reading your directory…</p>';   // renderSuggestPanel, straight away
+        staleDirPanel(m);                                    // the user typed a new drop town
+        slot.innerHTML = '<div class="pd-card">Ravi Transport</div>';   // …and the list lands late
+        expect(m.panel.innerHTML).not.toContain('Ravi Transport');
+        expect(m.panel.innerHTML).toContain('Ask AI again');
+    });
+
+    test('no panel on the page -> nothing to write into', () => {
+        expect(dirPanelSlot({ querySelector: () => null })).toBe(null);
+    });
+});
+
+describe('source guards — Send cannot fire twice, and a changed route stales the ranking', () => {
+    const src = fs.readFileSync(FWE_PATH, 'utf8');
+
+    test('the flag is set only on the branch where every email succeeded', () => {
+        const clean = src.indexOf('if (!failed.length) {');
+        const partial = src.indexOf('} else if (sentOk.length) {', clean);
+        const flag = src.indexOf('enq.justSent = true;');
+        expect(clean).toBeGreaterThan(-1);
+        expect(flag).toBeGreaterThan(clean);
+        expect(flag).toBeLessThan(partial);   // a partial failure must leave Send usable
+    });
+
+    test('the guard behind the click checks it too, not just the button', () => {
+        expect(src).toContain('|| enq.sending || enq.justSent || hasBadRecipient(enq)) return;');
+    });
+
+    test('every copy of the disabled test goes through the one helper', () => {
+        expect(src).toContain('function canSendEnquiry(st)');
+        expect(src).toContain("class=\"fwe-enq-send\"' + (canSendEnquiry(st) ? '' : ' disabled')");
+        // There is now exactly ONE place that re-enables the live button — syncComposerLive,
+        // which every live path (chip change, weight edit, route edit) goes through. A second
+        // hand-written copy is what let justSent be forgotten in one of them.
+        expect(src.split('sendBtn.disabled = !canSendEnquiry(st);')).toHaveLength(2);
+        expect(src).not.toContain('sendBtn.disabled = !(');
+    });
+
+    test('editing the route or the typed weight stales the ranking', () => {
+        // The route boxes fire on every keystroke, so they go through the debounced staler;
+        // the weight boxes fire on change, so they stale immediately.
+        expect(src).toContain('enq.pickup = pk.value; onRouteEdited(q, st, mountEl);');
+        expect(src).toContain('enq.drop = dp.value; onRouteEdited(q, st, mountEl);');
+        expect(src).toContain('staleDirPanelSoon(mountEl);');
+        expect(src).toContain("if (f === 'kgm' || f === 'qty') staleDirPanel(mountEl);");
+        expect(src).toContain('staleDirPanel(mountEl);       // a part-load ranking is wrong once the weight moves');
+    });
+
+    // The keystroke-away bug: enquiryChanged() cleared justSent and was wired to the message
+    // box's oninput, so typing one character after a send re-armed Send. With the transporters
+    // already cleared, a second press emailed the Cc'd colleague ALONE.
+    test('justSent is cleared in exactly one place, and that place is the recipients handler', () => {
+        expect(src.split('enq.justSent = false;')).toHaveLength(2);
+        const fn = src.indexOf('function recipientsChanged(isTransporterList)');
+        expect(fn).toBeGreaterThan(-1);
+        const end = src.indexOf('\n        }', fn);
+        const body = src.slice(fn, end);
+        expect(body).toContain('enq.justSent = false;');
+    });
+
+    test('the message, route and weight handlers cannot re-arm Send', () => {
+        // Everything between the address boxes and the Send button's own click handler: the
+        // pickup, drop, kg, kg-reset and message handlers all live in here.
+        const from = src.indexOf('warmFreightSuggestions();');
+        const to = src.indexOf('if (sendBtn) sendBtn.onclick');
+        expect(from).toBeGreaterThan(-1);
+        expect(to).toBeGreaterThan(from);
+        expect(src.slice(from, to)).not.toContain('recipientsChanged');
+    });
+
+    test('adding or removing a recipient is what brings Send back', () => {
+        expect(src).toContain('function recipientsChanged(isTransporterList)');
+        // add ×2, chip ×, Backspace — each says WHICH box it belongs to.
+        expect(src.split('recipientsChanged(isTransporterList);')).toHaveLength(5);
+        expect(src).not.toContain('recipientsChanged();');
+        // …and the on-screen line agrees with the rule.
+        expect(src).toContain('Add another transporter above to send it again.');
+    });
+});
+
 // Both modules carry their own copy (as they already do for chipAddrs). If the two ever drift,
 // the same paste behaves differently on the Freight tab and the Enquiry tab.
 describe('the two modules parse addresses identically', () => {
@@ -350,5 +755,44 @@ describe('the two modules parse addresses identically', () => {
     test.each(CASES)('same result for %p', (raw) => {
         expect(F.splitAddressList(raw).map(F.bareAddress))
             .toEqual(Q.splitAddressList(raw).map(Q.bareAddress));
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The double-send hole, third time of asking
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('only a new TRANSPORTER brings a spent Send back', () => {
+    // This hole has now moved twice rather than closed. First it was the message box:
+    // typing one character after a send re-armed Send, and the transporters were already
+    // cleared, so the second press emailed the Cc'd colleague ALONE and recorded them as a
+    // transporter who had been asked. That was fixed by moving the re-arm into the recipients
+    // handler — but that handler binds BOTH address boxes, so adding a Cc did exactly the same
+    // thing. Only the transporter box may re-arm Send.
+    const src = require('fs').readFileSync(
+        require('path').join(__dirname, '..', 'freight-tab-weight-editor.js'), 'utf8');
+
+    test('the re-arm is gated on which box changed, not merely on a box changing', () => {
+        expect(src).toContain('function recipientsChanged(isTransporterList) {');
+        expect(src).toContain('if (isTransporterList && enq.justSent) {');
+    });
+
+    test('the transporter box declares itself the transporter list', () => {
+        expect(src).toMatch(/bindAddressField\(field, chipsBox, input, enq\.bcc, true\)/);
+    });
+
+    test('and the Cc box declares that it is NOT', () => {
+        // The half that was missed. Without the explicit false, the flag is undefined —
+        // which happens to work, and would silently start re-arming again the moment
+        // someone gave the parameter a default.
+        expect(src).toMatch(/ccField\.querySelector\('\.fwe-enq-input'\), enq\.cc, false\)/);
+    });
+
+    test('every call inside the binder passes the flag through', () => {
+        // A single bare recipientsChanged() anywhere in the binder re-opens the hole for
+        // whichever box that line belongs to.
+        expect(src).not.toContain('recipientsChanged();');
+        // Call sites only — the trailing semicolon excludes the declaration itself.
+        expect(src.split('recipientsChanged(isTransporterList);').length - 1).toBe(4);
     });
 });

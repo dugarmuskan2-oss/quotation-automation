@@ -59,7 +59,7 @@ global.fetch = function () { return FETCH.apply(null, arguments); };
 
 require('../partner-directory.js');
 
-const { readEnquiry, rankFor, matchCity, kmBetween, applyFind, _state } = global.window.partnerDirectory._test;
+const { readEnquiry, rankFor, matchCity, kmBetween, applyFind, looksLikeFirmName, _state } = global.window.partnerDirectory._test;
 const { renderSuggestPanel } = global.window.partnerDirectory;
 const D = _state().D;
 
@@ -413,12 +413,52 @@ describe('rankFor — only the right kind of firm is offered', () => {
         partner({ company: 'OtherCo', role: 'other', city: 'Chennai' }),
     ];
 
-    test('a pipe enquiry goes to dealers and manufacturers — nobody else', () => {
+    test('a pipe enquiry is OFFERED to dealers and manufacturers — nobody else', () => {
         // A fabricator or a lorry firm turning up as a pipe supplier is an email to the
-        // wrong company on the owner's letterhead.
+        // wrong company on the owner's letterhead. "Offered" is the unblocked list — the
+        // one the owner is being told to send to.
         setContacts(mixed());
-        const names = rankFor('material', readEnquiry(ENQUIRY)).map((r) => r.p.company).sort();
-        expect(names).toEqual(['DealerCo', 'MakerCo']);
+        const offered = rankFor('material', readEnquiry(ENQUIRY))
+            .filter((r) => !r.blocked).map((r) => r.p.company).sort();
+        expect(offered).toEqual(['DealerCo', 'MakerCo']);
+    });
+
+    test('a fabricator who stocks the type is still SHOWN, ruled out with the reason', () => {
+        // They used to be dropped before scoring, so they appeared nowhere at all — not
+        // even under "Not suggested — but shown, so you can overrule it" — and nothing
+        // said why. Hiding a firm and giving no reason is the fault; blocking is the rule.
+        setContacts(mixed());
+        const rows = rankFor('material', readEnquiry(ENQUIRY));
+        const fab = rowFor(rows, 'FabCo');
+        expect(fab).toBeDefined();
+        expect(fab.blocked).toBe(true);
+        const line = reasonMatching(fab, /not a pipe supplier/);
+        expect(line).not.toBeNull();
+        expect(line[0]).toBe('bad');
+        expect(line[1]).toBe('They are a fabricator, not a pipe supplier');
+    });
+
+    test('a lorry firm is never scored as a pipe supplier, whatever its card says', () => {
+        // TransCo carries pipe types in the fixture. A transporter must not reach the
+        // supplier list at all, blocked or otherwise — that is not an overrule, it is noise.
+        setContacts(mixed());
+        const names = rankFor('material', readEnquiry(ENQUIRY)).map((r) => r.p.company);
+        expect(names).not.toContain('TransCo');
+    });
+
+    test('a dealer with a lorry route is shown for transport, ruled out on his role', () => {
+        // The other half: a dealer who runs his own lorries used to vanish from freight
+        // suggestions entirely.
+        setContacts([
+            partner({ company: 'TransCo', role: 'transporter', routes: [{ from: 'Chennai', to: 'Madurai' }] }),
+            partner({ company: 'DealerCo', role: 'dealer', routes: [{ from: 'Chennai', to: 'Madurai' }] }),
+            partner({ company: 'NoLorryCo', role: 'dealer', routes: [] }),
+        ]);
+        const rows = rankFor('transport', readEnquiry('lorry from Chennai to Madurai, 12 MT'), 'Chennai');
+        expect(rows.map((r) => r.p.company).sort()).toEqual(['DealerCo', 'TransCo']);
+        expect(rowFor(rows, 'DealerCo').blocked).toBe(true);
+        expect(reasonMatching(rowFor(rows, 'DealerCo'), /not a transporter/)).not.toBeNull();
+        expect(rowFor(rows, 'TransCo').blocked).toBe(false);
     });
 
     test('a transport enquiry goes to transporters — nobody else', () => {
@@ -1527,5 +1567,834 @@ describe('readEnquiry — the delivery town, and enquiries that name no pipe fam
         // The other half. Without this the name-search box would never work again.
         expect(readEnquiry('Annai Steel Traders').empty).toBe(true);
         expect(readEnquiry('').empty).toBe(true);
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 11. The flow review — the medium faults, and what each one now has to do
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('a firm emailed this morning has been dealt with recently', () => {
+    // `daysSince` returns 0 for today, and 0 is falsy, so `|| 999` turned today into
+    // "not lately": the firms the owner is actively working with were described as
+    // neglected, lost 10 points for it, and wore the green Regular badge on the same card.
+    const both = () => [
+        partner({ company: 'TodayCo', city: 'Chennai', enq: 10, rep: 0, last: TODAY }),
+        partner({ company: 'LapsedCo', city: 'Chennai', enq: 10, rep: 0, last: day(400) }),
+    ];
+
+    test('the sentence says recently, not "but not lately"', () => {
+        setContacts(both());
+        const rows = rankFor('material', readEnquiry(ENQUIRY));
+        expect(reasonMatching(rowFor(rows, 'TodayCo'), /dealt with recently/)).not.toBeNull();
+        expect(reasonMatching(rowFor(rows, 'TodayCo'), /but not lately/)).toBeNull();
+    });
+
+    test('and it keeps the 10 points, so it does not sink below one used months ago', () => {
+        setContacts(both());
+        const s = scoresByCompany(rankFor('material', readEnquiry(ENQUIRY)));
+        expect(s.TodayCo - s.LapsedCo).toBe(10);
+    });
+
+    test('the badge and the sentence agree — both read "recent" off the same rule', () => {
+        // They disagreed on ONE card: Regular (green) beside "but not lately" (orange).
+        setContacts([partner({ company: 'TodayCo', city: 'Chennai', enq: 10, rep: 0, last: TODAY })]);
+        const row = rankFor('material', readEnquiry(ENQUIRY))[0];
+        expect((row.p.enq || 0) >= 5).toBe(true);   // what isRegular needs beyond the date
+        expect(reasonMatching(row, /dealt with recently/)).not.toBeNull();
+    });
+});
+
+describe('"No city on their card" is only ever said to a card with no city', () => {
+    test('a town outside the distance table is named, not blamed on a blank card', () => {
+        // Erode, Tirupur, Ambattur — the head-office box is free text and those get typed
+        // all the time. The card plainly said Erode and the app asked him to add a city.
+        setContacts([partner({ company: 'ErodeCo', city: 'Erode' })]);
+        const row = rankFor('material', readEnquiry(ENQUIRY))[0];
+        expect(reasonMatching(row, /No city on their card/)).toBeNull();
+        const line = reasonMatching(row, /not in my distance list/);
+        expect(line).not.toBeNull();
+        expect(line[1]).toContain('Erode');
+    });
+
+    test('and it costs nothing, where a genuinely blank card still costs 5', () => {
+        setContacts([
+            partner({ company: 'ErodeCo', city: 'Erode' }),
+            partner({ company: 'BlankCo', city: '' }),
+        ]);
+        const s = scoresByCompany(rankFor('material', readEnquiry(ENQUIRY)));
+        expect(s.ErodeCo - s.BlankCo).toBe(5);
+    });
+
+    test('a delivery town we cannot place is not blamed on anyone at all', () => {
+        // The everyone-at-once version: a quote shipping to Tirupur made EVERY card read
+        // "No city on their card", because nearestBranch fails on either end.
+        setContacts([partner({ company: 'ChennaiCo', city: 'Chennai' })]);
+        const row = rankFor('material', { types: ['ERW'], items: [], site: 'Tirupur', tons: 1.5, known: true })[0];
+        expect(reasonMatching(row, /No city on their card/)).toBeNull();
+        expect(reasonMatching(row, /not a town I can measure/)).not.toBeNull();
+    });
+});
+
+describe('a card the app made itself does not state facts nobody gave it', () => {
+    // sanitizePartner defaults partLoad to true and moq to 0, so a stub the app invented
+    // after a send was born "Accepts part load" and "No minimum in the way" — green, and
+    // worth 25 and 10 points. CLAUDE.md check five: no number, and no fact, is guessed.
+    const freight = () => readEnquiry('lorry from Chennai to Madurai, 2.4 MT');
+
+    test('part load is "not recorded", and worth nothing, until someone confirms the card', () => {
+        setContacts([
+            partner({ company: 'GuessedCo', role: 'transporter', fromEnquiry: true, routes: [{ from: 'Chennai', to: 'Madurai' }] }),
+            partner({ company: 'ConfirmedCo', role: 'transporter', fromEnquiry: false, routes: [{ from: 'Chennai', to: 'Madurai' }] }),
+        ]);
+        const rows = rankFor('transport', freight(), 'Chennai');
+        const guessed = rowFor(rows, 'GuessedCo');
+        expect(reasonMatching(guessed, /Takes part load/)).toBeNull();
+        const line = reasonMatching(guessed, /Part load not recorded/);
+        expect(line).not.toBeNull();
+        expect(line[0]).toBe('neutral');
+        const s = scoresByCompany(rows);
+        expect(s.ConfirmedCo - s.GuessedCo).toBe(25);
+    });
+
+    test('a confirmed full-load-only card is still sunk — the rule itself is untouched', () => {
+        setContacts([
+            partner({ company: 'FullOnlyCo', role: 'transporter', routes: [{ from: 'Chennai', to: 'Madurai' }], partLoad: false }),
+            partner({ company: 'PartCo', role: 'transporter', routes: [{ from: 'Chennai', to: 'Madurai' }] }),
+        ]);
+        const s = scoresByCompany(rankFor('transport', freight(), 'Chennai'));
+        expect(s.PartCo - s.FullOnlyCo).toBe(55);
+    });
+
+    test('a blank minimum on a guessed card is "not recorded", not "no minimum in the way"', () => {
+        setContacts([
+            partner({ company: 'GuessedCo', city: 'Chennai', fromEnquiry: true, moq: 0 }),
+            partner({ company: 'ConfirmedCo', city: 'Chennai', fromEnquiry: false, moq: 0 }),
+        ]);
+        const rows = rankFor('material', readEnquiry(ENQUIRY));
+        expect(reasonMatching(rowFor(rows, 'GuessedCo'), /Minimum not recorded/)).not.toBeNull();
+        expect(reasonMatching(rowFor(rows, 'GuessedCo'), /No minimum in the way/)).toBeNull();
+        const s = scoresByCompany(rows);
+        expect(s.ConfirmedCo - s.GuessedCo).toBe(10);
+    });
+});
+
+describe('with the route boxes empty, nobody is judged against Chennai to Chennai', () => {
+    // enq.pickup and enq.drop start as empty strings, so this is the state the freight box
+    // opens in. Both ends fell back to Chennai: the panel announced "Chennai → Chennai",
+    // warned that most carriers did not go there, and ruled the rest out.
+    const carriers = () => [
+        partner({ company: 'MaduraiCo', role: 'transporter', routes: [{ from: 'Chennai', to: 'Madurai' }] }),
+        partner({ company: 'DelhiCo', role: 'transporter', routes: [{ from: 'Delhi', to: 'Mumbai' }] }),
+    ];
+    const noRoute = { types: [], items: [], site: '', tons: 2.4, known: true };
+
+    test('nobody is ruled out, and nobody is told they do not run the route', () => {
+        setContacts(carriers());
+        const rows = rankFor('transport', noRoute, '');
+        expect(rows.filter((r) => r.blocked)).toHaveLength(0);
+        expect(reasonMatching(rowFor(rows, 'DelhiCo'), /Does not run/)).toBeNull();
+    });
+
+    test('the route rule scores nothing for anyone, and asks for the two towns', () => {
+        setContacts(carriers());
+        const rows = rankFor('transport', noRoute, '');
+        const s = scoresByCompany(rows);
+        expect(s.MaduraiCo - s.DelhiCo).toBe(0);
+        const line = reasonMatching(rowFor(rows, 'MaduraiCo'), /Fill in the pickup and delivery towns/);
+        expect(line).not.toBeNull();
+        expect(line[0]).toBe('neutral');
+    });
+
+    test('with both towns given the route rule bites exactly as before', () => {
+        // The other half: a guard that simply stopped scoring routes would pass both above.
+        setContacts(carriers());
+        const rows = rankFor('transport', readEnquiry('lorry from Chennai to Madurai, 2.4 MT'), 'Chennai');
+        expect(rowFor(rows, 'DelhiCo').blocked).toBe(true);
+        const s = scoresByCompany(rows);
+        expect(s.MaduraiCo - s.DelhiCo).toBeGreaterThan(900);
+    });
+
+    const panelWith = async (opts) => {
+        setContacts([]);
+        FETCH = () => Promise.resolve({ ok: true, json: () => Promise.resolve({ contacts: carriers(), changes: [], pending: [] }) });
+        const box = fakeBox();
+        renderSuggestPanel(box, Object.assign({ kind: 'transport', kg: 2400 }, opts), () => {});
+        await flush();
+        FETCH = () => Promise.reject(new Error('no network in unit tests'));
+        return box.innerHTML;
+    };
+
+    test('the panel says so in words instead of printing an invented route', async () => {
+        const html = await panelWith({ pickup: '', drop: '' });
+        expect(html).not.toContain('Chennai</b> → <b>Chennai');
+        expect(html).toContain('no route yet');
+    });
+
+    test('a pickup with no delivery town does not invent Chennai as the destination', () => {
+        // Both ends fell back to Chennai independently, so filling in only the pickup still
+        // produced a route — "Chennai → Chennai" — that nobody had typed.
+        return panelWith({ pickup: 'Chennai', drop: '' }).then((html) => {
+            expect(html).not.toContain('Chennai</b> → <b>Chennai');
+            expect(html).toContain('no route yet');
+        });
+    });
+
+    test('and a delivery town with no pickup does not invent Chennai as the origin', () => {
+        return panelWith({ pickup: '', drop: 'Madurai' }).then((html) => {
+            expect(html).not.toContain('Chennai</b> → <b>Madurai');
+            expect(html).toContain('no route yet');
+        });
+    });
+
+    test('with both towns given the panel prints the real route', () => {
+        return panelWith({ pickup: 'Chennai', drop: 'Madurai' }).then((html) => {
+            expect(html).toContain('Chennai</b> → <b>Madurai');
+            expect(html).not.toContain('no route yet');
+        });
+    });
+});
+
+describe('typing a firm name into the finder is a search, not an enquiry', () => {
+    // "Sri Balaji Transports" contains "transport", so readEnquiry flagged it freight,
+    // ranked a Chennai-to-Chennai lorry list, and the firm was nowhere on the page.
+    beforeEach(() => {
+        setContacts([
+            partner({ company: 'Sri Balaji Transports', role: 'transporter' }),
+            partner({ company: 'GI Tubes and Company' }),
+        ]);
+    });
+
+    test('a firm on file whose name carries a trade word is looked up by name', () => {
+        expect(readEnquiry('Sri Balaji Transports').empty).toBe(false);   // the old reading
+        expect(looksLikeFirmName('Sri Balaji Transports')).toBe(true);
+        expect(looksLikeFirmName('GI Tubes')).toBe(true);
+    });
+
+    test('a pasted enquiry is never mistaken for a name, however short', () => {
+        // Only text that IS part of a firm's name on file counts as a search, so a real
+        // enquiry cannot be swallowed by it — including one that names a firm and then
+        // goes on to ask for something.
+        expect(looksLikeFirmName('Sri Balaji Transports 20 MT to Madurai')).toBe(false);
+        expect(looksLikeFirmName('300 mtr of 2 inch ERW medium')).toBe(false);
+    });
+
+    test('a pipe family typed on its own is not mistaken for a company name', () => {
+        // "GI" would otherwise match "GI Tubes and Company" and stop ranking GI suppliers.
+        expect(looksLikeFirmName('GI')).toBe(false);
+        expect(looksLikeFirmName('ERW')).toBe(false);
+    });
+
+    test('a name nobody has on file is not treated as a search', () => {
+        expect(looksLikeFirmName('Kalpataru Steel')).toBe(false);
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 12. Source guards for the review fixes that would need a real browser to drive
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('source guard — nothing irreversible happens on one click', () => {
+    test('the Discard warning says the email must be re-labelled in Gmail', () => {
+        // The SENSE of the confirm — that Cancel keeps the item — is pinned by a real click
+        // in "pressing Cancel on Discard keeps the firm" further down. This one only pins
+        // the words, which a click cannot read.
+        expect(bodyOf('discardWarningText')).toMatch(/Add-to-Directory label/);
+        expect(bodyOf('discardWarningText')).toMatch(/no Undo/);
+    });
+
+    test('Load IS 1239 sizes asks before it replaces rows already typed in', () => {
+        const handler = sliceBetween("[data-pd-loadis]", "[data-pd-addorule]");
+        expect(handler).toMatch(/pr\.sizes \|\| \[\]\)\.length[\s\S]*window\.confirm/);
+        // …and it must still be a plain replace when there is nothing there to lose.
+        expect(handler).toMatch(/pr\.sizes = IS1239\.filter/);
+    });
+
+    test('an entry covering many cards offers no Undo button it cannot honour', () => {
+        // partnerId '' made Undo stamp "Undone", hide itself, and remove nothing at all.
+        const body = bodyOf('undoRowHtml');
+        expect(body).toMatch(/if \(!str\(ch\.partnerId\)\)/);
+        expect(body).toMatch(/cannot be undone in one go/);
+    });
+});
+
+describe('source guard — one open card, and a save that names only what was touched', () => {
+    test('opening a pending item closes any open change, and the other way round', () => {
+        // Two open cards showed two full edit forms; only the first was ever wired up.
+        const changes = sliceBetween('function bindChanges(', 'The in-quote suggestion panel');
+        expect(changes).toMatch(/S\.openChange = null;/);
+        expect(changes).toMatch(/S\.openPending = null;\s*\/\/ one open card at a time/);
+    });
+
+    test('a branch edit writes branches only — never routes, city and address with it', () => {
+        const body = bodyOf('bindPlaces');
+        expect(body).not.toMatch(/\['branches', 'routes', 'city', 'address'\]/);
+        expect(body).toMatch(/save\(false, \['branches'\]\)/);
+        expect(body).toMatch(/save\(false, \['routes'\]\)/);
+    });
+
+    test('a product edit writes products only', () => {
+        const body = bodyOf('bindSupply');
+        expect(body).not.toMatch(/\['types', 'products', 'rules', 'moq'\]/);
+        expect(body).toMatch(/save\(k === 'spec', \['products'\]\)/);
+        expect(body).toMatch(/save\(true, \['types'\]\)/);
+    });
+});
+
+describe('source guard — you can see what you are being asked to approve', () => {
+    test('the email the card was read from is put on the screen', () => {
+        const body = bodyOf('sourceEmailHtml');
+        expect(body).toMatch(/esc\(text\)/);
+        expect(body).toMatch(/too large to send for reading/);
+    });
+
+    test('Approve is held back while the firm has no name', () => {
+        const body = bodyOf('approveRowHtml');
+        expect(body).toMatch(/var nameless =/);
+        expect(body).toMatch(/var stop = busy \|\| clashingCard\(pi, match\) \|\| nameless/);
+    });
+
+    test('a failed reading is not reported as an email with nothing in it', () => {
+        expect(src).toMatch(/pi\.readFailed \? '<b>the reading failed/);
+    });
+
+    test('the orange "check me" flag has something that can clear it', () => {
+        expect(bodyOf('checkMeHtml')).toMatch(/data-pd-checked=/);
+        const handler = sliceBetween("[data-pd-checked]", "[data-pd-delete]");
+        expect(handler).toMatch(/p\.fromEnquiry = false/);
+        expect(handler).toMatch(/savePartner\(p, \['fromEnquiry'\]\)/);
+    });
+
+    test('and a chip that counts them, so there is a list to work through', () => {
+        expect(bodyOf('needsCheckingCount')).toMatch(/p\.fromEnquiry/);
+        expect(bodyOf('listHtml')).toMatch(/S\.filter === 'tocheck'/);
+    });
+
+    test('a second address at a firm you already have is flagged before Approve', () => {
+        const body = bodyOf('sameFirmNoteHtml');
+        expect(body).toMatch(/emailDomain\(pi\.from\)/);
+        expect(body).toMatch(/add this person to that card instead/);
+        // Free mail is one person, not one firm — every gmail card must not look related.
+        expect(src).toMatch(/SHARED_MAIL = \/\^\(gmail/);
+    });
+});
+
+describe('an empty directory is never answered with "nobody fits"', () => {
+    test('the finder falls back to the empty-directory panel, Import button and all', () => {
+        // finderResults() returned BEFORE the empty check, so pasting an enquiry into a
+        // fresh directory answered "Nobody in your directory fits this one" and took the
+        // Import button off the page with it.
+        const body = bodyOf('listHtml');
+        const emptyAt = body.indexOf('if (!D.contacts.length) return emptyStateHtml();');
+        const finderAt = body.indexOf('return finderResults();');
+        expect(emptyAt).toBeGreaterThan(-1);
+        expect(finderAt).toBeGreaterThan(-1);
+        expect(emptyAt).toBeLessThan(finderAt);
+    });
+
+    test('a genuine "nobody fits" offers the two ways out, not a bare sentence', () => {
+        expect(bodyOf('rankListHtml')).toMatch(/if \(!rows\.length\) return deadEndHtml\(need, opts\)/);
+    });
+});
+
+describe('replies that were never counted are not reported as nought per cent', () => {
+    test('an imported card is not accused of ignoring twelve enquiries', () => {
+        // Reply tracking was built long after those enquiries went out, so the count is
+        // nothing measured. It read 'Replied to 0 of 12 enquiries' in orange, and the
+        // owner's most responsive suppliers all looked like people who never write back.
+        setContacts([partner({ company: 'ImportedCo', city: 'Chennai', enq: 12, rep: 0, last: day(60) })]);
+        const row = rankFor('material', readEnquiry(ENQUIRY))[0];
+        expect(reasonMatching(row, /Replied to 0 of 12/)).toBeNull();
+        const line = reasonMatching(row, /no reply recorded/);
+        expect(line).not.toBeNull();
+        expect(line[0]).toBe('neutral');
+        expect(line[1]).toContain('Asked 12 times');
+    });
+
+    test('a firm that HAS replied still says so, and still earns the points', () => {
+        setContacts([
+            partner({ company: 'RepliesCo', city: 'Chennai', enq: 10, rep: 10, last: day(5) }),
+            partner({ company: 'SilentCo', city: 'Chennai', enq: 10, rep: 0, last: day(5) }),
+        ]);
+        const rows = rankFor('material', readEnquiry(ENQUIRY));
+        const line = reasonMatching(rowFor(rows, 'RepliesCo'), /Replied to 10 of 10/);
+        expect(line).not.toBeNull();
+        expect(line[0]).toBe('ok');
+        expect(scoresByCompany(rows).RepliesCo - scoresByCompany(rows).SilentCo).toBe(20);
+    });
+});
+
+describe('source guard — the cursor survives a redraw', () => {
+    test('render captures focus before it replaces the page, and puts it back after', () => {
+        // Tab out of Company and the card redraws; focus had already moved to the NEXT box,
+        // and the redraw threw it away, so the next words typed went nowhere.
+        const body = bodyOf('render');
+        const grab = body.indexOf('focusKeeper(app)');
+        const wipe = body.indexOf('app.innerHTML =');
+        const back = body.indexOf('restoreFocus()');
+        expect(grab).toBeGreaterThan(-1);
+        expect(grab).toBeLessThan(wipe);
+        expect(back).toBeGreaterThan(wipe);
+        expect(bodyOf('focusKeeper')).toMatch(/setSelectionRange\(start, end\)/);
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 13. The repairs of the last review, driven for real
+//
+// Every test in this block was failed on purpose first, with the fix taken back out.
+// The guards it replaces did not manage that: three whole fixes could be unplugged from
+// the page with the suite still green, and inverting the Discard confirm — so pressing
+// Cancel destroyed the item for good — changed nothing at all.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const { focusKey, guessedBoxes, refreshWaitingBadge } = global.window.partnerDirectory._test;
+
+/**
+ * fakeAppEl, plus the querySelector the module uses to bind a lone button, and empty
+ * children on each stub so bindCardFields can walk an open card without blowing up.
+ */
+function clickApp() {
+    const base = fakeAppEl();
+    const raw = base.querySelectorAll;
+    base.querySelectorAll = (sel) => raw(sel).map((stub) => {
+        if (!stub.querySelectorAll) {
+            stub.querySelectorAll = () => [];
+            stub.querySelector = () => null;
+        }
+        return stub;
+    });
+    base.querySelector = (sel) => base.querySelectorAll(sel)[0] || null;
+    return base;
+}
+
+describe('the review fixes are actually on the screen, not merely in the file', () => {
+    const { S } = _state();
+    let realGetElementById;
+    let app;
+    let posts;
+
+    beforeEach(() => {
+        realGetElementById = global.document.getElementById;
+        app = clickApp();
+        global.document.getElementById = (id) => (id === 'partnerDirectoryApp' ? app : null);
+        S.tab = 'dir'; S.filter = 'all'; S.openId = null; S.openPending = null;
+        S.openChange = null; S.busy = {};
+        S.find = { text: '', state: 'idle', need: null, note: '' };
+        posts = [];
+        D.saveError = ''; D.saveWhat = [];
+    });
+
+    afterEach(() => {
+        global.document.getElementById = realGetElementById;
+        delete global.window.confirm;
+        FETCH = () => Promise.reject(new Error('no network in unit tests'));
+        S.tab = 'dir'; S.filter = 'all'; S.openId = null; S.openPending = null;
+        S.openChange = null; S.busy = {};
+        D.saveError = ''; D.saveWhat = [];
+        setContacts([]);
+    });
+
+    /** Serve one payload, open the tool the way the sidebar button does, return the HTML. */
+    async function open(payload, tab, opts) {
+        S.tab = tab || 'dir';
+        const body = Object.assign({ contacts: [], changes: [], pending: [], duplicates: [] }, payload);
+        FETCH = (url, o) => {
+            if (o && o.method === 'POST') {
+                posts.push({ url, body: JSON.parse(o.body) });
+                return (opts && opts.postFails)
+                    ? Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({ error: 'the server said no' }) })
+                    : Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+        };
+        global.window.switchToDirectoryTab();
+        await flush();
+        return app.innerHTML;
+    }
+
+    const click = (attr, value) =>
+        app.querySelectorAll('[' + attr + ']')
+            .filter((el) => el.getAttribute(attr) === value)[0].onclick();
+
+    const KALP = partner({
+        id: 'p_kalp', company: 'Kalpataru Steel', city: 'Nashik', role: 'manufacturer',
+        people: [{ name: 'Manish', role: 'Sales', phones: [], emails: [{ label: 'Work', v: 'manish@kalpatarusteel.com' }] }],
+    });
+
+    /** A queued email exactly as routes/contacts.js stores one that came in from Gmail. */
+    function mailed(over) {
+        return Object.assign({
+            id: 'pd_1', origin: 'gmail', from: 'sales@kalpatarusteel.com',
+            subject: 'Our rate list', file: 'rates.pdf', kind: 'pdf', text: '',
+            finds: [], readFailed: false, receivedAt: new Date().toISOString(), preview: null,
+        }, over || {});
+    }
+
+    // ── The three fixes that could be unplugged with the suite still green ────
+
+    test('the email a queued card was read from is put on the screen when it is opened', async () => {
+        // Mutation proved: deleting "sourceEmailHtml(pi) + " from pendingStrip fails this.
+        S.openPending = 'pd_1';
+        const html = await open({
+            contacts: [],
+            pending: [mailed({ text: 'Dear sir, our rates for 2 inch ERW are attached. Regards, Manish' })],
+        }, 'changes');
+        expect(html).toContain('pd-src-text');
+        expect(html).toContain('our rates for 2 inch ERW are attached');
+        expect(html).toContain('The email this was read from');
+    });
+
+    test('a card the app guessed shows the button that takes the orange flag off', async () => {
+        // Mutation proved: deleting "checkMeHtml(p)" from editCard fails this.
+        const guessed = partner({ id: 'p_ck', company: 'Guessed Traders', fromEnquiry: true });
+        S.openId = 'p_ck';
+        const html = await open({ contacts: [guessed] }, 'dir');
+        expect(html).toContain('data-pd-checked="p_ck"');
+        expect(html).toContain('I have checked this card');
+
+        // …and a card somebody typed in by hand is not asked to confirm anything.
+        const typed = partner({ id: 'p_ty', company: 'Typed Traders', fromEnquiry: false });
+        S.openId = 'p_ty';
+        const plain = await open({ contacts: [typed] }, 'dir');
+        expect(plain).toContain('data-pd-card="p_ty"');
+        expect(plain).not.toContain('data-pd-checked');
+    });
+
+    test('a second address at a firm you already have is flagged on the strip itself', async () => {
+        // Mutation proved: deleting "+ sameFirmNoteHtml(pi, match)" from pendingStrip fails this.
+        const html = await open({
+            contacts: [KALP],
+            pending: [mailed({ from: 'accounts@kalpatarusteel.com' })],
+        }, 'changes');
+        expect(html).toContain('add this person to that card instead');
+        expect(html).toContain('data-pd-open="p_kalp"');
+        expect(html).toContain('Kalpataru Steel');
+    });
+
+    test('and it is not said about a free-mail address, which is one person not one firm', async () => {
+        const gmailCard = partner({
+            id: 'p_gm', company: 'Ravi Traders',
+            people: [{ name: 'Ravi', role: '', phones: [], emails: [{ label: 'Work', v: 'ravi.traders@gmail.com' }] }],
+        });
+        const html = await open({
+            contacts: [gmailCard],
+            pending: [mailed({ from: 'suresh.pipes@gmail.com' })],
+        }, 'changes');
+        expect(html).not.toContain('add this person to that card instead');
+    });
+
+    // ── Discard: the SENSE of the confirm, not its presence ───────────────────
+
+    test('pressing Cancel on Discard keeps the firm — nothing is sent, nothing is lost', async () => {
+        // The guard this replaces only checked that window.confirm was called at all.
+        // Inverting the sense — so Cancel is what destroys it — left the suite green.
+        await open({ contacts: [], pending: [mailed()] }, 'changes');
+        global.window.confirm = () => false;
+        click('data-pd-discard', 'pd_1');
+        await flush();
+        expect(posts).toEqual([]);
+        expect(S.busy.pd_1).toBeUndefined();
+        expect(D.pending).toHaveLength(1);
+    });
+
+    test('pressing OK on Discard is what throws it away', async () => {
+        await open({ contacts: [], pending: [mailed()] }, 'changes');
+        global.window.confirm = () => true;
+        click('data-pd-discard', 'pd_1');
+        await flush();
+        expect(posts.map((p) => p.url)).toEqual(
+            expect.arrayContaining([expect.stringContaining('/contacts/pending/discard')]));
+        expect(posts[0].body).toEqual({ id: 'pd_1' });
+    });
+
+    test('the warning names the firm being discarded, not "this one"', async () => {
+        await open({ contacts: [], pending: [mailed({ subject: 'Balaji Tubes rate list' })] }, 'changes');
+        let asked = '';
+        global.window.confirm = (t) => { asked = t; return false; };
+        click('data-pd-discard', 'pd_1');
+        expect(asked).toContain('Balaji Tubes rate list');
+        expect(asked).toContain('no Undo');
+    });
+
+    // ── A failure names ITS OWN field, not whatever was saved last ────────────
+
+    test('an unrelated failure does not accuse a field that was saved perfectly well', async () => {
+        // D.saveWhat was one shared box, set only by savePartner and printed on EVERY
+        // failure — so a discard that fell over announced "The check-me flag was NOT saved"
+        // about a flag that had gone in an hour before.
+        global.window.confirm = () => true;
+
+        // 1. A real save that really fails, so the banner really names its own field.
+        const guessed = partner({ id: 'p_ck', company: 'Guessed Traders', role: 'transporter', fromEnquiry: true, partLoad: false });
+        S.openId = 'p_ck';
+        await open({ contacts: [guessed], pending: [mailed()] }, 'dir', { postFails: true });
+        click('data-pd-checked', 'p_ck');
+        await flush();
+        expect(D.saveError).toBe('the server said no');
+        expect(app.innerHTML).toContain('The check-me flag was NOT saved');
+
+        // 2. Now something else fails. It must speak for itself.
+        click('data-pd-tab', 'changes');
+        await flush();
+        expect(app.innerHTML).toContain('data-pd-discard="pd_1"');
+        click('data-pd-discard', 'pd_1');
+        await flush();
+        expect(app.innerHTML).toContain('Your last edit was NOT saved');
+        expect(app.innerHTML).not.toContain('The check-me flag was NOT saved');
+    });
+
+    // ── Ticking a card off does not promote a default to a fact ──────────────
+
+    test('ticking off a lorry firm says out loud that "Takes part load" becomes a fact', async () => {
+        const lorry = partner({
+            id: 'p_lr', company: 'Sri Logistics', role: 'transporter', fromEnquiry: true,
+            partLoad: true, types: [],
+        });
+        S.openId = 'p_lr';
+        await open({ contacts: [lorry] }, 'dir');
+        let asked = '';
+        global.window.confirm = (t) => { asked = t; return false; };
+        click('data-pd-checked', 'p_lr');
+        expect(asked).toContain('Takes part load');
+        expect(asked).toContain('Sri Logistics');
+        // Cancel leaves the card exactly as it was — flag on, nothing sent.
+        expect(lorry.fromEnquiry).toBe(true);
+        expect(posts).toEqual([]);
+    });
+
+    test('and pressing OK is what clears the flag and stores it', async () => {
+        const lorry = partner({
+            id: 'p_lr', company: 'Sri Logistics', role: 'transporter', fromEnquiry: true,
+            partLoad: true, types: [],
+        });
+        S.openId = 'p_lr';
+        await open({ contacts: [lorry] }, 'dir');
+        global.window.confirm = () => true;
+        click('data-pd-checked', 'p_lr');
+        await flush();
+        expect(lorry.fromEnquiry).toBe(false);
+        expect(posts[0].body.fields).toEqual(['fromEnquiry']);
+    });
+
+    test('a card with nothing guessed on it is ticked off without a question', async () => {
+        const dealer = partner({ id: 'p_dl', company: 'Annai Steel', role: 'dealer', fromEnquiry: true, moq: 5 });
+        S.openId = 'p_dl';
+        await open({ contacts: [dealer] }, 'dir');
+        global.window.confirm = () => { throw new Error('should not have asked'); };
+        click('data-pd-checked', 'p_dl');
+        await flush();
+        expect(dealer.fromEnquiry).toBe(false);
+    });
+
+    // ── The "Need checking" chip keeps your place ─────────────────────────────
+
+    test('opening a card from the "Need checking" list leaves the chip where it was', async () => {
+        const a = partner({ id: 'p_a', company: 'Guess One', fromEnquiry: true });
+        const b = partner({ id: 'p_b', company: 'Guess Two', fromEnquiry: true });
+        await open({ contacts: [a, b] }, 'dir');
+        S.filter = 'tocheck';
+        global.window.switchToDirectoryTab();
+        await flush();
+        click('data-pd-open', 'p_a');
+        expect(S.filter).toBe('tocheck');
+        expect(app.innerHTML).toContain('data-pd-card="p_a"');
+        expect(app.innerHTML).toContain('Guess Two');      // the rest of the list is still there
+    });
+
+    test('but a card the chip would hide still opens — the filter widens for it', async () => {
+        // The real route: the duplicate-address warning sits above the chips and links
+        // straight to a card, whatever the chips are showing.
+        const guessed = partner({ id: 'p_a', company: 'Guess One', fromEnquiry: true });
+        const done = partner({ id: 'p_b', company: 'Already Checked', fromEnquiry: false });
+        await open({
+            contacts: [guessed, done],
+            duplicates: [{ email: 'shared@mill.com', cards: [{ id: 'p_b', company: 'Already Checked' }] }],
+        }, 'dir');
+        S.filter = 'tocheck';
+        global.window.switchToDirectoryTab();
+        await flush();
+        click('data-pd-open', 'p_b');
+        expect(S.filter).toBe('all');
+        expect(app.innerHTML).toContain('data-pd-card="p_b"');
+    });
+
+    test('the card you are working in does not vanish the moment you tick it off', async () => {
+        const only = partner({ id: 'p_a', company: 'Guess One', role: 'dealer', fromEnquiry: true, moq: 5 });
+        await open({ contacts: [only] }, 'dir');
+        S.filter = 'tocheck'; S.openId = 'p_a';
+        global.window.switchToDirectoryTab();
+        await flush();
+        global.window.confirm = () => true;
+        click('data-pd-checked', 'p_a');
+        expect(app.innerHTML).toContain('data-pd-card="p_a"');
+        expect(app.innerHTML).not.toContain('Nobody matches that');
+    });
+});
+
+describe('guessedBoxes — only a box nobody typed is worth warning about', () => {
+    test('a lorry firm ticked for part load is the warning; unticked is a real answer', () => {
+        expect(guessedBoxes({ role: 'transporter', partLoad: true })).toEqual(['Takes part load']);
+        expect(guessedBoxes({ role: 'transporter', partLoad: false })).toEqual([]);
+    });
+
+    test('a supplier with no minimum is the warning; a minimum typed in is a real answer', () => {
+        expect(guessedBoxes({ role: 'dealer', moq: 0 })).toEqual(['No minimum order']);
+        expect(guessedBoxes({ role: 'manufacturer', moq: 0 })).toEqual(['No minimum order']);
+        expect(guessedBoxes({ role: 'dealer', moq: 5 })).toEqual([]);
+    });
+
+    test('trades with no minimum box are never asked about one', () => {
+        // rowCard prints MOQ for neither, so there is no fact there to promote.
+        expect(guessedBoxes({ role: 'fabricator', moq: 0 })).toEqual([]);
+        expect(guessedBoxes({ role: 'other', moq: 0 })).toEqual([]);
+    });
+});
+
+describe('focusKey — the buttons are told apart, so focus lands where it was', () => {
+    const el = (tag, attrs) => ({
+        tagName: tag,
+        attributes: Object.keys(attrs).map((n) => ({ name: n, value: attrs[n] })),
+        getAttribute: (k) => (k in attrs ? attrs[k] : null),
+    });
+
+    test('Approve and Discard are not the same key', () => {
+        // Every action button used to key to the same empty string, because the key was built
+        // from a hand-written list of the nine attributes the TEXT BOXES use. A redraw that
+        // changed how many buttons there are then handed focus to whichever button had taken
+        // the old one's place — press Space and you hit Discard.
+        const approve = el('BUTTON', { 'data-pd-approve': 'pd_1' });
+        const discard = el('BUTTON', { 'data-pd-discard': 'pd_1' });
+        expect(focusKey(approve)).not.toBe(focusKey(discard));
+    });
+
+    test('two Discard buttons on two different firms are not the same key either', () => {
+        expect(focusKey(el('BUTTON', { 'data-pd-discard': 'pd_1' })))
+            .not.toBe(focusKey(el('BUTTON', { 'data-pd-discard': 'pd_2' })));
+    });
+
+    test('the same button before and after a redraw IS the same key', () => {
+        expect(focusKey(el('BUTTON', { 'data-pd-checked': 'p_a' })))
+            .toBe(focusKey(el('BUTTON', { 'data-pd-checked': 'p_a' })));
+    });
+
+    test('the text boxes it always handled still work', () => {
+        expect(focusKey(el('INPUT', { 'data-pd-k': 'company' })))
+            .not.toBe(focusKey(el('INPUT', { 'data-pd-k': 'city' })));
+        expect(focusKey(el('INPUT', { id: 'pdFindIn' })))
+            .not.toBe(focusKey(el('INPUT', { 'data-pd-k': 'company' })));
+    });
+});
+
+describe('the waiting count keeps itself honest on a tab left open all day', () => {
+    let realGetElementById;
+    let realCreateElement;
+    let btn;
+    let dot;
+
+    beforeEach(() => {
+        realGetElementById = global.document.getElementById;
+        realCreateElement = global.document.createElement;
+        dot = null;
+        btn = {
+            querySelector: () => dot,
+            appendChild: (c) => { dot = c; c.remove = () => { dot = null; }; },
+            classList: { add: () => {}, remove: () => {} },
+        };
+        global.document.getElementById = (id) => (id === 'mainToolDirectoryButton' ? btn : null);
+        global.document.createElement = () => ({ className: '', textContent: '', title: '' });
+    });
+
+    afterEach(() => {
+        global.document.getElementById = realGetElementById;
+        global.document.createElement = realCreateElement;
+        FETCH = () => Promise.reject(new Error('no network in unit tests'));
+        setContacts([]);
+    });
+
+    const serve = (pending, contacts) => {
+        FETCH = () => Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ contacts: contacts || [], changes: [], pending, duplicates: [] }),
+        });
+    };
+
+    test('a brochure tagged in Gmail at ten in the morning shows up without a reload', async () => {
+        // The number was read once at load and then only when the directory itself was
+        // re-read — so on the tab the owner leaves open all day it never changed.
+        serve([]);
+        refreshWaitingBadge(); await flush();
+        expect(dot).toBeNull();
+
+        serve([{ id: 'pd_1' }, { id: 'pd_2' }, { id: 'pd_3' }]);
+        refreshWaitingBadge(); await flush();
+        expect(dot.textContent).toBe('3');
+        expect(dot.title).toContain('3 waiting');
+    });
+
+    test('and it goes away again once they have all been dealt with', async () => {
+        serve([{ id: 'pd_1' }]);
+        refreshWaitingBadge(); await flush();
+        expect(dot.textContent).toBe('1');
+        serve([]);
+        refreshWaitingBadge(); await flush();
+        expect(dot).toBeNull();
+    });
+
+    test('the check writes the badge and NOTHING else — no card is overwritten by it', async () => {
+        // It must not be loadDirectory in disguise: that replaces D.contacts wholesale, and
+        // a partner just added by hand, or a card being typed into, would go with it.
+        const mine = [partner({ id: 'p_mine', company: 'Half-typed Traders' })];
+        setContacts(mine);
+        serve([{ id: 'pd_1' }], [partner({ id: 'p_server', company: 'Server Copy' })]);
+        refreshWaitingBadge(); await flush();
+        expect(D.contacts).toBe(mine);
+        expect(D.contacts[0].company).toBe('Half-typed Traders');
+        expect(D.pending).toEqual([]);
+        expect(dot.textContent).toBe('1');
+    });
+
+    test('a failed check leaves the last known number alone rather than clearing it', async () => {
+        serve([{ id: 'pd_1' }, { id: 'pd_2' }]);
+        refreshWaitingBadge(); await flush();
+        expect(dot.textContent).toBe('2');
+        FETCH = () => Promise.reject(new Error('offline'));
+        refreshWaitingBadge(); await flush();
+        expect(dot).not.toBeNull();
+        expect(dot.textContent).toBe('2');
+    });
+
+    test('a hidden tab is not asked at all', async () => {
+        let calls = 0;
+        FETCH = () => { calls += 1; return Promise.reject(new Error('should not be called')); };
+        global.document.hidden = true;
+        refreshWaitingBadge(); await flush();
+        delete global.document.hidden;
+        expect(calls).toBe(0);
+    });
+
+    test('source guard — something actually starts the repeat', () => {
+        const body = bodyOf('startBadgeWatch');
+        expect(body).toMatch(/setInterval\(refreshWaitingBadge, BADGE_EVERY_MS\)/);
+        expect(body).toMatch(/visibilitychange/);
+        expect(bodyOf('checkWhatIsWaiting')).toContain('startBadgeWatch()');
+    });
+});
+
+describe('a failed save stays on the screen on a phone', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+
+    test('the sticky banner is replaced by a pinned one under 700px', () => {
+        // html, body { overflow-x: hidden } on phones stops position:sticky sticking to
+        // anything, so the warning scrolled away with the page while the box in front of you
+        // still showed the value that was never stored.
+        expect(css).toMatch(/\.pd-error-save\s*\{[^}]*position:\s*sticky/);
+        const from = css.indexOf('.pd-error-save { position: sticky');
+        const at = css.indexOf('@media (max-width: 700px)', from);
+        expect(at).toBeGreaterThan(-1);
+        const block = css.slice(at, at + 360);
+        expect(block).toContain('.pd-error-save');
+        expect(block).toMatch(/position:\s*fixed/);
+        expect(block).toMatch(/top:\s*8px/);
     });
 });

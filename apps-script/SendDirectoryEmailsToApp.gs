@@ -28,8 +28,8 @@ function sendDirectoryEmailsToApp() {
   var threads = label.getThreads(0, 20);
   var sent = 0;
   threads.forEach(function (thread) {
-    var msg = thread.getMessages()[0];
-    if (postDirectoryEmail_(msg)) {
+    var msg = pickMessage_(thread.getMessages());
+    if (msg && postDirectoryEmail_(msg)) {
       thread.removeLabel(label);
       thread.addLabel(done);
       sent++;
@@ -37,6 +37,22 @@ function sendDirectoryEmailsToApp() {
   });
   Logger.log('Sent ' + sent + ' email(s) to the directory queue.');
   return sent;
+}
+
+/**
+ * Which message in the labelled thread is the one meant?
+ *
+ * Labels in Gmail sit on the whole THREAD, so tagging a supplier's reply used to read
+ * messages[0] — the OLDEST, which in a reply is our own outgoing enquiry. The rate list he
+ * attached was never looked at, and the card came back with our own address on it.
+ * So: the newest message carrying a readable file, else simply the newest.
+ */
+function pickMessage_(messages) {
+  var list = messages || [];
+  for (var i = list.length - 1; i >= 0; i--) {
+    if (pickReadableAttachment_(list[i].getAttachments())) return list[i];
+  }
+  return list.length ? list[list.length - 1] : null;
 }
 
 /** Attachments bigger than this can't be forwarded (Vercel caps the request at ~4.5 MB
@@ -60,6 +76,13 @@ function postDirectoryEmail_(msg) {
     payload.fileBase64 = Utilities.base64Encode(first.getBytes());
   } else if (first) {
     payload.text += '\n\n[Attachment ' + firstFile + ' was too large to send for reading.]';
+  }
+  // Three rate lists in one email, or an .xlsx one, used to vanish without a word — the card
+  // was then built from the covering note alone and looked complete.
+  var skipped = skippedNames_(attachments, firstFile);
+  if (skipped.length) {
+    payload.text += '\n\n[Not read: ' + skipped.join(', ') + '. Only one PDF or photo per email'
+      + ' is read. Send the others as their own email.]';
   }
   var headers = {};
   var secret = getIngestSecret();
@@ -86,6 +109,19 @@ function pickReadableAttachment_(attachments) {
     if (!best || a.getSize() > best.getSize()) best = a;
   });
   return best;
+}
+
+/** Every attachment that was NOT read, by name. Signature artwork is left out — it is not
+ *  something anyone meant to send. */
+function skippedNames_(attachments, readName) {
+  var out = [];
+  (attachments || []).forEach(function (a) {
+    var name = a.getName() || '';
+    if (!name || name === readName) return;
+    if (a.getSize() < 20000 && /logo|signature|image00/i.test(name)) return;  // inline sig art
+    out.push(name);
+  });
+  return out;
 }
 
 /** "Rakesh Shah <sales@x.com>" → "sales@x.com". */

@@ -124,7 +124,19 @@
         return ROLE_LABEL[p && p.role] || 'Other';
     }
     function isRegular(p) { var n = daysSince(p.last); return (p.enq || 0) >= 5 && n !== null && n <= 120; }
-    function replyRate(p) { return p.enq ? Math.round((p.rep || 0) / p.enq * 100) : 0; }
+    // Capped: a reply flag that fails to save lets the same reply be counted twice, and
+    // "replied 140%" on a card is nonsense in the one place the owner needs plain numbers.
+    function replyRate(p) { return p.enq ? Math.min(100, Math.round((p.rep || 0) / p.enq * 100)) : 0; }
+
+    /**
+     * "replied 0%" reads as a measurement of a firm that never writes back. Replies have only
+     * been counted since reply-tracking was built, and imported cards carry their old enquiry
+     * count with no replies at all — so the owner's best suppliers all read as people who
+     * ignore him. Nothing counted is "not recorded", not nought per cent.
+     */
+    function repliesLine(p) {
+        return (p.rep || 0) ? 'replied ' + replyRate(p) + '%' : 'no replies recorded';
+    }
 
     function people(p) { return (p && p.people) || []; }
     function allEmails(p) {
@@ -308,6 +320,21 @@
      * was being used as a search term against company names. Anything long, or carrying
      * numbers, is an enquiry worth ranking even when the family is unstated.
      */
+    /**
+     * A firm's own name carries trade words — "Sri Balaji Transports", "GI Tubes & Co" — and
+     * the finder read those as an enquiry, ranked a Chennai → Chennai lorry route, and never
+     * ran the search. Short, no quantity, and it IS the name of a firm already on file: that
+     * is somebody looking a partner up, whatever words are in it.
+     */
+    function looksLikeFirmName(text) {
+        var t = str(text);
+        // Four characters at least, so "GI" and "ERW" stay pipe families rather than matching
+        // the first firm with those two letters in its name.
+        if (t.length < 4 || t.length > 60) return false;
+        var needle = lower(t);
+        return D.contacts.some(function (p) { return lower(p.company).indexOf(needle) !== -1; });
+    }
+
     function looksLikeNothing(t, types, pickup) {
         if (types.length || pickup || /transport|freight|lorry|truck/.test(t)) return false;
         return t.length < 80 && !/\d/.test(t);
@@ -326,17 +353,33 @@
         return top ? best : null;
     }
 
+    // The quote side hands its pipe types over in lower case ('gi', 'erw', 'seamless'). Print
+    // them the way the trade writes them, not the way the code happens to store them.
+    function typeNames(types, sep) {
+        return (types || []).map(function (t) {
+            return PIPE_TYPES.filter(function (k) { return lower(k) === lower(t); })[0] || str(t);
+        }).join(sep || ' + ');
+    }
+
     function scoreTypes(p, need, why) {
         var have = (p.types || []).map(lower);
         var wanted = (need.types || []).map(lower);
         if (!wanted.length) { why.push(['neutral', 'No pipe type given — cannot match on product']); return { pts: 0, blocked: false }; }
         var hits = wanted.filter(function (t) { return have.indexOf(t) !== -1; });
-        if (!hits.length && have.length) { why.push(['bad', 'Does not deal in ' + need.types.join(' / ')]); return { pts: 0, blocked: true }; }
+        if (!hits.length && have.length) { why.push(['bad', 'Does not deal in ' + typeNames(need.types, ' / ')]); return { pts: 0, blocked: true }; }
         if (!have.length) { why.push(['neutral', 'No pipe types on their card yet']); return { pts: 0, blocked: false }; }
-        if (hits.length === wanted.length) { why.push(['ok', 'Deals in ' + need.types.join(' + ')]); return { pts: 40, blocked: false }; }
-        why.push(['warn', 'Only does ' + hits.join(', ').toUpperCase() + ' of ' + need.types.join(' / ')]);
+        if (hits.length === wanted.length) { why.push(['ok', 'Deals in ' + typeNames(need.types)]); return { pts: 40, blocked: false }; }
+        why.push(['warn', 'Only does ' + typeNames(hits, ', ') + ' of ' + typeNames(need.types, ' / ')]);
         return { pts: 20, blocked: false };
     }
+
+    /**
+     * A card the app made for itself has nothing typed on it, so its blank minimum is
+     * "not recorded", not "no minimum". Green-ticking "No minimum in the way" off a blank
+     * is the fifth check — a fact nobody entered, stated as one. A card the owner has
+     * opened and checked is taken at its word.
+     */
+    function unconfirmedCard(p) { return !!(p && p.fromEnquiry); }
 
     // A minimum is a fact, not a verdict: being under it sinks a partner, never hides them.
     function scoreMinimums(p, need, why) {
@@ -354,6 +397,7 @@
         });
         if (!rows.length) {
             if (p.moq > need.tons) { why.push(['warn', 'Under their minimum — they ask for ' + p.moq + ' T, this is ' + need.tons.toFixed(2) + ' T']); return -30; }
+            if (!p.moq && unconfirmedCard(p)) { why.push(['neutral', 'Minimum not recorded — worth asking']); return 0; }
             why.push(['ok', 'No minimum in the way']); return 10;
         }
         var pts = 0;
@@ -369,25 +413,54 @@
     // otherwise an untouched card outranks one you took the trouble to fill in, and the
     // directory quietly rewards leaving it blank. Unknown sits between near and far.
     function scoreDistance(p, need, why) {
-        // A town we cannot place must not hand every Chennai dealer "right by the site". No
-        // distance is known, so distance scores nothing — for everyone equally.
-        if (need.siteUnknown) {
-            why.push(['warn', need.siteUnknown + ' is not a town I can measure — distance not scored']);
+        var site = matchCity(need.site) || need.site;
+        // Three different reasons a distance cannot be worked out, and they all used to read
+        // as "No city on their card — add one". A dealer whose card plainly said Erode was
+        // told to add a city he had already added, and lost 5 points for it.
+        //
+        // 1. The DELIVERY town is one we cannot place. Nobody's fault, nobody scored — and it
+        //    must not hand every Chennai dealer "right by the site" either.
+        var unplaceableSite = need.siteUnknown || (site && !COORD[site] && !/pan india/i.test(site) ? site : '');
+        if (unplaceableSite) {
+            why.push(['warn', unplaceableSite + ' is not a town I can measure — distance not scored']);
             return 0;
         }
-        var site = matchCity(need.site) || need.site;
+        var towns = branchNames(p).filter(Boolean);
+        // 2. Their card really is blank. That costs them, and saying so is the point.
+        if (!towns.length) { why.push(['warn', 'No city on their card — add one and this ranks properly']); return -5; }
         var nb = nearestBranch(p, site);
-        if (!nb) { why.push(['warn', 'No city on their card — add one and this ranks properly']); return -5; }
+        // 3. Their town is filled in, just not one of the 24 the distance table holds.
+        if (!nb) { why.push(['neutral', 'Their city (' + towns[0] + ') is not in my distance list — distance not scored']); return 0; }
         if (nb.km <= 60) { why.push(['ok', 'In ' + nb.name + ' — right by the site']); return 35; }
         if (nb.km <= 250) { why.push(['ok', nb.name + ' branch, ' + nb.km + ' km from site']); return 20; }
         why.push(['warn', nb.name + ' — ' + nb.km + ' km away, freight will hurt']); return -10;
     }
 
+    /**
+     * `daysSince` returns 0 for a firm emailed this morning, and 0 is falsy — so `|| 999`
+     * turned today into "not lately". A firm emailed hours ago was described as one you had
+     * not dealt with, lost 10 points for it, and wore the green Regular badge on the same
+     * card. isRegular already had the explicit check; this is the same one.
+     */
+    function dealtWithRecently(p) { var n = daysSince(p.last); return n !== null && n <= 120; }
+
+    /**
+     * Replies were only counted from the day reply-tracking was built, so "replied 0%" on a
+     * firm asked 12 times is not a measurement — nothing was ever measured. Say what is
+     * actually known, and do not paint it orange as though they had ignored you.
+     */
+    function historyLine(p) {
+        var replies = (p.rep || 0)
+            ? 'Replied to ' + p.rep + ' of ' + p.enq + ' enquiries'
+            : 'Asked ' + p.enq + ' time' + (p.enq === 1 ? '' : 's') + ', no reply recorded';
+        return replies + (dealtWithRecently(p) ? ', dealt with recently' : ', but not lately');
+    }
+
     function scoreHistoryAndNotes(p, why) {
         var pts = 0;
         if (p.enq) {
-            pts += Math.round((p.rep || 0) / p.enq * 20) + ((daysSince(p.last) || 999) <= 120 ? 10 : 0);
-            why.push([(p.rep ? 'ok' : 'warn'), 'Replied to ' + (p.rep || 0) + ' of ' + p.enq + ' enquiries' + ((daysSince(p.last) || 999) <= 120 ? ', dealt with recently' : ', but not lately')]);
+            pts += Math.round((p.rep || 0) / p.enq * 20) + (dealtWithRecently(p) ? 10 : 0);
+            why.push([(p.rep ? 'ok' : 'neutral'), historyLine(p)]);
         } else why.push(['neutral', 'Never asked through the app']);
         (p.rules || []).forEach(function (r) { if (str(r)) why.push(['note', 'Applies to everything: ' + r]); });
         var n = (p.notes || [])[0];
@@ -397,44 +470,107 @@
     }
 
     function scoreSupplier(p, need) {
-        var why = [], types = scoreTypes(p, need, why);
+        var why = [], wrongRole = roleBlock(p, 'material', why), types = scoreTypes(p, need, why);
         var score = types.pts + (types.blocked ? 0 : scoreMinimums(p, need, why))
             + scoreDistance(p, need, why) + scoreHistoryAndNotes(p, why);
-        return { p: p, score: types.blocked ? -999 + score : score, why: why, blocked: types.blocked };
+        var blocked = types.blocked || wrongRole;
+        return { p: p, score: blocked ? -999 + score : score, why: why, blocked: blocked };
+    }
+
+    /**
+     * Route scoring needs both ends. With the pickup and delivery boxes still empty, both
+     * used to fall back to Chennai, so the panel announced "Chennai → Chennai", warned that
+     * most carriers did not go there, and ruled the rest out — which reads as a broken
+     * directory. No towns means no route rule, for everyone alike.
+     */
+    function scoreRoute(p, from, to, why) {
+        if (!from || !to) { why.push(['neutral', 'Fill in the pickup and delivery towns and I can rank on route']); return { pts: 0, blocked: false }; }
+        var norm = function (v) { return lower(matchCity(v) || v); };
+        var exact = (p.routes || []).filter(function (r) { return norm(r.from) === lower(from) && norm(r.to) === lower(to); })[0];
+        if (exact) { why.push(['ok', 'Runs ' + from + ' → ' + to + ' regularly']); return { pts: 45, blocked: false }; }
+        if ((p.routes || []).some(function (r) { return norm(r.from) === lower(from); })) { why.push(['warn', 'Loads from ' + from + ', but not to ' + to]); return { pts: 22, blocked: false }; }
+        if (/pan india/i.test(branchNames(p).join(' '))) { why.push(['warn', 'No regular ' + from + ' → ' + to + ', but runs a national network']); return { pts: 8, blocked: false }; }
+        why.push(['bad', 'Does not run ' + from + ' → ' + to]);
+        return { pts: 0, blocked: true };
+    }
+
+    function scoreLoadSize(p, need, why) {
+        if (!need.known) { why.push(['neutral', 'No weight given — part load vs full truck not checked']); return 0; }
+        if (need.tons >= 9) { why.push(['ok', need.tons.toFixed(1) + ' T is a full truck — their strength']); return 15; }
+        if (!p.partLoad) { why.push(['warn', 'Full loads only — this is ' + need.tons.toFixed(1) + ' T, a part load']); return -30; }
+        // Nobody said they take part loads — the app made the card and the box defaulted to
+        // yes. A green tick worth 25 points, off a blank, is how a full-truck-only lorry man
+        // gets a 2 T enquiry and says so on the phone.
+        if (unconfirmedCard(p)) { why.push(['neutral', 'Part load not recorded — worth a call before you send it']); return 0; }
+        why.push(['ok', 'Takes part load — you only have ' + need.tons.toFixed(1) + ' T']);
+        return 25;
     }
 
     function scoreTransporter(p, need, from) {
-        var why = [], score = 0, blocked = false;
-        var to = matchCity(need.site) || need.site;
-        var fromCity = matchCity(from) || from;
-        var norm = function (v) { return lower(matchCity(v) || v); };
-        var exact = (p.routes || []).filter(function (r) { return norm(r.from) === lower(fromCity) && norm(r.to) === lower(to); })[0];
-        if (exact) { score += 45; why.push(['ok', 'Runs ' + fromCity + ' → ' + to + ' regularly']); }
-        else if ((p.routes || []).some(function (r) { return norm(r.from) === lower(fromCity); })) { score += 22; why.push(['warn', 'Loads from ' + fromCity + ', but not to ' + to]); }
-        else if (/pan india/i.test(branchNames(p).join(' '))) { score += 8; why.push(['warn', 'No regular ' + fromCity + ' → ' + to + ', but runs a national network']); }
-        else { blocked = true; why.push(['bad', 'Does not run ' + fromCity + ' → ' + to]); }
-        if (!need.known) why.push(['neutral', 'No weight given — part load vs full truck not checked']);
-        else if (need.tons < 9 && !p.partLoad) { score -= 30; why.push(['warn', 'Full loads only — this is ' + need.tons.toFixed(1) + ' T, a part load']); }
-        else if (need.tons < 9) { score += 25; why.push(['ok', 'Takes part load — you only have ' + need.tons.toFixed(1) + ' T']); }
-        else { score += 15; why.push(['ok', need.tons.toFixed(1) + ' T is a full truck — their strength']); }
+        var why = [], score = 0;
+        var wrongRole = roleBlock(p, 'transport', why);
+        var route = scoreRoute(p, matchCity(from) || from, matchCity(need.site) || need.site, why);
+        score += route.pts + scoreLoadSize(p, need, why);
         if (p.vehicles) why.push(['neutral', 'Keeps ' + p.vehicles]);
         score += scoreHistoryAndNotes(p, why);
+        var blocked = route.blocked || wrongRole;
         return { p: p, score: blocked ? -999 + score : score, why: why, blocked: blocked };
+    }
+
+    /**
+     * A fabricator who also stocks GI, or a dealer who runs his own lorries, used to be
+     * dropped before scoring — they never appeared at all, not even under "you can overrule
+     * it", and nothing said why. They are ruled out on their role now, and shown with the
+     * reason, so the owner decides.
+     */
+    function roleBlock(p, kind, why) {
+        var right = kind === 'transport' ? p.role === 'transporter'
+            : (p.role === 'dealer' || p.role === 'manufacturer');
+        if (right) return false;
+        why.push(['bad', 'They are a ' + roleLabel(p).toLowerCase() + ', not a '
+            + (kind === 'transport' ? 'transporter' : 'pipe supplier')]);
+        return true;
+    }
+
+    /**
+     * Who is worth scoring. The right role always; the wrong role only when the card itself
+     * says they could still help — pipe types that match, or a lorry route on file. Scoring
+     * every card of every role would bury the list under firms with nothing to offer.
+     */
+    function worthScoring(p, kind, need) {
+        var right = kind === 'transport' ? p.role === 'transporter'
+            : (p.role === 'dealer' || p.role === 'manufacturer');
+        if (right) return true;
+        if (kind === 'transport') return (p.routes || []).length > 0;
+        // A lorry firm is never a pipe supplier, whatever is ticked on its card.
+        if (p.role === 'transporter') return false;
+        var have = (p.types || []).map(lower);
+        return (need.types || []).some(function (t) { return have.indexOf(lower(t)) !== -1; });
     }
 
     /** Rank the loaded directory for one need. kind: 'material' | 'transport'. */
     function rankFor(kind, need, from) {
-        var pool = D.contacts.filter(function (p) {
-            return kind === 'transport' ? p.role === 'transporter'
-                : (p.role === 'dealer' || p.role === 'manufacturer');
-        });
+        var pool = D.contacts.filter(function (p) { return worthScoring(p, kind, need); });
         return pool.map(function (p) {
             return kind === 'transport' ? scoreTransporter(p, need, from) : scoreSupplier(p, need);
         }).sort(function (a, b) { return b.score - a.score; });
     }
 
     // ── Data layer ────────────────────────────────────────────────────────────
-    var D = { contacts: [], changes: [], pending: [], duplicates: [], loaded: false, loadError: '', saveError: '' };
+    var D = { contacts: [], changes: [], pending: [], duplicates: [], loaded: false,
+              loadError: '', saveError: '', saveWhat: [], usageError: '' };
+
+    var FIELD_LABEL = {
+        company: 'The company name', role: 'What they are', roleOther: 'What they are',
+        people: 'The contacts', city: 'The city', address: 'The address',
+        branches: 'The branches', types: 'The pipe types', products: 'The product range',
+        rules: 'The price rules', routes: 'The routes', moq: 'The minimum order',
+        vehicles: 'The vehicles', notes: 'The notes', fromEnquiry: 'The check-me flag',
+    };
+    function saveFailedWhat() {
+        var named = (D.saveWhat || []).map(function (k) { return FIELD_LABEL[k]; }).filter(Boolean);
+        return named.length ? named.join(' and ') : 'Your last edit';
+    }
 
     function loadDirectory(then) {
         fetch(apiBase() + '/contacts')
@@ -449,7 +585,7 @@
                 // A failed load must look like a failure — never like an empty directory.
                 D.loaded = false; D.loadError = 'Could not load the directory (' + e.message + ').';
             })
-            .then(function () { then && then(); });
+            .then(function () { paintWaitingBadge(); then && then(); });
     }
 
     /**
@@ -472,7 +608,14 @@
         });
     }
 
-    function postJson(path, body, then, always) {
+    /**
+     * `what` is the field list THIS request is writing, and it is only ever read on the
+     * failure of THIS request. It used to be one shared box set by savePartner and printed
+     * on every failure there was — so discarding a queued firm, or an approve that fell
+     * over, announced "The company name was NOT saved" about a company name that had gone
+     * in perfectly well an hour earlier.
+     */
+    function postJson(path, body, then, always, what) {
         var failed = false;
         return fetch(apiBase() + path, {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -481,15 +624,17 @@
                 if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
                 return d;
             });
-        }).then(function (d) { D.saveError = ''; then && then(d); return d; })
-            .catch(function (e) { D.saveError = e.message; failed = true; })
+        }).then(function (d) { D.saveError = ''; D.saveWhat = []; then && then(d); return d; })
+            .catch(function (e) { D.saveError = e.message; D.saveWhat = what || []; failed = true; })
             .then(function (d) { if (always) always(); if (always || failed) render(); return d; });
     }
 
     // `fields` narrows the write to what was actually touched, so a second tab editing a
     // different part of the same firm is not overwritten by this tab's older copy.
     function savePartner(p, fields) {
-        return postJson('/contacts/save', { partner: p, fields: fields || null });
+        // Passed as `what` too, so a failure can name what did not go in — and only this
+        // request's failure can name it.
+        return postJson('/contacts/save', { partner: p, fields: fields || null }, null, null, fields || []);
     }
 
     /** Keep a reviewed card's corrections on its queue item, so a reload cannot lose them. */
@@ -501,7 +646,7 @@
 
     // ── State for the tool page ───────────────────────────────────────────────
     var S = { tab: 'dir', filter: 'all', openId: null, openPending: null, openChange: null,
-              find: { text: '', state: 'idle', need: null }, busy: {}, add: freshAdd() };
+              find: { text: '', state: 'idle', need: null, note: '' }, busy: {}, add: freshAdd() };
 
     function byId(id) {
         var p = D.contacts.filter(function (x) { return x.id === id; })[0];
@@ -511,9 +656,56 @@
     }
 
     // ── Rendering: the tool page ──────────────────────────────────────────────
+
+    /**
+     * Keep the cursor where the person put it across a redraw.
+     *
+     * Leaving the Company box saves and redraws the card, and by then Tab has already moved
+     * focus to the NEXT box — which the redraw then threw away, so the words typed next went
+     * nowhere and it felt like the keyboard had stopped. Whatever holds focus when the redraw
+     * starts gets it back afterwards, caret and all.
+     */
+    /**
+     * The key is built from EVERY data-pd-… attribute the element carries, not a hand-written
+     * list of the nine the boxes happen to use. The list left every button — Approve, Discard,
+     * Delete, Open card, the tabs, the chips — keying to the same empty string, so a redraw
+     * that changed how many buttons there are handed focus to whichever button now sat in the
+     * old one's place. Pressing Space on a card then hit Discard.
+     */
+    function focusKey(el) {
+        var out = [el.tagName || '', el.getAttribute('id') || ''];
+        var attrs = el.attributes || [];
+        var pd = [];
+        for (var i = 0; i < attrs.length; i++) {
+            if (String(attrs[i].name).indexOf('data-pd-') === 0) pd.push(attrs[i].name + '=' + attrs[i].value);
+        }
+        return out.concat(pd.sort()).join('|');
+    }
+
+    var FOCUSABLE = 'input,select,textarea,button,a';
+
+    function focusKeeper(app) {
+        var el = document.activeElement;
+        if (!el || !el.getAttribute || !app.contains || !app.contains(el)) return function () {};
+        var before = [].slice.call(app.querySelectorAll(FOCUSABLE));
+        var key = focusKey(el), at = before.indexOf(el);
+        var start = el.selectionStart, end = el.selectionEnd;
+        return function () {
+            var after = [].slice.call(app.querySelectorAll(FOCUSABLE));
+            var same = after.filter(function (x) { return focusKey(x) === key; });
+            // The key alone is ambiguous for plain buttons, so the old position breaks the tie.
+            var target = same.length === 1 ? same[0]
+                : (after[at] && focusKey(after[at]) === key ? after[at] : same[0]);
+            if (!target) return;
+            target.focus();
+            try { if (start != null) target.setSelectionRange(start, end); } catch (e) { /* not a text box */ }
+        };
+    }
+
     function render() {
         var app = $('partnerDirectoryApp');
         if (!app) return;
+        var restoreFocus = focusKeeper(app);
         var waiting = D.pending.length;
         app.innerHTML = '<h1>📇 Partner Directory</h1>'
             + '<div class="pd-tabs">'
@@ -521,17 +713,27 @@
             + '<button class="pd-tab' + (S.tab === 'add' ? ' on' : '') + '" data-pd-tab="add">Add</button>'
             + '<button class="pd-tab' + (S.tab === 'changes' ? ' on' : '') + '" data-pd-tab="changes">Recent changes'
             + (waiting ? ' <span class="pd-pill pd-pill-warn">' + waiting + '</span>' : '') + '</button></div>'
-            + (D.saveError ? '<div class="pd-error">Save failed: ' + esc(D.saveError) + ' — your last edit is NOT stored. Edit the field again to retry.</div>' : '')
+            // Named and pinned to the top of the page. A bare "your last edit is NOT stored"
+            // halfway up a long card said nothing about WHICH edit, and scrolled off screen.
+            + (D.saveError ? '<div class="pd-error pd-error-save"><b>' + esc(saveFailedWhat()) + ' was NOT saved.</b> '
+                + esc(D.saveError) + ' — the box still shows what you typed, but the directory does not have it. '
+                + 'Change the same box again to try once more.</div>' : '')
+            + (D.usageError ? '<div class="pd-error">Some of the "who was asked" records did not reach the app ('
+                + esc(D.usageError) + '). Nothing you typed is lost — but the enquiry counts on a few cards may be low.</div>' : '')
             + (D.loadError ? '<div class="pd-error">' + esc(D.loadError) + ' <button data-pd-reload="1">Try again</button></div>'
                 : !D.loaded ? '<p class="pd-muted" style="padding:20px;text-align:center;">Loading…</p>'
                     : S.tab === 'dir' ? dirView() : S.tab === 'add' ? addView() : changesView());
         bind(app);
+        restoreFocus();
     }
 
     function dirView() {
-        var counts = { all: D.contacts.length };
+        var counts = { all: D.contacts.length, tocheck: needsCheckingCount() };
         D.contacts.forEach(function (p) { counts[p.role] = (counts[p.role] || 0) + 1; });
+        // A chip for the guessed cards, so there is a count and a way to work through them.
+        // 22 landed at once with no count, no filter and no way to say "done".
         var chips = [['all', 'All']].concat(ROLE_ORDER.map(function (r) { return [r, ROLE_LABEL[r] + 's']; }))
+            .concat(counts.tocheck ? [['tocheck', 'Need checking']] : [])
             .map(function (c) {
                 return '<button class="pd-chip' + (S.filter === c[0] ? ' on' : '') + '" data-pd-filter="' + c[0] + '">'
                     + esc(c[1]) + ' ' + (counts[c[0]] || 0) + '</button>';
@@ -561,7 +763,11 @@
 
     function listHtml() {
         var list = D.contacts.filter(function (p) {
-            if (S.filter !== 'all' && p.role !== S.filter) return false;
+            // The card you are working in never disappears from under you. Ticking off the
+            // last "check me" card while it was open used to close the whole list instead.
+            if (S.openId === p.id) return true;
+            if (S.filter === 'tocheck') { if (!p.fromEnquiry) return false; }
+            else if (S.filter !== 'all' && p.role !== S.filter) return false;
             if (!S.find.text || S.find.state !== 'name') return true;
             var hay = lower(p.company + ' ' + p.city + ' ' + branchNames(p).join(' ') + ' ' + (p.types || []).join(' ')
                 + ' ' + people(p).map(function (x) { return x.name; }).join(' ') + ' ' + allEmails(p).join(' ')
@@ -569,10 +775,15 @@
                 + ' ' + (p.notes || []).map(function (n) { return n.t; }).join(' '));
             return hay.indexOf(lower(S.find.text)) !== -1;
         });
+        // An empty directory is not a failed search, and the answer is never "nobody fits".
+        // Pasting an enquiry into the finder is the natural first thing to do on a fresh
+        // directory, and it used to answer "Nobody in your directory fits this one" AND take
+        // the Import button off the page with it.
+        if (!D.contacts.length) return emptyStateHtml();
         if (S.find.state === 'done' && S.find.need && !S.find.need.empty) return finderResults();
         // "Nobody matches that" on a directory that is simply empty reads like a failed
         // search. Say which it is, and give the way out.
-        if (!list.length) return D.contacts.length ? '<p class="pd-muted pd-empty">Nobody matches that.</p>' : emptyStateHtml();
+        if (!list.length) return '<p class="pd-muted pd-empty">Nobody matches that.</p>';
         return list.map(function (p) { return S.openId === p.id ? editCard(p) : rowCard(p); }).join('');
     }
 
@@ -605,7 +816,10 @@
         if (p.role === 'transporter') {
             bits.push((p.routes || []).length + ' route' + ((p.routes || []).length === 1 ? '' : 's'));
             if (p.vehicles) bits.push(p.vehicles);
-            bits.push(p.partLoad ? 'Takes part load' : 'Full load only');
+            // Nobody typed this on a card the app made itself — printing "Takes part load"
+            // off a default is a fact stated that nobody ever gave.
+            bits.push(unconfirmedCard(p) && p.partLoad ? 'Part load not recorded'
+                : (p.partLoad ? 'Takes part load' : 'Full load only'));
         } else {
             if ((p.types || []).length) bits.push(p.types.join(' · '));
             bits.push((p.products || []).length + ' product' + ((p.products || []).length === 1 ? '' : 's'));
@@ -621,7 +835,7 @@
             + '<span class="pd-sp"></span><span class="pd-tiny">›</span></div>'
             + '<p class="pd-muted">' + esc([p.city].concat(bits).filter(Boolean).join(' · ')) + '</p>'
             + (latest ? '<p class="pd-muted pd-note-line">“' + esc(latest.t) + '” <span class="pd-tiny">— ' + ago(latest.d) + '</span></p>' : '')
-            + '<p class="pd-tiny' + (stale ? ' pd-stale' : '') + '">Asked ' + (p.enq || 0) + ' times · replied ' + replyRate(p) + '% · last dealt ' + ago(p.last)
+            + '<p class="pd-tiny' + (stale ? ' pd-stale' : '') + '">Asked ' + (p.enq || 0) + ' times · ' + repliesLine(p) + ' · last dealt ' + ago(p.last)
             + ' · last edited ' + ago(p.checked) + (stale ? ' — worth a call' : '') + '</p></div>';
     }
 
@@ -634,8 +848,9 @@
             + '<div class="pd-row" style="margin-top:8px;">'
             + '<button class="pd-prim" data-pd-find="go">Suggest who to ask</button>'
             + (f.state !== 'idle' ? '<button data-pd-find="clear">Clear</button>' : '') + '</div>';
+        if (f.note) h += '<p class="pd-muted" style="margin-top:9px;">' + esc(f.note) + '</p>';
         if (f.state === 'name') {
-            h += '<p class="pd-muted" style="margin-top:9px;">No enquiry in that, so the list below is filtered by <b>' + esc(f.text) + '</b>.</p>';
+            h += '<p class="pd-muted" style="margin-top:9px;">Looking for <b>' + esc(f.text) + '</b> by name — the list below is what matches.</p>';
         }
         return h + '</div>';
     }
@@ -645,14 +860,15 @@
         var h = '<div class="pd-read">' + readBack(need) + '</div>';
         if (need.types.length) {
             var sup = rankFor('material', need);
-            h += '<div class="pd-sec">Send it to</div>' + rankListHtml(sup.filter(function (r) { return !r.blocked; }), 'material')
+            h += '<div class="pd-sec">Send it to</div>'
+                + rankListHtml(sup.filter(function (r) { return !r.blocked; }), need, { kind: 'material' })
                 + ruledOutHtml(sup.filter(function (r) { return r.blocked; }));
         }
         if (need.freight && need.site) {
             var from = need.pickup || HOME;
             var tra = rankFor('transport', need, from);
             h += '<div class="pd-sec">For the transport — ' + esc(from) + ' → ' + esc(need.site) + '</div>'
-                + rankListHtml(tra.filter(function (r) { return !r.blocked; }), 'transport')
+                + rankListHtml(tra.filter(function (r) { return !r.blocked; }), need, { kind: 'transport' })
                 + ruledOutHtml(tra.filter(function (r) { return r.blocked; }));
         }
         return h;
@@ -675,8 +891,10 @@
         return '<p class="pd-tiny" style="margin-bottom:6px;">What was understood — correct the text and ask again if this is wrong:</p>' + tags;
     }
 
-    function rankListHtml(rows, kind) {
-        if (!rows.length) return '<p class="pd-muted pd-empty">Nobody in your directory fits this one.</p>';
+    // The in-quote panel has always offered two ways out of "nobody fits" — search the web,
+    // or add the firm. The Directory's own finder used to end on a bare sentence.
+    function rankListHtml(rows, need, opts) {
+        if (!rows.length) return deadEndHtml(need, opts);
         return rows.map(function (r, i) {
             return '<div class="pd-card"><div class="pd-rank"><span class="pd-rank-n">' + (i + 1) + '</span>'
                 + '<div style="flex:1;min-width:0;"><div class="pd-row"><b>' + esc(r.p.company) + '</b>'
@@ -709,7 +927,9 @@
             + '<div class="pd-row pd-close-head" data-pd-close="1" tabindex="0" role="button">'
             + '<b>' + esc(p.company || 'New partner') + '</b>'
             + '<span class="pd-pill">' + esc(roleLabel(p)) + '</span>'
+            + (p.fromEnquiry ? '<span class="pd-pill pd-pill-warn">From an enquiry — check me</span>' : '')
             + '<span class="pd-sp"></span><span class="pd-tiny">click to close</span></div>'
+            + checkMeHtml(p)
             + '<div class="pd-grid2">' + fld(p, 'Company', 'company', p.company, 'e.g. Annai Steel Traders')
             + '<div class="pd-fld"><label>They are a…</label><select data-pd-k="role">' + roles + '</select></div></div>'
             + (p.role === 'other' ? fld(p, 'What are they?', 'roleOther', p.roleOther, 'e.g. galvaniser, testing lab') : '')
@@ -725,6 +945,50 @@
                     + '<button class="pd-danger" data-pd-delete="' + esc(p.id) + '">Delete this partner</button></div>'
                 : '')
             + '</div>';
+    }
+
+    /**
+     * A way to finish the job. Cards the app built from an enquiry wear an orange "check me"
+     * pill, and nothing anywhere could take it off — after a whole afternoon of tidying all
+     * 22 still said check me, so the owner could not tell where he had got to and the flag
+     * stopped meaning anything. Taking it off is also what lets the ranking start trusting
+     * the part-load and minimum boxes on that card.
+     */
+    function checkMeHtml(p) {
+        if (!p.fromEnquiry || !isInDirectory(p)) return '';
+        return '<div class="pd-read pd-checkme"><p class="pd-tiny">The app made this card itself from an '
+            + 'enquiry you sent. The name is a guess, and nothing else on it has been confirmed — '
+            + 'until it is, the ranking treats the blank boxes as unknown rather than as facts.</p>'
+            + '<div class="pd-row" style="margin-top:7px;">'
+            + '<button class="pd-prim" data-pd-checked="' + esc(p.id) + '">I have checked this card</button></div></div>';
+    }
+
+    /**
+     * The boxes on an app-made card that nobody ever typed. The app's own store keeps part
+     * load as a plain yes/no (missing means yes) and the minimum as a plain number (missing
+     * means none), so there is no third "not said" value to hold — the orange flag is the
+     * only thing standing between a default and a stated fact.
+     *
+     * That is why ticking a card off has to name them: clearing the flag on its own turns
+     * "Takes part load" and "MOQ none" into facts the card asserts, which is the very thing
+     * the flag was added to stop.
+     */
+    function guessedBoxes(p) {
+        if (p.role === 'transporter') return p.partLoad ? ['Takes part load'] : [];
+        if (p.role === 'fabricator' || p.role === 'other') return [];
+        return p.moq ? [] : ['No minimum order'];
+    }
+
+    function checkedWarningText(p) {
+        return 'Tick off ' + (str(p.company) || 'this card') + '?\n\n'
+            + 'The card stops saying "check me", and from then on it states this as a fact:\n'
+            + guessedBoxes(p).map(function (b) { return '  • ' + b; }).join('\n') + '\n\n'
+            + 'Nobody typed that — the app filled it in. If it is wrong, close this, change the '
+            + 'box, and tick the card off after.';
+    }
+
+    function needsCheckingCount() {
+        return D.contacts.filter(function (p) { return p.fromEnquiry; }).length;
     }
 
     function fld(p, label, key, value, ph) {
@@ -777,24 +1041,44 @@
 
     function placesBlock(p) {
         var known = Object.keys(COORD).sort();
+        // Typed OR picked. It used to be a fixed dropdown of 24 towns, so a godown in Erode,
+        // Tirupur or Pondicherry simply could not be recorded.
+        var cityList = '<datalist id="pdKnownCities">'
+            + known.map(function (c) { return '<option value="' + esc(c) + '"></option>'; }).join('') + '</datalist>';
         return '<div class="pd-sec">Where they are<span class="pd-sp"></span>'
             + '<button class="pd-addline" data-pd-addbranch="1">+ Add a branch</button></div>'
+            + cityList
             + '<div class="pd-grid2">' + fld(p, 'City (head office)', 'city', p.city)
             + fld(p, 'Head office address', 'address', p.address, 'Street, area, pin') + '</div>'
             + (p.branches || []).map(function (b, i) {
                 return '<div class="pd-branch"><div class="pd-branch-top">'
-                    + '<select data-pd-br="' + i + '" data-pd-k="city"><option value="">City…</option>'
-                    + known.map(function (c) { return '<option' + (b.city === c ? ' selected' : '') + '>' + c + '</option>'; }).join('') + '</select>'
+                    + '<input data-pd-br="' + i + '" data-pd-k="city" list="pdKnownCities" value="' + esc(b.city || '') + '" placeholder="City — pick one or type it">'
                     + '<input data-pd-br="' + i + '" data-pd-k="area" value="' + esc(b.area || '') + '" placeholder="Town or area — e.g. Ambattur">'
                     + '<button class="pd-del" data-pd-delbranch="' + i + '">✕</button></div>'
                     + '<input data-pd-br="' + i + '" data-pd-k="address" value="' + esc(b.address || '') + '" placeholder="Full address (optional)" style="margin-top:6px;"></div>';
             }).join('')
-            + '<p class="pd-tiny">The nearest branch to a delivery point is what the ranking measures — the town and address are for you and the lorry.</p>';
+            + '<p class="pd-tiny">The nearest branch to a delivery point is what the ranking measures — the town and address are for you and the lorry. '
+            + 'Any town can be typed; distance is only worked out for the ' + known.length + ' the app knows, and a town outside them simply is not scored.</p>';
+    }
+
+    /**
+     * The six standard families plus anything the owner has typed in on any card. A custom
+     * type used to be pushed onto a list that lives only in this page's memory, so it was
+     * gone from the dropdown after a reload and had to be typed again for the next firm.
+     */
+    function offerableTypes() {
+        var out = PIPE_TYPES.slice();
+        D.contacts.forEach(function (c) {
+            (c.types || []).forEach(function (t) {
+                if (str(t) && !out.some(function (k) { return lower(k) === lower(t); })) out.push(str(t));
+            });
+        });
+        return out;
     }
 
     function supplierBlock(p) {
-        var have = p.types || [];
-        var canAdd = PIPE_TYPES.filter(function (t) { return have.indexOf(t) === -1; });
+        var have = (p.types || []).map(lower);
+        var canAdd = offerableTypes().filter(function (t) { return have.indexOf(lower(t)) === -1; });
         return '<div class="pd-sec">What they supply</div>'
             + '<div class="pd-grid2"><div class="pd-fld"><label>Pipe types</label>'
             + '<div style="display:flex;gap:6px;"><select id="pdTypePick" style="flex:1;"><option value="">Pick a type…</option>'
@@ -802,9 +1086,12 @@
             + '<option value="__other">＋ Add another…</option></select>'
             + '<button data-pd-addtype="1">Add</button></div></div>'
             + fld(p, 'Overall MOQ (tonnes)', 'moq', p.moq) + '</div>'
-            + (have.length ? '<div style="margin-bottom:8px;">' + have.map(function (t, i) {
+            + ((p.types || []).length ? '<div style="margin-bottom:8px;">' + (p.types || []).map(function (t, i) {
                 return '<span class="pd-tag">' + esc(t) + ' <span class="pd-x" data-pd-deltype="' + i + '">✕</span></span>';
-            }).join('') + '</div>' : '<p class="pd-tiny" style="margin-bottom:8px;">No types set — they will not be suggested until one is added.</p>')
+            }).join('') + '</div>'
+                // They ARE still suggested, just without the 40 points a matching type is
+                // worth — saying otherwise sent the owner hunting for a card that was fine.
+                : '<p class="pd-tiny" style="margin-bottom:8px;">No types set — they are still suggested, but they cannot win the points a matching pipe type is worth.</p>')
             + '<div class="pd-tiny pd-head-line">Product range</div>'
             + (p.products || []).map(function (pr, i) { return productRow(pr, i); }).join('')
             + '<button class="pd-addline" data-pd-addproduct="1">+ Add product</button>'
@@ -826,7 +1113,10 @@
                 var g = function (k, ph) { return '<input data-pd-pr="' + i + '" data-pd-sz="' + j + '" data-pd-k="' + k + '" value="' + esc(s[k] == null ? '' : s[k]) + '" placeholder="' + ph + '">'; };
                 return '<div class="pd-szrow">' + g('nb', '15') + g('inch', '1/2&quot;') + g('od', '21.3') + g('thk', '3.2')
                     + '<button class="pd-del" data-pd-delsz="' + i + ':' + j + '">✕</button></div>';
-            }).join('') : '<p class="pd-tiny" style="padding:4px 0;">No sizes — until one is added this product is not matched to an enquiry size.</p>')
+            // The ranking matches on the product name and specification only — it has never
+            // read these rows. Saying they decided the match had the owner filling size
+            // tables across every firm for nothing.
+            }).join('') : '<p class="pd-tiny" style="padding:4px 0;">No sizes yet. These are for your reference — the ranking matches on the product and specification, not on this table.</p>')
             + '<button class="pd-addline" data-pd-addsz="' + i + '">+ size</button></div></div>';
     }
 
@@ -873,8 +1163,11 @@
     function autoBlock(p) {
         return '<div class="pd-sec">What the app works out on its own</div>'
             + '<div class="pd-grid3">' + ro('Regular?', isRegular(p) ? 'Yes' : 'No') + ro('Enquiries sent', String(p.enq || 0))
-            + ro('Reply rate', replyRate(p) + '%') + ro('Last dealt with', ago(p.last)) + ro('Last edited', ago(p.checked)) + '</div>'
-            + '<p class="pd-tiny">You never type these. "Regular" means asked 5+ times and dealt with in the last 4 months. "Last edited" moves on its own.</p>';
+            + ro('Replies', (p.rep || 0) ? replyRate(p) + '%' : 'none recorded')
+            + ro('Last dealt with', ago(p.last)) + ro('Last edited', ago(p.checked)) + '</div>'
+            + '<p class="pd-tiny">You never type these. "Regular" means asked 5+ times and dealt with in the last 4 months. '
+            + 'Replies have only been counted since the app started watching for them, so "none recorded" is not the same as "they never answer". '
+            + '"Last edited" moves on its own.</p>';
     }
     function ro(label, v) { return '<div class="pd-fld"><label>' + esc(label) + '</label><div class="pd-ro">' + esc(v) + '</div></div>'; }
 
@@ -1222,13 +1515,43 @@
             + '<p class="pd-tiny" style="margin-left:20px;">' + (imported ? importedStripLine(pi)
                 : 'From <b>' + esc(pi.from) + '</b> · “' + esc(pi.subject) + '”'
                     + (pi.file ? ' · 📎 ' + esc(pi.file) : '')
-                    + ' · read into ' + pi.finds.length + ' field' + (pi.finds.length === 1 ? '' : 's')) + '</p>'
+                    // "Read into 0 fields" meant both "there was nothing in it" and "the
+                    // reading failed", and they need opposite actions from the owner.
+                    + ' · ' + (pi.readFailed ? '<b>the reading failed — nothing was taken from it</b>'
+                        : 'read into ' + pi.finds.length + ' field' + (pi.finds.length === 1 ? '' : 's'))) + '</p>'
             + '</div>'
-            + (open ? editCard(pendingPreview(pi, match)) : '')
-            + clashNoteHtml(pi, match)
+            + (open ? sourceEmailHtml(pi) + editCard(pendingPreview(pi, match)) : '')
+            + clashNoteHtml(pi, match) + sameFirmNoteHtml(pi, match)
+            + approveRowHtml(pi, match, busy);
+    }
+
+    /**
+     * What you are being asked to approve. Sender, subject and "read into 6 fields" told you
+     * nothing about whether the reading was right — checking meant hunting the mail down in
+     * Gmail by hand. Worse, when an attachment was too big to forward, the script wrote that
+     * into the email text, a field the screen never showed: "📎 rates.pdf · read into 3
+     * fields" was approved off the covering note alone.
+     */
+    function sourceEmailHtml(pi) {
+        var text = str(pi.text);
+        if (!text) return '';
+        var tooBig = /too large to send for reading/i.test(text);
+        return '<div class="pd-read pd-source">'
+            + (tooBig ? '<p class="pd-error" style="margin:0 0 7px;">The attachment was too big to send for reading — '
+                + 'everything below was read from the covering note only. Open the mail in Gmail before you approve.</p>' : '')
+            + '<p class="pd-tiny" style="margin-bottom:5px;">The email this was read from:</p>'
+            + '<pre class="pd-src-text">' + esc(text) + '</pre></div>';
+    }
+
+    function approveRowHtml(pi, match, busy) {
+        // A card with no firm name goes in as "New partner — needs a name" and is logged as
+        // the sentence "Added " with nothing after it. Ask for the name here instead.
+        var nameless = !str((pi.preview && pi.preview.company) || (match && match.company) || companyGuess(pi));
+        var stop = busy || clashingCard(pi, match) || nameless;
+        return (nameless ? '<p class="pd-tiny pd-need-name">No firm name was found in this one. '
+            + 'Open it above and type their name, and it can be approved.</p>' : '')
             + '<div class="pd-row" style="margin:0 0 14px;">'
-            + '<button class="pd-prim" data-pd-approve="' + esc(pi.id) + '"'
-            + (busy || clashingCard(pi, match) ? ' disabled' : '') + '>'
+            + '<button class="pd-prim" data-pd-approve="' + esc(pi.id) + '"' + (stop ? ' disabled' : '') + '>'
             + (busy ? 'Saving…' : 'Approve — ' + (match ? 'update ' + esc(match.company) : 'add them')) + '</button>'
             + '<button data-pd-discard="' + esc(pi.id) + '"' + (busy ? ' disabled' : '') + '>Discard</button></div>';
     }
@@ -1251,6 +1574,40 @@
             }
         }
         return null;
+    }
+
+    // Free mail is one person, not one firm — every gmail.com card would otherwise look like
+    // the same company as every other.
+    var SHARED_MAIL = /^(gmail|googlemail|yahoo|yahoo\.co|ymail|rediffmail|hotmail|outlook|live|msn|aol|icloud|protonmail|zoho)\./i;
+
+    function emailDomain(v) {
+        var at = lower(v).split('@')[1] || '';
+        return SHARED_MAIL.test(at) ? '' : at;
+    }
+
+    /**
+     * A second address at a firm you already have.
+     *
+     * Matching was on the whole address only, so sales@kalpataru arriving after rakesh@
+     * kalpataru read as "New", and approving made a SECOND card for one firm. Two cards
+     * become two chips, and separate chips are deliberately separate emails — so the same
+     * firm gets the enquiry twice and the two people there never see each other. There is no
+     * merge in the tool, so say it before Approve rather than after.
+     */
+    function sameFirmNoteHtml(pi, match) {
+        if (match || !pi.from) return '';
+        var domain = emailDomain(pi.from);
+        if (!domain) return '';
+        var kin = D.contacts.filter(function (c) {
+            return allEmails(c).some(function (e) { return emailDomain(e) === domain; });
+        })[0];
+        if (!kin) return '';
+        return '<div class="pd-read" style="margin:0 0 8px;"><p class="pd-tiny">'
+            + '<b>' + esc(pi.from) + '</b> is at the same place as '
+            + '<button data-pd-open="' + esc(kin.id) + '" class="pd-linkish">'
+            + esc(kin.company || '(no name)') + '</button>, who you already have. '
+            + 'If it is the same firm, add this person to that card instead — two cards for one firm '
+            + 'means they get the same enquiry twice, on two separate emails.</p></div>';
     }
 
     function clashNoteHtml(pi, match) {
@@ -1354,9 +1711,24 @@
             + '<span class="pd-sp"></span><span class="pd-tiny">' + ago(ch.at) + '</span></div>'
             + '<p class="pd-muted" style="margin-left:20px;">' + esc(ch.detail) + '</p>'
             + (open ? diffHtml(ch) : '')
-            + (ch.undone ? '' : '<div style="margin:8px 0 0 20px;"><button data-pd-undo="' + esc(ch.id) + '"' + (S.busy[ch.id] ? ' disabled' : '') + '>Undo this</button></div>')
+            + undoRowHtml(ch)
             + '</div>'
             + (open && p ? editCard(p) : '');
+    }
+
+    /**
+     * No partner id means there is no single card to put back — the import logs one entry for
+     * the whole batch. Undo used to stamp it "Undone", hide its own button, and remove
+     * nothing at all, so the owner believed 22 cards had been rolled back.
+     */
+    function undoRowHtml(ch) {
+        if (ch.undone) return '';
+        if (!str(ch.partnerId)) {
+            return '<p class="pd-tiny" style="margin:8px 0 0 20px;">This one covers several cards at once, '
+                + 'so it cannot be undone in one go — delete any you do not want from the directory.</p>';
+        }
+        return '<div style="margin:8px 0 0 20px;"><button data-pd-undo="' + esc(ch.id) + '"'
+            + (S.busy[ch.id] ? ' disabled' : '') + '>Undo this</button></div>';
     }
 
     /**
@@ -1423,13 +1795,18 @@
     function bindFinder(app) {
         var box = $('pdFindIn');
         if (box) box.oninput = function () { S.find.text = this.value; };
+        each(app, '[data-pd-goto-directory]', function (el) {
+            el.onclick = function () { S.find = { text: '', state: 'idle', need: null, note: '' }; S.filter = 'all'; render(); };
+        });
         each(app, '[data-pd-find]', function (el) {
             el.onclick = function () {
-                if (el.getAttribute('data-pd-find') === 'clear') { S.find = { text: '', state: 'idle', need: null }; render(); return; }
+                if (el.getAttribute('data-pd-find') === 'clear') { S.find = { text: '', state: 'idle', need: null, note: '' }; render(); return; }
                 var text = str(S.find.text);
-                if (!text) return;
+                // Pressing it on an empty box did nothing whatever — no message, no redraw.
+                if (!text) { S.find.note = 'Put the enquiry in the box first, or type a name to look someone up.'; render(); return; }
                 var need = readEnquiry(text);
-                if (need.empty) { S.find.state = 'name'; S.find.need = null; }
+                S.find.note = '';
+                if (need.empty || looksLikeFirmName(text)) { S.find.state = 'name'; S.find.need = null; }
                 else { S.find.state = 'done'; S.find.need = need; }
                 S.openId = null; render();
             };
@@ -1460,8 +1837,24 @@
         });
     }
 
+    /**
+     * Opening a card used to snap the list back to "All". Working through the 22 cards under
+     * "Need checking" meant the chip reset on every single one, so after each card the owner
+     * had to find the chip and press it again to see what was left. The filter is only widened
+     * when it would hide the card being opened — which is the case the reset existed for
+     * (a clash note on the Recent-changes tab points at a card the current chip filters out).
+     */
+    function widenFilterToShow(p) {
+        if (S.filter === 'all') return;
+        if (!p) { S.filter = 'all'; return; }
+        var hidden = S.filter === 'tocheck' ? !p.fromEnquiry : p.role !== S.filter;
+        if (hidden) S.filter = 'all';
+    }
+
     function openCard(id) {
-        S.openId = id; S.filter = 'all'; S.find = { text: '', state: 'idle', need: null };
+        S.openId = id;
+        widenFilterToShow(byId(id));
+        S.find = { text: '', state: 'idle', need: null, note: '' };
         render();
     }
 
@@ -1490,13 +1883,25 @@
                 S.find.state = S.find.state === 'done' ? 'idle' : S.find.state;
                 // Reachable from a clash note on the Recent-changes tab, where the card it
                 // opens is not rendered — go to where it lives, or the click does nothing.
-                S.tab = 'dir'; S.filter = 'all';
+                S.tab = 'dir';
+                widenFilterToShow(byId(S.openId));
                 render();
             };
             el.onclick = go;
             el.onkeydown = function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } };
         });
         each(app, '[data-pd-close]', function (el) { el.onclick = function () { S.openId = null; render(); }; });
+        each(app, '[data-pd-checked]', function (el) {
+            el.onclick = function () {
+                var p = byId(el.getAttribute('data-pd-checked'));
+                if (!p || !p.fromEnquiry) return;
+                if (guessedBoxes(p).length && !window.confirm(checkedWarningText(p))) return;
+                p.fromEnquiry = false;
+                p.checked = new Date().toISOString().slice(0, 10);
+                savePartner(p, ['fromEnquiry']);
+                render();
+            };
+        });
         each(app, '[data-pd-delete]', function (el) {
             el.onclick = function () {
                 var id = el.getAttribute('data-pd-delete');
@@ -1596,17 +2001,20 @@
         each(card, '[data-pd-delem]', function (el) { el.onclick = function () { var a = el.getAttribute('data-pd-delem').split(':'); p.people[+a[0]].emails.splice(+a[1], 1); save(true, ['people']); }; });
     }
 
+    // Each write names ONLY what was touched. Sending branches, routes, city and address
+    // together meant adding a branch wrote back this tab's hours-old copy of the routes,
+    // silently wiping a lorry route a colleague had added on the other machine.
     function bindPlaces(card, p, save) {
-        on(card, '[data-pd-addbranch]', function () { (p.branches = p.branches || []).push({ city: '', area: '', address: '' }); save(true, ['branches', 'routes', 'city', 'address']); });
+        on(card, '[data-pd-addbranch]', function () { (p.branches = p.branches || []).push({ city: '', area: '', address: '' }); save(true, ['branches']); });
         each(card, '[data-pd-br]', function (el) {
-            el.onchange = function () { p.branches[Number(el.getAttribute('data-pd-br'))][el.getAttribute('data-pd-k')] = el.value; save(false, ['branches', 'routes', 'city', 'address']); };
+            el.onchange = function () { p.branches[Number(el.getAttribute('data-pd-br'))][el.getAttribute('data-pd-k')] = el.value; save(false, ['branches']); };
         });
-        each(card, '[data-pd-delbranch]', function (el) { el.onclick = function () { p.branches.splice(Number(el.getAttribute('data-pd-delbranch')), 1); save(true, ['branches', 'routes', 'city', 'address']); }; });
-        on(card, '[data-pd-addroute]', function () { (p.routes = p.routes || []).push({ from: '', to: '' }); save(true, ['branches', 'routes', 'city', 'address']); });
+        each(card, '[data-pd-delbranch]', function (el) { el.onclick = function () { p.branches.splice(Number(el.getAttribute('data-pd-delbranch')), 1); save(true, ['branches']); }; });
+        on(card, '[data-pd-addroute]', function () { (p.routes = p.routes || []).push({ from: '', to: '' }); save(true, ['routes']); });
         each(card, '[data-pd-rt]', function (el) {
-            el.onchange = function () { p.routes[Number(el.getAttribute('data-pd-rt'))][el.getAttribute('data-pd-k')] = el.value; save(false, ['branches', 'routes', 'city', 'address']); };
+            el.onchange = function () { p.routes[Number(el.getAttribute('data-pd-rt'))][el.getAttribute('data-pd-k')] = el.value; save(false, ['routes']); };
         });
-        each(card, '[data-pd-delroute]', function (el) { el.onclick = function () { p.routes.splice(Number(el.getAttribute('data-pd-delroute')), 1); save(true, ['branches', 'routes', 'city', 'address']); }; });
+        each(card, '[data-pd-delroute]', function (el) { el.onclick = function () { p.routes.splice(Number(el.getAttribute('data-pd-delroute')), 1); save(true, ['routes']); }; });
     }
 
     function bindSupply(card, p, save) {
@@ -1616,34 +2024,43 @@
             if (v === '__other') v = window.prompt('What do they deal in? e.g. Ductile iron') || '';
             v = str(v);
             if (!v) return;
-            if ((p.types = p.types || []).indexOf(v) === -1) p.types.push(v);
-            if (PIPE_TYPES.indexOf(v) === -1) PIPE_TYPES.push(v);
-            save(true, ['types', 'products', 'rules', 'moq']);
+            // Compared without case: an import writes SEAMLESS, the dropdown offers Seamless,
+            // and the same type went onto the card twice.
+            var has = (p.types = p.types || []).some(function (t) { return lower(t) === lower(v); });
+            if (!has) p.types.push(v);
+            save(true, ['types']);
         });
-        each(card, '[data-pd-deltype]', function (el) { el.onclick = function () { p.types.splice(Number(el.getAttribute('data-pd-deltype')), 1); save(true, ['types', 'products', 'rules', 'moq']); }; });
-        on(card, '[data-pd-addproduct]', function () { (p.products = p.products || []).push({ p: '', spec: '', sizes: [], moq: 0, rule: '' }); save(true, ['types', 'products', 'rules', 'moq']); });
-        each(card, '[data-pd-delproduct]', function (el) { el.onclick = function () { p.products.splice(Number(el.getAttribute('data-pd-delproduct')), 1); save(true, ['types', 'products', 'rules', 'moq']); }; });
+        each(card, '[data-pd-deltype]', function (el) { el.onclick = function () { p.types.splice(Number(el.getAttribute('data-pd-deltype')), 1); save(true, ['types']); }; });
+        on(card, '[data-pd-addproduct]', function () { (p.products = p.products || []).push({ p: '', spec: '', sizes: [], moq: 0, rule: '' }); save(true, ['products']); });
+        each(card, '[data-pd-delproduct]', function (el) { el.onclick = function () { p.products.splice(Number(el.getAttribute('data-pd-delproduct')), 1); save(true, ['products']); }; });
         each(card, '[data-pd-pr]', function (el) {
             el.onchange = function () {
                 var i = Number(el.getAttribute('data-pd-pr')), k = el.getAttribute('data-pd-k');
                 if (el.hasAttribute('data-pd-sz')) p.products[i].sizes[Number(el.getAttribute('data-pd-sz'))][k] = el.value;
                 else p.products[i][k] = (k === 'moq') ? (parseFloat(el.value) || 0) : el.value;
-                save(k === 'spec', ['types', 'products', 'rules', 'moq']);
+                save(k === 'spec', ['products']);
             };
         });
-        each(card, '[data-pd-addsz]', function (el) { el.onclick = function () { var pr = p.products[Number(el.getAttribute('data-pd-addsz'))]; (pr.sizes = pr.sizes || []).push({ nb: '', inch: '', od: '', thk: '' }); save(true, ['types', 'products', 'rules', 'moq']); }; });
-        each(card, '[data-pd-delsz]', function (el) { el.onclick = function () { var a = el.getAttribute('data-pd-delsz').split(':'); p.products[+a[0]].sizes.splice(+a[1], 1); save(true, ['types', 'products', 'rules', 'moq']); }; });
+        each(card, '[data-pd-addsz]', function (el) { el.onclick = function () { var pr = p.products[Number(el.getAttribute('data-pd-addsz'))]; (pr.sizes = pr.sizes || []).push({ nb: '', inch: '', od: '', thk: '' }); save(true, ['products']); }; });
+        each(card, '[data-pd-delsz]', function (el) { el.onclick = function () { var a = el.getAttribute('data-pd-delsz').split(':'); p.products[+a[0]].sizes.splice(+a[1], 1); save(true, ['products']); }; });
         each(card, '[data-pd-loadis]', function (el) {
             el.onclick = function () {
                 var pr = p.products[Number(el.getAttribute('data-pd-loadis'))], cls = specClass(pr.spec);
                 if (!cls) return;
+                // It REPLACES the table outright, and a supplier's own thicknesses typed in by
+                // hand were being wiped by a button pressed to see what it did. Undo does not
+                // cover hand-typed rows.
+                if ((pr.sizes || []).length
+                    && !window.confirm('This replaces all ' + pr.sizes.length + ' size rows on '
+                        + (str(pr.p) || 'this product') + ' with the standard IS 1239 ' + cls
+                        + ' table.\n\nAnything you typed in by hand is lost. Go ahead?')) return;
                 pr.sizes = IS1239.filter(function (r) { return r[cls]; }).map(function (r) { return { nb: r.nb, inch: r.inch, od: r.od, thk: r[cls] }; });
-                save(true, ['types', 'products', 'rules', 'moq']);
+                save(true, ['products']);
             };
         });
-        on(card, '[data-pd-addorule]', function () { (p.rules = p.rules || []).push(''); save(true, ['types', 'products', 'rules', 'moq']); });
-        each(card, '[data-pd-orule]', function (el) { el.onchange = function () { p.rules[Number(el.getAttribute('data-pd-orule'))] = el.value; save(false, ['types', 'products', 'rules', 'moq']); }; });
-        each(card, '[data-pd-delorule]', function (el) { el.onclick = function () { p.rules.splice(Number(el.getAttribute('data-pd-delorule')), 1); save(true, ['types', 'products', 'rules', 'moq']); }; });
+        on(card, '[data-pd-addorule]', function () { (p.rules = p.rules || []).push(''); save(true, ['rules']); });
+        each(card, '[data-pd-orule]', function (el) { el.onchange = function () { p.rules[Number(el.getAttribute('data-pd-orule'))] = el.value; save(false, ['rules']); }; });
+        each(card, '[data-pd-delorule]', function (el) { el.onclick = function () { p.rules.splice(Number(el.getAttribute('data-pd-delorule')), 1); save(true, ['rules']); }; });
     }
 
     function bindNotes(card, p, save) {
@@ -1659,10 +2076,23 @@
         each(card, '[data-pd-delnote]', function (el) { el.onclick = function () { p.notes.splice(Number(el.getAttribute('data-pd-delnote')), 1); save(true, ['notes']); }; });
     }
 
+    function discardWarningText(id) {
+        var pi = D.pending.filter(function (x) { return x.id === id; })[0] || {};
+        var who = str(pi.preview && pi.preview.company) || str(pi.subject) || str(pi.from) || 'this one';
+        return 'Discard ' + who + '?\n\n'
+            + 'It is thrown away for good — there is no Undo, and it will not arrive again.\n'
+            + 'To get it back you would have to find the email in Gmail and put the '
+            + 'Add-to-Directory label on it once more.';
+    }
+
     function bindChanges(app) {
         each(app, '[data-pd-pending]', function (el) {
             var go = function () {
                 var id = el.getAttribute('data-pd-pending');
+                // Only ONE card is ever open. Two of them showed a full edit card each, but
+                // only the first on the page was wired up — typing into the lower one and
+                // tabbing away did nothing at all, with no error and no red banner.
+                S.openChange = null;
                 if (S.openPending === id) { S.openPending = null; S.openId = null; }
                 else {
                     S.openPending = id;
@@ -1698,6 +2128,10 @@
             el.onclick = function () {
                 var id = el.getAttribute('data-pd-discard');
                 if (S.busy[id]) return;
+                // Discard sits beside Approve, deletes outright, and writes nothing to the
+                // applied log — so there is no Undo. The Gmail thread was stamped
+                // -processed when it was sent, so it will not come round again either.
+                if (!window.confirm(discardWarningText(id))) return;
                 S.busy[id] = true; render();
                 postJson('/contacts/pending/discard', { id: id }, function () { loadDirectory(render); },
                     function () { delete S.busy[id]; });
@@ -1706,6 +2140,7 @@
         each(app, '[data-pd-change]', function (el) {
             el.onclick = function () {
                 var id = el.getAttribute('data-pd-change');
+                S.openPending = null;   // one open card at a time — see the pending handler
                 S.openChange = S.openChange === id ? null : id;
                 var ch = D.changes.filter(function (x) { return x.id === id; })[0];
                 S.openId = (S.openChange && ch) ? ch.partnerId : null;
@@ -1724,12 +2159,18 @@
     function renderSuggestPanel(container, opts, onAddChip) {
         if (!container) return;
         var go = function () {
+            var town = function (v) { return str(v) ? (matchCity(v) || str(v)) : ''; };
+            var drop = town(opts.drop) || town(opts.site);
+            // A freight box opens with both towns empty. Falling back to Chennai there made
+            // the panel announce "Chennai → Chennai" and rule out most of his lorry firms;
+            // for a material enquiry the home city is still the sensible default.
+            var isFreight = opts.kind === 'transport';
             var need = {
                 types: opts.types || [], items: opts.items || [],
-                site: str(opts.drop) ? (matchCity(opts.drop) || opts.drop) : (str(opts.site) ? (matchCity(opts.site) || opts.site) : HOME),
+                site: drop || (isFreight ? '' : HOME),
                 tons: (opts.kg || 0) / 1000, known: (opts.kg || 0) > 0,
             };
-            var from = str(opts.pickup) ? (matchCity(opts.pickup) || opts.pickup) : HOME;
+            var from = town(opts.pickup) || (isFreight ? '' : HOME);
             var rows = rankFor(opts.kind === 'transport' ? 'transport' : 'material', need, from);
             if (D.loadError) { container.innerHTML = '<div class="pd-panel"><p class="pd-error">' + esc(D.loadError) + ' Nothing is missing — try again.</p></div>'; return; }
             container.innerHTML = panelHtml(rows, opts, need, from);
@@ -1742,10 +2183,21 @@
         loadDirectory(go);
     }
 
+    function panelHead(opts, need, from) {
+        var weight = '<b>' + (need.known ? need.tons.toFixed(2) + ' T' : 'no weight') + '</b>';
+        if (opts.kind === 'transport') {
+            if (!from || !need.site) {
+                return 'Read from this box: ' + weight
+                    + ' · <b>no route yet</b> — fill in the pickup and delivery towns and I can rank on route.';
+            }
+            return 'Read from this box: <b>' + esc(from) + '</b> → <b>' + esc(need.site) + '</b> · ' + weight;
+        }
+        return 'Read from the enquiry: <b>' + esc(typeNames(need.types) || 'no pipe type') + '</b> · '
+            + weight + ' · to <b>' + esc(need.site) + '</b>';
+    }
+
     function panelHtml(rows, opts, need, from) {
-        var head = opts.kind === 'transport'
-            ? 'Read from this box: <b>' + esc(from) + '</b> → <b>' + esc(need.site) + '</b> · <b>' + (need.known ? need.tons.toFixed(2) + ' T' : 'no weight') + '</b>'
-            : 'Read from the enquiry: <b>' + esc((need.types || []).join(' + ') || 'no pipe type') + '</b> · <b>' + (need.known ? need.tons.toFixed(2) + ' T' : 'no weight') + '</b> · to <b>' + esc(need.site) + '</b>';
+        var head = panelHead(opts, need, from);
         var good = rows.filter(function (r) { return !r.blocked; });
         var out = rows.filter(function (r) { return r.blocked; });
         return '<div class="pd-panel"><p class="pd-tiny" style="margin-bottom:8px;">' + head + '</p>'
@@ -1761,7 +2213,7 @@
     function deadEndHtml(need, opts) {
         var what = opts.kind === 'transport'
             ? 'transporters ' + (need.site ? 'to ' + need.site : 'for this route')
-            : ((need.types || []).join(' ') + ' pipe suppliers ' + (need.site ? 'near ' + need.site : '')).trim();
+            : (typeNames(need.types, ' ') + ' pipe suppliers ' + (need.site ? 'near ' + need.site : '')).trim();
         var query = encodeURIComponent(what + ' India supplier contact');
         return '<div class="pd-empty"><p class="pd-muted"><b>Nobody in your directory fits this one.</b></p>'
             + '<p class="pd-tiny" style="margin:6px 0 9px;">Either you have not added them yet, or this is outside what you normally buy.</p>'
@@ -1781,8 +2233,10 @@
             + (isRegular(r.p) ? '<span class="pd-pill pd-pill-good">Regular</span>' : '') + '</div>'
             + '<p class="pd-tiny">' + esc([mainName(r.p), mainEmail(r.p), mainPhone(r.p)].filter(Boolean).join(' · ')) + '</p>'
             + '<div>' + r.why.map(function (w) { return '<span class="pd-why pd-why-' + w[0] + '">' + esc(w[1]) + '</span>'; }).join('') + '</div></div>'
-            + (emails.length ? '<button class="pd-prim" data-pd-send="' + idx + '">✉ Send Email</button>'
-                : '<span class="pd-tiny">no email on card</span>')
+            // It sends nothing — it opens the list of who at the firm to put on the enquiry.
+            // Labelled "Send Email" it read as the button that fires the mail.
+            + (emails.length ? '<button class="pd-prim" data-pd-send="' + idx + '">✉ Choose who to email</button>'
+                : '<span class="pd-tiny">No email on their card</span>')
             + '</div><div class="pd-picker" data-pd-picker="' + idx + '" hidden></div></div>';
     }
 
@@ -1813,7 +2267,8 @@
         });
         return '<p class="pd-tiny" style="margin-bottom:5px;">Pick who at ' + esc(p.company) + ' gets the enquiry — ticked people ride on one email, Cc\'d together:</p>'
             + rowsHtml
-            + '<div class="pd-row" style="margin-top:7px;"><button class="pd-prim" data-pd-pickadd="1">Add to recipients</button></div>';
+            + '<div class="pd-row" style="margin-top:7px;"><button class="pd-prim" data-pd-pickadd="1">Add to recipients</button>'
+            + '<span class="pd-tiny pd-picknone" data-pd-picknone="1"></span></div>';
     }
 
     function bindPicker(slot, p, onAddChip) {
@@ -1825,14 +2280,36 @@
                 var e = ((people(p)[+a[0]] || {}).emails || [])[+a[1]];
                 if (e && e.v) picked.push(e.v);
             });
-            if (picked.length && typeof onAddChip === 'function') onAddChip(picked.join(', '));
+            // Unticking everyone and pressing Add used to close the list and do nothing at
+            // all — it looked exactly like a successful add.
+            if (!picked.length) {
+                var say = slot.querySelector('[data-pd-picknone]');
+                if (say) say.textContent = 'Tick at least one person, or close this and pick another firm.';
+                return;
+            }
+            if (typeof onAddChip === 'function') onAddChip(picked.join(', '));
             slot.hidden = true;
         });
     }
 
-    /** Fire-and-record: the send flows call this after a successful send / detected reply. */
+    /**
+     * Fire-and-record: the send flows call this after a successful send / detected reply.
+     *
+     * It must NOT go through postJson. That sets the shared save banner — "your last edit is
+     * NOT stored" — over an edit nobody made, and renders it into the directory page, which
+     * is hidden while the owner is on the Quotation tab. Days later the banner surfaces and
+     * accuses him of losing work. Its own quiet note, in its own words, on its own page.
+     */
     function recordUsage(usage) {
-        postJson('/contacts/usage', usage || {}, function () { D.loaded = false; });
+        return fetch(apiBase() + '/contacts/usage', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(usage || {}),
+        }).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            D.loaded = false; D.usageError = '';
+        }).catch(function (e) {
+            D.usageError = e.message;
+        });
     }
 
     // ── Tool-tab switching (register.js pattern) ──────────────────────────────
@@ -1870,10 +2347,70 @@
         loadDirectory(render);
     }
 
+    /**
+     * A count on the 📇 button, so a waiting brochure is visible from any tool.
+     *
+     * The number lived only inside the directory, and the directory was only ever fetched
+     * when the button was pressed — so labelled emails could sit unreviewed for weeks with
+     * nothing anywhere to say so. Failure is silent on purpose: this is a hint, not a page.
+     */
+    function paintWaitingBadge() { paintBadgeCount(D.pending.length); }
+
+    function paintBadgeCount(n) {
+        var btn = $('mainToolDirectoryButton');
+        if (!btn) return;
+        var dot = btn.querySelector('.pd-waiting-dot');
+        if (!n) { if (dot) dot.remove(); return; }
+        if (!dot) {
+            dot = document.createElement('span');
+            dot.className = 'pd-waiting-dot';
+            btn.appendChild(dot);
+        }
+        dot.textContent = n > 9 ? '9+' : String(n);
+        dot.title = n + ' waiting for you in the Partner Directory';
+    }
+
+    /**
+     * Keep the count honest without touching the page.
+     *
+     * The number was read once when the app opened and then only when the directory itself
+     * was re-read — so a brochure tagged in Gmail at ten o'clock showed nothing all day on a
+     * tab left open, which is exactly how this app is used. This re-reads the count only: it
+     * writes the badge and nothing else, so a card being typed into, an unsaved new partner
+     * and an open review are all safe from it. Failure is silent — it is a hint, not a page.
+     */
+    var BADGE_EVERY_MS = 3 * 60 * 1000;
+
+    function refreshWaitingBadge() {
+        if (document.hidden) return;              // no point polling a tab nobody is looking at
+        fetch(apiBase() + '/contacts')
+            .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            .then(function (d) { paintBadgeCount((d.pending || []).length); })
+            .catch(function () { /* leave the last known count alone */ });
+    }
+
+    function startBadgeWatch() {
+        var t = setInterval(refreshWaitingBadge, BADGE_EVERY_MS);
+        if (t && t.unref) t.unref();              // never hold a test runner open
+        if (document.addEventListener) {
+            document.addEventListener('visibilitychange', function () {
+                if (!document.hidden) refreshWaitingBadge();
+            });
+        }
+    }
+
+    function checkWhatIsWaiting() { loadDirectory(); startBadgeWatch(); }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', checkWhatIsWaiting);
+    else checkWhatIsWaiting();
+
     window.switchToDirectoryTab = switchToDirectoryTab;
     window.partnerDirectory = {
         renderSuggestPanel: renderSuggestPanel,
         recordUsage: recordUsage,
-        _test: { readEnquiry: readEnquiry, rankFor: rankFor, matchCity: matchCity, kmBetween: kmBetween, applyFind: applyFind, _state: function () { return { S: S, D: D }; } },
+        _test: { readEnquiry: readEnquiry, rankFor: rankFor, matchCity: matchCity, kmBetween: kmBetween,
+                 applyFind: applyFind, looksLikeFirmName: looksLikeFirmName,
+                 focusKey: focusKey, guessedBoxes: guessedBoxes, saveFailedWhat: saveFailedWhat,
+                 refreshWaitingBadge: refreshWaitingBadge,
+                 _state: function () { return { S: S, D: D }; } },
     };
 })();

@@ -154,7 +154,10 @@
         if (!stateById[id]) stateById[id] = { rows: seedRows(q), split: false, weightOpen: false, freight: { amount: '', amtA: '', amtB: '', method: 'line', applied: '' } };
         if (!stateById[id].freight) stateById[id].freight = { amount: '', amtA: '', amtB: '', method: 'line', applied: '' };
         // bcc IS the recipient list (one email per transporter); cc is copied on every one.
-        if (!stateById[id].enquiry) stateById[id].enquiry = { open: false, forSec: 0, cc: [], bcc: [], pickup: '', drop: '', message: '', messageEdited: false, weightOverride: null, sending: false, sent: '', checking: false, checkResult: '', openReplies: {} };
+        // justSent: the last send went out cleanly and nothing has changed since, so Send stays
+        // dead. Without it a leftover Cc chip kept the button live and a second, impatient press
+        // emailed the colleague alone as if they were a transporter.
+        if (!stateById[id].enquiry) stateById[id].enquiry = { open: false, forSec: 0, cc: [], bcc: [], pickup: '', drop: '', message: '', messageEdited: false, weightOverride: null, sending: false, justSent: false, sent: '', checking: false, checkResult: '', openReplies: {} };
         // Older in-page state may predate these (or still carry the old `to`) — fill them in
         // rather than letting .slice() throw, and carry any typed recipients across.
         if (!Array.isArray(stateById[id].enquiry.cc)) stateById[id].enquiry.cc = [];
@@ -404,8 +407,7 @@
         }
         var reset = mountEl.querySelector('.fwe-kg-reset');
         if (reset) reset.hidden = (enq.weightOverride == null);
-        var sendBtn = mountEl.querySelector('.fwe-enq-send');
-        if (sendBtn) sendBtn.disabled = !(enq.bcc.length || enq.cc.length) || enq.sending || hasBadRecipient(enq) || !usable;
+        syncComposerLive(mountEl, st);
         var msgEl = mountEl.querySelector('.fwe-enq-msg');
         if (msgEl && !enq.messageEdited && document.activeElement !== msgEl) {
             msgEl.value = buildEnquiryDraft(q, st);
@@ -794,6 +796,17 @@
         if (emails.length) window.partnerDirectory.recordUsage({ emails: emails, kind: 'reply', role: 'transporter' });
     }
 
+    // The ONLY route from "a reply came in" to the Partner Directory. It waits for the save,
+    // because a reply whose flag never saved is found again on the next sweep after a reload —
+    // and telling the directory twice pushes a firm past "replied 100%".
+    function saveRepliesThenTellDirectory(q, replied, onSaveFailed) {
+        return persistEnquiryThreads(q).then(function (ok) {
+            if (ok) tellDirectoryReplied(replied);
+            else if (onSaveFailed) onSaveFailed();
+            return ok;
+        });
+    }
+
     function hasBadRecipient(enq) {
         var all = (enq.bcc || []).concat(enq.cc || []);
         return all.some(function (a) {
@@ -802,6 +815,15 @@
                 return typeof isValidEmailAddress === 'function' && !isValidEmailAddress(one);
             });
         });
+    }
+
+    // One place for "is Send live?". The button markup, the live re-sync after an edit and the
+    // guard behind the click all have to agree — three separate copies of this test is how a
+    // button that looked spent could still fire a second real email.
+    function canSendEnquiry(st) {
+        var enq = st.enquiry;
+        return !!(enq.bcc.length || enq.cc.length) && !enq.sending && !enq.justSent
+            && !hasBadRecipient(enq) && enqWeightUsable(st);
     }
 
     function enquiryThreadsHtml(q, st) {
@@ -845,15 +867,53 @@
     // Cc: openly copied on every email this send produces. Bcc above is the recipient list, so
     // cc'ing a colleague on an enquiry to five transporters puts five copies in their inbox —
     // worth saying out loud rather than letting them discover it.
-    function ccFieldHtml() {
+    function ccFieldHtml(enq) {
         return '<div class="fwe-ccbox">'
             + '<label class="fwe-enq-lbl">Cc (optional)</label>'
             + '<div class="fwe-enq-field" data-kind="cc">'
             + '<span class="fwe-enq-chips" data-kind="cc" style="display:contents;"></span>'
             + '<input class="fwe-enq-input" data-kind="cc" type="text" placeholder="Add one or more addresses" autocomplete="off"></div>'
-            + '<p style="margin:4px 0 0;font-size:11px;color:#9b988e;">'
-            + 'Everyone here can see each other, like a normal Cc. With Bcc filled, these ride along on every'
-            + ' hidden email above; with Bcc empty, the enquiry goes as ONE open email to these addresses.</p></div>';
+            + '<p class="fwe-cc-note" style="margin:4px 0 0;font-size:11px;color:' + ccNoteColour(enq) + ';">'
+            + ccNoteText(enq) + '</p></div>';
+    }
+
+    // How many PEOPLE are in the Cc box, not how many chips. One chip can hold a whole firm
+    // ("a@x.com, b@x.com" pasted or picked from the directory), so counting chips printed a
+    // number the reader could see was wrong: two names on screen, "these 1 will go out".
+    function ccAddressCount(enq) {
+        return (enq && enq.cc || []).reduce(function (n, chip) { return n + chipAddrs(chip).length; }, 0);
+    }
+    // Bcc empty and two or more people in Cc is the one send that lets transporters see each
+    // other — the thing the owner says must never happen. Say it in red BEFORE the send, not in
+    // the grey line everybody skips.
+    function ccOpenEmailRisk(enq) {
+        return !(enq.bcc || []).length && ccAddressCount(enq) > 1;
+    }
+    function ccNoteColour(enq) { return ccOpenEmailRisk(enq) ? '#A32D2D' : '#9b988e'; }
+    function ccNoteText(enq) {
+        if (ccOpenEmailRisk(enq)) {
+            return 'Careful — Bcc is empty, so these ' + ccAddressCount(enq)
+                + ' will go out as ONE open email and each one will see the others.'
+                + ' Move them to the Bcc box above to keep them apart.';
+        }
+        return 'Everyone here can see each other, like a normal Cc. With Bcc filled, these ride along on every'
+            + ' hidden email above; with Bcc empty, the enquiry goes as ONE open email to these addresses.';
+    }
+    // The note is written once by render(), but chips change without one — keep it truthful.
+    function syncCcNote(mountEl, enq) {
+        var note = mountEl.querySelector('.fwe-cc-note');
+        if (!note) return;
+        note.textContent = ccNoteText(enq);
+        note.style.color = ccNoteColour(enq);
+    }
+    // The two things in the open composer that must stay truthful between full renders: is Send
+    // live, and does the red Cc warning match the chips on screen. They read the SAME state and
+    // are repainted together, so they can never disagree — and there is one place to delete,
+    // not two to forget.
+    function syncComposerLive(mountEl, st) {
+        var sendBtn = mountEl.querySelector('.fwe-enq-send');
+        if (sendBtn) sendBtn.disabled = !canSendEnquiry(st);
+        syncCcNote(mountEl, st.enquiry);
     }
 
     function freightEnquiryBoxHtml(q) {
@@ -890,7 +950,7 @@
             // drop and weight typed in THIS box — not a guess taken off the quote.
             + '<div style="margin-top:8px;"><button type="button" class="fwe-dir-ask">✨ Ask AI — who can I send this with?</button></div>'
             + '<div class="fwe-dir-panel"></div>'
-            + ccFieldHtml()
+            + ccFieldHtml(enq)
             + '<div class="fwe-enq-wt"><i class="ti ti-weight" style="font-size:16px;" aria-hidden="true"></i>'
             + ((st.split && enq.forSec) ? '<span>Shipment ' + enq.forSec + ' ·</span>' : '')
             // Left EMPTY when the calculation would be partial: prefilling the low number is how a
@@ -908,8 +968,11 @@
             + (enqWeightUsable(st) ? ' hidden' : '') + '>' + enqWeightWarnHtml(st) + '</p>'
             + '<label class="fwe-enq-lbl">Message to transporters (editable)</label>'
             + '<textarea class="fwe-enq-msg">' + escTxt(draft) + '</textarea>'
-            + '<div style="margin-top:12px;"><button type="button" class="fwe-enq-send"' + ((enq.bcc.length || enq.cc.length) && !enq.sending && !hasBadRecipient(enq) && enqWeightUsable(st) ? '' : ' disabled') + '>'
+            + '<div style="margin-top:12px;"><button type="button" class="fwe-enq-send"' + (canSendEnquiry(st) ? '' : ' disabled') + '>'
             + '<i class="ti ti-send" style="font-size:14px;vertical-align:-2px;" aria-hidden="true"></i> Send request</button></div>'
+            // Say why Send is dead, so a spent button doesn't just look broken.
+            + (enq.justSent ? '<p class="fwe-enq-justsent" style="margin:6px 0 0;font-size:11px;color:#9b988e;">'
+                + 'This enquiry has gone out. Add another transporter above to send it again.</p>' : '')
             + statusHtml
             + enquiryThreadsHtml(q, st)
             + '</div>';
@@ -920,7 +983,10 @@
     // that's what lets us track who replied (and they can't see each other).
     function sendFreightEnquiry(q, st, mountEl) {
         var enq = st.enquiry;
-        if (!(enq.bcc.length || enq.cc.length) || enq.sending || hasBadRecipient(enq)) return;
+        // justSent: the previous send succeeded and nothing has changed since. A second press
+        // must do nothing — with the transporters cleared it would email the Cc'd colleague
+        // alone, and record them as a transporter who was asked.
+        if (!(enq.bcc.length || enq.cc.length) || enq.sending || enq.justSent || hasBadRecipient(enq)) return;
         // Never quote a transporter a weight that silently omits rows — the rate comes back priced
         // on it. The button is already disabled in this state; this is the guard behind it.
         if (!enqWeightUsable(st)) {
@@ -997,8 +1063,11 @@
                 var n = ccOnly ? extra.cc.split(', ').length : sentOk.length;
                 enq.sent = 'ok:Enquiry sent to ' + n + ' transporter' + (n > 1 ? 's' : '') + (ccOnly ? ' (one open email — all Cc)' : '') + '.';
                 // Clear whichever list acted as the RECIPIENTS, so the live Send button
-                // cannot fire the same enquiry twice. Copies (cc on a Bcc send) stay.
+                // cannot fire the same enquiry twice. Copies (cc on a Bcc send) stay — and
+                // justSent keeps Send dead so those leftover copies can't become a send of
+                // their own on a second, impatient press.
                 if (ccOnly) enq.cc = []; else enq.bcc = [];
+                enq.justSent = true;
             } else if (sentOk.length) {
                 enq.sent = 'err:Sent to ' + sentOk.length + ', but failed for ' + failed.map(function (r) { return r.addr; }).join(', ') + '.';
                 enq.bcc = failed.map(function (r) { return r.addr; });
@@ -1079,19 +1148,38 @@
             } else {
                 enq.checkResult = newReplies + ' new repl' + (newReplies > 1 ? 'ies' : 'y') + ' — ' + got + ' of ' + total + ' replied.';
             }
-            if (newReplies) {
-                q.transporterReplyIn = true;   // flags "Needs attention: transporter reply" on the list
-                persistEnquiryThreads(q);
-                tellDirectoryReplied(waiting);
-            }
-            render(q, mountEl);
-            // Refresh the list last — it rebuilds the cards, and the module state re-renders
-            // this panel (open flags, status message) into the fresh card. Use the edit-safe
-            // refresh so it never wipes an open, unsaved quote elsewhere in the list.
-            if (newReplies) {
-                if (typeof window.refreshApprovalListPreservingEdits === 'function') { try { window.refreshApprovalListPreservingEdits(); } catch (e) { } }
-                else if (typeof displayAllApprovedQuotations === 'function') { try { displayAllApprovedQuotations(); } catch (e) { } }
-            }
+            render(q, mountEl);   // say what was found straight away
+            if (!newReplies) return;
+            q.transporterReplyIn = true;   // flags "Needs attention: transporter reply" on the list
+            finishReplyCheck(q, st, waiting,
+                function () { render(q, mountEl); },
+                refreshApprovalList);
+        });
+    }
+
+    // Rebuild the approval list. It replaces every card — including the one this panel lives
+    // in — so nothing that has to be SEEN may be painted after it. Edit-safe variant first, so
+    // it never wipes an open, unsaved quote elsewhere in the list.
+    function refreshApprovalList() {
+        if (typeof window !== 'undefined' && typeof window.refreshApprovalListPreservingEdits === 'function') {
+            try { window.refreshApprovalListPreservingEdits(); } catch (e) { }
+        } else if (typeof displayAllApprovedQuotations === 'function') {
+            try { displayAllApprovedQuotations(); } catch (e) { }
+        }
+    }
+
+    // Save the reply flags, then paint the outcome, and ONLY THEN rebuild the list.
+    // The "saving it failed" line used to be written after the rebuild had already thrown this
+    // card away, so it went into a detached element and nobody ever saw it — the quote looked
+    // like it had recorded a reply it had not. Ordering is the whole fix, so it is one named
+    // function with the repaint and the rebuild handed in, rather than three loose calls.
+    function finishReplyCheck(q, st, waiting, repaint, rebuildList) {
+        return saveRepliesThenTellDirectory(q, waiting, function () {
+            st.enquiry.checkResult = 'A reply came in, but saving it failed. Reload the page and check again.';
+        }).then(function (ok) {
+            repaint();          // while this card is still the one on screen
+            rebuildList();      // now it may be replaced
+            return ok;
         });
     }
 
@@ -1124,16 +1212,14 @@
         })).then(function (flags) {
             var newReplies = flags.filter(function (x) { return x === true; }).length;
             var failed = flags.filter(function (x) { return x === 'failed'; }).length;
-            if (newReplies) {
-                tellDirectoryReplied(waiting);
-                q.transporterReplyIn = true;
-                persistEnquiryThreads(q);
-                // The sweep runs in the background, so its find has to reach a Freight tab
-                // that is already open — otherwise the panel keeps saying "Awaiting reply"
-                // over a reply that is sitting in the model, and the user concludes none came.
-                repaintOpenPanel(q);
-            }
-            return { checked: waiting.length, newReplies: newReplies, failed: failed };
+            var done = { checked: waiting.length, newReplies: newReplies, failed: failed };
+            if (!newReplies) return done;
+            q.transporterReplyIn = true;
+            // The sweep runs in the background, so its find has to reach a Freight tab
+            // that is already open — otherwise the panel keeps saying "Awaiting reply"
+            // over a reply that is sitting in the model, and the user concludes none came.
+            repaintOpenPanel(q);
+            return saveRepliesThenTellDirectory(q, waiting).then(function () { return done; });
         });
     }
 
@@ -1155,6 +1241,61 @@
         repaintOpenPanel(q);
     }
 
+    // The "Ask AI" ranking is scored on the pickup, drop and weight that were in the box when it
+    // was asked for. Change any of them and every line in it — the route it read, "Runs Chennai
+    // → Hosur regularly", the order — is about a different job, and picking from it sends a real
+    // enquiry to a transporter ranked for somewhere else. Replace it with one line instead.
+    function staleDirPanel(mountEl) {
+        var panel = mountEl.querySelector('.fwe-dir-panel');
+        if (!panel || !panel.innerHTML) return;
+        panel.innerHTML = '<p class="fwe-dir-stale" style="margin:8px 0 0;font-size:12px;color:#A32D2D;">'
+            + 'Route or weight changed — press Ask AI again for a fresh list.</p>';
+    }
+
+    // Typing a town is not the same as changing the route. Wired straight to oninput, the FIRST
+    // character of a re-typed town blanked the whole Ask AI list under the user's hands. Wait
+    // for a pause in the typing instead: the list survives typing, and never survives a real
+    // change of route.
+    var STALE_PAUSE_MS = 700;
+    function staleDirPanelSoon(mountEl) {
+        if (!mountEl) return;
+        if (mountEl._fweStaleTimer) clearTimeout(mountEl._fweStaleTimer);
+        mountEl._fweStaleTimer = setTimeout(function () {
+            mountEl._fweStaleTimer = null;
+            staleDirPanel(mountEl);
+        }, STALE_PAUSE_MS);
+    }
+
+    // Regenerate the draft from pickup/drop/weight, unless the user has written their own.
+    function refreshDraftIfUntouched(q, st, mountEl) {
+        if (st.enquiry.messageEdited) return;
+        var m = mountEl.querySelector('.fwe-enq-msg');
+        if (m) m.value = buildEnquiryDraft(q, st);
+    }
+
+    // What a pickup/drop edit does. Named rather than inline so the wiring can be tested:
+    // the draft follows the route, a now-wrong ranking comes off the screen, and Send is
+    // re-checked.
+    function onRouteEdited(q, st, mountEl) {
+        refreshDraftIfUntouched(q, st, mountEl);
+        staleDirPanelSoon(mountEl);
+        syncComposerLive(mountEl, st);
+    }
+
+    // Ask AI writes its list asynchronously (it re-reads the directory first), so a route typed
+    // while it loads used to clear the panel and then have the stale list painted back over the
+    // clearing. Give it a fresh slot of its own instead: clearing the panel detaches that slot,
+    // and the late write lands somewhere nobody can see or click.
+    function dirPanelSlot(mountEl) {
+        var panel = mountEl.querySelector('.fwe-dir-panel');
+        if (!panel) return null;
+        panel.innerHTML = '';
+        var slot = document.createElement('div');
+        slot.className = 'fwe-dir-slot';
+        panel.appendChild(slot);
+        return slot;
+    }
+
     function bindEnquiry(q, st, mountEl) {
         var enq = st.enquiry;
         var toggle = mountEl.querySelector('.fwe-enq-toggle');
@@ -1165,14 +1306,28 @@
         var chipsBox = mountEl.querySelector('.fwe-enq-chips[data-kind="bcc"]');
         var input = mountEl.querySelector('.fwe-enq-input[data-kind="bcc"]');
         var sendBtn = mountEl.querySelector('.fwe-enq-send');
-        function syncSendBtn() {
-            // The weight gate belongs here too — adding a recipient used to re-enable Send
-            // even when the weight was still incomplete, contradicting the box's own warning.
-            if (sendBtn) sendBtn.disabled = !(enq.bcc.length || enq.cc.length) || enq.sending || hasBadRecipient(enq) || !enqWeightUsable(st);
+        // The weight gate and the Cc warning belong together — see syncComposerLive.
+        function syncSendBtn() { syncComposerLive(mountEl, st); }
+        // ONLY a change of recipients makes this a new enquiry. After a clean send the
+        // transporters are cleared but a Cc'd colleague is not, so anything that re-armed Send
+        // without a new recipient armed it to email that colleague ALONE — and one keystroke in
+        // the message box did exactly that. Editing the message or the route changes what the
+        // next enquiry says; it does not create anybody new to say it to.
+        // ...and "recipients" means the TRANSPORTERS, not the people copied in. A clean send
+        // clears the transporter list and leaves the Cc'd colleague sitting there, so arming
+        // Send on a Cc change arms it to email that colleague ALONE — the same fault as the
+        // message box, one field along. Only a new transporter makes this a new enquiry.
+        function recipientsChanged(isTransporterList) {
+            if (isTransporterList && enq.justSent) {
+                enq.justSent = false;
+                var note = mountEl.querySelector('.fwe-enq-justsent');
+                if (note) note.remove();
+            }
+            syncSendBtn();
         }
         // One binder for both boxes — chips, paste splitting, Backspace, blur-commit and the
         // Gmail dropdown behave the same in each; only the list they write to differs.
-        function bindAddressField(fieldEl, chipsEl, inputEl, list) {
+        function bindAddressField(fieldEl, chipsEl, inputEl, list, isTransporterList) {
             function renderChips() {
                 chipsEl.innerHTML = list.map(function (addr, i) {
                     var bad = chipAddrs(addr).some(function (one) {
@@ -1181,7 +1336,7 @@
                     return '<span class="fwe-chip' + bad + '">' + escTxt(addr) + ' <span class="fwe-chip-x" data-i="' + i + '">×</span></span>';
                 }).join('');
                 chipsEl.querySelectorAll('.fwe-chip-x').forEach(function (x) {
-                    x.onclick = function (e) { e.stopPropagation(); list.splice(num(x.getAttribute('data-i')), 1); renderChips(); };
+                    x.onclick = function (e) { e.stopPropagation(); list.splice(num(x.getAttribute('data-i')), 1); renderChips(); recipientsChanged(isTransporterList); };
                 });
                 syncSendBtn();
             }
@@ -1193,6 +1348,7 @@
                     var joined = chipAddrs(s).map(bareAddress).filter(Boolean).join(', ');
                     if (joined && list.indexOf(joined) === -1) list.push(joined);
                     renderChips();
+                    recipientsChanged(isTransporterList);
                     return;
                 }
                 // One chip per firm, and a display name is stripped to the address it wraps.
@@ -1204,13 +1360,14 @@
                     if (v && list.indexOf(v) === -1) list.push(v);
                 });
                 renderChips();
+                recipientsChanged(isTransporterList);
             }
             renderChips();
             inputEl.addEventListener('keydown', function (e) {
                 if (e.key === ',' || e.key === ';' || e.key === 'Enter') {
                     e.preventDefault(); add(inputEl.value); inputEl.value = '';
                 } else if (e.key === 'Backspace' && inputEl.value === '' && list.length) {
-                    list.pop(); renderChips();
+                    list.pop(); renderChips(); recipientsChanged(isTransporterList);
                 }
             });
             inputEl.addEventListener('blur', function () { if (inputEl.value.trim()) { add(inputEl.value); inputEl.value = ''; } });
@@ -1231,14 +1388,17 @@
             }
             return add;
         }
-        var addBcc = bindAddressField(field, chipsBox, input, enq.bcc);
+        var addBcc = bindAddressField(field, chipsBox, input, enq.bcc, true);   // transporters
         // "Ask AI" → the Partner Directory ranks transporters for THIS box's route + weight.
         // Its picker calls addBcc per address, so chips/validation behave exactly as if typed.
         var dirAsk = mountEl.querySelector('.fwe-dir-ask');
         var dirPanel = mountEl.querySelector('.fwe-dir-panel');
         if (dirAsk && dirPanel && window.partnerDirectory) {
             dirAsk.onclick = function () {
-                window.partnerDirectory.renderSuggestPanel(dirPanel, {
+                // Into its own slot, never straight into the panel — see dirPanelSlot.
+                var slot = dirPanelSlot(mountEl);
+                if (!slot) return;
+                window.partnerDirectory.renderSuggestPanel(slot, {
                     kind: 'transport', pickup: enq.pickup, drop: enq.drop,
                     kg: enqWeightUsable(st) ? Math.round(enqEffectiveWeight(st)) : 0,
                 }, function (chip) { addBcc(chip, true); });
@@ -1246,21 +1406,17 @@
         } else if (dirAsk) { dirAsk.style.display = 'none'; }
         var ccField = mountEl.querySelector('.fwe-ccbox .fwe-enq-field[data-kind="cc"]');
         if (ccField) {
+            // false: a colleague copied in is not a transporter, so changing this box must
+            // never bring a spent Send back to life.
             bindAddressField(ccField, ccField.querySelector('.fwe-enq-chips'),
-                ccField.querySelector('.fwe-enq-input'), enq.cc);
+                ccField.querySelector('.fwe-enq-input'), enq.cc, false);
         }
         warmFreightSuggestions();
 
-        // Keep the draft in sync with pickup/drop while the user hasn't hand-edited it.
-        function refreshDraftIfUntouched() {
-            if (enq.messageEdited) return;
-            var m = mountEl.querySelector('.fwe-enq-msg');
-            if (m) m.value = buildEnquiryDraft(q, st);
-        }
         var pk = mountEl.querySelector('.fwe-enq-pickup');
-        if (pk) pk.oninput = function () { enq.pickup = pk.value; refreshDraftIfUntouched(); };
+        if (pk) pk.oninput = function () { enq.pickup = pk.value; onRouteEdited(q, st, mountEl); };
         var dp = mountEl.querySelector('.fwe-enq-drop');
-        if (dp) dp.oninput = function () { enq.drop = dp.value; refreshDraftIfUntouched(); };
+        if (dp) dp.oninput = function () { enq.drop = dp.value; onRouteEdited(q, st, mountEl); };
         // Editable total weight: type to override, clear (or reset) to go back to calculated.
         var kgIn = mountEl.querySelector('.fwe-enq-kg');
         if (kgIn) kgIn.onchange = function () {
@@ -1271,7 +1427,9 @@
             // and the warning on screen, with no way forward.
             var sameAsCalc = (v != null && Math.round(v) === Math.round(enqScopeWeight(st)));
             enq.weightOverride = (v != null && v > 0 && !(sameAsCalc && enqScopeComplete(st))) ? v : null;
-            refreshDraftIfUntouched();
+            refreshDraftIfUntouched(q, st, mountEl);
+            staleDirPanel(mountEl);       // a part-load ranking is wrong once the weight moves
+            syncSendBtn();
             refreshWeights(q, mountEl);   // in place: a render here would eat the click on Send request
         };
         var kgReset = mountEl.querySelector('.fwe-kg-reset');
@@ -1279,7 +1437,9 @@
             enq.weightOverride = null;
             if (!enq.messageEdited) enq.message = '';
             if (kgIn) kgIn.value = enqWeightUsable(st) ? Math.round(enqEffectiveWeight(st)) : '';
-            refreshDraftIfUntouched();
+            refreshDraftIfUntouched(q, st, mountEl);
+            staleDirPanel(mountEl);
+            syncSendBtn();
             refreshWeights(q, mountEl);
         };
         // "Hand-edited" has to mean the text actually differs from what we'd generate. Marking
@@ -1289,6 +1449,9 @@
         if (msg) msg.oninput = function () {
             enq.message = msg.value;
             enq.messageEdited = (msg.value.trim() !== buildEnquiryDraft(q, st).trim());
+            // NOT a new enquiry. Rewriting the text adds nobody to send it to, and re-arming
+            // Send here is exactly what let a second press email the Cc'd colleague alone.
+            syncSendBtn();
         };
         if (sendBtn) sendBtn.onclick = function () { sendFreightEnquiry(q, st, mountEl); };
 
@@ -1340,6 +1503,9 @@
                 else if (f === 'qty') r.qty = qtyOrNull(inp.value);   // blank stays blank (red), never 0
                 else r[f] = num(inp.value);
                 if (f === 'kgm') persistKgm(q, r);
+                // A kg/m or quantity edit moves the enquiry weight, which is what the
+                // part-load / full-truck ranking was scored on.
+                if (f === 'kgm' || f === 'qty') staleDirPanel(mountEl);
                 refreshWeights(q, mountEl);   // patch in place — a full render here eats the next click
             };
         });
@@ -1536,6 +1702,20 @@
             sectionTitleHtml: sectionTitleHtml,
             totalRowHtml: totalRowHtml,
             hasBadRecipient: hasBadRecipient,
+            // The one Send gate, and the Cc warning that fires before an open email goes out.
+            canSendEnquiry: canSendEnquiry,
+            ccOpenEmailRisk: ccOpenEmailRisk,
+            ccNoteText: ccNoteText,
+            ccAddressCount: ccAddressCount,
+            // Repainted together so Send and the Cc warning can never disagree.
+            syncComposerLive: syncComposerLive,
+            staleDirPanel: staleDirPanel,
+            staleDirPanelSoon: staleDirPanelSoon,
+            onRouteEdited: onRouteEdited,
+            dirPanelSlot: dirPanelSlot,
+            enquiryThreadsHtml: enquiryThreadsHtml,
+            finishReplyCheck: finishReplyCheck,
+            saveRepliesThenTellDirectory: saveRepliesThenTellDirectory,
             _setSuggest: function (s) { _freightSuggest = s; }
         };
     }

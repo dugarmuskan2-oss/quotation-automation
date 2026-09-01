@@ -37,6 +37,11 @@
                 messageEdited: false,
                 sending: false,
                 sent: '',
+                // True from a fully successful send until the recipients or the message change,
+                // so an impatient second press cannot re-send the same enquiry.
+                sentLock: false,
+                checking: false,      // a "Check for replies" read is in flight
+                checkResult: '',      // what that read found, in the owner's words
                 openReplies: {},
             };
         }
@@ -89,6 +94,41 @@
     function chipIsSendable(chip) {
         var parts = chipAddrs(chip);
         return parts.length > 0 && parts.every(isEmail);
+    }
+
+    // Which chip in this list already holds this address? -1 when nobody does.
+    function chipHolding(list, addr) {
+        var want = String(addr || '').trim().toLowerCase();
+        for (var i = 0; i < list.length; i++) {
+            var hit = chipAddrs(list[i]).some(function (a) { return a.toLowerCase() === want; });
+            if (hit) return i;
+        }
+        return -1;
+    }
+
+    /**
+     * Put a chip in the list WITHOUT ever splitting one firm across two chips.
+     *
+     * Each chip becomes its own email. Matching on the chip STRING meant picking a firm twice —
+     * once with one contact ticked, once with two — left "a@x.com" and "a@x.com, b@x.com" side by
+     * side, so that firm got the same enquiry twice and its own colleagues were split across the
+     * two mails. So match on the ADDRESSES: anyone already present merges into the chip that
+     * holds them, and only genuinely new people start a new chip.
+     * Returns true when the list changed.
+     */
+    function addChip(list, chip) {
+        var parts = chipAddrs(chip);
+        if (!parts.length) return false;
+        var at = -1;
+        parts.forEach(function (a) { if (at === -1) at = chipHolding(list, a); });
+        if (at === -1) { list.push(parts.join(', ')); return true; }
+        var merged = chipAddrs(list[at]);
+        var grew = false;
+        parts.forEach(function (a) {
+            if (chipHolding([merged.join(', ')], a) === -1) { merged.push(a); grew = true; }
+        });
+        if (grew) list[at] = merged.join(', ');
+        return grew;
     }
 
     // A list copied out of Outlook or Gmail arrives looking like:
@@ -443,7 +483,9 @@
             return fetch(apiBase() + '/thread-messages?threadId=' + encodeURIComponent(t.threadId))
                 .then(function (res) { return res.ok ? res.json() : null; })
                 .then(function (data) {
-                    if (!data || !Array.isArray(data.messages)) return false;
+                    // A read that FAILED is not a thread with no reply in it. Both used to come
+                    // back false, so Gmail being down read as "nobody has answered".
+                    if (!data || !Array.isArray(data.messages)) return 'failed';
                     // direction 'you' is anything Gmail marked SENT — including our own enquiry,
                     // which carries both SENT and INBOX because a Bcc-only send is addressed to
                     // us. `auto` drops out-of-office and mailer-daemon noise.
@@ -462,8 +504,10 @@
             var newReplies = flags.filter(function (x) { return x === true; }).length;
             var failed = flags.filter(function (x) { return x === 'failed'; }).length;
             if (newReplies) {
-                persistThreads(q);
-                tellDirectoryReplied(waiting);
+                // Only tell the directory once the "answered" flag has actually saved. If the
+                // save is lost, the next sweep finds the same reply again — counting it now
+                // would push that firm's replied % past 100 with nothing to explain it.
+                persistThreads(q).then(function (ok) { if (ok) tellDirectoryReplied(waiting); });
                 // The sweep is background work, so its find has to reach an Enquiry tab that is
                 // already open — otherwise the tab keeps saying "Awaiting reply" over a reply
                 // that has already arrived, and the user concludes nobody answered.
@@ -471,6 +515,40 @@
             }
             return { checked: waiting.length, newReplies: newReplies, failed: failed };
         });
+    }
+
+    // What the check found, in words the owner can act on. A read that failed must never be
+    // reported as "no new replies" — that reads as "nobody answered you".
+    function checkResultText(r) {
+        var found = (r && r.newReplies) || 0;
+        var failed = (r && r.failed) || 0;
+        var got = found ? (found === 1 ? '1 new reply came in.' : found + ' new replies came in.') : '';
+        if (failed) {
+            var s = failed === 1 ? '1 supplier' : failed + ' suppliers';
+            return (got ? got + ' ' : '') + 'Could not read Gmail for ' + s + ' — try again in a minute.';
+        }
+        return got || 'No new replies yet.';
+    }
+
+    // The button on this tab. The Freight tab has had one all along; here the only way to pull a
+    // reply was to reload the whole app or find the global "Check all replies" far up the page.
+    function checkSupplierReplies(q, st, mountEl) {
+        if (st.checking) return;
+        var threads = getThreads(q);
+        var waiting = threads.filter(function (t) { return t && !t.replied && t.threadId; });
+        if (!waiting.length) {
+            st.checkResult = threads.length
+                ? 'Nothing left to check — every supplier has replied.'
+                : 'No enquiry has been sent yet.';
+            render(q, mountEl);
+            return;
+        }
+        st.checking = true; st.checkResult = '';
+        render(q, mountEl);
+        var done = function (text) { st.checking = false; st.checkResult = text; render(q, mountEl); };
+        checkSupplierRepliesForQuote(q)
+            .then(function (r) { done(checkResultText(r)); })
+            .catch(function () { done('Could not check Gmail — try again in a minute.'); });
     }
 
     // Re-render this quote's Enquiry tab if it is on screen. No-op when the card is closed.
@@ -513,7 +591,17 @@
             return '<div class="qet-thread"><span class="qet-th-email">' + escTxt(t.email) + '</span>'
                 + pill + read + '</div>' + body;
         }).join('');
-        return '<div class="qet-threads"><div class="qet-h">Sent to</div>' + rows + '</div>';
+        var anyWaiting = threads.some(function (t) { return t && !t.replied; });
+        var checkBtn = anyWaiting
+            ? '<button class="fwe-th-btn qet-check" style="margin-top:8px;"' + (st.checking ? ' disabled' : '') + '>'
+              + (st.checking ? 'Checking&hellip;' : '&#8635; Check for replies') + '</button>'
+            : '';
+        var checkStatus = st.checkResult
+            ? '<div class="qet-check-status" style="margin-top:6px;font-size:12px;color:#6b6862;">'
+              + escTxt(st.checkResult) + '</div>'
+            : '';
+        return '<div class="qet-threads"><div class="qet-h">Sent to</div>' + rows
+            + checkBtn + checkStatus + '</div>';
     }
 
     // The on-screen editor, matching the standalone Enquiry Preparer's table exactly: the same two
@@ -598,6 +686,16 @@
             + ' along on every hidden email above; with Bcc empty, the enquiry goes as ONE open email to these addresses.</p></div>';
     }
 
+    // Either box is enough to send — Bcc for hidden one-each sends, Cc for one open email — like
+    // ordinary mail, which needs a recipient SOMEWHERE, not in one particular line. Every address
+    // is validated; a typo anywhere blocks the send. sentLock keeps it off after a send that
+    // worked: a Bcc send empties Bcc but leaves the Cc'd colleague, and the button stayed blue
+    // right under the green tick, so a second press mailed the colleague alone.
+    function canSendNow(st) {
+        return !!((st.bcc.length || st.cc.length) && !st.sending && !st.sentLock && st.rows.length
+            && st.bcc.concat(st.cc).every(chipIsSendable));
+    }
+
     function render(quotation, mountEl) {
         var st = stateFor(quotation);
         var threads = getThreads(quotation);
@@ -631,11 +729,7 @@
                 + (ok ? '✓ ' : '⚠ ') + escTxt(st.sent.slice(st.sent.indexOf(':') + 1)) + '</div>';
         }
 
-        // Either box is enough to send — Bcc for hidden one-each sends, Cc for one open
-        // email — like ordinary mail, which needs a recipient SOMEWHERE, not in one
-        // particular line. Every address is validated; a typo anywhere blocks the send.
-        var canSend = (st.bcc.length || st.cc.length) && !st.sending && st.rows.length
-            && st.bcc.concat(st.cc).every(chipIsSendable);
+        var canSend = canSendNow(st);
         mountEl.innerHTML = '<div class="qet">'
             + '<div class="qet-h">Enquiry &middot; ' + st.rows.length + ' item' + (st.rows.length === 1 ? '' : 's')
             + ' <span class="qet-sub">built from the quote</span></div>'
@@ -701,12 +795,36 @@
             render(quotation, mountEl);
         };
 
-        $$('.qet-chip-x').forEach(function (el) {
-            el.onclick = function () {
-                listFor(st, el.dataset.kind).splice(Number(el.dataset.i), 1);
-                render(quotation, mountEl);
-            };
-        });
+        // Repaint ONLY the recipient chips, the way the Freight tab does. render() rebuilds the
+        // whole tab — including an EMPTY "Ask AI" panel — so every pick wiped the ranked list of
+        // suppliers, and adding a second one meant asking again and re-reading it from the top.
+        function syncSendBtn() {
+            var btn = mountEl.querySelector('.qet-send');
+            if (btn) btn.disabled = !canSendNow(st);
+        }
+        function bindChipX() {
+            $$('.qet-chip-x').forEach(function (el) {
+                el.onclick = function () {
+                    listFor(st, el.dataset.kind).splice(Number(el.dataset.i), 1);
+                    st.sentLock = false;          // the recipients changed: this is a new send
+                    paintChips(el.dataset.kind);
+                };
+            });
+        }
+        function paintChips(kind) {
+            var k = kind || 'bcc';
+            var box = mountEl.querySelector('.qet-chips[data-kind="' + k + '"]');
+            if (!box) { render(quotation, mountEl); return; }
+            box.innerHTML = chipsHtml(st, k);
+            bindChipX();
+            syncSendBtn();
+            paintSuggestions();
+        }
+        function clearInput(kind) {
+            var again = mountEl.querySelector('.qet-input[data-kind="' + kind + '"]');
+            if (again) { again.value = ''; again.focus(); }
+        }
+        bindChipX();
 
         var input = mountEl.querySelector('.qet-input[data-kind="bcc"]');
         var suggest = $('.qet-suggest');
@@ -719,11 +837,9 @@
                 ? chipAddrs(v).map(bareAddress).filter(Boolean).join(', ')
                 : bareAddress(String(v || '').replace(/[;,]$/, ''));
             if (!email) return;
-            var list = listFor(st, kind);
-            if (list.indexOf(email) === -1) list.push(email);
-            render(quotation, mountEl);
-            var again = mountEl.querySelector('.qet-input[data-kind="' + kind + '"]');
-            if (again) again.focus();
+            if (addChip(listFor(st, kind), email)) st.sentLock = false;
+            paintChips(kind);
+            clearInput(kind);
         }
         // A pasted list becomes ONE CHIP PER FIRM. It used to become a single chip holding the
         // whole list, which put every one of those suppliers on the SAME email with each other
@@ -734,11 +850,10 @@
             var list = listFor(st, kind);
             parts.forEach(function (tok) {
                 var email = bareAddress(tok);
-                if (email && list.indexOf(email) === -1) list.push(email);
+                if (email && addChip(list, email)) st.sentLock = false;
             });
-            render(quotation, mountEl);
-            var again = mountEl.querySelector('.qet-input[data-kind="' + kind + '"]');
-            if (again) again.focus();
+            paintChips(kind);
+            clearInput(kind);
         }
         function addRecip(v) { addTo('bcc', v); }
 
@@ -828,10 +943,17 @@
         loadSupplierSuggestions(paintSuggestions);
 
         var msg = $('.qet-msg');
-        if (msg) msg.oninput = function () { st.message = msg.value; st.messageEdited = true; };
+        if (msg) msg.oninput = function () {
+            st.message = msg.value; st.messageEdited = true;
+            st.sentLock = false;              // a changed message is a different enquiry
+            syncSendBtn();
+        };
 
         var send = $('.qet-send');
         if (send) send.onclick = function () { sendEnquiry(quotation, mountEl); };
+
+        var checkBtn = $('.qet-check');
+        if (checkBtn) checkBtn.onclick = function () { checkSupplierReplies(quotation, st, mountEl); };
 
         $$('.qet-read').forEach(function (el) {
             el.onclick = function () {
@@ -845,12 +967,23 @@
     // ── sending ───────────────────────────────────────────────────────────────
     // One email per supplier so each reply lands in its own thread (that is what lets us show
     // who replied). Within each email the supplier is BCC'd rather than in To, per the brief.
+    // With Bcc empty the Cc list IS the send — ONE open email where every firm sees the others.
+    // That is the one thing this tab exists to prevent, so say it plainly first, naming them.
+    // Returns true when it is fine to go ahead.
+    function confirmOpenCcSend(st) {
+        if (st.bcc.length || st.cc.length < 2) return true;
+        if (typeof window === 'undefined' || typeof window.confirm !== 'function') return true;
+        return window.confirm('Bcc is empty, so this goes as ONE open email.\n\n'
+            + st.cc.join('\n') + '\n\nEvery one of them will see the others. Send it anyway?');
+    }
+
     function sendEnquiry(quotation, mountEl) {
         var st = stateFor(quotation);
-        if ((!st.bcc.length && !st.cc.length) || st.sending || !st.rows.length) return;
+        if ((!st.bcc.length && !st.cc.length) || st.sending || st.sentLock || !st.rows.length) return;
         if (!st.bcc.concat(st.cc).every(chipIsSendable)) {
             st.sent = 'err:Check the highlighted email addresses.'; render(quotation, mountEl); return;
         }
+        if (!confirmOpenCcSend(st)) return;
 
         var subject = 'Enquiry' + (quotation.quoteNumber ? ' — ' + quotation.quoteNumber : '');
         var recipients = st.bcc.slice();
@@ -960,8 +1093,10 @@
                 var n = ccOnly ? extra.cc.split(', ').length : sentOk.length;
                 st.sent = 'ok:Enquiry sent to ' + n + ' supplier' + (n > 1 ? 's' : '') + (ccOnly ? ' (one open email — all Cc)' : '') + '.';
                 // Clear whichever list acted as the RECIPIENTS, so the live Send button
-                // cannot fire the same enquiry twice. Copies (cc on a Bcc send) stay.
+                // cannot fire the same enquiry twice. Copies (cc on a Bcc send) stay — and
+                // the lock is what stops a second press mailing that colleague on their own.
                 if (ccOnly) st.cc = []; else st.bcc = [];
+                st.sentLock = true;
             } else if (sentOk.length) {
                 st.sent = 'err:Sent to ' + sentOk.length + ', but failed for ' + failed.map(function (r) { return r.addr; }).join(', ') + '.';
                 st.bcc = failed.map(function (r) { return r.addr; });
@@ -1016,6 +1151,9 @@
             splitAddressList: splitAddressList,
             bareAddress: bareAddress,
             chipAddrs: chipAddrs,
+            addChip: addChip,
+            canSendNow: canSendNow,
+            checkResultText: checkResultText,
             _setSuggest: function (s) { _supplierSuggest = s; },
         };
     }

@@ -1207,12 +1207,14 @@ describe('checkSupplierRepliesForQuote', () => {
     // functions — without it trimReplyForStorage throws, the catch swallows it, and the check
     // silently reports "no new replies" after half-updating the thread. (That happened while
     // building this: the harness, not the shipped code, but the failure mode is worth pinning.)
-    function load(fetchStub, persisted) {
+    // saveOk mimics the real persistThreads, which answers a PROMISE of whether the write
+    // landed. The directory is now told about a reply only once that promise says yes.
+    function load(fetchStub, persisted, saveOk = true) {
         // eslint-disable-next-line no-new-func
-        return new Function('fetchStub', 'persisted',
+        return new Function('fetchStub', 'persisted', 'saveOk',
             'function apiBase(){return "/api";}\n'
             + 'function getThreads(q){return q.supplierEnquiries||[];}\n'
-            + 'function persistThreads(q){persisted.push(q);}\n'
+            + 'function persistThreads(q){persisted.push(q); return Promise.resolve(saveOk);}\n'
             // The sweep now also repaints an Enquiry tab that happens to be open. That needs the
             // DOM, so it is stubbed out here — this suite tests the reply-reading logic only.
             + 'function repaintOpenTab(){}\n'
@@ -1223,7 +1225,7 @@ describe('checkSupplierRepliesForQuote', () => {
             // guards against (an unguarded window reference blowing up the reply sweep).
             + cut('tellDirectoryReplied') + '\n'
             + cut('trimReplyForStorage') + '\n' + cut('checkSupplierRepliesForQuote') + '\n'
-            + 'return checkSupplierRepliesForQuote;')(fetchStub, persisted);
+            + 'return checkSupplierRepliesForQuote;')(fetchStub, persisted, saveOk);
     }
     const reply = (msgs) => () => Promise.resolve({ ok: true, json: () => Promise.resolve({ messages: msgs }) });
 
@@ -1420,5 +1422,340 @@ describe('a firm with two contacts can still be sent to', () => {
         // ...and neither call site still reads the chip as a single address. (chipIsSendable
         // uses parts.every(isEmail) internally, which is right — the call SITES must not.)
         expect(src).not.toContain('st.bcc.concat(st.cc).every(isEmail)');
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Adding a SECOND supplier, and pressing Send a second time
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Pull a real function out of the shipped tab file by brace-matching, never a copy. */
+function grabFromTab(name) {
+    const start = tabSrc.indexOf('function ' + name + '(');
+    if (start === -1) throw new Error('no such function: ' + name);
+    let depth = 0;
+    for (let i = tabSrc.indexOf('{', start); i < tabSrc.length; i++) {
+        if (tabSrc[i] === '{') depth++;
+        if (tabSrc[i] === '}' && --depth === 0) return tabSrc.slice(start, i + 1);
+    }
+    throw new Error('unterminated: ' + name);
+}
+
+describe('addChip — one firm can never end up on two chips', () => {
+    // Each chip is its own email. Matching on the chip STRING meant picking a firm twice —
+    // once with one contact ticked, once with two — left "a@x.com" and "a@x.com, b@x.com" side
+    // by side, so that firm got the SAME enquiry twice and its own colleagues were split
+    // across the two mails. That is the exact opposite of the one-firm-one-email rule.
+    const { addChip } = tab;
+
+    test('picking the firm again with another contact merges into its existing chip', () => {
+        const bcc = [];
+        addChip(bcc, 'manish@jcopipe.com');
+        addChip(bcc, 'manish@jcopipe.com, cp@jcopipe.com');
+        expect(bcc).toEqual(['manish@jcopipe.com, cp@jcopipe.com']);
+    });
+
+    test('the merge works the other way round too', () => {
+        const bcc = [];
+        addChip(bcc, 'manish@jcopipe.com, cp@jcopipe.com');
+        addChip(bcc, 'cp@jcopipe.com');
+        expect(bcc).toEqual(['manish@jcopipe.com, cp@jcopipe.com']);
+    });
+
+    test('a different firm still gets its own chip — one email each', () => {
+        const bcc = [];
+        addChip(bcc, 'a@annai.com');
+        addChip(bcc, 'ravi@mill.com');
+        expect(bcc).toEqual(['a@annai.com', 'ravi@mill.com']);
+    });
+
+    test('the same person twice, in any case, changes nothing', () => {
+        const bcc = [];
+        expect(addChip(bcc, 'A@Annai.com')).toBe(true);
+        expect(addChip(bcc, 'a@annai.com')).toBe(false);
+        expect(bcc).toEqual(['A@Annai.com']);
+    });
+
+    test('nothing at all is not a chip', () => {
+        const bcc = [];
+        expect(addChip(bcc, '')).toBe(false);
+        expect(addChip(bcc, '  ')).toBe(false);
+        expect(bcc).toEqual([]);
+    });
+});
+
+describe('Send goes dead after a send that worked', () => {
+    // Reported: a Bcc send empties Bcc but leaves the Cc'd colleague, so Send stayed blue right
+    // under the green tick. An unsure second press mailed that colleague ALONE — a fresh open
+    // email, a new "awaiting reply" row, and a directory record saying they were asked.
+    const { canSendNow } = tab;
+    const st = (over) => Object.assign(
+        { bcc: [], cc: [], sending: false, sentLock: false, rows: [{}] }, over);
+
+    test('a recipient and a row is enough to send', () => {
+        expect(canSendNow(st({ bcc: ['a@x.com'] }))).toBe(true);
+        expect(canSendNow(st({ cc: ['a@x.com'] }))).toBe(true);
+    });
+
+    test('the leftover Cc cannot re-arm Send after the enquiry has gone', () => {
+        expect(canSendNow(st({ bcc: [], cc: ['colleague@dscpipes.com'], sentLock: true }))).toBe(false);
+    });
+
+    test('changing the recipients clears the lock, so a real second enquiry can go', () => {
+        expect(canSendNow(st({ bcc: ['new@firm.com'], cc: ['colleague@dscpipes.com'] }))).toBe(true);
+    });
+
+    test('a clean send sets the lock — and a part-failed one does not', () => {
+        const doSend = grabFromTab('doSend');
+        const clean = doSend.slice(doSend.indexOf('if (!failed.length) {'),
+            doSend.indexOf('} else if (sentOk.length)'));
+        expect(clean).toContain('st.sentLock = true;');
+        // Only there. A send that failed for two of five firms must stay retryable.
+        expect(doSend.match(/st\.sentLock = true;/g)).toHaveLength(1);
+    });
+
+    test('the old blocks are all still blocks', () => {
+        expect(canSendNow(st({}))).toBe(false);                                  // nobody to send to
+        expect(canSendNow(st({ bcc: ['a@x.com'], rows: [] }))).toBe(false);       // nothing to ask for
+        expect(canSendNow(st({ bcc: ['a@x.com'], sending: true }))).toBe(false);  // already going
+        expect(canSendNow(st({ bcc: ['not an email'] }))).toBe(false);            // a typo anywhere
+    });
+});
+
+describe('one open email is confirmed before it goes', () => {
+    // Bcc empty means the Cc list IS the send: ONE email where every firm sees the others.
+    // That is the one thing the owner said must never happen, and the only warning beforehand
+    // was a small grey line.
+    function load(answer, asked) {
+        // eslint-disable-next-line no-new-func
+        return new Function('answer', 'asked',
+            'var window = { confirm: function (m) { asked.push(m); return answer; } };\n'
+            + grabFromTab('confirmOpenCcSend') + '\nreturn confirmOpenCcSend;')(answer, asked);
+    }
+
+    test('two firms in Cc with Bcc empty is asked about, and they are named', () => {
+        const asked = [];
+        expect(load(true, asked)({ bcc: [], cc: ['a@one.com', 'b@two.com'] })).toBe(true);
+        expect(asked).toHaveLength(1);
+        expect(asked[0]).toContain('a@one.com');
+        expect(asked[0]).toContain('b@two.com');
+    });
+
+    test('saying no stops the send', () => {
+        expect(load(false, [])({ bcc: [], cc: ['a@one.com', 'b@two.com'] })).toBe(false);
+    });
+
+    test('the ordinary Bcc send is never interrupted', () => {
+        const asked = [];
+        expect(load(false, asked)({ bcc: ['a@one.com'], cc: ['colleague@dscpipes.com', 'x@y.com'] })).toBe(true);
+        expect(asked).toEqual([]);
+    });
+
+    test('and the send really does ask, rather than only being able to', () => {
+        expect(grabFromTab('sendEnquiry')).toContain('if (!confirmOpenCcSend(st)) return;');
+    });
+
+    test('one address in Cc on its own is not an open email to anyone', () => {
+        const asked = [];
+        expect(load(false, asked)({ bcc: [], cc: ['a@one.com'] })).toBe(true);
+        expect(asked).toEqual([]);
+    });
+});
+
+describe('checkResultText — a Gmail failure never reads as "nobody answered"', () => {
+    const { checkResultText } = tab;
+
+    test('a clean read with nothing new says so', () => {
+        expect(checkResultText({ checked: 3, newReplies: 0, failed: 0 })).toBe('No new replies yet.');
+    });
+
+    test('a failed read says it failed, and never "No new replies"', () => {
+        const msg = checkResultText({ checked: 2, newReplies: 0, failed: 2 });
+        expect(msg).toContain('Could not read Gmail');
+        expect(msg).toContain('2 suppliers');
+        expect(msg).not.toContain('No new replies');
+    });
+
+    test('a find and a failure in the same sweep are both reported', () => {
+        const msg = checkResultText({ checked: 2, newReplies: 1, failed: 1 });
+        expect(msg).toContain('1 new reply came in.');
+        expect(msg).toContain('1 supplier');
+    });
+
+    test('replies found are counted in plain words', () => {
+        expect(checkResultText({ newReplies: 2, failed: 0 })).toBe('2 new replies came in.');
+    });
+});
+
+describe('source guard — the Enquiry tab has its own "Check for replies" button', () => {
+    // The Freight tab has had one all along. Here the only way to pull a reply was to reload
+    // the whole app, or find the global "Check all replies" far up beside the month filters.
+    // The REAL threadsHtml, run for its output — a source guard alone passes happily while the
+    // button is built and then left out of the returned HTML.
+    // eslint-disable-next-line no-new-func
+    const threadsHtml = new Function(
+        grabFromTab('escTxt') + '\n'
+        + 'function getThreads(q){ return q.supplierEnquiries || []; }\n'
+        + grabFromTab('threadsHtml') + '\n'
+        + 'return threadsHtml;')();
+    const st = (over) => Object.assign({ openReplies: {}, checking: false, checkResult: '' }, over);
+    const waiting = { supplierEnquiries: [{ email: 'a@x.com', threadId: 'T1', replied: false }] };
+
+    test('the button is on screen while anyone is still awaited', () => {
+        const html = threadsHtml(waiting, st());
+        expect(html).toContain('qet-check');
+        expect(html).toContain('Check for replies');
+    });
+
+    test('it disables itself and says what it is doing while it reads', () => {
+        const html = threadsHtml(waiting, st({ checking: true }));
+        expect(html).toContain('disabled');
+        expect(html).toContain('Checking');
+    });
+
+    test('what the read found is printed under it', () => {
+        const html = threadsHtml(waiting, st({ checkResult: 'No new replies yet.' }));
+        expect(html).toContain('No new replies yet.');
+    });
+
+    test('once everyone has replied there is nothing left to press', () => {
+        const done = { supplierEnquiries: [{ email: 'a@x.com', threadId: 'T1', replied: true }] };
+        expect(threadsHtml(done, st())).not.toContain('qet-check');
+    });
+
+    test('the button is wired to the real reply reader', () => {
+        expect(tabSrc).toContain("checkBtn.onclick = function () { checkSupplierReplies(quotation, st, mountEl); }");
+        expect(grabFromTab('checkSupplierReplies')).toContain('checkSupplierRepliesForQuote(q)');
+    });
+
+    test('a read that failed is counted as failed, not as "no reply"', () => {
+        // res.ok === false used to fall through to `return false` — the same value as a thread
+        // nobody has answered — so Gmail being down read as "nobody answered you".
+        const fn = grabFromTab('checkSupplierRepliesForQuote');
+        // Both exits must say it: the unreadable answer AND the request that never landed.
+        // Asserting the bare string was worthless — the catch already carried it, so putting
+        // the bug back passed. (Found by mutation-checking this very test.)
+        expect(fn).toContain("if (!data || !Array.isArray(data.messages)) return 'failed';");
+        expect(fn.match(/return 'failed'/g)).toHaveLength(2);
+    });
+});
+
+describe('source guard — picking a supplier keeps the ranked list on screen', () => {
+    // render() rebuilds the whole tab, including an EMPTY "Ask AI" panel. addTo called it on
+    // every pick, so the ranked list vanished and adding a second supplier meant asking again.
+    test('adding a recipient repaints only the chips', () => {
+        const addTo = grabFromTab('addTo');
+        expect(addTo).toContain('paintChips(kind)');
+        expect(addTo).not.toContain('render(quotation, mountEl)');
+    });
+
+    test('a pasted list of addresses does the same', () => {
+        const addTypedList = grabFromTab('addTypedList');
+        expect(addTypedList).toContain('paintChips(kind)');
+        expect(addTypedList).not.toContain('render(quotation, mountEl)');
+    });
+
+    test('both routes in add the address way, so one firm stays on one chip', () => {
+        expect(grabFromTab('addTo')).toContain('addChip(listFor(st, kind), email)');
+        expect(grabFromTab('addTypedList')).toContain('addChip(list, email)');
+        expect(tabSrc).not.toContain('if (list.indexOf(email) === -1) list.push(email)');
+    });
+});
+
+describe('a reply is counted only after the "answered" flag has saved', () => {
+    // If that write is lost, the next sweep finds the same reply again. Counting it now takes
+    // the firm's replied % past 100 with nothing on the card to explain it.
+    function load(saveOk, told) {
+        // eslint-disable-next-line no-new-func
+        return new Function('saveOk', 'told',
+            'function apiBase(){return "/api";}\n'
+            + 'function getThreads(q){return q.supplierEnquiries||[];}\n'
+            + 'function persistThreads(q){return Promise.resolve(saveOk);}\n'
+            + 'function repaintOpenTab(){}\n'
+            + 'var MAX_REPLY_CHARS = 2000;\n'
+            // A stub window, so the REAL tellDirectoryReplied actually reaches the directory.
+            + 'var window = { partnerDirectory: { recordUsage: function (u) { told.push(u); } } };\n'
+            + 'var fetch = function () { return Promise.resolve({ ok: true, json: function () {\n'
+            + '  return Promise.resolve({ messages: [{ direction: "customer", auto: false, body: "Rs 62/kg" }] });\n'
+            + '} }); };\n'
+            + grabFromTab('tellDirectoryReplied') + '\n'
+            + grabFromTab('trimReplyForStorage') + '\n'
+            + grabFromTab('checkSupplierRepliesForQuote') + '\n'
+            + 'return checkSupplierRepliesForQuote;')(saveOk, told);
+    }
+    const settle = async () => { await new Promise((r) => setImmediate(r)); await new Promise((r) => setImmediate(r)); };
+    const quote = () => ({ id: 1, supplierEnquiries: [{ email: 'a@x.com', threadId: 'T1', replied: false }] });
+
+    test('the save landed — the directory is told once', async () => {
+        const told = [];
+        await load(true, told)(quote());
+        await settle();
+        expect(told).toHaveLength(1);
+        expect(told[0]).toMatchObject({ kind: 'reply', emails: ['a@x.com'] });
+    });
+
+    test('the save was lost — nothing is counted, so the next sweep can find it again', async () => {
+        const told = [];
+        await load(false, told)(quote());
+        await settle();
+        expect(told).toEqual([]);
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The Gmail-label script that feeds the Partner Directory
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('SendDirectoryEmailsToApp.gs — the labelled reply, and every attachment', () => {
+    const vm = require('vm');
+    const gsSrc = fs.readFileSync(path.join(ROOT, 'apps-script', 'SendDirectoryEmailsToApp.gs'), 'utf8');
+    // Apps Script cannot run here, so the file is parsed and its pure helpers exercised.
+    const ctx = { Logger: { log() {} } };
+    vm.createContext(ctx);
+    new vm.Script(gsSrc, { filename: 'SendDirectoryEmailsToApp.gs' }).runInContext(ctx);
+
+    const att = (name, size) => ({ getName: () => name, getSize: () => size });
+    const msg = (attachments) => ({ getAttachments: () => attachments });
+
+    test('a reply in an old thread is read, not our own enquiry at the top of it', () => {
+        // Labels sit on the THREAD. messages[0] is the OLDEST — in a reply that is our own
+        // outgoing enquiry, so the rate list he attached was never looked at and the card
+        // came back carrying our own address.
+        // BOTH messages carry a PDF here — our quotation went out as one. With only his
+        // carrying a file, a first-to-last scan finds the same message and the test proves
+        // nothing. (Found by mutation-checking this test.)
+        const ours = msg([att('DSC-108.pdf', 200000)]);
+        const his = msg([att('rates.pdf', 400000)]);
+        expect(ctx.pickMessage_([ours, his])).toBe(his);
+    });
+
+    test('with no attachment anywhere, the newest message is still the one meant', () => {
+        const first = msg([]); const last = msg([]);
+        expect(ctx.pickMessage_([first, last])).toBe(last);
+    });
+
+    test('an empty thread is nothing to send, not a crash', () => {
+        expect(ctx.pickMessage_([])).toBe(null);
+    });
+
+    test('the files that were not read are named', () => {
+        // Three rate lists in one email, or an .xlsx one, used to vanish without a word — the
+        // card was then built from the covering note alone and looked complete.
+        const names = ctx.skippedNames_(
+            [att('gi.pdf', 900000), att('erw.pdf', 500000), att('rates.xlsx', 300000)], 'gi.pdf');
+        expect(names).toEqual(['erw.pdf', 'rates.xlsx']);
+    });
+
+    test('an email whose only rate list is a spreadsheet says so', () => {
+        expect(ctx.skippedNames_([att('rates.xlsx', 300000)], '')).toEqual(['rates.xlsx']);
+    });
+
+    test('signature artwork is not reported as a dropped rate list', () => {
+        expect(ctx.skippedNames_([att('image001.png', 4000), att('logo.png', 9000)], '')).toEqual([]);
+    });
+
+    test('the skipped names travel with the email', () => {
+        expect(gsSrc).toContain('skippedNames_(attachments, firstFile)');
+        expect(gsSrc).toContain('[Not read: ');
     });
 });

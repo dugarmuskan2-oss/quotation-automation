@@ -3,7 +3,9 @@
     "defaultMode": "bypassPermissions",
     "deny": [
       "Bash(git push)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "PowerShell(git push)",
+      "PowerShell(git push *)"
     ],
     "allow": [
       "mcp__Claude_Preview__preview_console_logs",
@@ -31,7 +33,11 @@
       "mcp__Claude_Browser__resize_window",
       "mcp__Claude_Browser__read_network_requests",
       "mcp__Claude_Preview__preview_stop",
-      "mcp__Claude_Preview__preview_resize"
+      "mcp__Claude_Preview__preview_resize",
+      "mcp__Claude_Browser__preview_start",
+      "mcp__Claude_Preview__preview_start",
+      "mcp__Claude_Browser__tabs_select",
+      "Bash(git fetch *)"
     ]
   }
 }

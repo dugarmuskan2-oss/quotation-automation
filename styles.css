@@ -1406,3 +1406,49 @@
     .pd-modal { padding: 10px; align-items: flex-start; }
     .pd-modal-box { max-height: 90vh; }
 }
+
+/* ── Fixes from the flow review ───────────────────────────────────────────── */
+
+/* A count on the floating 📇 button, so a brochure waiting for approval is visible from
+   every tool — it used to be countable only from inside the directory itself. */
+.main-tools-button { position: relative; }
+.pd-waiting-dot {
+    position: absolute; top: -3px; right: -3px; min-width: 18px; height: 18px;
+    border-radius: 9px; background: #C0392B; color: #fff; font-size: 11px; font-weight: 700;
+    line-height: 18px; text-align: center; padding: 0 4px; box-shadow: 0 1px 3px rgba(0,0,0,.3);
+    pointer-events: none;
+}
+
+/* A failed save used to put its warning at the top of a long card, off screen, while the
+   box in front of you still showed the value that was never stored. */
+.pd-error-save { position: sticky; top: 0; z-index: 5; border: 1px solid #C0392B; }
+
+/* On a phone the page carries html, body { overflow-x: hidden } to stop a wide card
+   dragging the page sideways — and that makes position:sticky stick to nothing, so the
+   warning scrolled away with everything else and the box in front of you still showed the
+   value that was never stored. Pinned to the screen instead, which is the whole point of it. */
+@media (max-width: 700px) {
+    .pd-error-save {
+        position: fixed; left: 8px; right: 8px; top: 8px; z-index: 60;
+        box-shadow: 0 3px 12px rgba(0,0,0,.28);
+    }
+}
+
+/* The email a queued card was read from, so it can be checked before it is approved. */
+.pd-source { margin: 0 0 8px; }
+.pd-src-text {
+    max-height: 220px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+    font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; margin: 0;
+    background: #fff; border: 1px solid rgba(0,0,0,.09); border-radius: 6px; padding: 8px 9px;
+}
+
+/* Approve is held back until the firm has a name — a nameless card lands in the list as
+   "New partner — needs a name" and in the log as the sentence "Added " with nothing after. */
+.pd-need-name { color: #854F0B; margin: 0 0 5px; }
+
+/* Taking the orange "check me" pill off a card the app guessed. */
+.pd-checkme { border-color: #E3C48A; background: #FDF7EC; }
+
+/* Unticking everyone and pressing Add used to close the list and do nothing at all. */
+.pd-picknone { color: #8C2F2F; }
+
