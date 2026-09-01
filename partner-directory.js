@@ -640,6 +640,67 @@
         return postJson('/contacts/save', { partner: p, fields: fields || null }, null, null, fields || []);
     }
 
+    /**
+     * Save, and an honest answer about whether anything is stored.
+     *
+     * Nothing on a directory card is written until this is pressed, so the screen has to say
+     * plainly when it is holding something the directory does not have. Silence there is how
+     * an edit gets closed and lost.
+     */
+    function saveBarHtml(p) {
+        var busy = S.busy['save' + p.id];
+        if (!isDirty(p.id)) {
+            return S.saveNote === 'Saved.'
+                ? '<span class="pd-tiny" style="color:#2E7D32;">Saved.</span>'
+                : '<span class="pd-tiny">No unsaved changes.</span>';
+        }
+        return '<button class="pd-prim" data-pd-save="' + esc(p.id) + '"' + (busy ? ' disabled' : '') + '>'
+            + (busy ? 'Saving…' : 'Save') + '</button>'
+            + '<span class="pd-tiny" style="color:#8C2F2F;margin-left:8px;">'
+            + dirtyFields(p.id).length + ' change' + (dirtyFields(p.id).length === 1 ? '' : 's')
+            + ' not saved yet</span>'
+            + (S.saveNote && S.saveNote !== 'Saved.' ? '<span class="pd-tiny" style="margin-left:8px;">' + esc(S.saveNote) + '</span>' : '');
+    }
+
+    /**
+     * Remember that a directory card has been edited, and which boxes were touched, so Save
+     * writes only those — a whole-object write is how a second tab's work gets replaced.
+     */
+    function markDirty(p, fields) {
+        var d = S.dirty[p.id] || (S.dirty[p.id] = {});
+        (fields || []).forEach(function (f) { d[f] = true; });
+        render();
+    }
+
+    /**
+     * True when it is safe to leave the open card. With unsaved boxes on it, ask first —
+     * silently dropping what somebody typed is the fault this whole screen exists to avoid.
+     */
+    function leaveCardOk() {
+        if (!S.openId || !isDirty(S.openId)) return true;
+        var p = byId(S.openId);
+        var n = dirtyFields(S.openId).length;
+        return window.confirm('You have ' + n + ' unsaved change' + (n === 1 ? '' : 's') + ' on '
+            + ((p && p.company) || 'this card') + '. Leave without saving?');
+    }
+
+    function dirtyFields(id) { return Object.keys(S.dirty[id] || {}); }
+    function isDirty(id) { return dirtyFields(id).length > 0; }
+
+    /** The one write path for a card you own. Nothing reaches the directory without it. */
+    function saveOpenCard(id) {
+        var p = byId(id);
+        if (!p || !isDirty(id) || S.busy['save' + id]) return;
+        // A card with nothing on it is not worth a row — the same rule "+ Add partner" follows.
+        if (isBlankCard(p)) { S.saveNote = 'Type a name, a person or a number first — there is nothing to save yet.'; render(); return; }
+        S.busy['save' + id] = true; S.saveNote = ''; render();
+        savePartner(p, dirtyFields(id)).then(function () {
+            delete S.busy['save' + id];
+            if (!D.saveError) { delete S.dirty[id]; S.saveNote = 'Saved.'; }
+            render();
+        });
+    }
+
     /** Keep a reviewed card's corrections on its queue item, so a reload cannot lose them. */
     function savePendingPreview(p) {
         var item = D.pending.filter(function (x) { return x.preview && x.preview.id === p.id; })[0];
@@ -650,7 +711,8 @@
     // ── State for the tool page ───────────────────────────────────────────────
     var S = { tab: 'dir', filter: 'all', openId: null, openPending: null, openChange: null,
               find: { text: '', state: 'idle', need: null, note: '' }, busy: {}, add: freshAdd(),
-              confirmDelete: '' };   // the card whose "are you sure?" is on screen
+              confirmDelete: '',     // the card whose "are you sure?" is on screen
+              dirty: {}, saveNote: '' };   // directory cards edited but not yet saved
 
     function byId(id) {
         var p = D.contacts.filter(function (x) { return x.id === id; })[0];
@@ -983,7 +1045,7 @@
             // button deleted nothing and threw away the corrections being typed on the way
             // out. Discard is the action for those, and it is already on the strip below.
             + (isInDirectory(p)
-                ? '<div class="pd-row" style="margin-top:12px;"><span class="pd-sp"></span>'
+                ? '<div class="pd-row" style="margin-top:12px;">' + saveBarHtml(p) + '<span class="pd-sp"></span>'
                     + '<button class="pd-danger" data-pd-delete="' + esc(p.id) + '">Delete this partner</button></div>'
                 : '')
             + '</div>';
@@ -1892,7 +1954,14 @@
             el.onclick = go;
             el.onkeydown = function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } };
         });
-        each(app, '[data-pd-close]', function (el) { el.onclick = function () { S.openId = null; render(); }; });
+        each(app, '[data-pd-close]', function (el) {
+            // Closing a card with edits in it would drop them without a word — the one thing
+            // the whole save-on-blur behaviour used to prevent. Ask, and keep it open if not.
+            el.onclick = function () { if (leaveCardOk()) { S.openId = null; render(); } };
+        });
+        on(app, '[data-pd-save]', function () {
+            saveOpenCard(app.querySelector('[data-pd-save]').getAttribute('data-pd-save'));
+        });
         each(app, '[data-pd-delete]', function (el) {
             // Only opens the question. The write lives behind the popup's own button.
             el.onclick = function () {
@@ -1936,13 +2005,17 @@
             // A brand-new card is only written once it says something. Typing the firm name
             // (or a person, or a number) is what creates it; until then there is nothing to
             // store, and storing it anyway is what left blank rows behind.
-            if (inDirectory && !isBlankCard(p)) savePartner(p, fields);
-            // A card still WAITING for approval is not a partner yet, so it must not be written
-            // to the directory — but the corrections typed on it have to survive. They used to
-            // live only in this browser's memory, so switching tab, refreshing, or approving
-            // something else silently put the AI's original guesses back, and the card looked
-            // no different. They are kept on the queue item itself now.
-            else if (!inDirectory) savePendingPreview(p);
+            // TWO RULES, because the two screens are used differently.
+            //
+            // A card in the DIRECTORY waits for Save. You are correcting a record you own, often
+            // several boxes at a time, and writing on every blur stored half-finished edits — and
+            // a failed write left the screen and the directory quietly disagreeing.
+            //
+            // A card WAITING FOR APPROVAL saves as you type, onto the queue item and never into
+            // the directory. Nothing is being stored as fact there; the corrections only have to
+            // survive a tab switch, which they did not before.
+            if (inDirectory) markDirty(p, fields);
+            else savePendingPreview(p);
             if (rerender) render();
         };
         each(card, '[data-pd-k]', function (el) {
@@ -2418,6 +2491,8 @@
                  applyFind: applyFind, looksLikeFirmName: looksLikeFirmName,
                  focusKey: focusKey, saveFailedWhat: saveFailedWhat,
                  refreshWaitingBadge: refreshWaitingBadge,
+                 markDirty: markDirty, dirtyFields: dirtyFields, isDirty: isDirty,
+                 saveBarHtml: saveBarHtml, leaveCardOk: leaveCardOk, saveOpenCard: saveOpenCard,
                  _state: function () { return { S: S, D: D }; } },
     };
 })();

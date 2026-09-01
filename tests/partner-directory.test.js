@@ -948,13 +948,24 @@ describe('source guard — adding a partner by hand', () => {
         expect(addHandler).not.toMatch(/id:\s*'p_'\s*\+\s*Date\.now\(\)\s*[,}]/);
     });
 
-    test('editing a card still blank does not write it either', () => {
-        // Guard, not behaviour: the gate lives inside bindCardFields, which needs real inputs.
-        // The exact conjunction is what matters — dropping `!isBlankCard(p)` puts the empty
-        // row straight back, this time on the first keystroke that leaves the card still blank
-        // (picking a role, ticking part-load). Proved by applying that exact mutation.
+    test('typing on a card in the directory writes NOTHING — Save is the only write', () => {
+        // The rule the owner asked for: save as you type while REVIEWING, an explicit Save in
+        // the directory. So the field handler only marks what changed; the write lives behind
+        // the button. A savePartner call in here would be saving as you type all over again.
         const saveFn = sliceBetween('var save = function (rerender, fields)', 'each(card,');
-        expect(saveFn).toContain('if (inDirectory && !isBlankCard(p)) savePartner(p, fields);');
+        expect(saveFn).toContain('if (inDirectory) markDirty(p, fields);');
+        expect(saveFn).toContain('else savePendingPreview(p);');
+        expect(saveFn).not.toContain('savePartner(');
+    });
+
+    test('and Save still refuses a card with nothing on it', () => {
+        // The blank-card rule moved with the write. Without it, pressing Save on an untouched
+        // "+ Add partner" card puts the empty row straight back in the list.
+        const fn = sliceBetween('function saveOpenCard(id)', 'function savePendingPreview');
+        expect(fn).toContain('if (isBlankCard(p))');
+        expect(fn).toContain('there is nothing to save yet');
+        // ...and it writes only the boxes that were actually touched.
+        expect(fn).toContain('savePartner(p, dirtyFields(id))');
     });
 
     test('pressing it does not write anything — there is nothing to write yet', () => {
@@ -2335,5 +2346,112 @@ describe('deleting a partner asks first, on the page', () => {
     test('clicking inside the box does not count as cancelling', () => {
         // The backdrop closes it; the box must not. Otherwise reading the warning dismisses it.
         expect(src).toContain("if (el.getAttribute('data-pd-delcancel') === 'backdrop' && e.target !== el) return;");
+    });
+});
+
+describe('a directory card holds your typing until you press Save', () => {
+    /**
+     * The owner's rule, in their words: "have save as you type in the review section and
+     * save button in the database". So the two screens behave differently ON PURPOSE, and
+     * the difference is what these tests pin:
+     *
+     *   REVIEW (an emailed card being checked)  — every keystroke is written to the queue
+     *      item, because a reload there must not throw away corrections nobody re-typed.
+     *   DIRECTORY (the real address book)       — nothing is written until Save is pressed.
+     *
+     * The danger with a Save button is the silent half: an edit sitting on screen that
+     * looks stored and is not. So the count of unsaved boxes, and the ask before leaving,
+     * are pinned as hard as the write itself.
+     */
+    const { markDirty, dirtyFields, isDirty, saveBarHtml, leaveCardOk, saveOpenCard } =
+        global.window.partnerDirectory._test;
+    const { S } = _state();
+    let POSTS;
+
+    beforeEach(() => {
+        POSTS = [];
+        S.dirty = {}; S.saveNote = ''; S.busy = {}; S.openId = null;
+        D.contacts = []; D.saveError = '';
+        FETCH = (url, opt) => {
+            POSTS.push({ url: String(url), body: JSON.parse((opt && opt.body) || '{}') });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, contacts: D.contacts }) });
+        };
+    });
+
+    test('the bar counts the boxes you changed and offers Save', () => {
+        const p = partner({ id: 'x1', company: 'Sri Steel' });
+        expect(saveBarHtml(p)).toContain('No unsaved changes');
+
+        markDirty(p, ['city']);
+        expect(saveBarHtml(p)).toContain('1 change not saved yet');
+        expect(saveBarHtml(p)).toContain('data-pd-save="x1"');
+
+        markDirty(p, ['moq']);
+        expect(saveBarHtml(p)).toContain('2 changes not saved yet');
+
+        // Touching the same box twice is still one unsaved box, not two.
+        markDirty(p, ['city']);
+        expect(dirtyFields('x1').sort()).toEqual(['city', 'moq']);
+    });
+
+    test('Save writes only the boxes that were touched, and only once', async () => {
+        const p = partner({ id: 'x2', company: 'Sri Steel', city: 'Hosur' });
+        D.contacts = [p];
+        markDirty(p, ['city']);
+
+        saveOpenCard('x2');
+        saveOpenCard('x2');          // an impatient second click must be a no-op
+        await flush(); await flush();
+
+        const saves = POSTS.filter((r) => r.url.indexOf('/contacts/save') !== -1);
+        expect(saves).toHaveLength(1);
+        expect(saves[0].body.fields).toEqual(['city']);   // NOT the whole object
+        expect(saves[0].body.partner.city).toBe('Hosur');
+        expect(isDirty('x2')).toBe(false);
+        expect(saveBarHtml(p)).toContain('Saved.');
+    });
+
+    test('Save refuses a card with nothing on it, and says why', async () => {
+        const blank = partner({ id: 'x3', company: '', people: [] });
+        D.contacts = [blank];
+        markDirty(blank, ['role']);          // picking a role leaves it still blank
+
+        saveOpenCard('x3');
+        await flush();
+
+        expect(POSTS.filter((r) => r.url.indexOf('/contacts/save') !== -1)).toHaveLength(0);
+        expect(S.saveNote).toContain('nothing to save yet');
+        expect(isDirty('x3')).toBe(true);    // the edit is kept, not thrown away
+    });
+
+    test('a failed save keeps the card dirty — it must not read as stored', async () => {
+        const p = partner({ id: 'x4', company: 'Sri Steel' });
+        D.contacts = [p];
+        markDirty(p, ['city']);
+        FETCH = () => Promise.reject(new Error('offline'));
+
+        saveOpenCard('x4');
+        await flush(); await flush(); await flush();
+
+        expect(isDirty('x4')).toBe(true);
+        expect(saveBarHtml(p)).toContain('not saved yet');
+        expect(saveBarHtml(p)).not.toContain('Saved.');
+    });
+
+    test('closing a card with unsaved boxes asks first', () => {
+        const p = partner({ id: 'x5', company: 'Sri Steel' });
+        D.contacts = [p];
+        S.openId = 'x5';
+        expect(leaveCardOk()).toBe(true);            // clean card, no question
+
+        markDirty(p, ['city']);
+        const asked = [];
+        window.confirm = (m) => { asked.push(m); return false; };
+        expect(leaveCardOk()).toBe(false);           // said no — stay put
+        expect(asked[0]).toContain('1 unsaved change');
+        expect(asked[0]).toContain('Sri Steel');
+
+        window.confirm = () => true;
+        expect(leaveCardOk()).toBe(true);            // said yes — let them go
     });
 });
