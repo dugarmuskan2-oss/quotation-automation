@@ -1759,3 +1759,108 @@ describe('SendDirectoryEmailsToApp.gs — the labelled reply, and every attachme
         expect(gsSrc).toContain('[Not read: ');
     });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// One firm, one chip — and one send
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('a supplier can never end up on two chips', () => {
+    // Reported by the review: addChip merged an incoming chip into the FIRST existing chip
+    // holding any of its people, and left the others where they were. Two colleagues added one
+    // at a time sit on two chips; picking that firm from Ask AI then merged into the first and
+    // left the second — so that person received the same enquiry TWICE, as two emails in two
+    // threads. That is the owner's per-firm rule broken in the worst direction.
+    const src = require('fs').readFileSync(
+        require('path').join(__dirname, '..', 'quote-enquiry-tab.js'), 'utf8');
+
+    function grab(name) {
+        const start = src.indexOf('function ' + name + '(');
+        if (start === -1) throw new Error('no such function: ' + name);
+        let depth = 0;
+        for (let i = src.indexOf('{', start); i < src.length; i++) {
+            if (src[i] === '{') depth++;
+            if (src[i] === '}' && --depth === 0) return src.slice(start, i + 1);
+        }
+        throw new Error('unterminated: ' + name);
+    }
+    // eslint-disable-next-line no-eval
+    const fns = eval('(function () {' + grab('chipAddrs') + grab('chipHolding') + grab('addChip')
+        + 'return { chipAddrs: chipAddrs, addChip: addChip };})()');
+
+    /** Every address across every chip, lowercased — what actually gets emailed. */
+    const everyone = (list) => list.flatMap(fns.chipAddrs).map((a) => a.toLowerCase());
+    const duplicates = (list) => {
+        const all = everyone(list);
+        return all.filter((v, i) => all.indexOf(v) !== i);
+    };
+
+    test('two colleagues already on separate chips are folded into one', () => {
+        const list = ['manish@jcopipe.com', 'cp@jcopipe.com'];
+        fns.addChip(list, 'manish@jcopipe.com, cp@jcopipe.com');
+        expect(list).toHaveLength(1);
+        expect(duplicates(list)).toEqual([]);
+        expect(everyone(list).sort()).toEqual(['cp@jcopipe.com', 'manish@jcopipe.com']);
+    });
+
+    test('three chips for one firm collapse to one, losing nobody', () => {
+        const list = ['a@mill.com', 'b@mill.com', 'c@mill.com'];
+        fns.addChip(list, 'a@mill.com, b@mill.com, c@mill.com');
+        expect(list).toHaveLength(1);
+        expect(everyone(list).sort()).toEqual(['a@mill.com', 'b@mill.com', 'c@mill.com']);
+    });
+
+    test('an unrelated firm is NOT swallowed by the merge', () => {
+        // The other direction. A merge that hoovered up everything would also produce no
+        // duplicates, and would be far worse — one email to two firms who then see each other.
+        const list = ['zz@elsewhere.com', 'a@mill.com'];
+        fns.addChip(list, 'a@mill.com, b@mill.com');
+        expect(list).toHaveLength(2);
+        expect(fns.chipAddrs(list[0])).toEqual(['zz@elsewhere.com']);
+        expect(fns.chipAddrs(list[1]).sort()).toEqual(['a@mill.com', 'b@mill.com']);
+    });
+
+    test('a firm nobody has yet becomes its own chip', () => {
+        const list = ['x@other.com'];
+        expect(fns.addChip(list, 'a@mill.com, b@mill.com')).toBe(true);
+        expect(list).toHaveLength(2);
+    });
+
+    test('adding someone already there changes nothing and says so', () => {
+        const list = ['a@mill.com, b@mill.com'];
+        expect(fns.addChip(list, 'a@mill.com')).toBe(false);
+        expect(list).toEqual(['a@mill.com, b@mill.com']);
+    });
+
+    test('matching ignores capitals, so one person is never two', () => {
+        const list = ['Manish@JcoPipe.com', 'cp@jcopipe.com'];
+        fns.addChip(list, 'manish@jcopipe.com, cp@jcopipe.com');
+        expect(list).toHaveLength(1);
+        expect(duplicates(list)).toEqual([]);
+    });
+});
+
+describe('editing the message cannot bring a spent Send back', () => {
+    // The same hole that was found twice on the Freight tab, sitting here as well: a send
+    // clears whichever list acted as the recipients but leaves anyone copied in, so re-arming
+    // Send on a keystroke armed it to email that colleague ALONE — and record them as a
+    // supplier who had been asked.
+    const src = require('fs').readFileSync(
+        require('path').join(__dirname, '..', 'quote-enquiry-tab.js'), 'utf8');
+
+    test('the message box does not clear the send lock', () => {
+        const at = src.indexOf('msg.oninput = function ()');
+        expect(at).toBeGreaterThan(-1);
+        const body = src.slice(at, src.indexOf('};', at));
+        expect(body).toContain('st.messageEdited = true;');
+        expect(body).not.toContain('st.sentLock = false');
+    });
+
+    test('and the only things that DO clear it are recipient additions', () => {
+        // Each remaining release sits behind addChip, which reports true only for a genuine
+        // new address — so a re-add of the leftover colleague cannot re-arm anything.
+        const releases = src.split('st.sentLock = false').length - 1;
+        expect(releases).toBe(3);
+        expect(src).toContain('if (addChip(listFor(st, kind), email)) st.sentLock = false;');
+        expect(src).toContain('if (email && addChip(list, email)) st.sentLock = false;');
+    });
+});

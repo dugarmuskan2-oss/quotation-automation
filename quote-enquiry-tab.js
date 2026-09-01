@@ -119,15 +119,40 @@
     function addChip(list, chip) {
         var parts = chipAddrs(chip);
         if (!parts.length) return false;
-        var at = -1;
-        parts.forEach(function (a) { if (at === -1) at = chipHolding(list, a); });
-        if (at === -1) { list.push(parts.join(', ')); return true; }
-        var merged = chipAddrs(list[at]);
-        var grew = false;
+
+        // EVERY chip already holding any of these people, not just the first one found.
+        // Taking only the first was the bug: with two colleagues sitting on separate chips —
+        // which is what happens when they are added one at a time — merging into the first
+        // left the second where it was, so that person got the same enquiry twice, in two
+        // emails, from two threads.
+        var hits = [];
         parts.forEach(function (a) {
-            if (chipHolding([merged.join(', ')], a) === -1) { merged.push(a); grew = true; }
+            var at = chipHolding(list, a);
+            if (at !== -1 && hits.indexOf(at) === -1) hits.push(at);
         });
-        if (grew) list[at] = merged.join(', ');
+        if (!hits.length) { list.push(parts.join(', ')); return true; }
+
+        hits.sort(function (x, y) { return x - y; });
+        var keep = hits[0];
+        var merged = chipAddrs(list[keep]);
+        var seen = {};
+        merged.forEach(function (a) { seen[a.toLowerCase()] = true; });
+        var grew = false;
+
+        var add = function (a) {
+            if (seen[a.toLowerCase()]) return;
+            seen[a.toLowerCase()] = true; merged.push(a); grew = true;
+        };
+        // Fold the other chips for this firm in, then drop them — highest index first, so the
+        // earlier positions are still valid as we go.
+        hits.slice(1).reverse().forEach(function (at) {
+            chipAddrs(list[at]).forEach(add);
+            list.splice(at, 1);
+            grew = true;
+        });
+        parts.forEach(add);
+
+        if (grew) list[keep] = merged.join(', ');
         return grew;
     }
 
@@ -945,7 +970,11 @@
         var msg = $('.qet-msg');
         if (msg) msg.oninput = function () {
             st.message = msg.value; st.messageEdited = true;
-            st.sentLock = false;              // a changed message is a different enquiry
+            // NOT a re-arm. The same fault was found on the Freight tab: a send clears the
+            // recipients but leaves anyone copied in, so re-arming Send on a keystroke armed
+            // it to email that colleague ALONE. Editing the message changes what the next
+            // enquiry SAYS; it does not create anybody new to say it to. Only adding a
+            // recipient does that, and addChip only reports a genuine addition.
             syncSendBtn();
         };
 
