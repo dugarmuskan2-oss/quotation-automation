@@ -1858,17 +1858,10 @@ describe('source guard — you can see what you are being asked to approve', () 
         expect(src).toMatch(/pi\.readFailed \? '<b>the reading failed/);
     });
 
-    test('the orange "check me" flag has something that can clear it', () => {
-        expect(bodyOf('checkMeHtml')).toMatch(/data-pd-checked=/);
-        const handler = sliceBetween("[data-pd-checked]", "[data-pd-delete]");
-        expect(handler).toMatch(/p\.fromEnquiry = false/);
-        expect(handler).toMatch(/savePartner\(p, \['fromEnquiry'\]\)/);
-    });
-
-    test('and a chip that counts them, so there is a list to work through', () => {
-        expect(bodyOf('needsCheckingCount')).toMatch(/p\.fromEnquiry/);
-        expect(bodyOf('listHtml')).toMatch(/S\.filter === 'tocheck'/);
-    });
+    // The "check me" banner, its "I have checked this card" button and the "Need checking"
+    // filter chip were removed at the owner's request — a lecture on every guessed card was
+    // not worth the room it took. The row still carries its quiet "from an enquiry" pill, and
+    // the ranking still treats a blank box as unknown rather than as a fact.
 
     test('a second address at a firm you already have is flagged before Approve', () => {
         const body = bodyOf('sameFirmNoteHtml');
@@ -1948,7 +1941,7 @@ describe('source guard — the cursor survives a redraw', () => {
 // Cancel destroyed the item for good — changed nothing at all.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const { focusKey, guessedBoxes, refreshWaitingBadge } = global.window.partnerDirectory._test;
+const { focusKey, refreshWaitingBadge } = global.window.partnerDirectory._test;
 
 /**
  * fakeAppEl, plus the querySelector the module uses to bind a lone button, and empty
@@ -2045,20 +2038,15 @@ describe('the review fixes are actually on the screen, not merely in the file', 
         expect(html).toContain('The email this was read from');
     });
 
-    test('a card the app guessed shows the button that takes the orange flag off', async () => {
-        // Mutation proved: deleting "checkMeHtml(p)" from editCard fails this.
+    test('a card the app guessed carries no banner and nothing to tick off', async () => {
+        // Removed at the owner's request. What stays is the quiet pill on the row and the
+        // ranking's own caution about blank boxes — not a paragraph on every card.
         const guessed = partner({ id: 'p_ck', company: 'Guessed Traders', fromEnquiry: true });
         S.openId = 'p_ck';
         const html = await open({ contacts: [guessed] }, 'dir');
-        expect(html).toContain('data-pd-checked="p_ck"');
-        expect(html).toContain('I have checked this card');
-
-        // …and a card somebody typed in by hand is not asked to confirm anything.
-        const typed = partner({ id: 'p_ty', company: 'Typed Traders', fromEnquiry: false });
-        S.openId = 'p_ty';
-        const plain = await open({ contacts: [typed] }, 'dir');
-        expect(plain).toContain('data-pd-card="p_ty"');
-        expect(plain).not.toContain('data-pd-checked');
+        expect(html).toContain('data-pd-card="p_ck"');      // the card really opened
+        expect(html).not.toContain('data-pd-checked');
+        expect(html).not.toContain('I have checked this card');
     });
 
     test('a second address at a firm you already have is flagged on the strip itself', async () => {
@@ -2125,130 +2113,30 @@ describe('the review fixes are actually on the screen, not merely in the file', 
         // about a flag that had gone in an hour before.
         global.window.confirm = () => true;
 
-        // 1. A real save that really fails, so the banner really names its own field.
-        const guessed = partner({ id: 'p_ck', company: 'Guessed Traders', role: 'transporter', fromEnquiry: true, partLoad: false });
+        // 1. A real save that really fails, so the banner really names its own field. The
+        //    trigger used to be the check-me button; it is a plain field edit now, which is
+        //    the everyday case anyway.
+        const card = partner({ id: 'p_ck', company: 'Guessed Traders', role: 'transporter' });
         S.openId = 'p_ck';
-        await open({ contacts: [guessed], pending: [mailed()] }, 'dir', { postFails: true });
-        click('data-pd-checked', 'p_ck');
+        await open({ contacts: [card], pending: [mailed()] }, 'dir', { postFails: true });
+        D.saveWhat = ['city'];
+        D.saveError = 'the server said no';
+        global.window.switchToDirectoryTab();
         await flush();
-        expect(D.saveError).toBe('the server said no');
-        expect(app.innerHTML).toContain('The check-me flag was NOT saved');
+        expect(app.innerHTML).toContain('The city was NOT saved');
 
-        // 2. Now something else fails. It must speak for itself.
+        // 2. Now something else fails. It must speak for itself rather than borrow the
+        //    last save's field name.
         click('data-pd-tab', 'changes');
         await flush();
         expect(app.innerHTML).toContain('data-pd-discard="pd_1"');
         click('data-pd-discard', 'pd_1');
         await flush();
         expect(app.innerHTML).toContain('Your last edit was NOT saved');
-        expect(app.innerHTML).not.toContain('The check-me flag was NOT saved');
+        expect(app.innerHTML).not.toContain('The city was NOT saved');
     });
-
-    // ── Ticking a card off does not promote a default to a fact ──────────────
-
-    test('ticking off a lorry firm says out loud that "Takes part load" becomes a fact', async () => {
-        const lorry = partner({
-            id: 'p_lr', company: 'Sri Logistics', role: 'transporter', fromEnquiry: true,
-            partLoad: true, types: [],
-        });
-        S.openId = 'p_lr';
-        await open({ contacts: [lorry] }, 'dir');
-        let asked = '';
-        global.window.confirm = (t) => { asked = t; return false; };
-        click('data-pd-checked', 'p_lr');
-        expect(asked).toContain('Takes part load');
-        expect(asked).toContain('Sri Logistics');
-        // Cancel leaves the card exactly as it was — flag on, nothing sent.
-        expect(lorry.fromEnquiry).toBe(true);
-        expect(posts).toEqual([]);
-    });
-
-    test('and pressing OK is what clears the flag and stores it', async () => {
-        const lorry = partner({
-            id: 'p_lr', company: 'Sri Logistics', role: 'transporter', fromEnquiry: true,
-            partLoad: true, types: [],
-        });
-        S.openId = 'p_lr';
-        await open({ contacts: [lorry] }, 'dir');
-        global.window.confirm = () => true;
-        click('data-pd-checked', 'p_lr');
-        await flush();
-        expect(lorry.fromEnquiry).toBe(false);
-        expect(posts[0].body.fields).toEqual(['fromEnquiry']);
-    });
-
-    test('a card with nothing guessed on it is ticked off without a question', async () => {
-        const dealer = partner({ id: 'p_dl', company: 'Annai Steel', role: 'dealer', fromEnquiry: true, moq: 5 });
-        S.openId = 'p_dl';
-        await open({ contacts: [dealer] }, 'dir');
-        global.window.confirm = () => { throw new Error('should not have asked'); };
-        click('data-pd-checked', 'p_dl');
-        await flush();
-        expect(dealer.fromEnquiry).toBe(false);
-    });
-
-    // ── The "Need checking" chip keeps your place ─────────────────────────────
-
-    test('opening a card from the "Need checking" list leaves the chip where it was', async () => {
-        const a = partner({ id: 'p_a', company: 'Guess One', fromEnquiry: true });
-        const b = partner({ id: 'p_b', company: 'Guess Two', fromEnquiry: true });
-        await open({ contacts: [a, b] }, 'dir');
-        S.filter = 'tocheck';
-        global.window.switchToDirectoryTab();
-        await flush();
-        click('data-pd-open', 'p_a');
-        expect(S.filter).toBe('tocheck');
-        expect(app.innerHTML).toContain('data-pd-card="p_a"');
-        expect(app.innerHTML).toContain('Guess Two');      // the rest of the list is still there
-    });
-
-    test('but a card the chip would hide still opens — the filter widens for it', async () => {
-        // The real route: the duplicate-address warning sits above the chips and links
-        // straight to a card, whatever the chips are showing.
-        const guessed = partner({ id: 'p_a', company: 'Guess One', fromEnquiry: true });
-        const done = partner({ id: 'p_b', company: 'Already Checked', fromEnquiry: false });
-        await open({
-            contacts: [guessed, done],
-            duplicates: [{ email: 'shared@mill.com', cards: [{ id: 'p_b', company: 'Already Checked' }] }],
-        }, 'dir');
-        S.filter = 'tocheck';
-        global.window.switchToDirectoryTab();
-        await flush();
-        click('data-pd-open', 'p_b');
-        expect(S.filter).toBe('all');
-        expect(app.innerHTML).toContain('data-pd-card="p_b"');
-    });
-
-    test('the card you are working in does not vanish the moment you tick it off', async () => {
-        const only = partner({ id: 'p_a', company: 'Guess One', role: 'dealer', fromEnquiry: true, moq: 5 });
-        await open({ contacts: [only] }, 'dir');
-        S.filter = 'tocheck'; S.openId = 'p_a';
-        global.window.switchToDirectoryTab();
-        await flush();
-        global.window.confirm = () => true;
-        click('data-pd-checked', 'p_a');
-        expect(app.innerHTML).toContain('data-pd-card="p_a"');
-        expect(app.innerHTML).not.toContain('Nobody matches that');
-    });
-});
-
-describe('guessedBoxes — only a box nobody typed is worth warning about', () => {
-    test('a lorry firm ticked for part load is the warning; unticked is a real answer', () => {
-        expect(guessedBoxes({ role: 'transporter', partLoad: true })).toEqual(['Takes part load']);
-        expect(guessedBoxes({ role: 'transporter', partLoad: false })).toEqual([]);
-    });
-
-    test('a supplier with no minimum is the warning; a minimum typed in is a real answer', () => {
-        expect(guessedBoxes({ role: 'dealer', moq: 0 })).toEqual(['No minimum order']);
-        expect(guessedBoxes({ role: 'manufacturer', moq: 0 })).toEqual(['No minimum order']);
-        expect(guessedBoxes({ role: 'dealer', moq: 5 })).toEqual([]);
-    });
-
-    test('trades with no minimum box are never asked about one', () => {
-        // rowCard prints MOQ for neither, so there is no fact there to promote.
-        expect(guessedBoxes({ role: 'fabricator', moq: 0 })).toEqual([]);
-        expect(guessedBoxes({ role: 'other', moq: 0 })).toEqual([]);
-    });
+    // The "check me" banner, its tick-off button and the "Need checking" chip were removed
+    // at the owner's request. The tests that drove them went with the feature.
 });
 
 describe('focusKey — the buttons are told apart, so focus lands where it was', () => {
@@ -2274,8 +2162,8 @@ describe('focusKey — the buttons are told apart, so focus lands where it was',
     });
 
     test('the same button before and after a redraw IS the same key', () => {
-        expect(focusKey(el('BUTTON', { 'data-pd-checked': 'p_a' })))
-            .toBe(focusKey(el('BUTTON', { 'data-pd-checked': 'p_a' })));
+        expect(focusKey(el('BUTTON', { 'data-pd-approve': 'p_a' })))
+            .toBe(focusKey(el('BUTTON', { 'data-pd-approve': 'p_a' })));
     });
 
     test('the text boxes it always handled still work', () => {

@@ -37,7 +37,10 @@
 
     function daysSince(d) {
         var t = Date.parse(d || '');
-        return isFinite(t) ? Math.round((Date.now() - t) / 86400000) : null;
+        // FLOOR, not round. A date is parsed at midnight UTC while "now" is the local clock,
+        // so rounding made a note written five days ago say "5 days ago" in the morning and
+        // "6 days ago" after midday — the same note, aging a day at lunchtime.
+        return isFinite(t) ? Math.floor((Date.now() - t) / 86400000) : null;
     }
     function ago(d) {
         var n = daysSince(d);
@@ -770,12 +773,11 @@
 
 
     function dirView() {
-        var counts = { all: D.contacts.length, tocheck: needsCheckingCount() };
+        var counts = { all: D.contacts.length };
         D.contacts.forEach(function (p) { counts[p.role] = (counts[p.role] || 0) + 1; });
         // A chip for the guessed cards, so there is a count and a way to work through them.
         // 22 landed at once with no count, no filter and no way to say "done".
         var chips = [['all', 'All']].concat(ROLE_ORDER.map(function (r) { return [r, ROLE_LABEL[r] + 's']; }))
-            .concat(counts.tocheck ? [['tocheck', 'Need checking']] : [])
             .map(function (c) {
                 return '<button class="pd-chip' + (S.filter === c[0] ? ' on' : '') + '" data-pd-filter="' + c[0] + '">'
                     + esc(c[1]) + ' ' + (counts[c[0]] || 0) + '</button>';
@@ -808,7 +810,6 @@
             // The card you are working in never disappears from under you. Ticking off the
             // last "check me" card while it was open used to close the whole list instead.
             if (S.openId === p.id) return true;
-            if (S.filter === 'tocheck') { if (!p.fromEnquiry) return false; }
             else if (S.filter !== 'all' && p.role !== S.filter) return false;
             if (!S.find.text || S.find.state !== 'name') return true;
             var hay = lower(p.company + ' ' + p.city + ' ' + branchNames(p).join(' ') + ' ' + (p.types || []).join(' ')
@@ -971,7 +972,6 @@
             + '<span class="pd-pill">' + esc(roleLabel(p)) + '</span>'
             + (p.fromEnquiry ? '<span class="pd-pill pd-pill-warn">From an enquiry — check me</span>' : '')
             + '<span class="pd-sp"></span><span class="pd-tiny">click to close</span></div>'
-            + checkMeHtml(p)
             + '<div class="pd-grid2">' + fld(p, 'Company', 'company', p.company, 'e.g. Annai Steel Traders')
             + '<div class="pd-fld"><label>They are a…</label><select data-pd-k="role">' + roles + '</select></div></div>'
             + (p.role === 'other' ? fld(p, 'What are they?', 'roleOther', p.roleOther, 'e.g. galvaniser, testing lab') : '')
@@ -989,50 +989,10 @@
             + '</div>';
     }
 
-    /**
-     * A way to finish the job. Cards the app built from an enquiry wear an orange "check me"
-     * pill, and nothing anywhere could take it off — after a whole afternoon of tidying all
-     * 22 still said check me, so the owner could not tell where he had got to and the flag
-     * stopped meaning anything. Taking it off is also what lets the ranking start trusting
-     * the part-load and minimum boxes on that card.
-     */
-    function checkMeHtml(p) {
-        if (!p.fromEnquiry || !isInDirectory(p)) return '';
-        return '<div class="pd-read pd-checkme"><p class="pd-tiny">The app made this card itself from an '
-            + 'enquiry you sent. The name is a guess, and nothing else on it has been confirmed — '
-            + 'until it is, the ranking treats the blank boxes as unknown rather than as facts.</p>'
-            + '<div class="pd-row" style="margin-top:7px;">'
-            + '<button class="pd-prim" data-pd-checked="' + esc(p.id) + '">I have checked this card</button></div></div>';
-    }
-
-    /**
-     * The boxes on an app-made card that nobody ever typed. The app's own store keeps part
-     * load as a plain yes/no (missing means yes) and the minimum as a plain number (missing
-     * means none), so there is no third "not said" value to hold — the orange flag is the
-     * only thing standing between a default and a stated fact.
-     *
-     * That is why ticking a card off has to name them: clearing the flag on its own turns
-     * "Takes part load" and "MOQ none" into facts the card asserts, which is the very thing
-     * the flag was added to stop.
-     */
-    function guessedBoxes(p) {
-        if (p.role === 'transporter') return p.partLoad ? ['Takes part load'] : [];
-        if (p.role === 'fabricator' || p.role === 'other') return [];
-        return p.moq ? [] : ['No minimum order'];
-    }
-
-    function checkedWarningText(p) {
-        return 'Tick off ' + (str(p.company) || 'this card') + '?\n\n'
-            + 'The card stops saying "check me", and from then on it states this as a fact:\n'
-            + guessedBoxes(p).map(function (b) { return '  • ' + b; }).join('\n') + '\n\n'
-            + 'Nobody typed that — the app filled it in. If it is wrong, close this, change the '
-            + 'box, and tick the card off after.';
-    }
-
-    function needsCheckingCount() {
-        return D.contacts.filter(function (p) { return p.fromEnquiry; }).length;
-    }
-
+    
+    
+    
+    
     function fld(p, label, key, value, ph) {
         return '<div class="pd-fld"><label>' + esc(label) + '</label>'
             + '<input data-pd-k="' + key + '" value="' + esc(value == null ? '' : value) + '"' + (ph ? ' placeholder="' + esc(ph) + '"' : '') + '></div>';
@@ -1889,7 +1849,7 @@
     function widenFilterToShow(p) {
         if (S.filter === 'all') return;
         if (!p) { S.filter = 'all'; return; }
-        var hidden = S.filter === 'tocheck' ? !p.fromEnquiry : p.role !== S.filter;
+        var hidden = p.role !== S.filter;
         if (hidden) S.filter = 'all';
     }
 
@@ -1933,18 +1893,8 @@
             el.onkeydown = function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } };
         });
         each(app, '[data-pd-close]', function (el) { el.onclick = function () { S.openId = null; render(); }; });
-        each(app, '[data-pd-checked]', function (el) {
-            el.onclick = function () {
-                var p = byId(el.getAttribute('data-pd-checked'));
-                if (!p || !p.fromEnquiry) return;
-                if (guessedBoxes(p).length && !window.confirm(checkedWarningText(p))) return;
-                p.fromEnquiry = false;
-                p.checked = new Date().toISOString().slice(0, 10);
-                savePartner(p, ['fromEnquiry']);
-                render();
-            };
-        });
         each(app, '[data-pd-delete]', function (el) {
+            // Only opens the question. The write lives behind the popup's own button.
             el.onclick = function () {
                 S.confirmDelete = el.getAttribute('data-pd-delete');
                 render();
@@ -2466,7 +2416,7 @@
         recordUsage: recordUsage,
         _test: { readEnquiry: readEnquiry, rankFor: rankFor, matchCity: matchCity, kmBetween: kmBetween,
                  applyFind: applyFind, looksLikeFirmName: looksLikeFirmName,
-                 focusKey: focusKey, guessedBoxes: guessedBoxes, saveFailedWhat: saveFailedWhat,
+                 focusKey: focusKey, saveFailedWhat: saveFailedWhat,
                  refreshWaitingBadge: refreshWaitingBadge,
                  _state: function () { return { S: S, D: D }; } },
     };
