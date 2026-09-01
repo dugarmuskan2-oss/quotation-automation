@@ -646,7 +646,8 @@
 
     // ── State for the tool page ───────────────────────────────────────────────
     var S = { tab: 'dir', filter: 'all', openId: null, openPending: null, openChange: null,
-              find: { text: '', state: 'idle', need: null, note: '' }, busy: {}, add: freshAdd() };
+              find: { text: '', state: 'idle', need: null, note: '' }, busy: {}, add: freshAdd(),
+              confirmDelete: '' };   // the card whose "are you sure?" is on screen
 
     function byId(id) {
         var p = D.contacts.filter(function (x) { return x.id === id; })[0];
@@ -722,10 +723,51 @@
                 + esc(D.usageError) + '). Nothing you typed is lost — but the enquiry counts on a few cards may be low.</div>' : '')
             + (D.loadError ? '<div class="pd-error">' + esc(D.loadError) + ' <button data-pd-reload="1">Try again</button></div>'
                 : !D.loaded ? '<p class="pd-muted" style="padding:20px;text-align:center;">Loading…</p>'
-                    : S.tab === 'dir' ? dirView() : S.tab === 'add' ? addView() : changesView());
+                    : S.tab === 'dir' ? dirView() : S.tab === 'add' ? addView() : changesView())
+            + deletePopupHtml();
         bind(app);
         restoreFocus();
     }
+
+    /**
+     * "Are you sure?" for deleting a partner, on the page rather than in a browser dialog.
+     *
+     * It used to be window.confirm. A browser set to block dialogs swallows that silently, so
+     * pressing Delete did nothing whatever and the button looked broken — which is exactly
+     * what was reported. This one cannot be suppressed, and it says what is actually at stake
+     * instead of asking a bare question.
+     */
+    function deletePopupHtml() {
+        var p = S.confirmDelete ? byId(S.confirmDelete) : null;
+        if (!p) return '';
+        var name = str(p.company) || allEmails(p)[0] || 'this partner';
+        return '<div class="pd-modal" data-pd-delcancel="backdrop">'
+            + '<div class="pd-modal-box" role="dialog" aria-modal="true">'
+            + '<div class="pd-sec" style="margin-top:0;">Delete ' + esc(name) + '?</div>'
+            + '<p class="pd-muted">' + esc(deleteLoses(p)) + '</p>'
+            + '<p class="pd-tiny" style="margin-top:7px;">It goes into <b>Recent changes</b>, so you can put it '
+            + 'back with Undo if this was a mistake.</p>'
+            + '<div class="pd-row" style="margin-top:12px;"><span class="pd-sp"></span>'
+            + '<button data-pd-delcancel="1"' + (S.busy[S.confirmDelete] ? ' disabled' : '') + '>Cancel</button>'
+            + '<button class="pd-danger" data-pd-delok="1"' + (S.busy[S.confirmDelete] ? ' disabled' : '') + '>'
+            + (S.busy[S.confirmDelete] ? 'Deleting…' : 'Delete') + '</button></div></div></div>';
+    }
+
+    /** What the card is carrying, so the question is about something real. */
+    function deleteLoses(p) {
+        var bits = [];
+        var named = people(p).filter(function (c) { return str(c.name) || (c.emails || []).length; });
+        if (named.length) bits.push(named.length + ' contact' + (named.length === 1 ? '' : 's'));
+        if ((p.products || []).length) bits.push((p.products || []).length + ' product' + ((p.products || []).length === 1 ? '' : 's'));
+        if ((p.routes || []).length) bits.push((p.routes || []).length + ' route' + ((p.routes || []).length === 1 ? '' : 's'));
+        if ((p.notes || []).length) bits.push((p.notes || []).length + ' note' + ((p.notes || []).length === 1 ? '' : 's'));
+        var asked = Number(p.enq) || 0;
+        if (asked) bits.push('asked ' + asked + ' time' + (asked === 1 ? '' : 's'));
+        return bits.length
+            ? 'This card holds ' + bits.join(', ') + '. Deleting takes all of it out of the directory.'
+            : 'There is nothing on this card yet.';
+    }
+
 
     function dirView() {
         var counts = { all: D.contacts.length, tocheck: needsCheckingCount() };
@@ -1904,11 +1946,26 @@
         });
         each(app, '[data-pd-delete]', function (el) {
             el.onclick = function () {
-                var id = el.getAttribute('data-pd-delete');
-                var p = byId(id);
-                if (!window.confirm('Delete ' + (p && p.company ? p.company : 'this partner') + ' from the directory?')) return;
-                postJson('/contacts/delete', { id: id }, function () { loadDirectory(render); });
+                S.confirmDelete = el.getAttribute('data-pd-delete');
+                render();
             };
+        });
+        each(app, '[data-pd-delcancel]', function (el) {
+            el.onclick = function (e) {
+                if (S.busy[S.confirmDelete]) return;
+                // A click on the dark backdrop closes it; a click INSIDE the box must not.
+                if (el.getAttribute('data-pd-delcancel') === 'backdrop' && e.target !== el) return;
+                S.confirmDelete = ''; render();
+            };
+        });
+        on(app, '[data-pd-delok]', function () {
+            var id = S.confirmDelete;
+            if (!id || S.busy[id]) return;      // one press is one deletion
+            S.busy[id] = true; render();
+            postJson('/contacts/delete', { id: id }, function () {
+                S.confirmDelete = ''; S.openId = null;
+                loadDirectory(render);
+            }, function () { delete S.busy[id]; });
         });
         bindCardFields(app);
     }

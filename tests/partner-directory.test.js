@@ -2398,3 +2398,54 @@ describe('a failed save stays on the screen on a phone', () => {
         expect(block).toMatch(/top:\s*8px/);
     });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// "Are you sure?" before a partner is deleted
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('deleting a partner asks first, on the page', () => {
+    // Reported twice as "delete this partner not working". The confirmation was a browser
+    // window.confirm, and a browser set to suppress dialogs swallows that silently — so the
+    // button did nothing at all and looked broken. It is now a popup the page draws itself,
+    // which cannot be suppressed, and it says what the card is carrying rather than asking a
+    // bare question.
+    const src = require('fs').readFileSync(SRC_PATH, 'utf8');
+
+    test('the delete button no longer relies on a browser dialog', () => {
+        const at = src.indexOf("each(app, '[data-pd-delete]'");
+        expect(at).toBeGreaterThan(-1);
+        const handler = src.slice(at, src.indexOf('});', at));
+        expect(handler).not.toContain('window.confirm');
+        expect(handler).toContain('S.confirmDelete =');
+    });
+
+    test('nothing is deleted until the popup is answered', () => {
+        // The click only sets a flag and redraws — the write lives behind the popup's own
+        // button. A delete fired from the card itself would be a click away from gone.
+        const at = src.indexOf("each(app, '[data-pd-delete]'");
+        const handler = src.slice(at, src.indexOf('});', at));
+        expect(handler).not.toContain('/contacts/delete');
+        expect(src).toContain("on(app, '[data-pd-delok]'");
+    });
+
+    test('the popup says what the card is carrying, not just "are you sure"', () => {
+        expect(src).toContain('function deleteLoses(p)');
+        expect(src).toContain('Deleting takes all of it out of the directory.');
+        // ...and that it can be undone, which is true — the route logs a removal entry.
+        expect(src).toContain('It goes into <b>Recent changes</b>, so you can put it ');
+    });
+
+    test('a second press cannot delete twice', () => {
+        // CLAUDE.md check 3. Without the lock the second call 404s and paints a red error over
+        // a deletion that actually worked, which reads as "it failed" for something that did not.
+        const at = src.indexOf("on(app, '[data-pd-delok]'");
+        const handler = src.slice(at, src.indexOf('});', at));
+        expect(handler).toContain('if (!id || S.busy[id]) return;');
+        expect(handler).toContain('S.busy[id] = true;');
+    });
+
+    test('clicking inside the box does not count as cancelling', () => {
+        // The backdrop closes it; the box must not. Otherwise reading the warning dismisses it.
+        expect(src).toContain("if (el.getAttribute('data-pd-delcancel') === 'backdrop' && e.target !== el) return;");
+    });
+});
