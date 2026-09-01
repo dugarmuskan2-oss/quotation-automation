@@ -36,7 +36,7 @@ describe('checkFreightRepliesForQuote', () => {
         stubFetch({ t1: [you(), cust('Best rate Rs 18,500/- all inclusive.')] });
         const q = { hasUnsavedEdits: true, freightEnquiries: [{ email: 'a@b.com', threadId: 't1', replied: false, amount: 0, replyText: '' }] };
         const res = await checkFreightRepliesForQuote(q);
-        expect(res).toEqual({ checked: 1, newReplies: 1 });
+        expect(res).toEqual({ checked: 1, newReplies: 1, failed: 0 });
         expect(q.freightEnquiries[0].replied).toBe(true);
         expect(q.freightEnquiries[0].amount).toBe(18500);
         expect(q.freightEnquiries[0].replyText).toContain('18,500');
@@ -47,7 +47,7 @@ describe('checkFreightRepliesForQuote', () => {
         stubFetch({ t1: [you(), { direction: 'customer', auto: true, from: 'mailer-daemon@x.com', body: 'Delivery failed' }] });
         const q = { hasUnsavedEdits: true, freightEnquiries: [{ email: 'a@b.com', threadId: 't1', replied: false }] };
         const res = await checkFreightRepliesForQuote(q);
-        expect(res).toEqual({ checked: 1, newReplies: 0 });
+        expect(res).toEqual({ checked: 1, newReplies: 0, failed: 0 });
         expect(q.freightEnquiries[0].replied).toBe(false);
         expect(q.transporterReplyIn).toBeUndefined();
     });
@@ -56,7 +56,7 @@ describe('checkFreightRepliesForQuote', () => {
         stubFetch({ t1: [you(), you('gentle follow-up')] });
         const q = { hasUnsavedEdits: true, freightEnquiries: [{ email: 'a@b.com', threadId: 't1', replied: false }] };
         const res = await checkFreightRepliesForQuote(q);
-        expect(res).toEqual({ checked: 1, newReplies: 0 });
+        expect(res).toEqual({ checked: 1, newReplies: 0, failed: 0 });
         expect(q.freightEnquiries[0].replied).toBe(false);
         expect(q.transporterReplyIn).toBeUndefined();
     });
@@ -85,7 +85,7 @@ describe('checkFreightRepliesForQuote', () => {
             { email: 'e@f.com', threadId: 't2', replied: false },   // awaiting -> checked
         ]};
         const res = await checkFreightRepliesForQuote(q);
-        expect(res).toEqual({ checked: 1, newReplies: 1 });
+        expect(res).toEqual({ checked: 1, newReplies: 1, failed: 0 });
         expect(global.fetch).toHaveBeenCalledTimes(1);
         expect(q.freightEnquiries[2].amount).toBe(9000);
     });
@@ -103,5 +103,40 @@ describe('checkFreightRepliesForQuote', () => {
         const res = await checkFreightRepliesForQuote({});
         expect(res).toEqual({ checked: 0, newReplies: 0 });
         expect(global.fetch).not.toHaveBeenCalled();
+    });
+});
+
+describe('a failed read is not a quiet inbox', () => {
+    // "No new replies." was said whether nobody had answered or Gmail never answered US.
+    // Right now every read WILL fail — the Gmail read permission is still outstanding — so
+    // every transporter looked like they were ignoring the owner, their reply rates sat at
+    // 0%, and the Partner Directory ranked them on that number.
+    test('a thread whose read fails is counted as failed, not as "no reply"', async () => {
+        stubFetch({ t1: 'throw' });
+        const q = { freightEnquiries: [{ email: 'a@b.com', threadId: 't1', replied: false }] };
+        const res = await checkFreightRepliesForQuote(q);
+        expect(res).toEqual({ checked: 1, newReplies: 0, failed: 1 });
+        expect(q.freightEnquiries[0].replied).toBe(false);   // still awaiting, for the retry
+        expect(q.transporterReplyIn).toBeUndefined();        // and NOT flagged as answered
+    });
+
+    test('a non-ok response counts as failed too, not as silence', async () => {
+        stubFetch({ t1: 'fail' });
+        const res = await checkFreightRepliesForQuote({ freightEnquiries: [{ threadId: 't1', replied: false }] });
+        expect(res).toEqual({ checked: 1, newReplies: 0, failed: 1 });
+    });
+
+    test('a real reply alongside a failed read is still counted as a reply', async () => {
+        // The mixed case is what pins it: counting truthiness would make BOTH look like
+        // replies, and counting only the failures would lose the real one.
+        stubFetch({ t1: 'throw', t2: [you(), cust('Rs 21,000 all in.')] });
+        const q = { freightEnquiries: [
+            { email: 'a@b.com', threadId: 't1', replied: false },
+            { email: 'c@d.com', threadId: 't2', replied: false },
+        ] };
+        const res = await checkFreightRepliesForQuote(q);
+        expect(res).toEqual({ checked: 2, newReplies: 1, failed: 1 });
+        expect(q.freightEnquiries[0].replied).toBe(false);
+        expect(q.freightEnquiries[1].replied).toBe(true);
     });
 });

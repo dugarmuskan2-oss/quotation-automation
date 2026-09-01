@@ -1228,14 +1228,19 @@
                 setStatus('Checking ' + (freightQuotes.length + supplierQuotes.length + customerQuotes.length) + ' quote(s)…');
 
                 let freightNew = 0, supplierNew = 0, custNew = 0, changedAny = false;
+                // A read that failed and a genuinely quiet inbox both used to end up as
+                // 'No new replies.' — so a Gmail outage (or the read permission still not
+                // granted) made every partner look like they were ignoring us, and their
+                // reply rates sat at 0% while the directory ranked them on it.
+                let readsFailed = 0;
                 const CONC = 5;
                 if (freightQuotes.length && typeof window.checkFreightRepliesForQuote === 'function') {
                     const r = await runWithConcurrency(freightQuotes, CONC, function (q) { return window.checkFreightRepliesForQuote(q); });
-                    r.forEach(function (x) { if (x && x.newReplies) { freightNew += x.newReplies; changedAny = true; } });
+                    r.forEach(function (x) { if (x && x.newReplies) { freightNew += x.newReplies; changedAny = true; } if (x && x.failed) readsFailed += x.failed; });
                 }
                 if (supplierQuotes.length && typeof window.checkSupplierRepliesForQuote === 'function') {
                     const r = await runWithConcurrency(supplierQuotes, CONC, function (q) { return window.checkSupplierRepliesForQuote(q); });
-                    r.forEach(function (x) { if (x && x.newReplies) { supplierNew += x.newReplies; changedAny = true; } });
+                    r.forEach(function (x) { if (x && x.newReplies) { supplierNew += x.newReplies; changedAny = true; } if (x && x.failed) readsFailed += x.failed; });
                 }
                 if (customerQuotes.length) {
                     const r = await runWithConcurrency(customerQuotes, CONC, checkCustomerReplyForQuote);
@@ -1251,6 +1256,12 @@
                     setStatus(rendered
                         ? ('Found ' + total + ' new repl' + (total > 1 ? 'ies' : 'y') + ' — see the "Needs attention" flags.')
                         : ('Found ' + total + ' new repl' + (total > 1 ? 'ies' : 'y') + ' — save your open quote to see the flags.'));
+                } else if (readsFailed) {
+                    // "No new replies." was said whether the inbox was quiet or Gmail never
+                    // answered at all. Partners then looked like they were ignoring us, their
+                    // reply rates sat at 0%, and the directory ranked them on that.
+                    setStatus('Could not read ' + readsFailed + ' thread' + (readsFailed > 1 ? 's' : '')
+                        + ' — Gmail did not answer, so nothing was checked. This is not "no replies". Try again shortly.');
                 } else {
                     setStatus('No new replies.');
                 }
@@ -11983,8 +11994,8 @@
     </script>
     <script src="weight-calculator.js?v=20260529-1"></script>
     <script src="enquiry-preparer.js?v=20260529-1"></script>
-    <script src="freight-tab-weight-editor.js?v=20260831-1"></script>
-    <script src="quote-enquiry-tab.js?v=20260731-1"></script>
+    <script src="freight-tab-weight-editor.js?v=20260901-1"></script>
+    <script src="quote-enquiry-tab.js?v=20260901-1"></script>
     <script src="register.js?v=20260722-5"></script>
     <script src="partner-directory.js?v=20260831-2"></script>
 </body>

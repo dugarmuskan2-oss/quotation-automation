@@ -76,6 +76,51 @@
         return String(chip || '').split(/[,;]+/).map(function (s) { return s.trim(); }).filter(Boolean);
     }
 
+    /**
+     * ONE chip can hold several addresses — that is the whole point of it. Everyone at one
+     * firm rides on one email, Cc'd together, so picking a supplier with two contacts puts
+     * both in a single chip.
+     *
+     * Send was checking the chip as if it were one address, so a two-contact firm greyed the
+     * button out with nothing on screen saying why. The only way out was to delete the chip
+     * and type the addresses separately — which then sent two emails and lost the point.
+     * The Freight tab always read chips this way; this tab did not.
+     */
+    function chipIsSendable(chip) {
+        var parts = chipAddrs(chip);
+        return parts.length > 0 && parts.every(isEmail);
+    }
+
+    // A list copied out of Outlook or Gmail arrives looking like:
+    //     BOMBAY HARDWARE <a@b.com>, "Jindal PIPE INDUSTRIES (ALL DETAILS)" <c@d.com>
+    // Splitting that on whitespace makes recipients out of "BOMBAY" and "HARDWARE"; splitting on
+    // every comma cuts the quoted firm name in half. So walk the string and treat a comma,
+    // semicolon or newline as a separator ONLY outside quotes and angle brackets.
+    function splitAddressList(raw) {
+        var out = [], cur = '', inQuote = false, inAngle = false;
+        var s = String(raw || '');
+        for (var i = 0; i < s.length; i++) {
+            var ch = s[i];
+            if (ch === '"') { inQuote = !inQuote; cur += ch; continue; }
+            if (ch === '<' && !inQuote) { inAngle = true; cur += ch; continue; }
+            if (ch === '>' && !inQuote) { inAngle = false; cur += ch; continue; }
+            if ((ch === ',' || ch === ';' || ch === '\n') && !inQuote && !inAngle) { out.push(cur); cur = ''; continue; }
+            cur += ch;
+        }
+        out.push(cur);
+        return out.map(function (t) { return t.trim(); }).filter(Boolean);
+    }
+
+    // 'BOMBAY HARDWARE <a@b.com>' -> 'a@b.com'. A token with no angle-bracket address comes back
+    // unchanged (minus wrapping quotes), so a bare name typed to search the contact dropdown
+    // still reaches the caller intact.
+    function bareAddress(token) {
+        var t = String(token || '').trim();
+        var m = /<([^<>]*@[^<>]*)>/.exec(t);
+        if (m) return m[1].trim();
+        return t.replace(/^["']+|["']+$/g, '').trim();
+    }
+
     function isEmail(v) {
         return typeof isValidEmailAddress === 'function'
             ? isValidEmailAddress(v)
@@ -410,9 +455,12 @@
                     t.replyText = trimReplyForStorage(last.body || last.snippet || '');
                     return true;
                 })
-                .catch(function () { return false; /* leave awaiting; the next sweep retries */ });
+                .catch(function () { return 'failed'; /* leave awaiting; the next sweep retries */ });
         })).then(function (flags) {
-            var newReplies = flags.filter(Boolean).length;
+            // Only `true` is a reply. 'failed' is truthy too, so counting truthiness here would
+            // report an unreachable Gmail as a fresh reply from every supplier.
+            var newReplies = flags.filter(function (x) { return x === true; }).length;
+            var failed = flags.filter(function (x) { return x === 'failed'; }).length;
             if (newReplies) {
                 persistThreads(q);
                 tellDirectoryReplied(waiting);
@@ -421,7 +469,7 @@
                 // that has already arrived, and the user concludes nobody answered.
                 repaintOpenTab(q);
             }
-            return { checked: waiting.length, newReplies: newReplies };
+            return { checked: waiting.length, newReplies: newReplies, failed: failed };
         });
     }
 
@@ -587,7 +635,7 @@
         // email — like ordinary mail, which needs a recipient SOMEWHERE, not in one
         // particular line. Every address is validated; a typo anywhere blocks the send.
         var canSend = (st.bcc.length || st.cc.length) && !st.sending && st.rows.length
-            && st.bcc.concat(st.cc).every(isEmail);
+            && st.bcc.concat(st.cc).every(chipIsSendable);
         mountEl.innerHTML = '<div class="qet">'
             + '<div class="qet-h">Enquiry &middot; ' + st.rows.length + ' item' + (st.rows.length === 1 ? '' : 's')
             + ' <span class="qet-sub">built from the quote</span></div>'
@@ -668,11 +716,26 @@
             // A firm picked from the directory arrives pre-joined and must stay ONE chip, or
             // its people end up on separate emails and never see each other.
             var email = keepTogether
-                ? chipAddrs(v).join(', ')
-                : String(v || '').trim().replace(/[;,]$/, '');
+                ? chipAddrs(v).map(bareAddress).filter(Boolean).join(', ')
+                : bareAddress(String(v || '').replace(/[;,]$/, ''));
             if (!email) return;
             var list = listFor(st, kind);
             if (list.indexOf(email) === -1) list.push(email);
+            render(quotation, mountEl);
+            var again = mountEl.querySelector('.qet-input[data-kind="' + kind + '"]');
+            if (again) again.focus();
+        }
+        // A pasted list becomes ONE CHIP PER FIRM. It used to become a single chip holding the
+        // whole list, which put every one of those suppliers on the SAME email with each other
+        // visible in Cc — the one thing this tab exists to prevent.
+        function addTypedList(kind, raw) {
+            var parts = splitAddressList(raw);
+            if (!parts.length) return;
+            var list = listFor(st, kind);
+            parts.forEach(function (tok) {
+                var email = bareAddress(tok);
+                if (email && list.indexOf(email) === -1) list.push(email);
+            });
             render(quotation, mountEl);
             var again = mountEl.querySelector('.qet-input[data-kind="' + kind + '"]');
             if (again) again.focus();
@@ -700,15 +763,18 @@
         // addresses. A pasted list splits on comma / semicolon / whitespace.
         mountEl.querySelectorAll('.qet-ccbox .qet-input').forEach(function (el) {
             var kind = el.dataset.kind;
-            function commit(raw) {
-                String(raw || '').split(/[,;\s]+/).forEach(function (tok) {
-                    if (tok.trim()) addTo(kind, tok);
-                });
-            }
+            function commit(raw) { addTypedList(kind, raw); }
             el.onkeydown = function (e) {
                 if (e.key === 'Enter' || e.key === ',' || e.key === ';') { e.preventDefault(); commit(el.value); }
             };
             el.onblur = function () { if (el.value.trim()) commit(el.value); };
+            el.onpaste = function (e) {
+                var cb = e.clipboardData || window.clipboardData;
+                var text = cb && cb.getData ? cb.getData('text') : '';
+                if (!text || !/[,;\n<]/.test(text)) return;   // a single plain address: let it paste normally
+                e.preventDefault();
+                commit(text);
+            };
             // Same Gmail-contact dropdown as the To box — these are usually colleagues, and
             // typing a name beats remembering an address.
             if (typeof attachContactAutocomplete === 'function') {
@@ -736,9 +802,16 @@
             // Warm the remembered list either way — the dropdown's own local source reads it.
             input.onfocus = function () { loadSupplierSuggestions(paintSuggestions); paintSuggestions(); };
             input.onkeydown = function (e) {
-                if (e.key === 'Enter' || e.key === ',' || e.key === ';') { e.preventDefault(); addRecip(input.value); }
+                if (e.key === 'Enter' || e.key === ',' || e.key === ';') { e.preventDefault(); addTypedList('bcc', input.value); }
             };
-            input.onblur = function () { if (input.value.trim()) addRecip(input.value); };
+            input.onblur = function () { if (input.value.trim()) addTypedList('bcc', input.value); };
+            input.onpaste = function (e) {
+                var cb = e.clipboardData || window.clipboardData;
+                var text = cb && cb.getData ? cb.getData('text') : '';
+                if (!text || !/[,;\n<]/.test(text)) return;   // a single plain address: let it paste normally
+                e.preventDefault();
+                addTypedList('bcc', text);
+            };
             // The same Gmail-style dropdown the Freight tab uses: it searches your Gmail
             // contacts (People API) and merges in the suppliers we remember, ranked by the
             // pipe types on THIS quote. Without this the tab only ever offered the remembered
@@ -775,7 +848,7 @@
     function sendEnquiry(quotation, mountEl) {
         var st = stateFor(quotation);
         if ((!st.bcc.length && !st.cc.length) || st.sending || !st.rows.length) return;
-        if (!st.bcc.concat(st.cc).every(isEmail)) {
+        if (!st.bcc.concat(st.cc).every(chipIsSendable)) {
             st.sent = 'err:Check the highlighted email addresses.'; render(quotation, mountEl); return;
         }
 
@@ -939,6 +1012,10 @@
             messageToHtml: messageToHtml,
             buildDraft: buildDraft,
             suggestedSuppliers: suggestedSuppliers,
+            // Pasted-address parsing — one chip per firm, display names stripped.
+            splitAddressList: splitAddressList,
+            bareAddress: bareAddress,
+            chipAddrs: chipAddrs,
             _setSuggest: function (s) { _supplierSuggest = s; },
         };
     }

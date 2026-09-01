@@ -748,6 +748,37 @@
     // One chip can hold several addresses from the SAME firm. They ride on one email and are
     // Cc'd, so colleagues see each other; different chips are different firms and are always
     // separate emails, so no firm ever learns who else was asked.
+    // A list copied out of Outlook or Gmail arrives looking like:
+    //     BOMBAY HARDWARE <a@b.com>, "Jindal PIPE INDUSTRIES (ALL DETAILS)" <c@d.com>
+    // Splitting that on whitespace makes recipients out of "BOMBAY" and "HARDWARE"; splitting on
+    // every comma cuts the quoted firm name in half. So walk the string and treat a comma,
+    // semicolon or newline as a separator ONLY outside quotes and angle brackets.
+    // (Kept in step with the identical pair in quote-enquiry-tab.js — both are guarded.)
+    function splitAddressList(raw) {
+        var out = [], cur = '', inQuote = false, inAngle = false;
+        var s = String(raw || '');
+        for (var i = 0; i < s.length; i++) {
+            var ch = s[i];
+            if (ch === '"') { inQuote = !inQuote; cur += ch; continue; }
+            if (ch === '<' && !inQuote) { inAngle = true; cur += ch; continue; }
+            if (ch === '>' && !inQuote) { inAngle = false; cur += ch; continue; }
+            if ((ch === ',' || ch === ';' || ch === '\n') && !inQuote && !inAngle) { out.push(cur); cur = ''; continue; }
+            cur += ch;
+        }
+        out.push(cur);
+        return out.map(function (t) { return t.trim(); }).filter(Boolean);
+    }
+
+    // 'Ravi Transport <a@b.com>' -> 'a@b.com'. A token with no angle-bracket address comes back
+    // unchanged (minus wrapping quotes), so a bare name typed to search the transporter dropdown
+    // still reaches the caller intact.
+    function bareAddress(token) {
+        var t = String(token || '').trim();
+        var m = /<([^<>]*@[^<>]*)>/.exec(t);
+        if (m) return m[1].trim();
+        return t.replace(/^["']+|["']+$/g, '').trim();
+    }
+
     function chipAddrs(chip) {
         return String(chip || '').split(/[,;]+/).map(function (s) { return s.trim(); }).filter(Boolean);
     }
@@ -1075,7 +1106,9 @@
             return fetch(apiBase() + '/thread-messages?threadId=' + encodeURIComponent(t.threadId))
                 .then(function (res) { return res.ok ? res.json() : null; })
                 .then(function (data) {
-                    if (!data || !Array.isArray(data.messages)) return false;
+                    // A read that FAILED is not the same as a thread with no reply in it.
+                    // Both used to come back false, so a Gmail outage read as 'no new replies'.
+                    if (!data || !Array.isArray(data.messages)) return 'failed';
                     var replies = data.messages.filter(function (m) { return m.direction === 'customer' && !m.auto; });
                     if (!replies.length) return false;
                     var last = replies[replies.length - 1];
@@ -1087,9 +1120,10 @@
                     t.replyText = trimmed;
                     return true;
                 })
-                .catch(function () { return false; /* leave awaiting; next sweep retries */ });
+                .catch(function () { return 'failed'; /* leave awaiting; next sweep retries */ });
         })).then(function (flags) {
-            var newReplies = flags.filter(Boolean).length;
+            var newReplies = flags.filter(function (x) { return x === true; }).length;
+            var failed = flags.filter(function (x) { return x === 'failed'; }).length;
             if (newReplies) {
                 tellDirectoryReplied(waiting);
                 q.transporterReplyIn = true;
@@ -1099,7 +1133,7 @@
                 // over a reply that is sitting in the model, and the user concludes none came.
                 repaintOpenPanel(q);
             }
-            return { checked: waiting.length, newReplies: newReplies };
+            return { checked: waiting.length, newReplies: newReplies, failed: failed };
         });
     }
 
@@ -1156,16 +1190,17 @@
                 // A firm picked from the directory arrives pre-joined and must stay ONE chip,
                 // or its people end up on separate emails and never see each other.
                 if (keepTogether) {
-                    var joined = chipAddrs(s).join(', ');
+                    var joined = chipAddrs(s).map(bareAddress).filter(Boolean).join(', ');
                     if (joined && list.indexOf(joined) === -1) list.push(joined);
                     renderChips();
                     return;
                 }
-                // Only split on whitespace for pasted address lists — typed names keep their
-                // spaces so "Ravi Transport" stays searchable / one chip.
-                var parts = s.indexOf('@') > -1 ? s.split(/[,;\s]+/) : s.split(/[,;\n]+/);
-                parts.forEach(function (tok) {
-                    var v = tok.trim();
+                // One chip per firm, and a display name is stripped to the address it wraps.
+                // Splitting on whitespace used to turn "BOMBAY HARDWARE <a@b.com>" into three
+                // chips, two of them junk; a typed name like "Ravi Transport" keeps its spaces
+                // and stays one searchable chip.
+                splitAddressList(s).forEach(function (tok) {
+                    var v = bareAddress(tok);
                     if (v && list.indexOf(v) === -1) list.push(v);
                 });
                 renderChips();
@@ -1179,6 +1214,14 @@
                 }
             });
             inputEl.addEventListener('blur', function () { if (inputEl.value.trim()) { add(inputEl.value); inputEl.value = ''; } });
+            inputEl.addEventListener('paste', function (e) {
+                var cb = e.clipboardData || window.clipboardData;
+                var text = cb && cb.getData ? cb.getData('text') : '';
+                if (!text || !/[,;\n<]/.test(text)) return;   // a single plain address: let it paste normally
+                e.preventDefault();
+                add(text);
+                inputEl.value = '';
+            });
             // Suggestions are route-aware: they read the CURRENT pickup/drop live, so filling
             // the route first surfaces the transporters used for it. People API merges in.
             if (typeof attachContactAutocomplete === 'function') {
@@ -1485,6 +1528,10 @@
             syncRowsWithQuote: syncRowsWithQuote,
             quoteRowId: quoteRowId,
             quoteRowKey: quoteRowKey,
+            // Pasted-address parsing — must stay identical to quote-enquiry-tab.js.
+            splitAddressList: splitAddressList,
+            bareAddress: bareAddress,
+            chipAddrs: chipAddrs,
             rowWeightHtml: rowWeightHtml,
             sectionTitleHtml: sectionTitleHtml,
             totalRowHtml: totalRowHtml,

@@ -1234,7 +1234,7 @@ describe('checkSupplierRepliesForQuote', () => {
             { direction: 'customer', auto: false, date: 'Tue, 5 Aug 2026 10:00:00 +0530', body: '2 inch @ Rs 62/kg' },
         ])(); }, persisted);
         const q = { id: 1, supplierEnquiries: [{ email: 'a@x.com', threadId: 'T1', replied: false, replyText: '', rate: 0 }] };
-        await expect(run(q)).resolves.toEqual({ checked: 1, newReplies: 1 });
+        await expect(run(q)).resolves.toEqual({ checked: 1, newReplies: 1, failed: 0 });
         expect(calls).toEqual(['/api/thread-messages?threadId=T1']);
         expect(q.supplierEnquiries[0]).toMatchObject({
             replied: true, replyAt: 'Tue, 5 Aug 2026 10:00:00 +0530', replyText: '2 inch @ Rs 62/kg',
@@ -1256,7 +1256,7 @@ describe('checkSupplierRepliesForQuote', () => {
             { direction: 'customer', auto: true, body: 'OUT OF OFFICE' },
         ]), persisted);
         const q = { id: 1, supplierEnquiries: [{ threadId: 'T1', replied: false }] };
-        await expect(run(q)).resolves.toEqual({ checked: 1, newReplies: 0 });
+        await expect(run(q)).resolves.toEqual({ checked: 1, newReplies: 0, failed: 0 });
         expect(q.supplierEnquiries[0].replied).toBeFalsy();
         expect(persisted).toHaveLength(0);      // nothing changed -> no write
     });
@@ -1290,12 +1290,15 @@ describe('checkSupplierRepliesForQuote', () => {
         expect(q.supplierEnquiries[1].replyText).toBe('kept');
     });
 
-    test('a failed lookup leaves the thread awaiting, for the next sweep to retry', async () => {
+    test('a failed lookup is REPORTED as failed, not as "no reply"', async () => {
+        // Both used to come back the same, so "No new replies." was what you were told whether
+        // the inbox was quiet or Gmail never answered at all. Suppliers then looked like they
+        // were ignoring you, and their reply rates sat at 0% while the directory ranked on it.
         const persisted = [];
         const run = load(() => Promise.reject(new Error('network')), persisted);
         const q = { id: 1, supplierEnquiries: [{ threadId: 'T1', replied: false }] };
-        await expect(run(q)).resolves.toEqual({ checked: 1, newReplies: 0 });
-        expect(q.supplierEnquiries[0].replied).toBeFalsy();
+        await expect(run(q)).resolves.toEqual({ checked: 1, newReplies: 0, failed: 1 });
+        expect(q.supplierEnquiries[0].replied).toBeFalsy();   // still awaiting, for the retry
         expect(persisted).toHaveLength(0);
     });
 
@@ -1359,5 +1362,63 @@ describe('source guard — the Enquiry recipient box uses the SAME dropdown as F
 
     test('it degrades quietly if the shared helper is not loaded', () => {
         expect(tabG).toContain("typeof attachContactAutocomplete === 'function'");
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// One chip, several people — Send must not treat a firm's chip as one address
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('a firm with two contacts can still be sent to', () => {
+    // Reported live: picking a supplier where two people were ticked put both in ONE chip
+    // (that is the per-firm rule — everyone at one firm on one email, Cc'd together), and the
+    // Send button then greyed out with nothing on screen saying why. The only way out was to
+    // delete the chip and type the addresses separately, which sends two emails and loses the
+    // whole point. The Freight tab always read chips this way; this tab did not.
+    const src = require('fs').readFileSync(
+        require('path').join(__dirname, '..', 'quote-enquiry-tab.js'), 'utf8');
+
+    /** Pull a real function out of the shipped file by brace-matching, never a copy. */
+    function grab(name) {
+        const start = src.indexOf('function ' + name + '(');
+        if (start === -1) throw new Error('no such function: ' + name);
+        let depth = 0;
+        for (let i = src.indexOf('{', start); i < src.length; i++) {
+            if (src[i] === '{') depth++;
+            if (src[i] === '}' && --depth === 0) return src.slice(start, i + 1);
+        }
+        throw new Error('unterminated: ' + name);
+    }
+
+    // eslint-disable-next-line no-eval
+    const scope = eval('(function () {'
+        // The REAL isEmail, not a lookalike — a re-implementation here could pass while the
+        // shipped one rejected the very addresses this test says are fine.
+        + grab('isEmail')
+        + grab('chipAddrs') + grab('chipIsSendable')
+        + 'return { chipAddrs: chipAddrs, chipIsSendable: chipIsSendable };'
+        + '})()');
+
+    test('a chip holding two addresses at one firm is sendable', () => {
+        expect(scope.chipIsSendable('manish@jcopipe.com, cp@jcopipe.com')).toBe(true);
+        expect(scope.chipIsSendable('a@m.com; b@m.com; c@m.com')).toBe(true);
+    });
+
+    test('a single address is still sendable, and rubbish still is not', () => {
+        // Both directions, or a guard that simply returned true would pass the test above.
+        expect(scope.chipIsSendable('ravi@mill.com')).toBe(true);
+        expect(scope.chipIsSendable('manish@jcopipe.com, notanemail')).toBe(false);
+        expect(scope.chipIsSendable('')).toBe(false);
+        expect(scope.chipIsSendable('   ')).toBe(false);
+    });
+
+    test('BOTH gates read the chip the same way — the button and the send itself', () => {
+        // The greyed-out button and the guard inside the send were separate checks; fixing one
+        // and not the other swaps a dead button for a refusal after the click.
+        expect(src).toContain('st.bcc.concat(st.cc).every(chipIsSendable)');
+        expect(src.match(/every\(chipIsSendable\)/g)).toHaveLength(2);
+        // ...and neither call site still reads the chip as a single address. (chipIsSendable
+        // uses parts.every(isEmail) internally, which is right — the call SITES must not.)
+        expect(src).not.toContain('st.bcc.concat(st.cc).every(isEmail)');
     });
 });
