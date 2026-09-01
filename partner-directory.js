@@ -375,7 +375,8 @@
         fetch(apiBase() + '/contacts')
             .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function (d) {
-                D.contacts = d.contacts || []; D.changes = d.changes || []; D.pending = d.pending || [];
+                D.contacts = d.contacts || []; D.changes = d.changes || [];
+                D.pending = keepOpenReview(D.pending, d.pending || []);
                 D.duplicates = d.duplicates || [];
                 D.loaded = true; D.loadError = '';
             })
@@ -392,6 +393,20 @@
      * request fails, which left the Import button disabled and reading "Importing…" until
      * the page was reloaded — a failure that looked like a hang.
      */
+    /**
+     * A correction is saved when the field is left, and a tab click leaves the field and
+     * reloads in the same breath — so the reload can beat its own save home. The card being
+     * reviewed right now keeps what is on screen; everything else takes the stored copy.
+     */
+    function keepOpenReview(old, fresh) {
+        if (!S.openPending) return fresh;
+        var mine = (old || []).filter(function (x) { return x.id === S.openPending; })[0];
+        if (!mine || !mine.preview) return fresh;
+        return (fresh || []).map(function (x) {
+            return x.id === S.openPending ? Object.assign({}, x, { preview: mine.preview }) : x;
+        });
+    }
+
     function postJson(path, body, then, always) {
         var failed = false;
         return fetch(apiBase() + path, {
@@ -410,6 +425,13 @@
     // different part of the same firm is not overwritten by this tab's older copy.
     function savePartner(p, fields) {
         return postJson('/contacts/save', { partner: p, fields: fields || null });
+    }
+
+    /** Keep a reviewed card's corrections on its queue item, so a reload cannot lose them. */
+    function savePendingPreview(p) {
+        var item = D.pending.filter(function (x) { return x.preview && x.preview.id === p.id; })[0];
+        if (!item) return;
+        return postJson('/contacts/pending/preview', { id: item.id, preview: p });
     }
 
     // ── State for the tool page ───────────────────────────────────────────────
@@ -1119,7 +1141,10 @@
         var busy = S.busy[pi.id];
         return '<div class="pd-src-strip' + (open ? ' on' : '') + '" data-pd-pending="' + esc(pi.id) + '" tabindex="0" role="button">'
             + '<div class="pd-row"><span class="pd-tiny">' + (open ? '▾' : '▸') + '</span>'
-            + '<b>' + esc(match ? match.company : (imported ? pi.subject : (companyGuess(pi) || pi.from))) + '</b>'
+            // A name you corrected is the name the strip should show, or the list still calls the
+            // firm by the guess you have just finished replacing.
+            + '<b>' + esc(str(pi.preview && pi.preview.company)
+                || (match ? match.company : (imported ? pi.subject : (companyGuess(pi) || pi.from)))) + '</b>'
             + (match ? '<span class="pd-pill">Updates someone you have</span>' : '<span class="pd-pill pd-pill-warn">New</span>')
             + '<span class="pd-sp"></span><span class="pd-tiny">' + ago(pi.receivedAt) + '</span></div>'
             + '<p class="pd-tiny" style="margin-left:20px;">' + (imported ? importedStripLine(pi)
@@ -1382,6 +1407,12 @@
             // (or a person, or a number) is what creates it; until then there is nothing to
             // store, and storing it anyway is what left blank rows behind.
             if (inDirectory && !isBlankCard(p)) savePartner(p, fields);
+            // A card still WAITING for approval is not a partner yet, so it must not be written
+            // to the directory — but the corrections typed on it have to survive. They used to
+            // live only in this browser's memory, so switching tab, refreshing, or approving
+            // something else silently put the AI's original guesses back, and the card looked
+            // no different. They are kept on the queue item itself now.
+            else if (!inDirectory) savePendingPreview(p);
             if (rerender) render();
         };
         each(card, '[data-pd-k]', function (el) {

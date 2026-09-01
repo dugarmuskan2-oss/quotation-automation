@@ -258,6 +258,26 @@ module.exports = function createContactsRouter({ storage, openai }) {
         }
     });
 
+    // Keep the corrections made while reviewing ON the queue item. They used to live only in
+    // the browser, so a tab switch or a refresh quietly restored the AI's original guesses —
+    // and the card looked identical, so the wrong values got approved.
+    router.post('/contacts/pending/preview', express.json({ limit: '1mb' }), async (req, res) => {
+        try {
+            const id = str((req.body || {}).id);
+            const items = await loadPending();
+            const item = items.find(x => x.id === id);
+            if (!item) return res.status(404).json({ error: 'That item is no longer waiting — it may already be handled.' });
+            item.preview = contactsLib.sanitizePartner((req.body || {}).preview);
+            item.preview.id = 'p_new_' + item.id;
+            const matchId = str(((req.body || {}).preview || {}).matchId);
+            if (matchId) item.preview.matchId = matchId;
+            await savePending(items);
+            res.json({ ok: true });
+        } catch (error) {
+            res.status(500).json({ error: 'Could not keep that correction: ' + error.message });
+        }
+    });
+
     router.post('/contacts/pending/discard', express.json(), async (req, res) => {
         try {
             const id = String((req.body && req.body.id) || '');
