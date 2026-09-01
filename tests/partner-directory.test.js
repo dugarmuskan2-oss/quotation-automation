@@ -969,11 +969,26 @@ describe('source guard — saving a partner by hand', () => {
         expect(routes).not.toContain('by hand in the Directory tab');
     });
 
-    test('the "nobody fits" dead end sends them to the Add tab, not the empty list', () => {
-        // That button used to walk to the list the + Add partner button sat on. Left as it
-        // was, it now drops the owner on a list with no way to add anybody.
-        const fn = sliceBetween("each(app, '[data-pd-goto-directory]'", "each(app, '[data-pd-find]'");
-        expect(fn).toContain("S.tab = 'add';");
+    test('BOTH "nobody fits" buttons send them to the Add tab, not the empty list', () => {
+        // That button used to walk to the list the add button sat on. Left as it was, it
+        // drops the owner on a list with no way to add anybody — at the exact moment the
+        // directory is provably missing someone.
+        //
+        // There are TWO handlers for the one piece of markup: the Directory's own, and the
+        // panel copy the Freight and Enquiry tabs render. The first version of this test
+        // sliced only the Directory one, so it passed green while the panel copy was still
+        // a dead end. Both are pinned by name now.
+        const inDirectory = sliceBetween("each(app, '[data-pd-goto-directory]'", "each(app, '[data-pd-find]'");
+        expect(inDirectory).toContain("S.tab = 'add';");
+
+        const inPanel = sliceBetween("each(container, '[data-pd-goto-directory]'", "each(container, '[data-pd-send]'");
+        expect(inPanel).toContain("S.tab = 'add';");
+        expect(inPanel).toContain('window.switchToDirectoryTab();');   // still shows the tool
+
+        // ...and the fix is NOT inside switchToDirectoryTab, which the sidebar button also
+        // calls — that one must go on landing on the Directory list.
+        const sw = sliceBetween('function switchToDirectoryTab()', 'window.switchToDirectoryTab = switchToDirectoryTab;');
+        expect(sw).not.toContain("S.tab = 'add'");
     });
 });
 

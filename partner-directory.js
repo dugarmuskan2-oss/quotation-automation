@@ -2414,7 +2414,10 @@
 
     function bindPanel(container, rows, onAddChip) {
         each(container, '[data-pd-goto-directory]', function (el) {
-            el.onclick = function () { if (typeof window.switchToDirectoryTab === 'function') window.switchToDirectoryTab(); };
+            el.onclick = function () {
+                S.tab = 'add';                            // the Add tab, not the bare list
+                if (typeof window.switchToDirectoryTab === 'function') window.switchToDirectoryTab();
+            };
         });
         each(container, '[data-pd-send]', function (el) {
             el.onclick = function () {

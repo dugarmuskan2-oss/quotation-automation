@@ -432,8 +432,9 @@ describe('mergePartner — a stale copy must not overwrite a fresh one', () => {
     });
 
     test('a brand-new card with nothing on it is never created', () => {
-        // The owner pressed "+ Add partner" twice and got two empty rows: the client wrote a
-        // blank card on the click. The client no longer does, and the server refuses to create
+        // A client that saves before anything is typed puts an empty row in the directory —
+        // it happened twice, live. The button that caused it is gone, but /contacts/add-apply
+        // still leans on this guard, so it stays. The client no longer does, and the server refuses to create
         // one either — a blank new row is only ever an accident.
         const held = storedCard();
         const res = mergePartner([held], {
