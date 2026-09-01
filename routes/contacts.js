@@ -197,7 +197,13 @@ module.exports = function createContactsRouter({ storage, openai }) {
         try {
             const id = String((req.body && req.body.id) || '');
             const dir = await loadDirectory();
-            const result = contactsLib.undoChange(dir.contacts, dir.changes, id);
+            const result = contactsLib.undoChange(
+                dir.contacts, dir.changes, id, (req.body || {}).confirmed === true);
+            // Not an error — a question. The owner is told exactly what else would go, and
+            // sends the same request back with confirmed:true if they still want it.
+            if (!result.ok && (result.alsoLost || []).length) {
+                return res.status(409).json({ needsConfirming: true, alsoLost: result.alsoLost });
+            }
             if (!result.ok) return res.status(404).json({ error: 'That change was not found, or is already undone.' });
             await saveDirectory({ contacts: result.contacts, changes: result.changes });
             res.json({ ok: true });

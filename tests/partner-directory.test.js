@@ -1126,7 +1126,10 @@ describe('source guard — the Recent-changes buttons that write to the director
     const handlers = {
         Approve: sliceBetween("each(app, '[data-pd-approve]'", "each(app, '[data-pd-discard]'"),
         Discard: sliceBetween("each(app, '[data-pd-discard]'", "each(app, '[data-pd-change]'"),
-        Undo: sliceBetween("each(app, '[data-pd-undo]'", '// ── The in-quote suggestion panel'),
+        // Undo's lock lives in undoWithWarning: the click now has to survive a round trip
+        // that may come back asking "this also removes 3 things — sure?", so the flag is held
+        // across the question rather than inside the click handler.
+        Undo: sliceBetween('function undoWithWarning(', 'function undoWarningText('),
     };
 
     Object.keys(handlers).forEach((name) => {

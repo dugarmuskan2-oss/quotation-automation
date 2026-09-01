@@ -1329,6 +1329,9 @@
 .pd-empty { padding: 14px; text-align: center; border: 1px dashed rgba(0,0,0,.2); border-radius: 10px; }
 .pd-error { background: #FBE9E9; color: #8C2F2F; border-radius: 8px; padding: 8px 11px; font-size: 12.5px; margin-bottom: 10px; }
 .pd-linkish { border: none; background: none; padding: 0; cursor: pointer; color: #8C2F2F; font: inherit; text-decoration: underline; }
+/* An address that cannot be stored stays on screen and says so, the same red the weight
+   calculator uses for a missing kg/m — it is never dropped in silence. */
+.pd-bad { border-color: #C0392B !important; background: #FBE9E9 !important; }
 .pd-filters { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 12px 0; }
 .pd-chip { font-size: 12px; padding: 4px 11px; border-radius: 20px; border: 1px solid rgba(0,0,0,.18); cursor: pointer; background: #fff; }
 .pd-chip.on { background: #20201d; color: #fff; border-color: #20201d; }

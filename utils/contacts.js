@@ -664,6 +664,12 @@ function diffProducts(out, b, now) {
 }
 
 function diffAdditions(out, b, now) {
+    // Branches were changed silently for a long time: nothing in this list mentioned them, so
+    // a card losing four of its five branches showed an empty "what moved" panel.
+    const hadB = (b.branches || []).map(x => str(x.city));
+    const nowB = (now.branches || []).map(x => str(x.city));
+    nowB.forEach(city => { if (hadB.indexOf(city) === -1) out.push({ label: 'Branch added', from: '', to: city }); });
+    hadB.forEach(city => { if (nowB.indexOf(city) === -1) out.push({ label: 'Branch REMOVED', from: city, to: '' }); });
     const hadR = (b.routes || []).map(r => r.from + ' → ' + r.to);
     (now.routes || []).forEach(r => { const k = r.from + ' → ' + r.to; if (hadR.indexOf(k) === -1) out.push({ label: 'Route added', from: '', to: k }); });
     const hadN = (b.notes || []).map(n => n.t);
@@ -673,16 +679,36 @@ function diffAdditions(out, b, now) {
 }
 
 /** Undo one logged change: an addition is removed, an edit is restored from `before`. */
-function undoChange(contacts, changes, changeId) {
+function undoChange(contacts, changes, changeId, confirmed) {
     const list = (Array.isArray(changes) ? changes : []).slice();
     const ch = list.find(x => x && x.id === changeId);
     if (!ch || ch.undone) return { contacts, changes: list, ok: false };
     let next = (contacts || []).slice();
     const idx = next.findIndex(p => p && p.id === ch.partnerId);
+    // Undo puts back a snapshot of the WHOLE card, so anything added since goes with it.
+    // Months later that is notes, a product, a contact — none of it mentioned by the entry
+    // being undone, and there is no undo-the-undo. Say what else would go, and wait.
+    if (ch.before !== null && idx !== -1 && !confirmed) {
+        const alsoLost = undoCollateral(ch, next[idx]);
+        if (alsoLost.length) return { contacts, changes: list, ok: false, alsoLost };
+    }
     if (ch.before === null) { if (idx !== -1) next.splice(idx, 1); }
     else if (idx !== -1) next[idx] = sanitizePartner(ch.before);
     ch.undone = true;
-    return { contacts: next, changes: list, ok: true };
+    return { contacts: next, changes: list, ok: true, alsoLost: [] };
+}
+
+/**
+ * What an undo would take that the change never touched.
+ *
+ * Everything between the snapshot and the card as it stands, minus the change's own lines —
+ * those are the thing being undone on purpose.
+ */
+function undoCollateral(ch, current) {
+    const mine = {};
+    (ch.lines || []).forEach(l => { mine[l.label + '|' + l.to] = true; });
+    return diffLines(sanitizePartner(ch.before), current)
+        .filter(l => !mine[l.label + '|' + l.to]);
 }
 
 // ── pending items from the Gmail label ───────────────────────────────────────

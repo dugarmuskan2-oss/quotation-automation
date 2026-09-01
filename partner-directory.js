@@ -1253,7 +1253,19 @@
             });
         }
         else if (x.key === 'types') p.types = String(x.value).split(/[,/]+/).map(str).filter(Boolean);
-        else if (x.key === 'branches') p.branches = String(x.value).split(/[,;]+/).map(str).filter(Boolean).map(function (c) { return { city: matchCity(c) || c, area: '', address: '' }; });
+        else if (x.key === 'branches') {
+            // MERGED, never replaced. A rate card that happens to mention only Chennai used to
+            // wipe the other four branches — with the areas and addresses typed into them —
+            // and the nearest branch is what distance is measured from, so the firm quietly
+            // stopped being suggested for deliveries it used to win.
+            p.branches = p.branches || [];
+            String(x.value).split(/[,;]+/).map(str).filter(Boolean).forEach(function (c) {
+                var city = matchCity(c) || c;
+                if (!p.branches.some(function (b) { return lower(b.city) === lower(city); })) {
+                    p.branches.push({ city: city, area: '', address: '' });
+                }
+            });
+        }
         else if (x.key === 'moq') p.moq = parseFloat(x.value) || 0;
         else if (x.key === 'role') p.role = lower(x.value);
         else p[x.key] = x.value;
@@ -1273,6 +1285,40 @@
             + (ch.undone ? '' : '<div style="margin:8px 0 0 20px;"><button data-pd-undo="' + esc(ch.id) + '"' + (S.busy[ch.id] ? ' disabled' : '') + '>Undo this</button></div>')
             + '</div>'
             + (open && p ? editCard(p) : '');
+    }
+
+    /**
+     * Undo restores the whole card as it was, so months of later work goes with it. The server
+     * refuses the first time and says what else would go; this is where the owner sees that
+     * list and decides. There is no undo-the-undo, which is exactly why it asks.
+     */
+    function undoWithWarning(id, confirmed) {
+        if (S.busy[id]) return;
+        S.busy[id] = true; render();
+        fetch(apiBase() + '/contacts/change-undo', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: id, confirmed: confirmed === true }),
+        }).then(function (r) {
+            return r.json().catch(function () { return {}; }).then(function (d) { return { r: r, d: d }; });
+        }).then(function (res) {
+            delete S.busy[id];
+            if (res.r.ok) { loadDirectory(render); return; }
+            if (res.d.needsConfirming) {
+                render();
+                if (window.confirm(undoWarningText(res.d.alsoLost || []))) undoWithWarning(id, true);
+                return;
+            }
+            D.saveError = res.d.error || ('HTTP ' + res.r.status);
+            render();
+        }).catch(function (e) {
+            delete S.busy[id]; D.saveError = e.message; render();
+        });
+    }
+
+    function undoWarningText(lost) {
+        return 'Undoing this puts the card back as it was, so these would go too:\n\n'
+            + lost.map(function (l) { return '  • ' + l.label + (l.to ? ': ' + l.to : ''); }).join('\n')
+            + '\n\nThere is no way back from this. Undo anyway?';
     }
 
     function diffHtml(ch) {
@@ -1428,13 +1474,45 @@
         bindPeople(card, p, save); bindPlaces(card, p, save); bindSupply(card, p, save); bindNotes(card, p, save);
     }
 
+    /**
+     * An address the server cannot store must not disappear in silence.
+     *
+     * Anything that is not an address was dropped on save while the box went on showing it —
+     * and if it was the only thing on an unnamed row, the whole person went with it. You found
+     * out weeks later, from a suggestion saying "no email on card" for a firm you were certain
+     * you had filled in. Filling in the imported cards is the day-one job, so this bit hard.
+     *
+     * Two addresses pasted into one box are split into two rows rather than refused: pasting a
+     * pair off an email signature is a normal thing to do, not a mistake.
+     */
+    function acceptEmail(el, person, idx, key) {
+        if (key !== 'v') { person.emails[idx][key] = el.value; return true; }
+        var parts = String(el.value).split(/[,;]+/).map(str).filter(Boolean);
+        var bad = parts.filter(function (v) { return !isEmail(v); });
+        if (bad.length) {
+            el.classList.add('pd-bad');
+            el.title = bad[0] + ' is not an email address, so it cannot be saved.';
+            return false;
+        }
+        el.classList.remove('pd-bad'); el.title = '';
+        person.emails[idx].v = parts[0];
+        parts.slice(1).forEach(function (v) {
+            if (!person.emails.some(function (e) { return lower(e.v) === lower(v); })) {
+                person.emails.push({ label: 'Work', v: v });
+            }
+        });
+        if (parts.length > 1) render();
+        return true;
+    }
+
     function bindPeople(card, p, save) {
         each(card, '[data-pd-pc]', function (el) {
             el.onchange = function () {
                 var c = p.people[Number(el.getAttribute('data-pd-pc'))], k = el.getAttribute('data-pd-k');
                 if (el.hasAttribute('data-pd-ph')) c.phones[Number(el.getAttribute('data-pd-ph'))][k] = el.value;
-                else if (el.hasAttribute('data-pd-em')) c.emails[Number(el.getAttribute('data-pd-em'))][k] = el.value;
-                else c[k] = el.value;
+                else if (el.hasAttribute('data-pd-em')) {
+                    if (!acceptEmail(el, c, Number(el.getAttribute('data-pd-em')), k)) return;
+                } else c[k] = el.value;
                 save(false, ['people']);
             };
         });
@@ -1563,13 +1641,7 @@
             };
         });
         each(app, '[data-pd-undo]', function (el) {
-            el.onclick = function () {
-                var id = el.getAttribute('data-pd-undo');
-                if (S.busy[id]) return;
-                S.busy[id] = true; render();
-                postJson('/contacts/change-undo', { id: id }, function () { loadDirectory(render); },
-                    function () { delete S.busy[id]; });
-            };
+            el.onclick = function () { undoWithWarning(el.getAttribute('data-pd-undo'), false); };
         });
     }
 
