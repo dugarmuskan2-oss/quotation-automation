@@ -279,3 +279,76 @@ describe('source guards — index.html hooks the freight features depend on', ()
         expect(src).toContain('syncRowsWithQuote(q, st, { onSave: true })');
     });
 });
+
+// ── Pasted address lists ─────────────────────────────────────────────────────
+// A list copied out of Outlook or Gmail arrives as `Name <addr>, "Firm, Ltd" <addr>`. The old
+// split was on /[,;\s]+/, which turned "BOMBAY HARDWARE <a@b.com>" into three chips — two of
+// them junk — and left the angle brackets on the third. Worse, in the Enquiry tab the whole
+// paste became ONE chip, and one chip means one email: every supplier on it would have seen
+// the others. The parsing must stay identical in both modules, so the same cases run against
+// each (see the twin block in tests/enquiry-tab.test.js).
+describe('splitAddressList / bareAddress — pasting addresses out of an email client', () => {
+    const { splitAddressList, bareAddress } = require('../freight-tab-weight-editor')._test;
+    const chipsFrom = (raw) => splitAddressList(raw).map(bareAddress);
+
+    test('the real five-supplier paste becomes five bare addresses', () => {
+        const pasted = 'BOMBAY HARDWARE <bhpisales@bombayhardware.com>, '
+            + 'retchennai madrassteels <retchennai@madrassteels.in>, '
+            + 'Shree Mahaveer <mahaveer_tube@rediffmail.com>, '
+            + '"Shri Vardhman Tube Co." <shrivardhmantube@rediffmail.com>, '
+            + '"Jindal PIPE INDUSTRIES (ALL DETAILS)" <jindal_pipes@yahoo.com>';
+        expect(chipsFrom(pasted)).toEqual([
+            'bhpisales@bombayhardware.com',
+            'retchennai@madrassteels.in',
+            'mahaveer_tube@rediffmail.com',
+            'shrivardhmantube@rediffmail.com',
+            'jindal_pipes@yahoo.com',
+        ]);
+    });
+
+    test('a comma inside a quoted firm name does not split it in two', () => {
+        expect(chipsFrom('"Jindal Pipes, Chennai" <a@b.com>, Second <c@d.com>'))
+            .toEqual(['a@b.com', 'c@d.com']);
+    });
+
+    test('a comma inside the angle brackets does not split either', () => {
+        expect(splitAddressList('One <a@b.com>, Two <c@d.com>')).toHaveLength(2);
+    });
+
+    test('semicolons and newlines separate too — Outlook uses both', () => {
+        expect(chipsFrom('a@b.com; c@d.com')).toEqual(['a@b.com', 'c@d.com']);
+        expect(chipsFrom('a@b.com\nc@d.com')).toEqual(['a@b.com', 'c@d.com']);
+    });
+
+    test('a transporter name typed on its own keeps its spaces and stays one chip', () => {
+        // The name is how the contact dropdown is searched — splitting it breaks that.
+        expect(chipsFrom('Ravi Transport')).toEqual(['Ravi Transport']);
+    });
+
+    test('a plain address is returned untouched', () => {
+        expect(chipsFrom('a@b.com')).toEqual(['a@b.com']);
+    });
+
+    test('empty and whitespace-only input yield no chips', () => {
+        expect(splitAddressList('')).toEqual([]);
+        expect(splitAddressList('  ,  ; ')).toEqual([]);
+    });
+});
+
+// Both modules carry their own copy (as they already do for chipAddrs). If the two ever drift,
+// the same paste behaves differently on the Freight tab and the Enquiry tab.
+describe('the two modules parse addresses identically', () => {
+    const F = require('../freight-tab-weight-editor')._test;
+    const Q = require('../quote-enquiry-tab')._test;
+    const CASES = [
+        'BOMBAY HARDWARE <bhpisales@bombayhardware.com>, "Jindal PIPE INDUSTRIES (ALL DETAILS)" <jindal_pipes@yahoo.com>',
+        'a@b.com; c@d.com',
+        'Ravi Transport',
+        '"Firm, Ltd" <x@y.com>',
+        '',
+    ];
+    test.each(CASES)('same result for %p', (raw) => {
+        expect(F.splitAddressList(raw).map(F.bareAddress))
+            .toEqual(Q.splitAddressList(raw).map(Q.bareAddress));
+    });
+});

@@ -1,5 +1,10 @@
 {
   "permissions": {
+    "defaultMode": "bypassPermissions",
+    "deny": [
+      "Bash(git push)",
+      "Bash(git push *)"
+    ],
     "allow": [
       "mcp__Claude_Preview__preview_console_logs",
       "mcp__df206604-0240-4e06-bd32-ed228280dd34__search_threads",
