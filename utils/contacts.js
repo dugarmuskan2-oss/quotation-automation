@@ -36,6 +36,19 @@ function normalizeRole(v) {
 
 function isEmail(v) { return /^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(str(v)); }
 
+/**
+ * The app's own spelling for a pipe type.
+ *
+ * The remembered supplier file buckets by 'gi' / 'erw' / 'seamless', and the owner types
+ * "seamless" as often as "Seamless". Shouting it back put SEAMLESS on the card while the
+ * chips the browser offers say Seamless — and its duplicate check reads the letters, so the
+ * same type landed on one card twice.
+ */
+const PIPE_TYPE_NAMES = ['GI', 'ERW', 'Seamless', 'SS', 'MS', 'Alloy'];
+function canonicalPipeType(v) {
+    return PIPE_TYPE_NAMES.find(t => lower(t) === lower(v)) || str(v);
+}
+
 // ── people: one person, many labelled numbers and addresses ──────────────────
 
 function sanitizeLines(list, max) {
@@ -277,6 +290,7 @@ function bumpUsage(list, usage) {
     const reply = (usage && usage.kind) === 'reply';
     const contacts = (Array.isArray(list) ? list : []).slice();
     const unknown = [];
+    const counted = {};
     sanitizeStrings(usage && usage.emails, 50).map(lower).filter(isEmail).forEach(email => {
         const idx = contacts.findIndex(c => allEmails(c).indexOf(email) !== -1);
         if (idx === -1) {
@@ -284,14 +298,20 @@ function bumpUsage(list, usage) {
             // item WAITING FOR APPROVAL (see pendingFromUsage), not a card that silently
             // appears. Our own address and test placeholders are dropped outright — copying
             // ourselves on an enquiry must never make the firm its own supplier.
-            if (worthImporting(email)) unknown.push(email);
+            if (worthImporting(email) && unknown.indexOf(email) === -1) unknown.push(email);
             return;
         }
         // Replace rather than write through: `list` holds the caller's objects, and a stale
         // copy of one being mutated in place is exactly the hazard the directory avoids.
         const target = Object.assign({}, contacts[idx]);
-        if (reply) { target.rep = num(target.rep, 0) + 1; }
-        else { target.enq = num(target.enq, 0) + 1; }
+        // ONE ENQUIRY, ONE FIRM. Cc'ing two people at the same mill is one enquiry to that
+        // mill. Counting per address made a two-person firm look twice as busy as a
+        // one-person firm, and reach "Regular" (5 asks) after two sends.
+        if (!counted[idx]) {
+            counted[idx] = true;
+            if (reply) { target.rep = num(target.rep, 0) + 1; }
+            else { target.enq = num(target.enq, 0) + 1; }
+        }
         target.last = now;
         contacts[idx] = target;
     });
@@ -390,7 +410,7 @@ function seedFromSuggestionFiles(freight, supplier) {
     (s.suppliers || []).forEach(t => note(t.email, { role: 'dealer', count: t.count, last: t.lastUsed }));
     Object.keys((s.byType) || {}).forEach(type => {
         ((s.byType[type]) || []).forEach(t => note(t.email, {
-            role: 'dealer', count: t.count, last: t.lastUsed, types: [type.toUpperCase()],
+            role: 'dealer', count: t.count, last: t.lastUsed, types: [canonicalPipeType(type)],
         }));
     });
     return seed;
@@ -570,6 +590,35 @@ function changeEntry(title, detail, source, partnerId, before, after) {
     };
 }
 
+/**
+ * A partner deleted on purpose, logged so it can be put back.
+ *
+ * Deleting used to leave no trace at all: the card was gone, nothing said so, and there was
+ * nothing to press. `removed` is what tells undo to put the whole card back rather than
+ * treating a missing card as an already-undone edit.
+ */
+function removalEntry(partner, source) {
+    const card = sanitizePartner(partner);
+    const name = str(card.company) || firstReach(card) || 'a partner';
+    const entry = changeEntry('Deleted ' + name,
+        'Taken out of the directory. Undo puts the card back as it was.',
+        source || 'Deleted by hand', card.id, card, null);
+    entry.removed = true;
+    // Said out loud, because the change log reads its lines to describe what moved. Left
+    // empty, opening a deletion says "nothing measurable changed" — about a whole card.
+    entry.lines = [{ label: 'Card removed', from: name, to: 'gone from the directory' }];
+    return entry;
+}
+
+/** The first address or number on a card — what to call it when it has no firm name yet. */
+function firstReach(partner) {
+    const mails = allEmails(partner);
+    if (mails.length) return mails[0];
+    const phone = ((partner && partner.people) || [])
+        .reduce((all, p) => all.concat((p && p.phones) || []), []).map(x => str(x && x.v)).filter(Boolean)[0];
+    return phone || '';
+}
+
 function pushChange(changes, entry) {
     const list = (Array.isArray(changes) ? changes : []).slice();
     list.unshift(entry);
@@ -694,8 +743,20 @@ function undoChange(contacts, changes, changeId, confirmed) {
     }
     if (ch.before === null) { if (idx !== -1) next.splice(idx, 1); }
     else if (idx !== -1) next[idx] = sanitizePartner(ch.before);
+    else {
+        // The card is not there any more. Undoing a DELETION means putting it back; undoing
+        // an edit to a card that has since been deleted cannot be done, and saying "done"
+        // would be a lie the owner only finds out about later.
+        if (!ch.removed) return { contacts, changes: list, ok: false, missing: true };
+        const back = sanitizePartner(ch.before);
+        // One address, one company still holds. If an address of the deleted card has since
+        // been given to another card, putting this one back would split that firm in two.
+        const clash = emailConflict(next, back, -1);
+        if (clash) return { contacts, changes: list, ok: false, conflict: clash };
+        next.unshift(back);
+    }
     ch.undone = true;
-    return { contacts: next, changes: list, ok: true, alsoLost: [] };
+    return { contacts: next.slice(0, MAX_CONTACTS), changes: list, ok: true, alsoLost: [] };
 }
 
 /**
@@ -731,6 +792,10 @@ function sanitizePendingItem(input) {
         // queue item (see routes/contacts.js) — it is only needed during extraction.
         fileBase64: str(src.fileBase64),
         finds: Array.isArray(src.finds) ? src.finds.slice(0, 40) : [],
+        // "Nothing found" and "the read failed" both leave an empty finds list, and the review
+        // screen cannot tell them apart from the count alone — one means the email had nothing
+        // in it, the other means nobody has read it yet. Kept on the item so a reload keeps it.
+        readFailed: src.readFailed === true,
         receivedAt: str(src.receivedAt) || new Date().toISOString(),
     };
 }
@@ -1080,7 +1145,7 @@ function applyAddFind(card, x, src) {
     // A name, a number and an address read off one letterhead belong on ONE person row, so
     // they are placed together by addPersonInto rather than scattered across three finds.
     if (['person', 'phone', 'email'].indexOf(x.key) !== -1) return;
-    if (x.key === 'types') { card.types = mergeStrings(card.types, splitList(x.value)); return; }
+    if (x.key === 'types') { card.types = mergeStrings(card.types, splitList(x.value).map(canonicalPipeType)); return; }
     if (x.key === 'branches') { card.branches = mergeBranches(card.branches, splitList(x.value)); return; }
     // "other" is what we store when nobody knows what they are, so it is never news. Seen
     // live: a line about 24 inch pipes turned a known TRANSPORTER into "other", which would
@@ -1180,6 +1245,7 @@ module.exports = {
     MAX_PENDING,
     companyFromEmail,
     changeEntry,
+    removalEntry,
     pushChange,
     diffLines,
     undoChange,
@@ -1195,6 +1261,7 @@ module.exports = {
     addDraftMode,
     addAfterCard,
     _test: { normalizeRole, sanitizePerson, sanitizePeople, splitTradeWord, isEmail,
+        canonicalPipeType, firstReach,
         firmKeyOf, firmsAlreadyKnown, groupSeedsIntoFirms, seedFromSuggestionFiles, importPendingItem,
         emailConflict,
         addCandidates, applyAddFind, mergeStrings, mergeBranches, mergeProductInto,

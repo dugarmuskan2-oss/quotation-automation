@@ -23,6 +23,7 @@ const {
 } = require('../utils/constants');
 
 const contactsLib = require('../utils/contacts');
+const anthropic = require('../utils/anthropic');
 const MAX_PENDING = contactsLib.MAX_PENDING;
 
 // One address belongs to ONE company. Say which one already has it, so the owner can act
@@ -40,16 +41,27 @@ function conflictMessage(clash) {
 function str(v) { return String(v == null ? '' : v).trim(); }
 
 /**
- * What an Add-tab apply is allowed to write onto a card that already exists.
+ * What a REVIEWED read — the Add tab, or a queued email being approved — may write onto a
+ * card that already exists.
  *
- * Everything the AI can propose, and nothing else. A wholesale write would put back the
- * browser's minutes-old copy of the fields the APP maintains — enq, rep, last — so an
- * enquiry that went out between pressing Read and pressing Apply would have its count
- * silently rolled back. `checked` is stamped by mergePartner on every scoped write, which
- * is right: reading a fresh brochure into a card IS checking it.
+ * Everything a person can see on the review screen, and nothing else. A wholesale write would
+ * put back the browser's minutes-old copy of the fields the APP maintains — enq, rep, last —
+ * so an enquiry that went out between opening the review and pressing Approve would have its
+ * count silently rolled back. `checked` is stamped by mergePartner on every scoped write,
+ * which is right: reading a fresh brochure into a card IS checking it.
  */
-const ADD_FIELDS = ['company', 'role', 'roleOther', 'city', 'address', 'branches', 'types',
+const REVIEWED_FIELDS = ['company', 'role', 'roleOther', 'city', 'address', 'branches', 'types',
     'moq', 'products', 'rules', 'routes', 'vehicles', 'partLoad', 'notes', 'people', 'images'];
+
+/**
+ * What to call a card in the log. A card can be approved with no firm name at all — an
+ * address read off an email and nothing else — and "Added " with nothing after it reads as
+ * a broken line rather than a partner.
+ */
+function changeTitle(partner, before) {
+    const name = str(partner.company) || contactsLib.allEmails(partner)[0] || 'a partner with no name yet';
+    return before ? name + ' updated' : 'Added ' + name;
+}
 
 /**
  * Only what the reader can actually see. Anything else was base64'd as a fake JPEG and sent
@@ -139,12 +151,25 @@ module.exports = function createContactsRouter({ storage, openai }) {
         }
     });
 
+    // Deleting is logged like everything else the directory does, with the whole card kept on
+    // the entry — so it shows up in Recent changes and Undo puts it back. It used to leave no
+    // trace whatever, and a card with years of notes on it was one click from gone for good.
     router.post('/contacts/delete', express.json(), async (req, res) => {
         try {
             const id = String((req.body && req.body.id) || '');
             const dir = await loadDirectory();
-            const next = dir.contacts.filter(p => p && p.id !== id);
-            await saveDirectory({ contacts: next, changes: dir.changes });
+            const gone = dir.contacts.find(p => p && p.id === id) || null;
+            // Nothing matched. Answering "done" for a card that was never in the directory is
+            // how the Delete button on a review card looked like it worked.
+            if (!gone) {
+                return res.status(404).json({
+                    error: 'That partner is not in the directory, so nothing was deleted.',
+                });
+            }
+            await saveDirectory({
+                contacts: dir.contacts.filter(p => p && p.id !== id),
+                changes: contactsLib.pushChange(dir.changes, contactsLib.removalEntry(gone, 'Deleted by hand')),
+            });
             res.json({ ok: true });
         } catch (error) {
             res.status(500).json({ error: 'Could not delete the partner: ' + error.message });
@@ -204,6 +229,16 @@ module.exports = function createContactsRouter({ storage, openai }) {
             if (!result.ok && (result.alsoLost || []).length) {
                 return res.status(409).json({ needsConfirming: true, alsoLost: result.alsoLost });
             }
+            // Putting a deleted card back can hit the one-address-one-company rule, and an
+            // edit cannot be undone on a card that has since been deleted. Both used to come
+            // back as "That change was not found", which sends the owner looking in the wrong
+            // place — say which one it is.
+            if (result.conflict) return res.status(409).json({ error: conflictMessage(result.conflict) });
+            if (result.missing) {
+                return res.status(409).json({
+                    error: 'That partner has been deleted since, so this change cannot be undone.',
+                });
+            }
             if (!result.ok) return res.status(404).json({ error: 'That change was not found, or is already undone.' });
             await saveDirectory({ contacts: result.contacts, changes: result.changes });
             res.json({ ok: true });
@@ -223,7 +258,14 @@ module.exports = function createContactsRouter({ storage, openai }) {
         try {
             const item = contactsLib.sanitizePendingItem(req.body || {});
             if (!item.from && !item.text) return res.status(400).json({ error: 'Nothing to read: no sender and no text.' });
-            if (!item.finds.length) item.finds = await extractFinds(item);
+            if (!item.finds.length) {
+                const read = await extractFinds(item);
+                item.finds = read.finds;
+                // Told apart on purpose: "read into 0 fields" meant both "the email said
+                // nothing" and "nobody has read this yet". The second needs looking at by
+                // hand; the first does not (CLAUDE.md check #4).
+                item.readFailed = read.failed;
+            }
             // The attachment has served its purpose — never store the base64 in the queue
             // blob, or one brochure bloats the file past what storage will hold.
             delete item.fileBase64;
@@ -232,7 +274,7 @@ module.exports = function createContactsRouter({ storage, openai }) {
                 items.unshift(item);
             }
             await savePending(items.slice(0, MAX_PENDING));
-            res.json({ ok: true, id: item.id, finds: item.finds.length });
+            res.json({ ok: true, id: item.id, finds: item.finds.length, readFailed: item.readFailed });
         } catch (error) {
             res.status(500).json({ error: 'Could not store the email: ' + error.message });
         }
@@ -248,12 +290,15 @@ module.exports = function createContactsRouter({ storage, openai }) {
             if (!item) return res.status(404).json({ error: 'That pending item was not found — it may already be handled.' });
             const dir = await loadDirectory();
             const before = dir.contacts.find(p => p && p.id === (partner && partner.id)) || null;
-            const merged = contactsLib.mergePartner(dir.contacts, partner);
+            // Only what the review screen shows, for a card that already exists. Approving is
+            // a read of one email — it must not carry the browser's older copy of the counts
+            // the app keeps for itself back over the stored ones (CLAUDE.md check #2).
+            const merged = contactsLib.mergePartner(dir.contacts, partner, before ? REVIEWED_FIELDS : null);
             // The item stays in the queue on a clash — nothing is half-applied, and the owner
             // can fix the other card and approve again.
             if (merged.conflict) return res.status(409).json({ error: conflictMessage(merged.conflict) });
             const entry = contactsLib.changeEntry(
-                (before ? merged.partner.company + ' updated' : 'Added ' + merged.partner.company),
+                changeTitle(merged.partner, before),
                 item.finds.length + ' detail' + (item.finds.length === 1 ? '' : 's') + ' from “' + item.subject + '” (' + item.file + ')',
                 String(source || 'Gmail label'), merged.partner.id, before, merged.partner);
             await saveDirectory({ contacts: merged.contacts, changes: contactsLib.pushChange(dir.changes, entry) });
@@ -315,7 +360,7 @@ module.exports = function createContactsRouter({ storage, openai }) {
                     + 'export it as a PDF, or take a photo of the page.',
             });
         }
-        if (!openai) {
+        if (!anthropic.isAvailable() && !openai) {
             return res.status(500).json({ error: 'The AI reader is switched off, so nothing could be read. You can still add this firm by hand in the Directory tab.' });
         }
         try {
@@ -354,7 +399,7 @@ module.exports = function createContactsRouter({ storage, openai }) {
                 return res.json({ ok: true, skipped: 'nothing-kept' });
             }
             const merged = contactsLib.mergePartner(
-                dir.contacts, addTarget(wanted, before), before ? ADD_FIELDS : null);
+                dir.contacts, addTarget(wanted, before), before ? REVIEWED_FIELDS : null);
             if (merged.conflict) return res.status(409).json({ error: conflictMessage(merged.conflict) });
             if (merged.empty) return res.json({ ok: true, skipped: 'empty' });
             await saveDirectory(logAddition(dir, merged, before));
@@ -375,7 +420,7 @@ module.exports = function createContactsRouter({ storage, openai }) {
 
     function logAddition(dir, merged, before) {
         const entry = contactsLib.changeEntry(
-            before ? merged.partner.company + ' updated' : 'Added ' + merged.partner.company,
+            changeTitle(merged.partner, before),
             addChangeDetail(before, merged.partner), 'Added by hand',
             merged.partner.id, before, merged.partner);
         return { contacts: merged.contacts, changes: contactsLib.pushChange(dir.changes, entry) };
@@ -389,22 +434,40 @@ module.exports = function createContactsRouter({ storage, openai }) {
 
     // Throws rather than returning nothing — see the handler's catch above.
     async function readAddition(input, contacts) {
-        const firms = contactsLib.firmsForPrompt(contacts);
-        const parts = [{ type: 'input_text', text: contactsLib.addPrompt({
-            text: input.text, fileName: input.fileName, firms }) }];
+        const prompt = contactsLib.addPrompt({
+            text: input.text, fileName: input.fileName,
+            firms: contactsLib.firmsForPrompt(contacts),
+        });
+        return parseAddJson(await readIt(prompt, input.fileBase64, input.fileName));
+    }
+
+    /**
+     * One reader for both directory reads.
+     *
+     * Claude when its key is set — the directory's reads are all judgement calls (which firm,
+     * product or note, was a role actually stated) and the small model got those wrong often
+     * enough to matter. OpenAI stays as the fallback so nothing stops working before the key
+     * is added.
+     */
+    async function readIt(prompt, fileBase64, fileName) {
+        if (anthropic.isAvailable()) {
+            return anthropic.readWithClaude({ prompt, fileBase64: str(fileBase64), fileName: str(fileName) });
+        }
+        if (!openai) throw new Error('no AI reader is switched on');
+        const parts = [{ type: 'input_text', text: prompt }];
         const attached = await attachFilePart({
-            fileBase64: str(input.fileBase64),
-            file: str(input.fileName) || 'attachment',
-            kind: /\.pdf$/i.test(str(input.fileName)) ? 'pdf' : 'photo',
+            fileBase64: str(fileBase64),
+            file: str(fileName) || 'attachment',
+            kind: /\.pdf$/i.test(str(fileName)) ? 'pdf' : 'photo',
         });
         // Reading the typed text while quietly dropping the attached brochure would look like
         // a clean read of half the information. Say it failed instead.
-        if (str(input.fileBase64) && !attached) throw new Error('the attached file could not be read');
+        if (str(fileBase64) && !attached) throw new Error('the attached file could not be read');
         if (attached) parts.push(attached);
         const response = await openai.responses.create({
             model: 'gpt-4o-mini', input: [{ role: 'user', content: parts }],
         });
-        return parseAddJson(String(response.output_text || ''));
+        return String(response.output_text || '');
     }
 
     function parseAddJson(text) {
@@ -456,26 +519,24 @@ module.exports = function createContactsRouter({ storage, openai }) {
         });
     }
 
-    // Best-effort AI read of the email AND its attachment. A failure returns [] — the owner
-    // still sees the raw email in the queue and fills the card by hand; it must never block
-    // ingest. A brochure is the whole point, so the PDF/image goes to the model too, the same
-    // way an enquiry attachment does on the quote side.
+    // Best-effort AI read of the email AND its attachment. A failure never blocks ingest — the
+    // owner still sees the raw email in the queue and fills the card by hand — but it comes
+    // back marked as a FAILURE, not as an empty read. A brochure is the whole point, so the
+    // PDF/image goes to the model too, the same way an enquiry attachment does on the quote side.
     async function extractFinds(item) {
-        if (!openai || (!item.text && !item.fileBase64)) return [];
+        if (!anthropic.isAvailable() && !openai) return { finds: [], failed: true };
+        if (!item.text && !item.fileBase64) return { finds: [], failed: false };
         try {
-            const parts = [{ type: 'input_text', text: contactsLib.extractionPrompt(item) }];
-            const attached = await attachFilePart(item);
-            if (attached) parts.push(attached);
-            const response = await openai.responses.create({
-                model: 'gpt-4o-mini',
-                input: [{ role: 'user', content: parts }],
-            });
-            const text = String(response.output_text || '');
+            const text = await readIt(
+                contactsLib.extractionPrompt(item), item.fileBase64, item.file);
             const jsonMatch = text.match(/\{[\s\S]*\}/);
-            return jsonMatch ? contactsLib.findsFromExtraction(JSON.parse(jsonMatch[0])) : [];
+            // A reply that came back in no shape we recognise is a failed read, not an email
+            // with nothing in it.
+            if (!jsonMatch) return { finds: [], failed: true };
+            return { finds: contactsLib.findsFromExtraction(JSON.parse(jsonMatch[0])), failed: false };
         } catch (error) {
             console.error('Directory extraction failed:', error.message);
-            return [];
+            return { finds: [], failed: true };
         }
     }
 

@@ -260,8 +260,14 @@ describe('source guards — either box is a recipient source', () => {
     });
 
     test('the freight gates all accept Bcc OR Cc', () => {
+        // The click guard, unchanged.
         expect(freightSrc).toContain('!(enq.bcc.length || enq.cc.length) || enq.sending');
-        expect(freightSrc).toContain('((enq.bcc.length || enq.cc.length) && !enq.sending');
+        // The button's own condition moved into canSendEnquiry when a just-sent lock was added,
+        // so the guard follows it there. Cc alone must still count as a recipient: a chip that
+        // holds a whole firm goes in Cc, and requiring Bcc would grey Send out for it.
+        expect(freightSrc).toContain('return !!(enq.bcc.length || enq.cc.length) && !enq.sending');
+        // ...and both places that decide whether Send is live ask that one function.
+        expect(freightSrc.match(/canSendEnquiry\(st\)/g).length).toBeGreaterThanOrEqual(3);
     });
 
     test('the server fills its own address into To for EVERY no-To shape', () => {

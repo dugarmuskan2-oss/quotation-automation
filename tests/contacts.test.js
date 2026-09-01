@@ -2140,3 +2140,310 @@ describe('source guard — the conflict is checked BEFORE the write, not after i
     });
 
 });
+
+// ── one enquiry to a firm is ONE enquiry ─────────────────────────────────────
+
+/**
+ * "Asked 12 times" is read as twelve enquiries, and five of them makes a firm "Regular".
+ * Counting per ADDRESS made a two-person firm climb twice as fast as a one-person firm for
+ * exactly the same amount of business — and the owner has no way to correct the number.
+ */
+describe('bumpUsage counts firms, not addresses', () => {
+    function jco() {
+        return sanitizePartner({
+            id: 'p_jco', company: 'Jco Pipe',
+            people: [person('Manish', ['manish@jcopipe.com']), person('CP', ['cp@jcopipe.com'])],
+        });
+    }
+    function sri() {
+        return sanitizePartner({
+            id: 'p_sri', company: 'Sri Logistics',
+            people: [person('Ravi', ['ravi@srilogistics.com'])],
+        });
+    }
+
+    test('one enquiry Cc’d to two people at one firm counts once', () => {
+        const res = bumpUsage([jco()], {
+            emails: ['manish@jcopipe.com', 'cp@jcopipe.com'], kind: 'enquiry',
+        });
+        expect(res.contacts[0].enq).toBe(1);
+    });
+
+    test('one reply from a firm counts once, however many of its addresses are on it', () => {
+        const res = bumpUsage([jco()], {
+            emails: ['manish@jcopipe.com', 'cp@jcopipe.com'], kind: 'reply',
+        });
+        expect(res.contacts[0].rep).toBe(1);
+        expect(res.contacts[0].enq).toBe(0);
+    });
+
+    test('two firms on the same enquiry each get one — the count is not simply dropped', () => {
+        const res = bumpUsage([jco(), sri()], {
+            emails: ['manish@jcopipe.com', 'cp@jcopipe.com', 'ravi@srilogistics.com'],
+            kind: 'enquiry',
+        });
+        expect(res.contacts.map(p => p.enq)).toEqual([1, 1]);
+    });
+
+    test('two separate enquiries to the same firm are still two', () => {
+        let list = [jco()];
+        list = bumpUsage(list, { emails: ['manish@jcopipe.com', 'cp@jcopipe.com'] }).contacts;
+        list = bumpUsage(list, { emails: ['cp@jcopipe.com'] }).contacts;
+        expect(list[0].enq).toBe(2);
+    });
+
+    test('a new firm we wrote to twice in one send is offered for approval once', () => {
+        const res = bumpUsage([], { emails: ['a@vikastubes.in', 'a@vikastubes.in'] });
+        expect(res.unknown).toEqual(['a@vikastubes.in']);
+    });
+});
+
+// ── the app's own spelling for a pipe type ───────────────────────────────────
+
+describe('imported pipe types come back in the spelling the cards use', () => {
+    const { applyAddFind } = contactsLib._test;
+
+    test('the remembered "seamless" bucket becomes Seamless, not SEAMLESS', () => {
+        // partner-directory.js offers GI / ERW / Seamless / SS / MS / Alloy and checks for a
+        // duplicate letter by letter, so SEAMLESS lands on the card a second time.
+        const res = pendingFromSuggestions([], {}, {
+            byType: { seamless: [{ email: 'sales@vikastubes.in', count: 4, lastUsed: '2026-08-01' }] },
+        });
+        expect(res.items).toHaveLength(1);
+        expect(res.items[0].preview.types).toEqual(['Seamless']);
+    });
+
+    test('GI and ERW keep their capitals', () => {
+        const res = pendingFromSuggestions([], {}, {
+            byType: { gi: [{ email: 'a@vikastubes.in', count: 1 }], erw: [{ email: 'a@vikastubes.in', count: 1 }] },
+        });
+        expect(res.items[0].preview.types.sort()).toEqual(['ERW', 'GI']);
+    });
+
+    test('a type read off a brochure matches what the card already says', () => {
+        const card = { types: ['Seamless'] };
+        applyAddFind(card, { kind: 'field', key: 'types', value: 'seamless, erw' }, 'brochure');
+        expect(card.types).toEqual(['Seamless', 'ERW']);
+    });
+
+    test('a type nobody has a spelling for is kept exactly as it was written', () => {
+        const card = { types: [] };
+        applyAddFind(card, { kind: 'field', key: 'types', value: 'Boiler Tube' }, 'brochure');
+        expect(card.types).toEqual(['Boiler Tube']);
+    });
+});
+
+// ── deleting a partner is logged, and can be undone ──────────────────────────
+
+describe('deleting a partner is logged, and Undo puts the card back', () => {
+    const { removalEntry } = contactsLib;
+
+    function deleted() {
+        return sanitizePartner({
+            id: 'p_sri', company: 'Sri Logistics', city: 'Chennai',
+            notes: [{ d: '2026-01-04', t: 'Pays in 30 days' }],
+            people: [person('Ravi', ['ravi@srilogistics.com'])],
+        });
+    }
+
+    test('the entry keeps the WHOLE card, not just its name', () => {
+        const entry = removalEntry(deleted(), 'Deleted by hand');
+        expect(entry.removed).toBe(true);
+        expect(entry.title).toBe('Deleted Sri Logistics');
+        expect(entry.partnerId).toBe('p_sri');
+        expect(entry.before.city).toBe('Chennai');
+        expect(entry.before.notes[0].t).toBe('Pays in 30 days');
+        expect(entry.before.people[0].emails[0].v).toBe('ravi@srilogistics.com');
+    });
+
+    test('it says a whole card went, not "nothing measurable changed"', () => {
+        // The log describes a change by its lines. A deletion with none reads, when opened,
+        // as though the delete did nothing.
+        expect(removalEntry(deleted(), 'Deleted by hand').lines)
+            .toEqual([{ label: 'Card removed', from: 'Sri Logistics', to: 'gone from the directory' }]);
+    });
+
+    test('a card with no firm name is named by its address, never left blank', () => {
+        const entry = removalEntry(
+            sanitizePartner({ id: 'p_x', people: [person('', ['sales@vikastubes.in'])] }), 'Deleted by hand');
+        expect(entry.title).toBe('Deleted sales@vikastubes.in');
+    });
+
+    test('undo puts the deleted card back exactly as it was', () => {
+        const changes = pushChange([], removalEntry(deleted(), 'Deleted by hand'));
+        const res = undoChange([], changes, changes[0].id);
+        expect(res.ok).toBe(true);
+        expect(res.contacts).toHaveLength(1);
+        expect(res.contacts[0].id).toBe('p_sri');
+        expect(res.contacts[0].city).toBe('Chennai');
+        expect(res.contacts[0].notes[0].t).toBe('Pays in 30 days');
+        expect(res.changes[0].undone).toBe(true);
+    });
+
+    test('undo refuses when another card has since been given that address', () => {
+        // One address, one company. Putting the card back anyway would split one firm's
+        // history across two cards — the thing the whole rule exists to stop.
+        const other = sanitizePartner({
+            id: 'p_other', company: 'Other Firm', people: [person('Ravi', ['ravi@srilogistics.com'])],
+        });
+        const changes = pushChange([], removalEntry(deleted(), 'Deleted by hand'));
+        const res = undoChange([other], changes, changes[0].id);
+        expect(res.ok).toBe(false);
+        expect(res.conflict.email).toBe('ravi@srilogistics.com');
+        expect(res.conflict.company).toBe('Other Firm');
+        expect(res.contacts).toHaveLength(1);
+        expect(changes[0].undone).toBe(false);      // still there to press once the clash is cleared
+    });
+
+    test('undoing an EDIT to a card that has since been deleted says so, instead of "done"', () => {
+        const before = deleted();
+        const after = Object.assign({}, before, { city: 'Madurai' });
+        const changes = pushChange([], changeEntry('AI edit', 'brochure.pdf', 'ai', before.id, before, after));
+        const res = undoChange([], changes, changes[0].id);
+        expect(res.ok).toBe(false);
+        expect(res.missing).toBe(true);
+        expect(res.contacts).toEqual([]);
+        expect(changes[0].undone).toBe(false);
+    });
+});
+
+// ── the routes behind all three ──────────────────────────────────────────────
+
+describe('routes/contacts.js — deleting, approving and an email nobody could read', () => {
+    const express = require('express');
+    const request = require('supertest');
+    const createContactsRouter = require('../routes/contacts');
+    const { CONFIG_KEY_CONTACTS, CONFIG_KEY_CONTACTS_PENDING } = require('../utils/constants');
+
+    // Stats the APP owns: twelve enquiries, five replies, last dealt with on 30 Aug.
+    const SRI = sanitizePartner({
+        id: 'p_sri', company: 'Sri Logistics', role: 'transporter',
+        people: [person('Ravi', ['ravi@srilogistics.com'])],
+        enq: 12, rep: 5, last: '2026-08-30',
+    });
+
+    const QUEUED = {
+        id: 'pd_9', origin: 'gmail', from: 'ravi@srilogistics.com',
+        subject: 'New branch', file: 'note.pdf', kind: 'pdf', text: '',
+        finds: [{ kind: 'field', key: 'city', label: 'City', value: 'Madurai' }],
+        receivedAt: '2026-08-31T10:00:00.000Z', preview: null,
+    };
+
+    function makeApp() {
+        const blobs = {
+            [CONFIG_KEY_CONTACTS]: JSON.stringify({ contacts: [SRI], changes: [] }),
+            [CONFIG_KEY_CONTACTS_PENDING]: JSON.stringify({ items: [QUEUED] }),
+        };
+        const written = [];
+        const storage = {
+            readText: async (key) => (key in blobs ? blobs[key] : ''),
+            saveText: async (key, text) => { written.push(key); blobs[key] = text; },
+        };
+        const app = express();
+        app.use('/api', createContactsRouter({ storage, openai: null }));
+        return { app, blobs, written };
+    }
+
+    const dirOf = (blobs) => JSON.parse(blobs[CONFIG_KEY_CONTACTS]);
+
+    let savedSecret;
+    beforeEach(() => { savedSecret = process.env.INGEST_SECRET; delete process.env.INGEST_SECRET; });
+    afterEach(() => {
+        if (savedSecret === undefined) delete process.env.INGEST_SECRET;
+        else process.env.INGEST_SECRET = savedSecret;
+    });
+
+    test('approving a queued email does not roll back the counts the app keeps', async () => {
+        // The browser's copy of the card was loaded before this morning's enquiries went out.
+        // Approving one email must not carry those old numbers back over the stored ones.
+        const { app, blobs } = makeApp();
+
+        const res = await request(app).post('/api/contacts/pending/approve').send({
+            id: 'pd_9',
+            partner: Object.assign({}, SRI, { city: 'Madurai', enq: 0, rep: 0, last: '' }),
+        });
+
+        expect(res.status).toBe(200);
+        const saved = dirOf(blobs).contacts.find(p => p.id === 'p_sri');
+        expect(saved.city).toBe('Madurai');          // the reviewed change still lands
+        expect(saved.enq).toBe(12);
+        expect(saved.rep).toBe(5);
+        expect(saved.last).toBe('2026-08-30');
+    });
+
+    test('approving a card with no firm name logs its address, not "Added "', async () => {
+        const { app, blobs } = makeApp();
+
+        await request(app).post('/api/contacts/pending/approve').send({
+            id: 'pd_9', partner: { company: '', people: [person('', ['sales@vikastubes.in'])] },
+        });
+
+        expect(dirOf(blobs).changes[0].title).toBe('Added sales@vikastubes.in');
+    });
+
+    test('deleting a partner writes a change entry holding the whole card', async () => {
+        const { app, blobs } = makeApp();
+
+        const res = await request(app).post('/api/contacts/delete').send({ id: 'p_sri' });
+
+        expect(res.status).toBe(200);
+        const dir = dirOf(blobs);
+        expect(dir.contacts.map(p => p.id)).not.toContain('p_sri');
+        expect(dir.changes).toHaveLength(1);
+        expect(dir.changes[0].removed).toBe(true);
+        expect(dir.changes[0].title).toBe('Deleted Sri Logistics');
+        expect(dir.changes[0].before.enq).toBe(12);
+    });
+
+    test('and Undo puts that partner back, counts and all', async () => {
+        const { app, blobs } = makeApp();
+        await request(app).post('/api/contacts/delete').send({ id: 'p_sri' });
+        const changeId = dirOf(blobs).changes[0].id;
+
+        const res = await request(app).post('/api/contacts/change-undo').send({ id: changeId });
+
+        expect(res.status).toBe(200);
+        const back = dirOf(blobs).contacts.find(p => p.id === 'p_sri');
+        expect(back).toBeTruthy();
+        expect(back.company).toBe('Sri Logistics');
+        expect(back.enq).toBe(12);
+    });
+
+    test('deleting something that is not in the directory says so, instead of answering "done"', async () => {
+        // The Delete button also renders inside a queued email's review card, whose id is a
+        // preview id the directory has never held. It used to report success and remove nothing.
+        const { app, written } = makeApp();
+
+        const res = await request(app).post('/api/contacts/delete').send({ id: 'p_new_pd_9' });
+
+        expect(res.status).toBe(404);
+        expect(res.body.error).toContain('nothing was deleted');
+        expect(written).toEqual([]);
+    });
+
+    test('an email nobody could read is marked unread, not read-with-nothing-in-it', async () => {
+        // openai is off in this app, so the read never happened. "0 details" on its own reads
+        // as "there was nothing in that email", and the owner files it away.
+        const { app, blobs } = makeApp();
+
+        const res = await request(app).post('/api/contacts/pending')
+            .send({ from: 'sales@vikastubes.in', subject: 'Brochure', text: 'we make ERW pipes' });
+
+        expect(res.status).toBe(200);
+        expect(res.body.finds).toBe(0);
+        expect(res.body.readFailed).toBe(true);
+        expect(JSON.parse(blobs[CONFIG_KEY_CONTACTS_PENDING]).items[0].readFailed).toBe(true);
+    });
+
+    test('an email that arrives WITH its findings is not marked unread', async () => {
+        const { app } = makeApp();
+
+        const res = await request(app).post('/api/contacts/pending').send({
+            from: 'sales@vikastubes.in', subject: 'Brochure', text: 'x',
+            finds: [{ kind: 'field', key: 'company', label: 'Company', value: 'Vikas Tubes' }],
+        });
+
+        expect(res.body.finds).toBe(1);
+        expect(res.body.readFailed).toBe(false);
+    });
+});
