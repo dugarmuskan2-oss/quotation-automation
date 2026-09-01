@@ -569,6 +569,7 @@
         branches: 'The branches', types: 'The pipe types', products: 'The product range',
         rules: 'The price rules', routes: 'The routes', moq: 'The minimum order',
         vehicles: 'The vehicles', notes: 'The notes', fromEnquiry: 'The check-me flag',
+        partLoad: 'Part load',
     };
     function saveFailedWhat() {
         var named = (D.saveWhat || []).map(function (k) { return FIELD_LABEL[k]; }).filter(Boolean);
@@ -579,7 +580,7 @@
         fetch(apiBase() + '/contacts')
             .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function (d) {
-                D.contacts = d.contacts || []; D.changes = d.changes || [];
+                D.contacts = keepOpenEdits(D.contacts, d.contacts || []); D.changes = d.changes || [];
                 D.pending = keepOpenReview(D.pending, d.pending || []);
                 D.duplicates = d.duplicates || [];
                 D.loaded = true; D.loadError = '';
@@ -602,6 +603,26 @@
      * reloads in the same breath — so the reload can beat its own save home. The card being
      * reviewed right now keeps what is on screen; everything else takes the stored copy.
      */
+    /**
+     * A re-read must not throw away what is being typed. ONLY the boxes actually changed are
+     * carried across onto the fresh server copy — everything else comes from the server, so a
+     * colleague's edit to another box on the same card still lands. Carrying the whole old
+     * object across is how a stale copy overwrites a fresh one.
+     */
+    function keepOpenEdits(old, fresh) {
+        var id = S.openId;
+        if (!id || !isDirty(id)) return fresh;
+        var mine = (old || []).filter(function (x) { return x.id === id; })[0];
+        if (!mine) return fresh;
+        var fields = dirtyFields(id);
+        return (fresh || []).map(function (x) {
+            if (x.id !== id) return x;
+            var merged = Object.assign({}, x);
+            fields.forEach(function (f) { merged[f] = mine[f]; });
+            return merged;
+        });
+    }
+
     function keepOpenReview(old, fresh) {
         if (!S.openPending) return fresh;
         var mine = (old || []).filter(function (x) { return x.id === S.openPending; })[0];
@@ -675,13 +696,67 @@
     /**
      * True when it is safe to leave the open card. With unsaved boxes on it, ask first —
      * silently dropping what somebody typed is the fault this whole screen exists to avoid.
+     *
+     * The question is asked ON THE PAGE, never with window.confirm. A browser confirm() is
+     * answered "no" without showing anything in some views — and the card then simply refused
+     * to close, with nothing on screen saying why. Reported live: once opened, a card would
+     * not close. Same rule the Delete question already follows.
      */
-    function leaveCardOk() {
+    function leaveCardOk(then) {
         if (!S.openId || !isDirty(S.openId)) return true;
-        var p = byId(S.openId);
-        var n = dirtyFields(S.openId).length;
-        return window.confirm('You have ' + n + ' unsaved change' + (n === 1 ? '' : 's') + ' on '
-            + ((p && p.company) || 'this card') + '. Leave without saving?');
+        S.confirmLeave = S.openId;      // the popup does the asking, and owns the answer
+        S.leaveThen = then || null;     // ...and finishes what they were trying to do
+        render();
+        return false;
+    }
+
+    /**
+     * Plain names for the boxes, so the question names what is actually at stake.
+     * FIELD_LABEL is shared with the save-failure banner, where the name STARTS the sentence
+     * ("The city was NOT saved"). Here it sits mid-sentence, so the first letter comes down.
+     */
+    function changedBoxes(id) {
+        return dirtyFields(id).map(function (f) {
+            var name = FIELD_LABEL[f] || f;
+            return name.charAt(0).toLowerCase() + name.slice(1);
+        });
+    }
+
+    /**
+     * Close a card, whichever way the question was answered — and then do whatever they were
+     * trying to do when the question interrupted them (switch tab, open another card). Being
+     * dropped back on a blank directory having forgotten the click is its own small fault.
+     */
+    function closeCardNow() {
+        delete S.dirty[S.confirmLeave];
+        S.confirmLeave = ''; S.openId = null; S.saveNote = '';
+        var then = S.leaveThen; S.leaveThen = null;
+        if (then) then();
+        render();
+    }
+
+    // Three answers, because "leave without saving?" has two right ones and the owner should
+    // not have to close, reopen and retype to pick the other. Save-and-close is the default.
+    function leavePopupHtml() {
+        var p = S.confirmLeave ? byId(S.confirmLeave) : null;
+        if (!p) return '';
+        var boxes = changedBoxes(S.confirmLeave);
+        var busy = S.busy['save' + p.id];
+        return '<div class="pd-modal" data-pd-leavecancel="backdrop">'
+            + '<div class="pd-modal-box" role="dialog" aria-modal="true">'
+            + '<div class="pd-sec" style="margin-top:0;">' + boxes.length + ' change'
+            + (boxes.length === 1 ? '' : 's') + ' not saved</div>'
+            + '<p class="pd-muted">You changed ' + esc(boxes.join(', ')) + ' on <b>'
+            + esc(str(p.company) || allEmails(p)[0] || 'this card') + '</b> and have not pressed Save.</p>'
+            + (S.saveNote && S.saveNote !== 'Saved.'
+                ? '<p class="pd-tiny" style="color:#8C2F2F;margin-top:7px;">' + esc(S.saveNote) + '</p>' : '')
+            + (D.saveError ? '<p class="pd-tiny" style="color:#8C2F2F;margin-top:7px;">It did not save: '
+                + esc(D.saveError) + ' — the card stays open, so nothing is lost.</p>' : '')
+            + '<div class="pd-row" style="margin-top:12px;"><span class="pd-sp"></span>'
+            + '<button data-pd-leavecancel="1"' + (busy ? ' disabled' : '') + '>Keep editing</button>'
+            + '<button class="pd-danger" data-pd-leavedrop="1"' + (busy ? ' disabled' : '') + '>Close without saving</button>'
+            + '<button class="pd-prim" data-pd-leavesave="1"' + (busy ? ' disabled' : '') + '>'
+            + (busy ? 'Saving…' : 'Save and close') + '</button></div></div></div>';
     }
 
     function dirtyFields(id) { return Object.keys(S.dirty[id] || {}); }
@@ -690,14 +765,19 @@
     /** The one write path for a card you own. Nothing reaches the directory without it. */
     function saveOpenCard(id) {
         var p = byId(id);
-        if (!p || !isDirty(id) || S.busy['save' + id]) return;
-        // A card with nothing on it is not worth a row — the same rule "+ Add partner" follows.
-        if (isBlankCard(p)) { S.saveNote = 'Type a name, a person or a number first — there is nothing to save yet.'; render(); return; }
+        if (!p || !isDirty(id) || S.busy['save' + id]) return Promise.resolve(false);
+        // A card with nothing on it is not worth a row. Reachable by emptying a real card:
+        // clear the company name and the contact, and what is left is not worth storing.
+        if (isBlankCard(p)) { S.saveNote = 'Type a name, a person or a number first — there is nothing to save yet.'; render(); return Promise.resolve(false); }
         S.busy['save' + id] = true; S.saveNote = ''; render();
-        savePartner(p, dirtyFields(id)).then(function () {
+        // Resolves TRUE only when the directory really has it. "Save and close" must not
+        // close on a save that failed — that is how the typing would vanish for good.
+        return savePartner(p, dirtyFields(id)).then(function () {
             delete S.busy['save' + id];
-            if (!D.saveError) { delete S.dirty[id]; S.saveNote = 'Saved.'; }
+            var ok = !D.saveError;
+            if (ok) { delete S.dirty[id]; S.saveNote = 'Saved.'; }
             render();
+            return ok;
         });
     }
 
@@ -712,7 +792,7 @@
     var S = { tab: 'dir', filter: 'all', openId: null, openPending: null, openChange: null,
               find: { text: '', state: 'idle', need: null, note: '' }, busy: {}, add: freshAdd(),
               confirmDelete: '',     // the card whose "are you sure?" is on screen
-              dirty: {}, saveNote: '' };   // directory cards edited but not yet saved
+              dirty: {}, saveNote: '', confirmLeave: '', leaveThen: null };   // directory cards edited but not yet saved
 
     function byId(id) {
         var p = D.contacts.filter(function (x) { return x.id === id; })[0];
@@ -789,7 +869,7 @@
             + (D.loadError ? '<div class="pd-error">' + esc(D.loadError) + ' <button data-pd-reload="1">Try again</button></div>'
                 : !D.loaded ? '<p class="pd-muted" style="padding:20px;text-align:center;">Loading…</p>'
                     : S.tab === 'dir' ? dirView() : S.tab === 'add' ? addView() : changesView())
-            + deletePopupHtml();
+            + deletePopupHtml() + leavePopupHtml();
         bind(app);
         restoreFocus();
     }
@@ -847,8 +927,7 @@
         return duplicateWarningHtml()
             + finderBlock()
             + '<div class="pd-filters">' + chips + '<span class="pd-sp"></span>'
-            + (D.contacts.length ? importButtonHtml() : '')
-            + '<button class="pd-prim" data-pd-add="1">+ Add partner</button></div>'
+            + (D.contacts.length ? importButtonHtml() : '') + '</div>'
             + listHtml();
     }
 
@@ -898,14 +977,14 @@
                 + (S.imported.alreadyQueued
                     ? 'Those are already waiting for you under <b>Recent changes</b>.'
                     : 'Nothing to bring in — the app has no remembered addresses yet.') + '</p>'
-                + '<p class="pd-tiny" style="margin-top:6px;">Press <b>+ Add partner</b> to type one in, or tag a supplier’s email in Gmail with the Add-to-Directory label.</p></div>';
+                + '<p class="pd-tiny" style="margin-top:6px;">Type one in on the <b>Add</b> tab, or tag a supplier’s email in Gmail with the Add-to-Directory label.</p></div>';
         }
         return '<div class="pd-empty"><p class="pd-muted"><b>Your directory is empty.</b></p>'
             + '<p class="pd-tiny" style="margin:6px 0 10px;">The app has been quietly remembering every address you have sent an enquiry to. '
             + 'Bring those in and they wait under <b>Recent changes</b> for you to approve, one firm at a time — '
             + 'nothing is added until you say so.</p>'
             + importButtonHtml()
-            + '<p class="pd-tiny" style="margin-top:8px;">Or press <b>+ Add partner</b> to type one in.</p></div>';
+            + '<p class="pd-tiny" style="margin-top:8px;">Or type one in on the <b>Add</b> tab — a name, a number, whatever you have.</p></div>';
     }
 
     // Kept reachable at all times, not only while the directory is empty: one enquiry sent
@@ -1846,6 +1925,8 @@
     function bind(app) {
         each(app, '[data-pd-tab]', function (el) {
             el.onclick = function () {
+                // Leaving for another tab drops the open card just as surely as closing it.
+                if (!leaveCardOk(function () { el.onclick(); })) return;
                 S.tab = el.getAttribute('data-pd-tab');
                 render();
                 loadDirectory(render);   // refetch — a labelled email may have arrived meanwhile
@@ -1860,7 +1941,12 @@
         var box = $('pdFindIn');
         if (box) box.oninput = function () { S.find.text = this.value; };
         each(app, '[data-pd-goto-directory]', function (el) {
-            el.onclick = function () { S.find = { text: '', state: 'idle', need: null, note: '' }; S.filter = 'all'; render(); };
+            // Straight to the Add tab: that is where a firm is typed in, and dropping the
+            // owner on the list instead is a dead end now that the add button has gone.
+            el.onclick = function () {
+                S.find = { text: '', state: 'idle', need: null, note: '' };
+                S.filter = 'all'; S.tab = 'add'; render();
+            };
         });
         each(app, '[data-pd-find]', function (el) {
             el.onclick = function () {
@@ -1884,20 +1970,6 @@
                 if (d && d.queued) S.tab = 'changes';
                 loadDirectory(render);
             }, function () { S.importing = false; });      // released even if the import fails
-        });
-        on(app, '[data-pd-add]', function () {
-            // Nothing is written until something is typed. Saving a blank card on the click
-            // was the bug: an in-flight lock only covers the request, so a second press once
-            // it returned left a second empty row in the directory for good.
-            var blank = D.contacts.filter(isBlankCard)[0];
-            if (blank) { openCard(blank.id); return; }    // one empty card is enough
-            // A real partner gets a real id at once ('p_…'); 'p_new_' is reserved for
-            // pending-queue previews, which are never saved directly.
-            // Random suffix, not a bare timestamp: two devices adding in the same
-            // millisecond would otherwise share an id and merge into one record.
-            var p = { id: 'p_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), role: 'dealer', company: '', people: [{ name: '', role: 'Main contact', phones: [], emails: [] }], branches: [], types: [], products: [], rules: [], routes: [], notes: [], images: [], partLoad: true };
-            D.contacts.unshift(p);
-            openCard(p.id);
         });
     }
 
@@ -1943,6 +2015,8 @@
     function bindListAndCard(app) {
         each(app, '[data-pd-open]', function (el) {
             var go = function () {
+                // Opening someone else closes this one — same question, same three answers.
+                if (el.getAttribute('data-pd-open') !== S.openId && !leaveCardOk(go)) return;
                 S.openId = el.getAttribute('data-pd-open');
                 S.find.state = S.find.state === 'done' ? 'idle' : S.find.state;
                 // Reachable from a clash note on the Recent-changes tab, where the card it
@@ -1958,6 +2032,24 @@
             // Closing a card with edits in it would drop them without a word — the one thing
             // the whole save-on-blur behaviour used to prevent. Ask, and keep it open if not.
             el.onclick = function () { if (leaveCardOk()) { S.openId = null; render(); } };
+        });
+        each(app, '[data-pd-leavecancel]', function (el) {
+            el.onclick = function (e) {
+                // The dark backdrop closes the question; a click INSIDE the box must not,
+                // or reading it dismisses it.
+                if (el.getAttribute('data-pd-leavecancel') === 'backdrop' && e.target !== el) return;
+                if (S.busy['save' + S.confirmLeave]) return;
+                S.confirmLeave = ''; S.leaveThen = null; render();   // stay put, edits intact
+            };
+        });
+        on(app, '[data-pd-leavedrop]', function () {
+            if (S.busy['save' + S.confirmLeave]) return;
+            closeCardNow();                             // they were told, and chose this
+        });
+        on(app, '[data-pd-leavesave]', function () {
+            var id = S.confirmLeave;
+            if (!id || S.busy['save' + id]) return;      // one press is one save
+            saveOpenCard(id).then(function (ok) { if (ok) closeCardNow(); });
         });
         on(app, '[data-pd-save]', function () {
             saveOpenCard(app.querySelector('[data-pd-save]').getAttribute('data-pd-save'));
@@ -2493,6 +2585,8 @@
                  refreshWaitingBadge: refreshWaitingBadge,
                  markDirty: markDirty, dirtyFields: dirtyFields, isDirty: isDirty,
                  saveBarHtml: saveBarHtml, leaveCardOk: leaveCardOk, saveOpenCard: saveOpenCard,
+                 leavePopupHtml: leavePopupHtml, closeCardNow: closeCardNow,
+                 keepOpenEdits: keepOpenEdits,
                  _state: function () { return { S: S, D: D }; } },
     };
 })();

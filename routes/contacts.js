@@ -361,7 +361,7 @@ module.exports = function createContactsRouter({ storage, openai }) {
             });
         }
         if (!anthropic.isAvailable() && !openai) {
-            return res.status(500).json({ error: 'The AI reader is switched off, so nothing could be read. You can still add this firm by hand in the Directory tab.' });
+            return res.status(500).json({ error: 'The AI reader is switched off, so nothing could be read. Tag the firm’s email in Gmail with the Add-to-Directory label instead, and it will come through for approval.' });
         }
         try {
             const dir = await loadDirectory();
@@ -373,7 +373,7 @@ module.exports = function createContactsRouter({ storage, openai }) {
             // nothing here" — the owner would file it away as done and the firm never gets in.
             res.status(500).json({
                 error: 'Could not read that: ' + error.message
-                    + '. Nothing was changed — try again, or add the firm by hand in the Directory tab.',
+                    + '. Nothing was changed — try again, or tag the firm’s email in Gmail with the Add-to-Directory label.',
             });
         }
     });

@@ -779,7 +779,9 @@ describe('every way the Add tab can fail says a different thing', () => {
         const out = await shownFor(app, { text: NEW_FIRM_TEXT });
         expect(out.status).toBe(500);
         expect(out.text).toContain('AI reader is switched off');
-        expect(out.text).toContain('add this firm by hand');
+        // '+ Add partner' was the by-hand route this used to name; it has been removed, so
+        // the message must offer the route that still exists rather than a button that does not.
+        expect(out.text).toContain('Add-to-Directory label');
     });
 
     test('a reply that is not JSON fails loudly and says nothing was changed', async () => {
@@ -800,7 +802,7 @@ describe('every way the Add tab can fail says a different thing', () => {
         expect(out.status).toBe(500);
         expect(out.text).toContain('Could not read that');
         expect(out.text).toContain('Nothing was changed');
-        expect(out.text).toContain('add the firm by hand in the Directory tab');
+        expect(out.text).toContain('Add-to-Directory label');   // a way round that still exists
         expect(out.body.mode).toBeUndefined();     // never dressed up as a finished read
         expect(writes).toEqual([]);
     });

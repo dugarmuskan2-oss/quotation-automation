@@ -186,8 +186,8 @@ function mergePartner(list, incoming, fields) {
         return { contacts: contacts.slice(0, MAX_CONTACTS), partner: result, conflict: null };
     };
     // Never CREATE a card with nothing on it. Editing an existing one down to nothing is the
-    // owner's business, but a blank new row is only ever an accident — a stray "+ Add partner"
-    // press, or a client that saved before anything was typed.
+    // owner's business, but a blank new row is only ever an accident — a client that saved
+    // before anything was typed, or an import that carried nothing worth keeping.
     if (idx === -1) {
         if (partnerIsEmpty(wanted)) return { contacts, partner: null, conflict: null, empty: true };
         return settle(wanted, -1);

@@ -938,16 +938,7 @@ function sliceBetween(from, to) {
     return src.slice(a, b);
 }
 
-describe('source guard — adding a partner by hand', () => {
-    const addHandler = sliceBetween("on(app, '[data-pd-add]'", 'function bindListAndCard(');
-
-    test('the new id carries a random suffix, not a bare timestamp', () => {
-        // Two devices pressing + Add inside the same millisecond would otherwise share an
-        // id, and two partners on one id merge into each other — and delete together.
-        expect(addHandler).toMatch(/id:\s*'p_'\s*\+\s*Date\.now\(\)\.toString\(36\)\s*\+\s*Math\.random\(\)\.toString\(36\)\.slice\(/);
-        expect(addHandler).not.toMatch(/id:\s*'p_'\s*\+\s*Date\.now\(\)\s*[,}]/);
-    });
-
+describe('source guard — saving a partner by hand', () => {
     test('typing on a card in the directory writes NOTHING — Save is the only write', () => {
         // The rule the owner asked for: save as you type while REVIEWING, an explicit Save in
         // the directory. So the field handler only marks what changed; the write lives behind
@@ -968,21 +959,29 @@ describe('source guard — adding a partner by hand', () => {
         expect(fn).toContain('savePartner(p, dirtyFields(id))');
     });
 
-    test('pressing it does not write anything — there is nothing to write yet', () => {
-        // The old code saved a blank card on the click and guarded the double-press with an
-        // in-flight lock. A lock only covers the request: press it again once that returned
-        // and a SECOND empty row was written, permanently. Reported live by the owner.
-        // Now the click is local-only, so there is no request to double up.
-        expect(addHandler).not.toContain('savePartner(p)');
-        expect(addHandler).toContain('D.contacts.unshift(p);');
+    test('the button that made blank cards is gone, and nothing still points at it', () => {
+        // Asked for directly: "remove add partner". A removal is not finished while the page
+        // still tells the owner to press it — that reads as a broken app, not a tidied one.
+        expect(src).not.toContain('data-pd-add="1"');
+        expect(src).not.toContain("on(app, '[data-pd-add]'");
+        expect(src).not.toContain('+ Add partner');
+        const routes = fs.readFileSync(path.join(__dirname, '..', 'routes', 'contacts.js'), 'utf8');
+        expect(routes).not.toContain('by hand in the Directory tab');
+    });
+
+    test('the "nobody fits" dead end sends them to the Add tab, not the empty list', () => {
+        // That button used to walk to the list the + Add partner button sat on. Left as it
+        // was, it now drops the owner on a list with no way to add anybody.
+        const fn = sliceBetween("each(app, '[data-pd-goto-directory]'", "each(app, '[data-pd-find]'");
+        expect(fn).toContain("S.tab = 'add';");
     });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// + Add partner — behavioural: press it as many times as you like
+// The blank-card rule, which outlived the button that made blank cards
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('+ Add partner — nothing is stored until something is typed', () => {
+describe('an emptied card is never stored as a blank row', () => {
     const { S } = _state();
     let realGetElementById;
     let app;
@@ -1031,27 +1030,24 @@ describe('+ Add partner — nothing is stored until something is typed', () => {
         setContacts([]);
     });
 
-    const press = () => app.querySelectorAll('[data-pd-add]')[0].onclick();
-
-    test('three presses leave ONE blank card, and nothing is sent to the server', async () => {
+    /** Open a real card, the only way in now that "+ Add partner" has gone. */
+    const openReal = async (p) => {
+        FETCH = (url, opts) => {
+            if (opts && opts.method === 'POST') { posts.push(url); return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) }); }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ contacts: [p], changes: [], pending: [], duplicates: [] }) });
+        };
         global.window.switchToDirectoryTab();
         await flush();
-
-        press(); press(); press();
+        S.openId = p.id;
+        global.window.switchToDirectoryTab();
         await flush();
+    };
 
-        expect(D.contacts).toHaveLength(1);
-        expect(posts).toEqual([]);          // the card exists on screen only
-        expect(S.openId).toBe(D.contacts[0].id);
-    });
-
-    test('a new person shows one phone box and one email box, with + for more', async () => {
+    test('a person with no numbers on them shows one phone box and one email box, with + for more', async () => {
         // Asked for directly: typing a number should not start with hunting for a "+ phone"
         // button. One of each is there from the start.
-        global.window.switchToDirectoryTab();
-        await flush();
-        press();
-        await flush();
+        await openReal(partner({ id: 'p_bare', company: 'Bare Traders',
+            people: [{ name: 'Ravi', role: '', phones: [], emails: [] }] }));
 
         const html = app.innerHTML;
         expect((html.match(/data-pd-ph="0"/g) || []).length).toBeGreaterThan(0);
@@ -1062,18 +1058,6 @@ describe('+ Add partner — nothing is stored until something is typed', () => {
         expect(html).not.toContain('data-pd-ph="1"');
         expect(html).not.toContain('data-pd-em="1"');
         // and the empty pair is NOT what gets stored
-        expect(posts).toEqual([]);
-    });
-
-    test('the blank pair does not make an empty card look filled in', async () => {
-        // The rows are added for the eye only. If they counted as content, pressing Add twice
-        // would be back to stacking empty rows, and the server would store them.
-        global.window.switchToDirectoryTab();
-        await flush();
-        press(); await flush();
-        press(); await flush();
-
-        expect(D.contacts).toHaveLength(1);
         expect(posts).toEqual([]);
     });
 
@@ -1102,45 +1086,39 @@ describe('+ Add partner — nothing is stored until something is typed', () => {
         expect(app.innerHTML).toContain('4428000002');
     });
 
-    test('a blank card left over from before is reused, not added beside', async () => {
-        // The old bug already put empty rows in real directories. Pressing Add should tidy
-        // one of those up rather than stack another on top of it.
-        const leftover = partner({ id: 'p_blank', company: '', people: [{ name: '', role: '', phones: [], emails: [] }] });
-        FETCH = (url, opts) => {
-            if (opts && opts.method === 'POST') { posts.push(url); return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) }); }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve({ contacts: [leftover], changes: [], pending: [], duplicates: [] }) });
-        };
-        global.window.switchToDirectoryTab();
+    test('an emptied card cannot be saved back as a blank row', async () => {
+        // + Add partner has gone, but a card can still be emptied by hand: clear the company
+        // name and the one contact, press Save, and an empty row would go into the directory.
+        // This is the remaining reason isBlankCard exists.
+        const { saveOpenCard } = global.window.partnerDirectory._test;
+        const emptied = partner({ id: 'p_blank', company: '', people: [{ name: '', role: '', phones: [], emails: [] }] });
+        await openReal(emptied);
+        S.dirty = { p_blank: { company: true } };
+
+        await saveOpenCard('p_blank');
         await flush();
 
-        press();
-        await flush();
-
-        expect(D.contacts).toHaveLength(1);
-        expect(S.openId).toBe('p_blank');
+        expect(posts.filter((u) => String(u).indexOf('/contacts/save') !== -1)).toEqual([]);
+        expect(S.saveNote).toContain('nothing to save yet');
     });
 
-    test('a card with a person on it is NOT treated as blank', async () => {
-        // The guard must look at every way a card can be worth keeping, or pressing Add
-        // would hijack a real partner whose company name simply is not filled in yet.
+    test('a card with a person on it is NOT blank, and saves normally', async () => {
+        // The guard must look at every way a card can be worth keeping, or a real partner
+        // whose company name is simply not filled in yet could never be saved at all.
+        const { saveOpenCard } = global.window.partnerDirectory._test;
         const named = partner({ id: 'p_real', company: '', people: [{ name: 'Ravi', role: '', phones: [], emails: [] }] });
-        FETCH = (url, opts) => {
-            if (opts && opts.method === 'POST') { posts.push(url); return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) }); }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve({ contacts: [named], changes: [], pending: [], duplicates: [] }) });
-        };
-        global.window.switchToDirectoryTab();
+        await openReal(named);
+        S.dirty = { p_real: { people: true } };
+
+        await saveOpenCard('p_real');
         await flush();
 
-        press();
-        await flush();
-
-        expect(D.contacts).toHaveLength(2);           // a fresh blank, beside the real one
-        expect(S.openId).not.toBe('p_real');
+        expect(posts.filter((u) => String(u).indexOf('/contacts/save') !== -1)).toHaveLength(1);
     });
 });
 
 describe('source guard — importing remembered addresses', () => {
-    const importHandler = sliceBetween("on(app, '[data-pd-import]'", "on(app, '[data-pd-add]'");
+    const importHandler = sliceBetween("on(app, '[data-pd-import]'", 'function bindListAndCard(');
 
     test('the lock is released whether the import succeeds OR fails', () => {
         // A second click re-runs the whole import: every remembered address added twice.
@@ -1458,7 +1436,7 @@ describe('the partner directory refuses a duplicate address before Approve is pr
     test('a clean directory shows no duplicate banner at all', async () => {
         // The negative that stops the banner becoming wallpaper nobody reads.
         const html = await open({ contacts: [KALP, SRI], duplicates: [] }, 'dir');
-        expect(html).toContain('data-pd-add');                       // the page really rendered
+        expect(html).toContain('data-pd-filter="all"');              // the page really rendered
         expect(html).not.toContain('The same address is on more than one card.');
     });
 });
@@ -2363,14 +2341,14 @@ describe('a directory card holds your typing until you press Save', () => {
      * looks stored and is not. So the count of unsaved boxes, and the ask before leaving,
      * are pinned as hard as the write itself.
      */
-    const { markDirty, dirtyFields, isDirty, saveBarHtml, leaveCardOk, saveOpenCard } =
-        global.window.partnerDirectory._test;
+    const { markDirty, dirtyFields, isDirty, saveBarHtml, leaveCardOk, saveOpenCard,
+            leavePopupHtml, closeCardNow } = global.window.partnerDirectory._test;
     const { S } = _state();
     let POSTS;
 
     beforeEach(() => {
         POSTS = [];
-        S.dirty = {}; S.saveNote = ''; S.busy = {}; S.openId = null;
+        S.dirty = {}; S.saveNote = ''; S.busy = {}; S.openId = null; S.confirmLeave = '';
         D.contacts = []; D.saveError = '';
         FETCH = (url, opt) => {
             POSTS.push({ url: String(url), body: JSON.parse((opt && opt.body) || '{}') });
@@ -2438,20 +2416,240 @@ describe('a directory card holds your typing until you press Save', () => {
         expect(saveBarHtml(p)).not.toContain('Saved.');
     });
 
-    test('closing a card with unsaved boxes asks first', () => {
+    test('closing a card with unsaved boxes asks ON THE PAGE, not with a browser box', () => {
+        // Reported live: "once opened, a card isn't closing". window.confirm was being
+        // answered "no" without ever appearing, so the card silently refused to close and
+        // nothing on screen said why. The question is now a popup, like Delete's.
         const p = partner({ id: 'x5', company: 'Sri Steel' });
         D.contacts = [p];
         S.openId = 'x5';
-        expect(leaveCardOk()).toBe(true);            // clean card, no question
+
+        window.confirm = () => { throw new Error('a browser dialog must never be used here'); };
+        expect(leaveCardOk()).toBe(true);             // clean card — closes with no question
+        expect(S.confirmLeave).toBeFalsy();
 
         markDirty(p, ['city']);
-        const asked = [];
-        window.confirm = (m) => { asked.push(m); return false; };
-        expect(leaveCardOk()).toBe(false);           // said no — stay put
-        expect(asked[0]).toContain('1 unsaved change');
-        expect(asked[0]).toContain('Sri Steel');
+        expect(leaveCardOk()).toBe(false);            // dirty — held open, popup raised
+        expect(S.confirmLeave).toBe('x5');
 
-        window.confirm = () => true;
-        expect(leaveCardOk()).toBe(true);            // said yes — let them go
+        const html = leavePopupHtml();
+        expect(html).toContain('1 change not saved');
+        expect(html).toContain('the city');           // names the box, not "field: city"
+        expect(html).toContain('Sri Steel');
+        expect(html).toContain('data-pd-leavesave');   // Save and close
+        expect(html).toContain('data-pd-leavedrop');   // Close without saving
+        expect(html).toContain('data-pd-leavecancel'); // Keep editing
+    });
+
+    test('the popup names every box that was changed', () => {
+        const p = partner({ id: 'x6', company: 'Sri Steel' });
+        D.contacts = [p];
+        S.openId = 'x6';
+        markDirty(p, ['city', 'people', 'moq']);
+        leaveCardOk();
+
+        const html = leavePopupHtml();
+        expect(html).toContain('3 changes not saved');
+        expect(html).toContain('the city');
+        expect(html).toContain('the contacts');   // the app's own word for them
+        expect(html).toContain('the minimum order');
+    });
+
+    test('"Save and close" does NOT close when the save fails', async () => {
+        // The whole point of asking. Closing on a failed save loses the typing for good,
+        // and the card would have looked saved on the way out.
+        const p = partner({ id: 'x7', company: 'Sri Steel' });
+        D.contacts = [p];
+        S.openId = 'x7';
+        markDirty(p, ['city']);
+        leaveCardOk();
+        FETCH = () => Promise.reject(new Error('offline'));
+
+        const closed = await saveOpenCard('x7');
+        await flush(); await flush();
+
+        expect(closed).toBe(false);                   // so the handler does not close
+        expect(isDirty('x7')).toBe(true);
+        expect(leavePopupHtml()).toContain('It did not save');
+    });
+
+    test('"Save and close" closes once the directory really has it', async () => {
+        const p = partner({ id: 'x8', company: 'Sri Steel', city: 'Hosur' });
+        D.contacts = [p];
+        S.openId = 'x8';
+        markDirty(p, ['city']);
+        leaveCardOk();
+
+        const ok = await saveOpenCard('x8');
+        await flush();
+        expect(ok).toBe(true);
+        closeCardNow();
+
+        expect(S.openId).toBeNull();
+        expect(S.confirmLeave).toBe('');
+        expect(isDirty('x8')).toBe(false);
+        expect(leavePopupHtml()).toBe('');            // and the question is gone with it
+    });
+
+    test('"Close without saving" throws the edit away — but only when asked to', () => {
+        const p = partner({ id: 'x9', company: 'Sri Steel' });
+        D.contacts = [p];
+        S.openId = 'x9';
+        markDirty(p, ['city']);
+        leaveCardOk();
+        expect(S.openId).toBe('x9');                  // still open while the question stands
+
+        closeCardNow();
+        expect(S.openId).toBeNull();
+        expect(isDirty('x9')).toBe(false);
+        expect(POSTS.filter((r) => r.url.indexOf('/contacts/save') !== -1)).toHaveLength(0);
+    });
+});
+
+describe('every way out of a card asks the same question', () => {
+    /**
+     * Closing the card was only ONE way to walk away from unsaved typing. Found by driving
+     * the real page: switching tab left the card dirty and went anyway, and a re-read of the
+     * directory replaced the whole list — so the box went empty while the bar still said
+     * "1 change not saved yet". Both of those lose work silently, which is the exact fault
+     * the Save button was added to prevent.
+     */
+    const { markDirty, isDirty, leaveCardOk, closeCardNow, keepOpenEdits, leavePopupHtml } =
+        global.window.partnerDirectory._test;
+    const { S } = _state();
+
+    beforeEach(() => {
+        S.dirty = {}; S.saveNote = ''; S.busy = {}; S.openId = null;
+        S.confirmLeave = ''; S.leaveThen = null; S.tab = 'dir';
+        D.contacts = []; D.saveError = '';
+    });
+
+    test('a re-read keeps the box being typed in, and takes the rest from the server', () => {
+        const mine = partner({ id: 'm1', company: 'Sri Steel', city: 'Hosur', moq: 0 });
+        D.contacts = [mine];
+        S.openId = 'm1';
+        markDirty(mine, ['city']);                     // only the city was touched
+
+        // What the server sends back: someone else filled in the minimum order meanwhile.
+        const fromServer = [partner({ id: 'm1', company: 'Sri Steel', city: '', moq: 25 })];
+        const merged = keepOpenEdits(D.contacts, fromServer);
+
+        expect(merged[0].city).toBe('Hosur');          // the typing survived
+        expect(merged[0].moq).toBe(25);                // the colleague's edit still landed
+    });
+
+    test('a re-read leaves a card alone once it is saved', () => {
+        const mine = partner({ id: 'm2', company: 'Sri Steel', city: 'Hosur' });
+        D.contacts = [mine];
+        S.openId = 'm2';                                // open, but nothing unsaved on it
+        const fromServer = [partner({ id: 'm2', company: 'Sri Steel', city: 'Chennai' })];
+        expect(keepOpenEdits(D.contacts, fromServer)[0].city).toBe('Chennai');
+    });
+
+    test('a re-read never touches a card that is not the one open', () => {
+        const a = partner({ id: 'm3', company: 'A', city: 'Hosur' });
+        const b = partner({ id: 'm4', company: 'B', city: 'Salem' });
+        D.contacts = [a, b];
+        S.openId = 'm3';
+        markDirty(a, ['city']);
+        const fromServer = [partner({ id: 'm3', company: 'A', city: '' }),
+                            partner({ id: 'm4', company: 'B', city: 'Trichy' })];
+        const merged = keepOpenEdits(D.contacts, fromServer);
+        expect(merged[0].city).toBe('Hosur');
+        expect(merged[1].city).toBe('Trichy');         // the other card is the server's
+    });
+
+    test('switching tab with unsaved typing asks, and then finishes the switch', () => {
+        const p = partner({ id: 'm5', company: 'Sri Steel' });
+        D.contacts = [p];
+        S.openId = 'm5';
+        markDirty(p, ['city']);
+
+        let switched = false;
+        expect(leaveCardOk(() => { switched = true; })).toBe(false);   // held
+        expect(S.confirmLeave).toBe('m5');
+        expect(switched).toBe(false);                  // and it did NOT go anyway
+
+        closeCardNow();                                // "Close without saving"
+        expect(switched).toBe(true);                   // the click they made still happens
+        expect(S.openId).toBeNull();
+        expect(isDirty('m5')).toBe(false);
+    });
+
+    test('"Keep editing" forgets where they were going, so the next answer cannot run it', () => {
+        const p = partner({ id: 'm6', company: 'Sri Steel' });
+        D.contacts = [p];
+        S.openId = 'm6';
+        markDirty(p, ['city']);
+
+        let ran = 0;
+        leaveCardOk(() => { ran += 1; });
+        S.confirmLeave = ''; S.leaveThen = null;       // what "Keep editing" does
+        expect(leavePopupHtml()).toBe('');
+
+        // They carry on, then close properly this time. The old errand must not fire.
+        leaveCardOk();
+        closeCardNow();
+        expect(ran).toBe(0);
+    });
+
+    test('a clean card lets every way out through without a word', () => {
+        const p = partner({ id: 'm7', company: 'Sri Steel' });
+        D.contacts = [p];
+        S.openId = 'm7';
+        let went = false;
+        expect(leaveCardOk(() => { went = true; })).toBe(true);
+        expect(S.confirmLeave).toBeFalsy();
+        expect(went).toBe(false);   // the caller runs its own errand when it gets true
+    });
+});
+
+describe('source guard — the WIRING of the unsaved-work question', () => {
+    /**
+     * The behavioural tests above call keepOpenEdits, saveOpenCard and leaveCardOk directly.
+     * Every one of them passed with the wiring ripped out — five mutations escaped clean:
+     * the merge not called from loadDirectory, the tab and open-card handlers not asking,
+     * "Save and close" closing on a failed save, "Keep editing" leaving the errand armed.
+     *
+     * A helper that nothing calls is not a feature. These pin the call sites.
+     */
+
+    test('loadDirectory really runs the merge — a plain overwrite is the original bug', () => {
+        const fn = sliceBetween('function loadDirectory(then)', 'function keepOpenEdits');
+        expect(fn).toContain('D.contacts = keepOpenEdits(D.contacts, d.contacts || []);');
+        expect(fn).not.toMatch(/D\.contacts = d\.contacts \|\| \[\];/);
+    });
+
+    test('the tab buttons ask before walking off an unsaved card', () => {
+        const fn = sliceBetween("each(app, '[data-pd-tab]'", "each(app, '[data-pd-filter]'");
+        expect(fn).toContain('if (!leaveCardOk(');
+        // and the switch happens AFTER the question, not before it
+        expect(fn.indexOf('leaveCardOk')).toBeLessThan(fn.indexOf("S.tab = el.getAttribute('data-pd-tab')"));
+    });
+
+    test('opening another card asks before abandoning the one being typed in', () => {
+        const fn = sliceBetween("each(app, '[data-pd-open]'", "each(app, '[data-pd-close]'");
+        expect(fn).toContain("!== S.openId && !leaveCardOk(go)) return;");
+        // Re-clicking the card you are ALREADY in must not raise the question about itself.
+        expect(fn).toContain("el.getAttribute('data-pd-open') !== S.openId");
+    });
+
+    test('"Save and close" closes only on the promise resolving TRUE', () => {
+        const fn = sliceBetween("on(app, '[data-pd-leavesave]'", "on(app, '[data-pd-save]'");
+        expect(fn).toContain('saveOpenCard(id).then(function (ok) { if (ok) closeCardNow(); });');
+        expect(fn).toContain("if (!id || S.busy['save' + id]) return;");   // one press, one save
+    });
+
+    test('"Keep editing" clears the errand as well as the question', () => {
+        const fn = sliceBetween("each(app, '[data-pd-leavecancel]'", "on(app, '[data-pd-leavedrop]'");
+        expect(fn).toContain("S.confirmLeave = ''; S.leaveThen = null;");
+        // the backdrop closes it; a click inside the box must not
+        expect(fn).toContain("=== 'backdrop' && e.target !== el) return;");
+    });
+
+    test('"Close without saving" is the only answer that throws typing away', () => {
+        const fn = sliceBetween("on(app, '[data-pd-leavedrop]'", "on(app, '[data-pd-leavesave]'");
+        expect(fn).toContain('closeCardNow();');
+        expect(fn).not.toContain('savePartner');
     });
 });
