@@ -1458,3 +1458,74 @@ describe('layout — the floating tool switcher must not cover the page', () => 
         expect(mobile).not.toMatch(/#quotationApp,\s*#weightCalculatorApp[^{]*\{[^}]*padding-bottom/);
     });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Where the pipes are actually going
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('readEnquiry — the delivery town, and enquiries that name no pipe family', () => {
+    test('the town after "Delivery:" beats the town in the customer\'s letterhead', () => {
+        // It used to take whichever known town came first in a fixed internal list, and
+        // Chennai is first — so the sender's own address won almost every enquiry, and every
+        // Chennai dealer got "right by the site" (+35) for a delivery to Hosur.
+        // The letterhead is FIRST here, the way a real email arrives — which is what pins the
+        // rule. With Chennai appearing later, "whichever comes first in the text" would give
+        // the right answer by accident and prove nothing.
+        const need = readEnquiry(
+            'SK Constructions, Ambattur, Chennai 600053\n\n'
+            + 'Please send your best rates:\n2" NB medium GI 1200 mtrs, 3" NB heavy GI 800 mtrs.\n'
+            + 'Delivery: Hosur.\nRegards, Balaji');
+        expect(need.site).toBe('Hosur');
+        expect(need.siteAssumed).toBe(false);
+    });
+
+    test('when an enquiry corrects itself, the LAST delivery line is the one that counts', () => {
+        // A customer writing "delivery Salem — sorry, deliver to Hosur" means Hosur. Taking
+        // the first delivery mention would quote freight to the wrong town, and the read-back
+        // would look perfectly correct while doing it.
+        const need = readEnquiry(
+            '2" NB medium GI 1200 mtrs.\nDelivery: Salem.\n'
+            + 'Correction — please deliver to Hosur instead.');
+        expect(need.site).toBe('Hosur');
+    });
+
+    test('a town it cannot measure is NAMED, not silently replaced by Chennai', () => {
+        // The wording was the harm: "Chennai — assumed, no place named" over an enquiry that
+        // said Tirupur plainly gave the owner a reason not to double-check.
+        const need = readEnquiry('Please quote 500 mtrs of 4" GI heavy pipes to be delivered at Tirupur site');
+        expect(need.siteUnknown).toBe('Tirupur');
+    });
+
+    test('and nobody is scored as being near a town we cannot place', () => {
+        // Otherwise a Chennai dealer is handed "right by the site" for a delivery 400 km away.
+        setContacts([
+            partner({ company: 'ChennaiCo', city: 'Chennai', types: ['GI'] }),
+            partner({ company: 'FarCo', city: 'Delhi', types: ['GI'] }),
+        ]);
+        const rows = rankFor('material', readEnquiry('500 mtrs of 4" GI heavy delivered at Tirupur site'));
+        expect(rows[0].score).toBe(rows[1].score);
+        expect(reasonMatching(rowFor(rows, 'ChennaiCo'), /right by the site/)).toBeNull();
+        expect(reasonMatching(rowFor(rows, 'ChennaiCo'), /not a town I can measure/)).not.toBeNull();
+    });
+
+    test('a plainly named town still reads normally, and from/to still work', () => {
+        // Both directions: a guard that just stopped reading places would pass the tests above.
+        expect(readEnquiry('300 mtr of 2 inch ERW medium, delivery at Chennai').site).toBe('Chennai');
+        const freight = readEnquiry('lorry from Chennai to Madurai, 12 MT');
+        expect(freight.pickup).toBe('Chennai');
+        expect(freight.site).toBe('Madurai');
+    });
+
+    test('an enquiry that never spells out GI or ERW is still an enquiry', () => {
+        // It used to fall out of the finder entirely and become a literal text search, with
+        // the whole pasted email printed back as the search term.
+        expect(readEnquiry('Dear Sir, kindly quote for 20 MT pipes, delivery at Erode').empty).toBe(false);
+        expect(readEnquiry('Kindly send your best offer for IS 1239 heavy class pipes, 2 inch, 300 metres').empty).toBe(false);
+    });
+
+    test('but a short name typed to look someone up still searches by name', () => {
+        // The other half. Without this the name-search box would never work again.
+        expect(readEnquiry('Annai Steel Traders').empty).toBe(true);
+        expect(readEnquiry('').empty).toBe(true);
+    });
+});

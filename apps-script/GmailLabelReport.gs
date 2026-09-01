@@ -509,6 +509,16 @@ function dailyLabelReport() {
     buildEnquiryAcknowledger_()
   );
 
+  // ...and the same run sweeps anything tagged Add to Directory into the app's waiting list.
+  // Without this the label was decoration: the worker existed, nothing called it, and the
+  // directory said "Nothing waiting" forever while telling the owner it was watching.
+  // Deliberately fail-soft — a directory hiccup must not take the whole report down with it.
+  try {
+    sendDirectoryEmailsToApp();
+  } catch (e) {
+    Logger.log('Add to Directory sweep failed: ' + (e.message || String(e)));
+  }
+
   // Label the enquiries WE sent out, so they are findable in Gmail. Done here rather than from the
   // app because GmailApp already has full Gmail access — the app's OAuth token would need the
   // gmail.modify scope and a re-consent. The trade-off is timing: labels appear when this report
@@ -609,6 +619,28 @@ function createQuotationsFromLatest() {
  * Button handler for "Create Quotations". Use when emails arrive after the
  * report was generated. Processes labeled emails from last report end to now.
  */
+/**
+ * Send anything tagged "Quotation Automation/Add to Directory" to the app's waiting list.
+ *
+ * The worker (sendDirectoryEmailsToApp, in SendDirectoryEmailsToApp.gs) has always been
+ * there; nothing ever called it. A menu item and the sweep at the end of Run Report are what
+ * make the label real — before this, tagging a brochure did nothing at all.
+ */
+function runAddToDirectoryNow() {
+  SpreadsheetApp.getActive().toast('Reading emails tagged Add to Directory…');
+  var sent;
+  try {
+    sent = sendDirectoryEmailsToApp();
+  } catch (e) {
+    showReportCompleteAlert('Error: ' + (e.message || String(e)), true);
+    throw e;
+  }
+  var msg = typeof sent === 'number'
+    ? 'Sent ' + sent + ' email(s) to the directory — approve them under Recent changes.'
+    : 'Nothing new tagged Add to Directory.';
+  SpreadsheetApp.getActive().toast(msg, 'Add to Directory', 8);
+}
+
 function runCreateQuotationsNow() {
   SpreadsheetApp.getActive().toast('Creating quotations from latest labeled emails…');
   let created;
@@ -640,6 +672,10 @@ function onOpen() {
   ui.createMenu('Gmail Report')
     .addItem('Run Report', 'runReportNow')
     .addItem('Create Quotations', 'runCreateQuotationsNow')
+    // sendDirectoryEmailsToApp existed for weeks with nothing calling it, so a brochure
+    // tagged "Add to Directory" never arrived and Recent changes said "Nothing waiting"
+    // forever — underneath a line claiming the label was being watched.
+    .addItem('Add to Directory', 'runAddToDirectoryNow')
     .addToUi();
   ensureCreateQuotationsButton_();
 }

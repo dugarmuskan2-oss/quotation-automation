@@ -239,19 +239,78 @@
         if (!types.length && ctx.type) types.push(ctx.type);
         var kgTotal = merged.reduce(function (s, li) { return s + (li.kg || 0); }, 0);
         if (!kgTotal) { var q = readQty(t); if (q.kind === 'T') kgTotal = q.val * 1000; else if (q.kind === 'kg') kgTotal = q.val; }
-        var pickup = '', site = '';
-        Object.keys(COORD).forEach(function (c) {
-            var i = t.indexOf(' ' + c.toLowerCase());
-            if (i === -1) return;
-            if (/(from|ex)[\s-]*$/.test(t.slice(0, i + 1))) pickup = pickup || c; else site = site || c;
-        });
-        var siteAssumed = !site;
+        // `raw` as well as `t`: spotting a town the table does not hold leans on the capital
+        // letter the customer typed, and `t` has already been lowercased.
+        var place = readPlaces(t, raw);
         return {
-            items: merged, types: types, site: site || HOME, siteAssumed: siteAssumed, pickup: pickup,
+            items: merged, types: types,
+            site: place.site || HOME, siteAssumed: !place.site, pickup: place.pickup,
+            // A place was named that the distance table has never heard of. Saying "no place
+            // named" there was the harm: it gave a reason NOT to check, and then handed a
+            // Chennai dealer "right by the site" for a delivery 400 km away.
+            siteUnknown: place.unknown,
             tons: kgTotal / 1000, known: kgTotal > 0,
-            freight: /transport|freight|lorry|truck|part load|full load/.test(t) || !!pickup,
-            empty: !types.length && !pickup && !/transport|freight|lorry|truck/.test(t),
+            freight: /transport|freight|lorry|truck|part load|full load/.test(t) || !!place.pickup,
+            empty: looksLikeNothing(t, types, place.pickup),
         };
+    }
+
+    // Words that mean "this is where it goes", so the town beside one of them wins over the
+    // town in the customer's letterhead. Chennai used to win almost every enquiry simply by
+    // being first in the table.
+    var DELIVERY_WORDS = /(deliver(y|ed)?|despatch|dispatch|ship(ped|ment)?|site|destination|unload|to)\b[^a-z0-9]{0,12}$/i;
+    var PICKUP_WORDS = /\b(from|ex|pick\s*up|loading)\b[^a-z0-9]{0,12}$/i;
+
+    /**
+     * Where it is going, and where it is coming from.
+     *
+     * Every known town is found, each tagged by the words just before it, and a town that
+     * FOLLOWS a delivery word wins — the last one, because an enquiry that corrects itself
+     * ("delivery Hosur, not Salem") means the later word. Only if nothing is tagged does it
+     * fall back to the first town mentioned, which is what it always used to do.
+     */
+    function readPlaces(text, raw) {
+        var t = ' ' + lower(text) + ' ';
+        var hits = [];
+        Object.keys(COORD).forEach(function (c) {
+            var needle = ' ' + lower(c), from = 0, i;
+            while ((i = t.indexOf(needle, from)) !== -1) {
+                hits.push({ city: c, at: i, lead: t.slice(Math.max(0, i - 24), i + 1) });
+                from = i + needle.length;
+            }
+        });
+        hits.sort(function (a, b) { return a.at - b.at; });
+        var delivery = hits.filter(function (h) { return DELIVERY_WORDS.test(h.lead); });
+        var pickups = hits.filter(function (h) { return PICKUP_WORDS.test(h.lead); });
+        var site = delivery.length ? delivery[delivery.length - 1].city
+            : (hits.filter(function (h) { return !PICKUP_WORDS.test(h.lead); })[0] || {}).city || '';
+        return {
+            site: site,
+            pickup: pickups.length ? pickups[0].city : '',
+            unknown: site ? '' : unknownPlaceNamed(raw || text),
+        };
+    }
+
+    /**
+     * A place-shaped word sitting right after "delivery at …" that the table does not hold.
+     * Only 24 towns are in it, so this is the common case, not the rare one.
+     */
+    function unknownPlaceNamed(text) {
+        var m = /(?:deliver(?:y|ed)?|despatch|dispatch|ship(?:ment)?)\s*(?:at|to|in)?\s*[:\-]?\s*([A-Z][a-zA-Z]{2,})/
+            .exec(String(text || ''));
+        return m ? m[1] : '';
+    }
+
+    /**
+     * Is there really no enquiry here — or just no pipe family spelled out?
+     *
+     * "kindly quote for 20 MT pipes, delivery at Erode" names no family, and the whole email
+     * was being used as a search term against company names. Anything long, or carrying
+     * numbers, is an enquiry worth ranking even when the family is unstated.
+     */
+    function looksLikeNothing(t, types, pickup) {
+        if (types.length || pickup || /transport|freight|lorry|truck/.test(t)) return false;
+        return t.length < 80 && !/\d/.test(t);
     }
 
     // ── Ranking: rules with a sentence per point ──────────────────────────────
@@ -310,6 +369,12 @@
     // otherwise an untouched card outranks one you took the trouble to fill in, and the
     // directory quietly rewards leaving it blank. Unknown sits between near and far.
     function scoreDistance(p, need, why) {
+        // A town we cannot place must not hand every Chennai dealer "right by the site". No
+        // distance is known, so distance scores nothing — for everyone equally.
+        if (need.siteUnknown) {
+            why.push(['warn', need.siteUnknown + ' is not a town I can measure — distance not scored']);
+            return 0;
+        }
         var site = matchCity(need.site) || need.site;
         var nb = nearestBranch(p, site);
         if (!nb) { why.push(['warn', 'No city on their card — add one and this ranks properly']); return -5; }
@@ -600,7 +665,13 @@
         }).join('');
         tags += '<span class="pd-tag">' + (need.known ? 'Total: <b>' + need.tons.toFixed(2) + ' T</b>' : '<b>No weight worked out</b> — minimums not checked') + '</span>';
         if (need.pickup) tags += '<span class="pd-tag">From: <b>' + esc(need.pickup) + '</b></span>';
-        tags += '<span class="pd-tag">Deliver to: <b>' + esc(need.site) + '</b>' + (need.siteAssumed ? ' — assumed, no place named' : '') + '</span>';
+        // Three different things, and they used to read as one. "No place named" told the
+        // owner not to bother checking, over an enquiry that named Tirupur plainly.
+        tags += need.siteUnknown
+            ? '<span class="pd-tag">Deliver to: <b>' + esc(need.siteUnknown) + '</b>'
+                + ' — not a town I can measure, so distance was left out of the scoring</span>'
+            : '<span class="pd-tag">Deliver to: <b>' + esc(need.site) + '</b>'
+                + (need.siteAssumed ? ' — <b>assumed</b>, no place named' : '') + '</span>';
         return '<p class="pd-tiny" style="margin-bottom:6px;">What was understood — correct the text and ask again if this is wrong:</p>' + tags;
     }
 
@@ -1122,7 +1193,8 @@
             + (D.pending.length ? ' <span class="pd-pill pd-pill-warn">' + D.pending.length + '</span>' : '') + '</div>'
             + '<div class="pd-read" style="margin-bottom:10px;"><p class="pd-tiny">Everything the app has found waits here — '
             + 'addresses you have already sent enquiries to, and anything tagged in Gmail with '
-            + '<b>Quotation Automation/Add to Directory</b> (a brochure, rate list or card photo). '
+            + '<b>Quotation Automation/Add to Directory</b> (a brochure, rate list or card photo) — '
+            + 'those arrive the next time the Gmail Report runs. '
             + 'One card per firm, so everyone at the same firm stays together. '
             + '<b>Nothing is added to your directory until you approve it.</b></p></div>'
             + (D.pending.length ? D.pending.map(pendingStrip).join('')
