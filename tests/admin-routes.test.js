@@ -190,3 +190,55 @@ describe('POST /save-quotation — never wipes stored items with a bodyless payl
         expect(store['q1'].payload.tableHTML).toBe('<table>new</table>');
     });
 });
+
+// A quote the customer has received must never read as un-sent again. DSC-2468 was emailed, its
+// PDF archived at 06:37:02, and 38 seconds later a whole-object write carrying sent/sentAt/
+// threadId as undefined erased all three. The register then said PENDING, every send gate passed
+// again, and the customer was one click from a second copy of the same quotation.
+describe('POST /save-quotation — "sent" is one-way', () => {
+    test('a stale payload cannot un-send a quote, and keeps its date and thread', async () => {
+        const store = seed();
+        Object.assign(store['q1'].payload, {
+            sent: true, sentAt: '2026-09-01T06:37:23.713Z', threadId: 'thread-abc',
+        });
+        // A tab that loaded this quote BEFORE the send holds none of those three fields.
+        const res = await request(makeApp(store)).post('/api/save-quotation')
+            .send({ quotation: { id: 'q1', companyName: 'Acme', grandTotal: '999' } });
+        expect(res.status).toBe(200);
+        expect(store['q1'].payload.sent).toBe(true);
+        expect(store['q1'].payload.sentAt).toBe('2026-09-01T06:37:23.713Z');
+        expect(store['q1'].payload.threadId).toBe('thread-abc');
+        expect(store['q1'].payload.companyName).toBe('Acme');       // the real edit still lands
+    });
+
+    test('an explicit sent:false cannot un-send it either', async () => {
+        const store = seed();
+        Object.assign(store['q1'].payload, { sent: true, sentAt: '2026-09-01T06:37:23.713Z' });
+        const res = await request(makeApp(store)).post('/api/save-quotation')
+            .send({ quotation: { id: 'q1', sent: false, sentAt: '', threadId: '' } });
+        expect(res.status).toBe(200);
+        expect(store['q1'].payload.sent).toBe(true);
+        expect(store['q1'].payload.sentAt).toBe('2026-09-01T06:37:23.713Z');
+    });
+
+    test('the send itself still records — the guard must not block the first write', async () => {
+        const store = seed();
+        expect(store['q1'].payload.sent).toBeUndefined();
+        const res = await request(makeApp(store)).post('/api/save-quotation')
+            .send({ quotation: { id: 'q1', sent: true, sentAt: '2026-09-01T06:37:23.713Z', threadId: 't1' } });
+        expect(res.status).toBe(200);
+        expect(store['q1'].payload.sent).toBe(true);
+        expect(store['q1'].payload.sentAt).toBe('2026-09-01T06:37:23.713Z');
+        expect(store['q1'].payload.threadId).toBe('t1');
+    });
+
+    test('a re-send moves the date forward rather than being pinned to the first one', async () => {
+        const store = seed();
+        Object.assign(store['q1'].payload, { sent: true, sentAt: '2026-08-31T12:20:00.000Z', threadId: 'old' });
+        const res = await request(makeApp(store)).post('/api/save-quotation')
+            .send({ quotation: { id: 'q1', sent: true, sentAt: '2026-09-01T06:37:23.713Z', threadId: 'new' } });
+        expect(res.status).toBe(200);
+        expect(store['q1'].payload.sentAt).toBe('2026-09-01T06:37:23.713Z');
+        expect(store['q1'].payload.threadId).toBe('new');
+    });
+});

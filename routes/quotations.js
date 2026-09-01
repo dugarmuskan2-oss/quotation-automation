@@ -369,6 +369,22 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
                 });
             }
 
+            // Guard 3 — "sent" is ONE-WAY. A quote the customer has received can never go back to
+            // looking unsent. `sent` cannot join SERVER_OWNED above, because the send records itself
+            // through this very route and would then be unable to; so it is merged one way instead.
+            //
+            // This is not hypothetical. DSC-2468 was emailed to the customer, its PDF archived at
+            // 06:37:02, and 38 seconds later a whole-object write landed carrying sent/sentAt/
+            // threadId as undefined and erased all three. Any tab holding a copy from before the
+            // send does that — including archiveQuotationPdf's own unawaited save. The quote then
+            // reads PENDING on the register, passes every send gate again, and the customer is one
+            // click away from a second copy of the same quotation.
+            if (stored && stored.sent === true) {
+                quotation.sent = true;
+                if (!quotation.sentAt && stored.sentAt) quotation.sentAt = stored.sentAt;
+                if (!quotation.threadId && stored.threadId) quotation.threadId = stored.threadId;
+            }
+
             // The version history CANNOT join SERVER_OWNED: "Save as Revision" builds
             // quotation.revisions in the browser and persists it through this very route, so
             // always taking the stored copy would make saving a revision impossible.
