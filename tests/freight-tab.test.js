@@ -796,3 +796,67 @@ describe('only a new TRANSPORTER brings a spent Send back', () => {
         expect(src.split('recipientsChanged(isTransporterList);').length - 1).toBe(4);
     });
 });
+
+describe('one transporter never lands on two chips', () => {
+    /**
+     * Each chip is one email and one thread. The Freight tab de-duplicated by comparing whole
+     * chip STRINGS, so picking a firm twice — once with both contacts ticked, once with one —
+     * left "ravi@x" and "ravi@x, suresh@x" side by side. Ravi got the same freight enquiry
+     * twice, in two threads, and showed up twice as awaiting a reply. The Enquiry tab was
+     * fixed for exactly this on 1 Sep; the Freight tab was not.
+     */
+    const src = fs.readFileSync(path.join(__dirname, '..', 'freight-tab-weight-editor.js'), 'utf8');
+
+    // The real function, lifted out and run.
+    const addChip = (() => {
+        const body = src.slice(src.indexOf('function chipAddrs(chip)'),
+                               src.indexOf('// Tell the Partner Directory a transporter answered'));
+        // eslint-disable-next-line no-eval
+        return eval('(function(){' + body + ' return addChip;})()');
+    })();
+
+    test('picking the same firm again with fewer ticked does NOT make a second chip', () => {
+        const list = [];
+        addChip(list, 'ravi@abc.com, suresh@abc.com');
+        addChip(list, 'ravi@abc.com');
+        expect(list).toHaveLength(1);
+        expect(list[0]).toBe('ravi@abc.com, suresh@abc.com');
+    });
+
+    test('adding the colleagues one at a time still ends as one chip', () => {
+        const list = [];
+        addChip(list, 'ravi@abc.com');
+        addChip(list, 'suresh@abc.com');
+        addChip(list, 'ravi@abc.com, suresh@abc.com');
+        expect(list).toHaveLength(1);
+        expect(list[0].split(', ').sort()).toEqual(['ravi@abc.com', 'suresh@abc.com']);
+    });
+
+    test('the same address in a different case is not a second person', () => {
+        const list = [];
+        addChip(list, 'Ravi@ABC.com');
+        addChip(list, 'ravi@abc.com');
+        expect(list).toHaveLength(1);
+    });
+
+    test('a genuinely different firm still gets its own chip — one email each', () => {
+        const list = [];
+        addChip(list, 'ravi@abc.com');
+        addChip(list, 'mani@xyz.com');
+        expect(list).toHaveLength(2);
+    });
+
+    test('it reports whether the list actually changed', () => {
+        const list = [];
+        expect(addChip(list, 'ravi@abc.com')).toBe(true);
+        expect(addChip(list, 'ravi@abc.com')).toBe(false);   // nothing new
+        expect(addChip(list, '')).toBe(false);
+    });
+
+    test('source guard — neither box uses the old whole-string comparison', () => {
+        expect(src).not.toContain('list.indexOf(joined) === -1');
+        expect(src).not.toContain("if (v && list.indexOf(v) === -1) list.push(v);");
+        expect(src).toContain('if (joined) addChip(list, joined);');
+        expect(src).toContain('if (v) addChip(list, v);');
+    });
+});

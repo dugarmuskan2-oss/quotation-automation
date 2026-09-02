@@ -698,6 +698,19 @@
     function listFor(st, kind) {
         return kind === 'cc' ? st.cc : st.bcc;
     }
+
+    /**
+     * Only a change to the SUPPLIER list starts a new send.
+     *
+     * Sending empties the supplier list and locks Send. Clearing that lock on any chip change
+     * meant typing a colleague into Cc afterwards lit Send up again with no suppliers left —
+     * and pressing it emailed the whole supplier enquiry to that colleague alone, logged them
+     * in the quote as a supplier awaiting a reply, and recorded them in the Partner Directory
+     * as a dealer who had been asked. Cc is for copying someone in, never for a send of its own.
+     */
+    function recipientsChanged(st, kind) {
+        if (kind !== 'cc') st.sentLock = false;
+    }
     // Cc: openly copied on every email this send produces. Bcc above is the recipient list, so
     // cc'ing a colleague on an enquiry to eight suppliers puts eight copies in their inbox —
     // worth saying out loud rather than letting them discover it.
@@ -831,7 +844,7 @@
             $$('.qet-chip-x').forEach(function (el) {
                 el.onclick = function () {
                     listFor(st, el.dataset.kind).splice(Number(el.dataset.i), 1);
-                    st.sentLock = false;          // the recipients changed: this is a new send
+                    recipientsChanged(st, el.dataset.kind);   // only suppliers start a new send
                     paintChips(el.dataset.kind);
                 };
             });
@@ -862,7 +875,7 @@
                 ? chipAddrs(v).map(bareAddress).filter(Boolean).join(', ')
                 : bareAddress(String(v || '').replace(/[;,]$/, ''));
             if (!email) return;
-            if (addChip(listFor(st, kind), email)) st.sentLock = false;
+            if (addChip(listFor(st, kind), email)) recipientsChanged(st, kind);
             paintChips(kind);
             clearInput(kind);
         }
@@ -875,7 +888,7 @@
             var list = listFor(st, kind);
             parts.forEach(function (tok) {
                 var email = bareAddress(tok);
-                if (email && addChip(list, email)) st.sentLock = false;
+                if (email && addChip(list, email)) recipientsChanged(st, kind);
             });
             paintChips(kind);
             clearInput(kind);

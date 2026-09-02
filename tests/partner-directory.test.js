@@ -1862,7 +1862,10 @@ describe('source guard — you can see what you are being asked to approve', () 
     test('Approve is held back while the firm has no name', () => {
         const body = bodyOf('approveRowHtml');
         expect(body).toMatch(/var nameless =/);
-        expect(body).toMatch(/var stop = busy \|\| clashingCard\(pi, match\) \|\| nameless/);
+        expect(body).toContain('var stop = busy || S.approving || clashingCard(pi, match) || nameless;');
+        // S.approving holds EVERY row while one approval is in the air — two at once each
+        // read the whole directory and write it back, so the second wrote a list that
+        // never held the first firm, and both said 'done'.
     });
 
     test('a failed reading is not reported as an email with nothing in it', () => {
@@ -2991,5 +2994,114 @@ describe('source guard — the chips and the finder do not sneak past the questi
         // nothing at all — the bug would look fixed and not be.
         const fn = sliceBetween('function holdCleanCopy(p)', 'function restoreCleanCopy');
         expect(fn).toContain('JSON.parse(JSON.stringify(p))');
+    });
+});
+
+describe('the six ways the Directory still went wrong', () => {
+    /**
+     * All six came out of a bug hunt over the shipped code, and every one of them was
+     * invisible to a green suite.
+     */
+    const { keepOpenEdits, markDirty, isDirty, importResultText, directoryIsOpen } =
+        global.window.partnerDirectory._test;
+    const { S } = _state();
+
+    beforeEach(() => {
+        S.dirty = {}; S.clean = {}; S.openId = null; S.confirmLeave = '';
+        S.leaveThen = null; S.approving = ''; S.importNote = ''; S.busy = {};
+        D.contacts = []; D.goneNote = ''; D.saveError = ''; D.loaded = true;
+    });
+
+    // ── the open card deleted somewhere else ─────────────────────────────────
+    test('a card deleted in another tab says so, instead of silently eating the typing', () => {
+        const mine = partner({ id: 'g1', company: 'MSL Tubes', city: 'Hosur' });
+        D.contacts = [mine];
+        S.openId = 'g1';
+        markDirty(mine, ['city']);
+
+        const fresh = keepOpenEdits(D.contacts, []);        // the server no longer has it
+
+        expect(D.goneNote).toContain('MSL Tubes');
+        expect(D.goneNote).toContain('deleted somewhere else');
+        expect(D.goneNote).toContain('the city');            // names what could not be kept
+        expect(fresh).toEqual([]);
+        // and the page is let go of, or every later click dies on a popup that cannot draw
+        expect(S.openId).toBeNull();
+        expect(isDirty('g1')).toBe(false);
+        expect(S.confirmLeave).toBe('');
+    });
+
+    test('a card that is still there is merged as before, and says nothing', () => {
+        const mine = partner({ id: 'g2', company: 'MSL Tubes', city: 'Hosur' });
+        D.contacts = [mine];
+        S.openId = 'g2';
+        markDirty(mine, ['city']);
+
+        const fresh = keepOpenEdits(D.contacts, [partner({ id: 'g2', company: 'MSL Tubes', city: '' })]);
+        expect(fresh[0].city).toBe('Hosur');
+        expect(D.goneNote).toBe('');
+        expect(S.openId).toBe('g2');
+    });
+
+    // ── the import that said nothing ─────────────────────────────────────────
+    test('the import always says what it did, including when it did nothing', () => {
+        expect(importResultText({ queued: 0, alreadyQueued: 0, skippedFirms: 0 }))
+            .toContain('Nothing new to bring in');
+        expect(importResultText({ queued: 3 })).toContain('3 firms added to Recent changes');
+        expect(importResultText({ queued: 1 })).toContain('1 firm added');
+        expect(importResultText({ queued: 0, alreadyQueued: 4 })).toContain('4 already waiting');
+        expect(importResultText({ queued: 0, skippedFirms: 2 })).toContain('2 already in your directory');
+    });
+
+    test('firms the waiting list had no room for are named, never dropped quietly', () => {
+        const t = importResultText({ queued: 10, noRoom: 5 });
+        expect(t).toContain('5 could not be added');
+        expect(t).toContain('Recent changes is full');
+        expect(t).toContain('press this again');
+    });
+});
+
+describe('source guard — the last six Directory fixes are actually wired in', () => {
+    test('recording who was asked no longer blanks the page to "Loading…"', () => {
+        // D.loaded means "we have the data". Using it to mean "please re-read" put the whole
+        // page, open card and all, behind "Loading…" with nothing ever asking for the read.
+        const fn = sliceBetween('function recordUsage(usage)', 'function refreshAfterUsage');
+        expect(fn).not.toContain('D.loaded = false');
+        expect(fn).toContain('refreshAfterUsage();');
+
+        const ref = sliceBetween('function refreshAfterUsage()', 'function directoryIsOpen');
+        expect(ref).toContain('if (usageRefreshing) return;');   // a sweep records several
+        expect(ref).toContain('loadDirectory(');
+    });
+
+    test('only ONE approval can be in the air, across every row', () => {
+        const fn = sliceBetween("each(app, '[data-pd-approve]'", "each(app, '[data-pd-discard]'");
+        expect(fn).toContain('if (S.approving) return;');
+        expect(fn).toContain('S.approving = id;');
+        // every other row's button is disabled while it runs
+        const row = sliceBetween('function approveRowHtml(pi, match, busy)', 'function clashingCard');
+        expect(row).toContain('var stop = busy || S.approving ||');
+    });
+
+    test('the approved row stays locked until the refreshed list is on screen', () => {
+        // Freeing it in the tail of the request put a live Approve button back on a row that
+        // was already approved; one more click painted a red failure over a firm that was fine.
+        const fn = sliceBetween("each(app, '[data-pd-approve]'", "each(app, '[data-pd-discard]'");
+        expect(fn).toContain('loadDirectory(function () {');
+        expect(fn.indexOf('delete S.busy[id];')).toBeGreaterThan(fn.indexOf('loadDirectory(function () {'));
+    });
+
+    test('the import result is shown on a directory that already has firms in it', () => {
+        // It was only ever rendered on a COMPLETELY empty directory — which is not the state
+        // the button is normally pressed in, so a press redrew the page byte for byte.
+        expect(src).toContain("+ (D.contacts.length ? importButtonHtml() : '') + '</div>' + importNoteHtml()");
+        expect(src).toContain('S.importNote = importResultText(d);');
+    });
+
+    test('closing the browser tab with unsaved card edits asks first', () => {
+        expect(src).toContain('hasUnsavedWork: function () { return Object.keys(S.dirty).length > 0; },');
+        const page = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        expect(page).toContain('window.partnerDirectory.hasUnsavedWork()');
+        expect(page).toContain('if (!dirty && !draftOpen && !pdDirty) return;');
     });
 });

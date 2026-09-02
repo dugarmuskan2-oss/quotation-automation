@@ -785,6 +785,64 @@
         return String(chip || '').split(/[,;]+/).map(function (s) { return s.trim(); }).filter(Boolean);
     }
 
+    /** Which chip, if any, already holds this address. Case does not matter in email. */
+    function chipHolding(list, addr) {
+        var want = String(addr || '').trim().toLowerCase();
+        for (var i = 0; i < list.length; i++) {
+            var hit = chipAddrs(list[i]).some(function (a) { return a.toLowerCase() === want; });
+            if (hit) return i;
+        }
+        return -1;
+    }
+
+    /**
+     * Put a chip in the list WITHOUT ever splitting one firm across two chips.
+     *
+     * Each chip becomes its own email and its own thread. Matching on the chip STRING meant
+     * picking a transporter twice — once with both contacts ticked, once with one — left
+     * "ravi@x" and "ravi@x, suresh@x" side by side, so Ravi received the same freight enquiry
+     * twice and appeared twice in the quote as awaiting a reply. Match on the ADDRESSES
+     * instead: anyone already present folds into the chip that holds them.
+     *
+     * (The identical function in quote-enquiry-tab.js is the one this was taken from — both
+     * are guarded, and a change to one belongs in the other.)
+     * Returns true when the list changed.
+     */
+    function addChip(list, chip) {
+        var parts = chipAddrs(chip);
+        if (!parts.length) return false;
+
+        var hits = [];
+        parts.forEach(function (a) {
+            var at = chipHolding(list, a);
+            if (at !== -1 && hits.indexOf(at) === -1) hits.push(at);
+        });
+        if (!hits.length) { list.push(parts.join(', ')); return true; }
+
+        hits.sort(function (x, y) { return x - y; });
+        var keep = hits[0];
+        var merged = chipAddrs(list[keep]);
+        var seen = {};
+        merged.forEach(function (a) { seen[a.toLowerCase()] = true; });
+        var grew = false;
+
+        var add = function (a) {
+            if (seen[a.toLowerCase()]) return;
+            seen[a.toLowerCase()] = true; merged.push(a); grew = true;
+        };
+        // Fold the other chips for this firm in, then drop them — highest index first, so the
+        // earlier positions are still valid as we go.
+        hits.slice(1).reverse().forEach(function (at) {
+            chipAddrs(list[at]).forEach(add);
+            list.splice(at, 1);
+            grew = true;
+        });
+        parts.forEach(add);
+
+        if (grew) list[keep] = merged.join(', ');
+        return grew;
+    }
+
 
     // Tell the Partner Directory a transporter answered. Without this the directory's
     // "replied %" stays 0 for ever and the reply-rate part of its ranking does nothing.
@@ -1346,7 +1404,7 @@
                 // or its people end up on separate emails and never see each other.
                 if (keepTogether) {
                     var joined = chipAddrs(s).map(bareAddress).filter(Boolean).join(', ');
-                    if (joined && list.indexOf(joined) === -1) list.push(joined);
+                    if (joined) addChip(list, joined);
                     renderChips();
                     recipientsChanged(isTransporterList);
                     return;
@@ -1357,7 +1415,7 @@
                 // and stays one searchable chip.
                 splitAddressList(s).forEach(function (tok) {
                     var v = bareAddress(tok);
-                    if (v && list.indexOf(v) === -1) list.push(v);
+                    if (v) addChip(list, v);
                 });
                 renderChips();
                 recipientsChanged(isTransporterList);

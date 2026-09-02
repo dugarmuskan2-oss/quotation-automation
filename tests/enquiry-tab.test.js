@@ -1855,12 +1855,21 @@ describe('editing the message cannot bring a spent Send back', () => {
         expect(body).not.toContain('st.sentLock = false');
     });
 
-    test('and the only things that DO clear it are recipient additions', () => {
-        // Each remaining release sits behind addChip, which reports true only for a genuine
-        // new address — so a re-add of the leftover colleague cannot re-arm anything.
+    test('and the only thing that DOES clear it is a change to the SUPPLIER list', () => {
+        // Tightened after a real hole: a Cc added AFTER a send used to clear the lock too, and
+        // canSendNow is satisfied by cc alone. Send lit up with no suppliers left, and pressing
+        // it emailed the whole supplier enquiry to that colleague on their own — logging them
+        // in the quote as a supplier awaiting a reply, and in the Partner Directory as a dealer
+        // who had been asked. Cc copies someone in; it is never a send of its own.
+        //
+        // Every path now goes through one guard, so there is exactly ONE release in the file.
         const releases = src.split('st.sentLock = false').length - 1;
-        expect(releases).toBe(3);
-        expect(src).toContain('if (addChip(listFor(st, kind), email)) st.sentLock = false;');
-        expect(src).toContain('if (email && addChip(list, email)) st.sentLock = false;');
+        expect(releases).toBe(1);
+        expect(src).toContain("if (kind !== 'cc') st.sentLock = false;");
+
+        // ...and all three chip paths call it rather than unlocking on their own.
+        expect(src).toContain('recipientsChanged(st, el.dataset.kind);');
+        expect(src).toContain('if (addChip(listFor(st, kind), email)) recipientsChanged(st, kind);');
+        expect(src).toContain('if (email && addChip(list, email)) recipientsChanged(st, kind);');
     });
 });

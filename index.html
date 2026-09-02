@@ -7664,7 +7664,11 @@
             const dirty = (Array.isArray(approvedQuotations) ? approvedQuotations : [])
                 .some(function(q) { return q && q.hasUnsavedEdits; });
             const draftOpen = document.querySelectorAll('#creationFilesContainer .quotation-folder').length > 0;
-            if (!dirty && !draftOpen) return;
+            // The Partner Directory holds unsaved card edits the same way a quote does.
+            const pdDirty = !!(window.partnerDirectory
+                && typeof window.partnerDirectory.hasUnsavedWork === 'function'
+                && window.partnerDirectory.hasUnsavedWork());
+            if (!dirty && !draftOpen && !pdDirty) return;
             e.preventDefault();
             e.returnValue = '';       // required for the browser to show its own prompt
             return '';
@@ -11994,10 +11998,10 @@
     </script>
     <script src="weight-calculator.js?v=20260529-1"></script>
     <script src="enquiry-preparer.js?v=20260529-1"></script>
-    <script src="freight-tab-weight-editor.js?v=20260901-1"></script>
-    <script src="quote-enquiry-tab.js?v=20260901-1"></script>
+    <script src="freight-tab-weight-editor.js?v=20260902-1"></script>
+    <script src="quote-enquiry-tab.js?v=20260902-1"></script>
     <script src="register.js?v=20260722-5"></script>
-    <script src="partner-directory.js?v=20260902-2"></script>
+    <script src="partner-directory.js?v=20260902-3"></script>
 </body>
 </html>
 

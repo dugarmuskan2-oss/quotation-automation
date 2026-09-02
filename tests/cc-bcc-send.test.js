@@ -275,3 +275,49 @@ describe('source guards — either box is a recipient source', () => {
         expect(gmail).toContain('if (!to && (bcc || cc)) to = await getOwnAddress();');
     });
 });
+
+describe('a Cc added after sending does not turn into a send of its own', () => {
+    /**
+     * Sending empties the SUPPLIER list and locks Send. Every chip change cleared that lock,
+     * Cc included — and canSendNow is satisfied by cc alone. So typing a colleague into Cc
+     * after a send lit Send up again with no suppliers left, and pressing it emailed the whole
+     * supplier enquiry to that colleague alone, logged them in the quote as a supplier waiting
+     * to reply, and recorded them in the Partner Directory as a dealer who had been asked.
+     */
+    const src = fs.readFileSync(path.join(__dirname, '..', 'quote-enquiry-tab.js'), 'utf8');
+
+    const recipientsChanged = (() => {
+        const at = src.indexOf('function recipientsChanged(st, kind)');
+        const body = src.slice(at, src.indexOf('}', src.indexOf('st.sentLock = false;', at)) + 1);
+        // eslint-disable-next-line no-eval
+        return eval('(' + body + ')');
+    })();
+
+    test('a change to the supplier list starts a new send', () => {
+        const st = { sentLock: true };
+        recipientsChanged(st, 'bcc');
+        expect(st.sentLock).toBe(false);
+    });
+
+    test('a change to Cc does NOT', () => {
+        const st = { sentLock: true };
+        recipientsChanged(st, 'cc');
+        expect(st.sentLock).toBe(true);
+    });
+
+    test('removing a Cc chip does not either', () => {
+        const st = { sentLock: true };
+        recipientsChanged(st, 'cc');
+        recipientsChanged(st, 'cc');
+        expect(st.sentLock).toBe(true);
+    });
+
+    test('source guard — all three chip paths go through it, none unlocks directly', () => {
+        expect(src).toContain('recipientsChanged(st, el.dataset.kind);');
+        expect(src).toContain('if (addChip(listFor(st, kind), email)) recipientsChanged(st, kind);');
+        expect(src).toContain('if (email && addChip(list, email)) recipientsChanged(st, kind);');
+        // the only place sentLock is cleared is inside the guard itself
+        const clears = src.split('sentLock = false').length - 1;
+        expect(clears).toBe(1);
+    });
+});

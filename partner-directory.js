@@ -561,7 +561,7 @@
 
     // ── Data layer ────────────────────────────────────────────────────────────
     var D = { contacts: [], changes: [], pending: [], duplicates: [], loaded: false,
-              loadError: '', saveError: '', saveWhat: [], failedAction: '', usageError: '' };
+              loadError: '', saveError: '', saveWhat: [], failedAction: '', usageError: '', goneNote: '' };
 
     var FIELD_LABEL = {
         company: 'The company name', role: 'What they are', roleOther: 'What they are',
@@ -614,6 +614,18 @@
         if (!id || !isDirty(id)) return fresh;
         var mine = (old || []).filter(function (x) { return x.id === id; })[0];
         if (!mine) return fresh;
+        // Deleted from another tab or another device while it was open here. The merge below
+        // would quietly do nothing — the typing gone, no message, and S.openId left pointing
+        // at a card byId() cannot find, so leaveCardOk kept saying no to a popup that could
+        // never draw itself and every click died. Say it, and let go of the card.
+        if (!(fresh || []).some(function (x) { return x.id === id; })) {
+            D.goneNote = 'The card you were editing (' + (str(mine.company) || 'no name')
+                + ') was deleted somewhere else, so your unsaved changes to '
+                + changedBoxes(id).join(', ') + ' could not be kept.';
+            S.openId = null; S.confirmLeave = ''; S.leaveThen = null;
+            delete S.dirty[id]; delete S.clean[id];
+            return fresh;
+        }
         var fields = dirtyFields(id);
         return (fresh || []).map(function (x) {
             if (x.id !== id) return x;
@@ -844,7 +856,8 @@
     var S = { tab: 'dir', filter: 'all', openId: null, openPending: null, openChange: null,
               find: { text: '', state: 'idle', need: null, note: '' }, busy: {}, add: freshAdd(),
               confirmDelete: '',     // the card whose "are you sure?" is on screen
-              dirty: {}, clean: {}, saveNote: '', confirmLeave: '', leaveThen: null, ask: null };   // directory cards edited but not yet saved
+              dirty: {}, clean: {}, saveNote: '', confirmLeave: '', leaveThen: null, ask: null,
+              approving: '', importNote: '' };   // directory cards edited but not yet saved
 
     function byId(id) {
         var p = D.contacts.filter(function (x) { return x.id === id; })[0];
@@ -921,6 +934,8 @@
                     : '<div class="pd-error pd-error-save"><b>' + esc(saveFailedWhat()) + ' was NOT saved.</b> '
                         + esc(D.saveError) + ' — the box still shows what you typed, but the directory does not have it. '
                         + 'Change the same box again to try once more.</div>')
+            + (D.goneNote ? '<div class="pd-error">' + esc(D.goneNote)
+                + ' <button data-pd-gonedismiss="1">OK</button></div>' : '')
             + (D.usageError ? '<div class="pd-error">Some of the "who was asked" records did not reach the app ('
                 + esc(D.usageError) + '). Nothing you typed is lost — but the enquiry counts on a few cards may be low.</div>' : '')
             + (D.loadError ? '<div class="pd-error">' + esc(D.loadError) + ' <button data-pd-reload="1">Try again</button></div>'
@@ -1018,7 +1033,7 @@
         return duplicateWarningHtml()
             + finderBlock()
             + '<div class="pd-filters">' + chips + '<span class="pd-sp"></span>'
-            + (D.contacts.length ? importButtonHtml() : '') + '</div>'
+            + (D.contacts.length ? importButtonHtml() : '') + '</div>' + importNoteHtml()
             + listHtml();
     }
 
@@ -1081,6 +1096,31 @@
     // Kept reachable at all times, not only while the directory is empty: one enquiry sent
     // from the quote side queues a firm, and the button used to vanish for good the moment
     // anything existed — taking years of remembered addresses with it.
+    /**
+     * Say what the press actually did. The answer was kept but only ever shown on a
+     * COMPLETELY EMPTY directory — and the button is deliberately left on the page once the
+     * directory has anything in it, which is when it is mostly pressed. So the usual press
+     * redrew the page byte for byte and looked broken.
+     */
+    function importResultText(d) {
+        if (!d) return '';
+        var bits = [];
+        if (d.queued) bits.push(d.queued + ' firm' + (d.queued === 1 ? '' : 's') + ' added to Recent changes');
+        if (d.alreadyQueued) bits.push(d.alreadyQueued + ' already waiting there');
+        if (d.skippedFirms) bits.push(d.skippedFirms + ' already in your directory');
+        // The queue is capped. Anything that would not fit is named, never dropped quietly.
+        if (d.noRoom) bits.push('<b>' + d.noRoom + ' could not be added — Recent changes is full. '
+            + 'Approve or discard some and press this again.</b>');
+        return bits.length ? bits.join(' · ') : 'Nothing new to bring in — every address you have '
+            + 'emailed is already in your directory or already waiting under Recent changes.';
+    }
+
+    function importNoteHtml() {
+        if (!S.importNote) return '';
+        return '<p class="pd-tiny" style="margin:7px 0 0;">' + S.importNote
+            + ' <button class="pd-linkish" data-pd-importnoteclear="1">OK</button></p>';
+    }
+
     function importButtonHtml() {
         return '<button class="pd-prim" data-pd-import="1"' + (S.importing ? ' disabled' : '') + '>'
             + (S.importing ? 'Reading…' : '↓ Bring in the addresses I have already used') + '</button>';
@@ -1781,7 +1821,8 @@
         // A card with no firm name goes in as "New partner — needs a name" and is logged as
         // the sentence "Added " with nothing after it. Ask for the name here instead.
         var nameless = !str((pi.preview && pi.preview.company) || (match && match.company) || companyGuess(pi));
-        var stop = busy || clashingCard(pi, match) || nameless;
+        // Every other row is held too while one is being approved — see the approve handler.
+        var stop = busy || S.approving || clashingCard(pi, match) || nameless;
         return (nameless ? '<p class="pd-tiny pd-need-name">No firm name was found in this one. '
             + 'Open it above and type their name, and it can be approved.</p>' : '')
             + '<div class="pd-row" style="margin:0 0 14px;">'
@@ -2068,11 +2109,14 @@
             S.importing = true; render();
             postJson('/contacts/import-remembered', {}, function (d) {
                 S.imported = d;
+                S.importNote = importResultText(d);
                 // They go to the queue, not the directory — so land the owner where the work is.
                 if (d && d.queued) S.tab = 'changes';
                 loadDirectory(render);
             }, function () { S.importing = false; }, 'Bringing in the addresses');
         });
+        on(app, '[data-pd-importnoteclear]', function () { S.importNote = ''; render(); });
+        on(app, '[data-pd-gonedismiss]', function () { D.goneNote = ''; render(); });
     }
 
     /**
@@ -2445,6 +2489,11 @@
         each(app, '[data-pd-approve]', function (el) {
             el.onclick = function () {
                 var id = el.getAttribute('data-pd-approve');
+                // ONE approval at a time, across every row. The per-row lock let a second row
+                // be approved while the first was still in the air, and each request reads the
+                // whole directory and writes it back — so the second wrote a list that never
+                // held the first firm. Both said "done"; one was not added.
+                if (S.approving) return;
                 if (S.busy[id]) return;               // double-click is a no-op, not a second save
                 var pi = D.pending.filter(function (x) { return x.id === id; })[0];
                 if (!pi) return;
@@ -2454,11 +2503,21 @@
                 partner = JSON.parse(JSON.stringify(partner));
                 partner.id = partner.matchId || '';
                 delete partner.matchId;
-                S.busy[id] = true; render();
+                S.busy[id] = true; S.approving = id; render();
                 postJson('/contacts/pending/approve', { id: id, partner: partner }, function () {
                     S.openPending = null; S.openId = null;
-                    loadDirectory(render);
-                }, function () { delete S.busy[id]; }, 'Approving that firm');
+                    // The row must stay locked until the refreshed list is on screen. Freeing
+                    // it in the tail of the request put a live "Approve" button back on a row
+                    // that was already approved — one more click asked the server for an item
+                    // it had just removed, and painted a red "did not work" over a firm that
+                    // went in perfectly well.
+                    loadDirectory(function () {
+                        delete S.busy[id]; S.approving = '';
+                        render();
+                    });
+                }, function () {
+                    if (S.approving === id) { delete S.busy[id]; S.approving = ''; }
+                }, 'Approving that firm');
             };
         });
         each(app, '[data-pd-discard]', function (el) {
@@ -2653,10 +2712,33 @@
             body: JSON.stringify(usage || {}),
         }).then(function (r) {
             if (!r.ok) throw new Error('HTTP ' + r.status);
-            D.loaded = false; D.usageError = '';
+            D.usageError = '';
+            refreshAfterUsage();      // ask for the re-read, rather than only marking it needed
         }).catch(function (e) {
             D.usageError = e.message;
         });
+    }
+
+    /**
+     * The enquiry counts on the cards have moved, so re-READ them.
+     *
+     * A reply sweep can record several at once, so only one read is ever in the air. The
+     * open card is safe: loadDirectory merges through keepOpenEdits, which keeps whatever
+     * is being typed. Repainting is skipped when the directory is not the tool on screen.
+     */
+    var usageRefreshing = false;
+    function refreshAfterUsage() {
+        if (usageRefreshing) return;
+        usageRefreshing = true;
+        loadDirectory(function () {
+            usageRefreshing = false;
+            if (directoryIsOpen()) render();
+        });
+    }
+
+    function directoryIsOpen() {
+        var app = $('partnerDirectoryApp');
+        return !!app && app.style.display !== 'none';
     }
 
     // ── Tool-tab switching (register.js pattern) ──────────────────────────────
@@ -2754,6 +2836,9 @@
     window.partnerDirectory = {
         renderSuggestPanel: renderSuggestPanel,
         recordUsage: recordUsage,
+        // index.html's beforeunload guard asks about unsaved QUOTE edits. The directory now
+        // holds edits the same way and had none of the guard, so F5 threw them away silently.
+        hasUnsavedWork: function () { return Object.keys(S.dirty).length > 0; },
         _test: { readEnquiry: readEnquiry, rankFor: rankFor, matchCity: matchCity, kmBetween: kmBetween,
                  applyFind: applyFind, looksLikeFirmName: looksLikeFirmName,
                  focusKey: focusKey, saveFailedWhat: saveFailedWhat,
@@ -2763,6 +2848,7 @@
                  leavePopupHtml: leavePopupHtml, closeCardNow: closeCardNow,
                  holdCleanCopy: holdCleanCopy, restoreCleanCopy: restoreCleanCopy,
                  keepOpenEdits: keepOpenEdits,
+                 importResultText: importResultText, directoryIsOpen: directoryIsOpen,
                  _state: function () { return { S: S, D: D }; } },
     };
 })();
