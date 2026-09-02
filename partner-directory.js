@@ -561,7 +561,7 @@
 
     // ── Data layer ────────────────────────────────────────────────────────────
     var D = { contacts: [], changes: [], pending: [], duplicates: [], loaded: false,
-              loadError: '', saveError: '', saveWhat: [], usageError: '' };
+              loadError: '', saveError: '', saveWhat: [], failedAction: '', usageError: '' };
 
     var FIELD_LABEL = {
         company: 'The company name', role: 'What they are', roleOther: 'What they are',
@@ -648,8 +648,16 @@
                 if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
                 return d;
             });
-        }).then(function (d) { D.saveError = ''; D.saveWhat = []; then && then(d); return d; })
-            .catch(function (e) { D.saveError = e.message; D.saveWhat = what || []; failed = true; })
+        }).then(function (d) { D.saveError = ''; D.saveWhat = []; D.failedAction = ''; then && then(d); return d; })
+            .catch(function (e) {
+                D.saveError = e.message;
+                // `what` is a LIST of boxes for a field edit, or the NAME of an action for
+                // everything else. One banner served both, and told the owner "the box still
+                // shows what you typed" after a failed delete, import, approve or discard.
+                D.saveWhat = Array.isArray(what) ? what : [];
+                D.failedAction = typeof what === 'string' ? what : '';
+                failed = true;
+            })
             .then(function (d) { if (always) always(); if (always || failed) render(); return d; });
     }
 
@@ -785,14 +793,15 @@
     function savePendingPreview(p) {
         var item = D.pending.filter(function (x) { return x.preview && x.preview.id === p.id; })[0];
         if (!item) return;
-        return postJson('/contacts/pending/preview', { id: item.id, preview: p });
+        return postJson('/contacts/pending/preview', { id: item.id, preview: p },
+                        null, null, 'Saving your corrections');
     }
 
     // ── State for the tool page ───────────────────────────────────────────────
     var S = { tab: 'dir', filter: 'all', openId: null, openPending: null, openChange: null,
               find: { text: '', state: 'idle', need: null, note: '' }, busy: {}, add: freshAdd(),
               confirmDelete: '',     // the card whose "are you sure?" is on screen
-              dirty: {}, saveNote: '', confirmLeave: '', leaveThen: null };   // directory cards edited but not yet saved
+              dirty: {}, saveNote: '', confirmLeave: '', leaveThen: null, ask: null };   // directory cards edited but not yet saved
 
     function byId(id) {
         var p = D.contacts.filter(function (x) { return x.id === id; })[0];
@@ -861,15 +870,20 @@
             + (waiting ? ' <span class="pd-pill pd-pill-warn">' + waiting + '</span>' : '') + '</button></div>'
             // Named and pinned to the top of the page. A bare "your last edit is NOT stored"
             // halfway up a long card said nothing about WHICH edit, and scrolled off screen.
-            + (D.saveError ? '<div class="pd-error pd-error-save"><b>' + esc(saveFailedWhat()) + ' was NOT saved.</b> '
-                + esc(D.saveError) + ' — the box still shows what you typed, but the directory does not have it. '
-                + 'Change the same box again to try once more.</div>' : '')
+            + (!D.saveError ? ''
+                : D.failedAction
+                    ? '<div class="pd-error pd-error-save"><b>' + esc(D.failedAction) + ' did not work.</b> '
+                        + esc(D.saveError) + ' — nothing on your screen has been lost. Check the list before '
+                        + 'trying again, in case it went through after all.</div>'
+                    : '<div class="pd-error pd-error-save"><b>' + esc(saveFailedWhat()) + ' was NOT saved.</b> '
+                        + esc(D.saveError) + ' — the box still shows what you typed, but the directory does not have it. '
+                        + 'Change the same box again to try once more.</div>')
             + (D.usageError ? '<div class="pd-error">Some of the "who was asked" records did not reach the app ('
                 + esc(D.usageError) + '). Nothing you typed is lost — but the enquiry counts on a few cards may be low.</div>' : '')
             + (D.loadError ? '<div class="pd-error">' + esc(D.loadError) + ' <button data-pd-reload="1">Try again</button></div>'
                 : !D.loaded ? '<p class="pd-muted" style="padding:20px;text-align:center;">Loading…</p>'
                     : S.tab === 'dir' ? dirView() : S.tab === 'add' ? addView() : changesView())
-            + deletePopupHtml() + leavePopupHtml();
+            + deletePopupHtml() + leavePopupHtml() + askPopupHtml();
         bind(app);
         restoreFocus();
     }
@@ -882,6 +896,40 @@
      * what was reported. This one cannot be suppressed, and it says what is actually at stake
      * instead of asking a bare question.
      */
+    /**
+     * Ask on the page. Never window.confirm.
+     *
+     * A browser confirm() returns FALSE in this app in 5ms without ever appearing, so every
+     * button guarded by one did nothing at all and said nothing about it. That is how Delete
+     * "stopped working" and how an open card refused to close — both reported live by the
+     * owner. Three more were guarded the same way: Undo, Discard, and the IS 1239 size-table
+     * button. This is the one way a question gets asked from here on.
+     */
+    function askOnPage(q) {
+        S.ask = { title: q.title, lines: q.lines || [], okLabel: q.okLabel || 'Yes',
+                  danger: q.danger !== false, run: q.run, busy: false,
+                  ask: q.ask || '', placeholder: q.placeholder || '' };
+        render();
+    }
+
+    function askPopupHtml() {
+        var a = S.ask;
+        if (!a) return '';
+        return '<div class="pd-modal" data-pd-askcancel="backdrop">'
+            + '<div class="pd-modal-box" role="dialog" aria-modal="true">'
+            + '<div class="pd-sec" style="margin-top:0;">' + esc(a.title) + '</div>'
+            + a.lines.map(function (t) { return '<p class="pd-muted" style="margin-top:6px;">' + esc(t) + '</p>'; }).join('')
+            + (a.ask
+                ? '<div class="pd-fld" style="margin-top:9px;"><label>' + esc(a.ask) + '</label>'
+                    + '<input id="pdAskIn" placeholder="' + esc(a.placeholder) + '" autofocus></div>'
+                : '')
+            + '<div class="pd-row" style="margin-top:12px;"><span class="pd-sp"></span>'
+            + '<button data-pd-askcancel="1"' + (a.busy ? ' disabled' : '') + '>Cancel</button>'
+            + '<button class="' + (a.danger ? 'pd-danger' : 'pd-prim') + '" data-pd-askok="1"'
+            + (a.busy ? ' disabled' : '') + '>' + esc(a.busy ? 'Working…' : a.okLabel) + '</button>'
+            + '</div></div></div>';
+    }
+
     function deletePopupHtml() {
         var p = S.confirmDelete ? byId(S.confirmDelete) : null;
         if (!p) return '';
@@ -1891,8 +1939,12 @@
             delete S.busy[id];
             if (res.r.ok) { loadDirectory(render); return; }
             if (res.d.needsConfirming) {
-                render();
-                if (window.confirm(undoWarningText(res.d.alsoLost || []))) undoWithWarning(id, true);
+                askOnPage({
+                    title: 'Undo this change?',
+                    lines: undoWarningText(res.d.alsoLost || []).split('\n\n'),
+                    okLabel: 'Undo it',
+                    run: function () { undoWithWarning(id, true); },
+                });
                 return;
             }
             D.saveError = res.d.error || ('HTTP ' + res.r.status);
@@ -1969,7 +2021,7 @@
                 // They go to the queue, not the directory — so land the owner where the work is.
                 if (d && d.queued) S.tab = 'changes';
                 loadDirectory(render);
-            }, function () { S.importing = false; });      // released even if the import fails
+            }, function () { S.importing = false; }, 'Bringing in the addresses');
         });
     }
 
@@ -2033,6 +2085,38 @@
             // the whole save-on-blur behaviour used to prevent. Ask, and keep it open if not.
             el.onclick = function () { if (leaveCardOk()) { S.openId = null; render(); } };
         });
+        each(app, '[data-pd-askcancel]', function (el) {
+            el.onclick = function (e) {
+                if (el.getAttribute('data-pd-askcancel') === 'backdrop' && e.target !== el) return;
+                if (S.ask && S.ask.busy) return;
+                S.ask = null; render();
+            };
+        });
+        on(app, '[data-pd-askok]', function () {
+            var a = S.ask;
+            if (!a || a.busy) return;        // one press is one go
+            var typed = '';
+            if (a.ask) {
+                var box = app.querySelector('#pdAskIn');
+                typed = str(box && box.value);
+                // Nothing typed is not an answer. Hold the question open rather than
+                // closing it and quietly doing nothing, which is what prompt() did.
+                if (!typed) { if (box) box.focus(); return; }
+            }
+            a.busy = true; render();
+            var run = a.run;
+            S.ask = null;
+            run(typed);
+        });
+        // Enter in the box is the same as pressing the button.
+        each(app, '#pdAskIn', function (el) {
+            el.onkeydown = function (e) {
+                if (e.key !== 'Enter') return;
+                e.preventDefault();
+                var ok = app.querySelector('[data-pd-askok]');
+                if (ok && ok.onclick) ok.onclick();
+            };
+        });
         each(app, '[data-pd-leavecancel]', function (el) {
             el.onclick = function (e) {
                 // The dark backdrop closes the question; a click INSIDE the box must not,
@@ -2076,7 +2160,7 @@
             postJson('/contacts/delete', { id: id }, function () {
                 S.confirmDelete = ''; S.openId = null;
                 loadDirectory(render);
-            }, function () { delete S.busy[id]; });
+            }, function () { delete S.busy[id]; }, 'Deleting that partner');
         });
         bindCardFields(app);
     }
@@ -2192,15 +2276,25 @@
     function bindSupply(card, p, save) {
         var pick = $('pdTypePick');
         on(card, '[data-pd-addtype]', function () {
-            var v = pick ? pick.value : '';
-            if (v === '__other') v = window.prompt('What do they deal in? e.g. Ductile iron') || '';
-            v = str(v);
-            if (!v) return;
             // Compared without case: an import writes SEAMLESS, the dropdown offers Seamless,
             // and the same type went onto the card twice.
-            var has = (p.types = p.types || []).some(function (t) { return lower(t) === lower(v); });
-            if (!has) p.types.push(v);
-            save(true, ['types']);
+            var addType = function (v) {
+                v = str(v);
+                if (!v) return;
+                var has = (p.types = p.types || []).some(function (t) { return lower(t) === lower(v); });
+                if (!has) p.types.push(v);
+                save(true, ['types']);
+            };
+            var v = pick ? pick.value : '';
+            if (v !== '__other') { addType(v); return; }
+            // window.prompt THROWS here rather than returning nothing, so the handler died
+            // half-way and "＋ Add another…" did nothing at all.
+            askOnPage({
+                title: 'What else do they deal in?',
+                ask: 'Type it in', placeholder: 'e.g. Ductile iron',
+                okLabel: 'Add it', danger: false,
+                run: addType,
+            });
         });
         each(card, '[data-pd-deltype]', function (el) { el.onclick = function () { p.types.splice(Number(el.getAttribute('data-pd-deltype')), 1); save(true, ['types']); }; });
         on(card, '[data-pd-addproduct]', function () { (p.products = p.products || []).push({ p: '', spec: '', sizes: [], moq: 0, rule: '' }); save(true, ['products']); });
@@ -2222,12 +2316,19 @@
                 // It REPLACES the table outright, and a supplier's own thicknesses typed in by
                 // hand were being wiped by a button pressed to see what it did. Undo does not
                 // cover hand-typed rows.
-                if ((pr.sizes || []).length
-                    && !window.confirm('This replaces all ' + pr.sizes.length + ' size rows on '
-                        + (str(pr.p) || 'this product') + ' with the standard IS 1239 ' + cls
-                        + ' table.\n\nAnything you typed in by hand is lost. Go ahead?')) return;
-                pr.sizes = IS1239.filter(function (r) { return r[cls]; }).map(function (r) { return { nb: r.nb, inch: r.inch, od: r.od, thk: r[cls] }; });
-                save(true, ['products']);
+                var fill = function () {
+                    pr.sizes = IS1239.filter(function (r) { return r[cls]; }).map(function (r) { return { nb: r.nb, inch: r.inch, od: r.od, thk: r[cls] }; });
+                    save(true, ['products']);
+                };
+                if (!(pr.sizes || []).length) { fill(); return; }
+                askOnPage({
+                    title: 'Replace ' + pr.sizes.length + ' size row' + (pr.sizes.length === 1 ? '' : 's') + '?',
+                    lines: ['This puts the standard IS 1239 ' + cls + ' table on '
+                            + (str(pr.p) || 'this product') + ', in place of what is there now.',
+                            'Anything you typed in by hand is lost, and Undo does not cover it.'],
+                    okLabel: 'Replace them',
+                    run: fill,
+                });
             };
         });
         on(card, '[data-pd-addorule]', function () { (p.rules = p.rules || []).push(''); save(true, ['rules']); });
@@ -2248,9 +2349,22 @@
         each(card, '[data-pd-delnote]', function (el) { el.onclick = function () { p.notes.splice(Number(el.getAttribute('data-pd-delnote')), 1); save(true, ['notes']); }; });
     }
 
+    /**
+     * Where the queued item CAME from decides what discarding it actually means, and the one
+     * sentence used for both was false for half of them. An imported firm came from the
+     * remembered-addresses list, not from an email — there is no Gmail message to re-label,
+     * and it comes back the next time the addresses are brought in.
+     */
     function discardWarningText(id) {
         var pi = D.pending.filter(function (x) { return x.id === id; })[0] || {};
         var who = str(pi.preview && pi.preview.company) || str(pi.subject) || str(pi.from) || 'this one';
+        if (pi.origin === 'import') {
+            return 'Discard ' + who + '?\n\n'
+                + 'It comes off this list now. There is no Undo.\n'
+                + 'It came from an address you have emailed before, not from a labelled email — '
+                + 'so it will show up here again the next time you press '
+                + '"Bring in the addresses I have already used".';
+        }
         return 'Discard ' + who + '?\n\n'
             + 'It is thrown away for good — there is no Undo, and it will not arrive again.\n'
             + 'To get it back you would have to find the email in Gmail and put the '
@@ -2293,7 +2407,7 @@
                 postJson('/contacts/pending/approve', { id: id, partner: partner }, function () {
                     S.openPending = null; S.openId = null;
                     loadDirectory(render);
-                }, function () { delete S.busy[id]; });
+                }, function () { delete S.busy[id]; }, 'Approving that firm');
             };
         });
         each(app, '[data-pd-discard]', function (el) {
@@ -2301,12 +2415,19 @@
                 var id = el.getAttribute('data-pd-discard');
                 if (S.busy[id]) return;
                 // Discard sits beside Approve, deletes outright, and writes nothing to the
-                // applied log — so there is no Undo. The Gmail thread was stamped
-                // -processed when it was sent, so it will not come round again either.
-                if (!window.confirm(discardWarningText(id))) return;
-                S.busy[id] = true; render();
-                postJson('/contacts/pending/discard', { id: id }, function () { loadDirectory(render); },
-                    function () { delete S.busy[id]; });
+                // applied log — so there is no Undo. What happens NEXT depends on where the
+                // item came from, which is why the wording is built per item.
+                var warn = discardWarningText(id).split('\n\n');
+                askOnPage({
+                    title: warn[0],
+                    lines: warn.slice(1),
+                    okLabel: 'Discard it',
+                    run: function () {
+                        S.busy[id] = true; render();
+                        postJson('/contacts/pending/discard', { id: id }, function () { loadDirectory(render); },
+                            function () { delete S.busy[id]; }, 'Discarding that one');
+                    },
+                });
             };
         });
         each(app, '[data-pd-change]', function (el) {

@@ -1145,7 +1145,7 @@ describe('source guard — importing remembered addresses', () => {
         expect(importHandler).toContain('S.importing = true;');
         expect(importHandler.match(/S\.importing = false;/g)).toHaveLength(1);
         expect(importHandler).toMatch(
-            /postJson\([^]*?\}\s*,\s*function \(\) \{ S\.importing = false; \}\s*\)/);
+            /postJson\([^]*?\}\s*,\s*function \(\) \{ S\.importing = false; \}\s*,\s*'Bringing in the addresses'\s*\)/);
         // and NOT inside the success callback, where a failed request never reaches it
         expect(importHandler).not.toMatch(/function \(d\) \{\s*S\.importing = false;/);
     });
@@ -1807,9 +1807,15 @@ describe('source guard — nothing irreversible happens on one click', () => {
         expect(bodyOf('discardWarningText')).toMatch(/no Undo/);
     });
 
-    test('Load IS 1239 sizes asks before it replaces rows already typed in', () => {
+    test('Load IS 1239 sizes asks — on the page — before replacing rows already typed in', () => {
+        // It used to ask with window.confirm, which returns false in 5ms without appearing.
+        // The button therefore did nothing at all whenever there was something to lose, which
+        // is precisely when the question mattered.
         const handler = sliceBetween("[data-pd-loadis]", "[data-pd-addorule]");
-        expect(handler).toMatch(/pr\.sizes \|\| \[\]\)\.length[\s\S]*window\.confirm/);
+        expect(handler).not.toContain('window.confirm');
+        expect(handler).toMatch(/if \(!\(pr\.sizes \|\| \[\]\)\.length\) \{ fill\(\); return; \}/);
+        expect(handler).toContain('askOnPage({');
+        expect(handler).toContain('run: fill,');
         // …and it must still be a plain replace when there is nothing there to lose.
         expect(handler).toMatch(/pr\.sizes = IS1239\.filter/);
     });
@@ -2078,35 +2084,67 @@ describe('the review fixes are actually on the screen, not merely in the file', 
 
     // ── Discard: the SENSE of the confirm, not its presence ───────────────────
 
-    test('pressing Cancel on Discard keeps the firm — nothing is sent, nothing is lost', async () => {
+    test('pressing Discard only ASKS — nothing is thrown away on that click', async () => {
         // The guard this replaces only checked that window.confirm was called at all.
         // Inverting the sense — so Cancel is what destroys it — left the suite green.
+        // A browser dialog is refused outright now: it returns false without appearing, so
+        // Discard did nothing whatever, silently.
+        global.window.confirm = () => { throw new Error('a browser dialog must never be used here'); };
         await open({ contacts: [], pending: [mailed()] }, 'changes');
-        global.window.confirm = () => false;
         click('data-pd-discard', 'pd_1');
         await flush();
-        expect(posts).toEqual([]);
+
+        expect(app.innerHTML).toContain('data-pd-askok');   // the question is on the page
+        expect(posts).toEqual([]);                          // and nothing has happened yet
         expect(S.busy.pd_1).toBeUndefined();
         expect(D.pending).toHaveLength(1);
     });
 
-    test('pressing OK on Discard is what throws it away', async () => {
+    test('pressing Cancel keeps the firm — nothing is sent, nothing is lost', async () => {
         await open({ contacts: [], pending: [mailed()] }, 'changes');
-        global.window.confirm = () => true;
         click('data-pd-discard', 'pd_1');
         await flush();
-        expect(posts.map((p) => p.url)).toEqual(
-            expect.arrayContaining([expect.stringContaining('/contacts/pending/discard')]));
-        expect(posts[0].body).toEqual({ id: 'pd_1' });
+        click('data-pd-askcancel', '1');
+        await flush();
+
+        expect(posts).toEqual([]);
+        expect(D.pending).toHaveLength(1);
+        expect(app.innerHTML).not.toContain('data-pd-askok');   // the question is gone
+    });
+
+    test('pressing Discard it is what throws it away — and only once', async () => {
+        await open({ contacts: [], pending: [mailed()] }, 'changes');
+        click('data-pd-discard', 'pd_1');
+        await flush();
+        click('data-pd-askok', '1');
+        await flush();
+
+        const discards = posts.filter((p) => String(p.url).indexOf('/contacts/pending/discard') !== -1);
+        expect(discards).toHaveLength(1);
+        expect(discards[0].body).toEqual({ id: 'pd_1' });
     });
 
     test('the warning names the firm being discarded, not "this one"', async () => {
         await open({ contacts: [], pending: [mailed({ subject: 'Balaji Tubes rate list' })] }, 'changes');
-        let asked = '';
-        global.window.confirm = (t) => { asked = t; return false; };
         click('data-pd-discard', 'pd_1');
-        expect(asked).toContain('Balaji Tubes rate list');
-        expect(asked).toContain('no Undo');
+        await flush();
+
+        expect(app.innerHTML).toContain('Balaji Tubes rate list');
+        expect(app.innerHTML).toContain('no Undo');
+    });
+
+    test('discarding an IMPORTED firm is not promised to be final — because it is not', async () => {
+        // The one sentence was used for both kinds and was false for half of them. An
+        // imported firm has no labelled email to go back to, and it returns the next time
+        // the remembered addresses are brought in.
+        await open({ contacts: [], pending: [mailed({ origin: 'import', subject: 'Sri Balaji Steels' })] }, 'changes');
+        click('data-pd-discard', 'pd_1');
+        await flush();
+
+        const html = app.innerHTML;
+        expect(html).toContain('will show up here again');
+        expect(html).not.toContain('it will not arrive again');
+        expect(html).not.toContain('Add-to-Directory label');   // there is no such email
     });
 
     // ── A failure names ITS OWN field, not whatever was saved last ────────────
@@ -2115,8 +2153,6 @@ describe('the review fixes are actually on the screen, not merely in the file', 
         // D.saveWhat was one shared box, set only by savePartner and printed on EVERY
         // failure — so a discard that fell over announced "The check-me flag was NOT saved"
         // about a flag that had gone in an hour before.
-        global.window.confirm = () => true;
-
         // 1. A real save that really fails, so the banner really names its own field. The
         //    trigger used to be the check-me button; it is a plain field edit now, which is
         //    the everyday case anyway.
@@ -2136,8 +2172,15 @@ describe('the review fixes are actually on the screen, not merely in the file', 
         expect(app.innerHTML).toContain('data-pd-discard="pd_1"');
         click('data-pd-discard', 'pd_1');
         await flush();
-        expect(app.innerHTML).toContain('Your last edit was NOT saved');
+        click('data-pd-askok', '1');
+        await flush();
+
+        // It names the ACTION that failed. "Your last edit was NOT saved — the box still
+        // shows what you typed" was shown for seven different actions, none of which
+        // involved typing in a box.
+        expect(app.innerHTML).toContain('Discarding that one did not work');
         expect(app.innerHTML).not.toContain('The city was NOT saved');
+        expect(app.innerHTML).not.toContain('the box still shows what you typed');
     });
     // The "check me" banner, its tick-off button and the "Need checking" chip were removed
     // at the owner's request. The tests that drove them went with the feature.
@@ -2666,5 +2709,87 @@ describe('source guard — the WIRING of the unsaved-work question', () => {
         const fn = sliceBetween("on(app, '[data-pd-leavedrop]'", "on(app, '[data-pd-leavesave]'");
         expect(fn).toContain('closeCardNow();');
         expect(fn).not.toContain('savePartner');
+    });
+});
+
+describe('no button in the Partner Directory hides behind a browser dialog', () => {
+    /**
+     * window.confirm returns FALSE in this app in about 5 milliseconds, without ever
+     * appearing. Every button guarded by one therefore did nothing whatever, and said
+     * nothing about it. Reported live twice — "delete this partner not working" and
+     * "once opened, a card isn't closing" — and three more were sitting there unreported:
+     *
+     *   Undo a change            never undid anything
+     *   Discard a queued firm    never discarded anything
+     *   Load IS 1239 sizes       did nothing whenever there were rows to replace,
+     *                            which is exactly when the question mattered
+     *
+     * They all ask on the page now. This is the guard that stops the next one appearing.
+     */
+    const src = require('fs').readFileSync(SRC_PATH, 'utf8');
+
+    test('there is not a single window.confirm left in partner-directory.js', () => {
+        const uses = src.split('\n')
+            .map((line, i) => ({ line: line.trim(), n: i + 1 }))
+            .filter((r) => /window\.confirm\s*\(/.test(r.line) && !/^\s*[*/]/.test(r.line));
+        expect(uses.map((r) => r.n + ': ' + r.line)).toEqual([]);
+    });
+
+    test('nor a prompt or an alert, which fail the same way', () => {
+        expect(src).not.toMatch(/[^.\w]window\.(prompt|alert)\s*\(/);
+    });
+
+    test('the on-page question cannot be double-pressed into two writes', () => {
+        // Its OK button runs an action that writes. A second press before the first returns
+        // would be a second discard, a second undo, a second replace.
+        const at = src.indexOf("on(app, '[data-pd-askok]'");
+        expect(at).toBeGreaterThan(-1);
+        const handler = src.slice(at, src.indexOf("each(app, '#pdAskIn'", at));
+        expect(handler).toContain('if (!a || a.busy) return;');
+        expect(handler).toContain('a.busy = true;');
+        // and it is cleared BEFORE running, so the popup cannot be answered twice
+        expect(handler.indexOf('S.ask = null;')).toBeLessThan(handler.indexOf('run(typed);'));
+    });
+
+    test('a click inside the question box does not count as cancelling it', () => {
+        const at = src.indexOf("each(app, '[data-pd-askcancel]'");
+        const handler = src.slice(at, src.indexOf('});', at));
+        expect(handler).toContain("=== 'backdrop' && e.target !== el) return;");
+    });
+});
+
+describe('"＋ Add another…" pipe type asks on the page too', () => {
+    /**
+     * This one used window.prompt, which is worse than confirm here: in the owner's browser
+     * it THROWS rather than returning nothing, so the click handler died half way and
+     * picking "＋ Add another…" did nothing whatever — no box, no message, no type added.
+     */
+    const src = require('fs').readFileSync(SRC_PATH, 'utf8');
+    const handler = (() => {
+        const at = src.indexOf("on(card, '[data-pd-addtype]'");
+        return src.slice(at, src.indexOf('each(card,', at));
+    })();
+
+    test('it does not call window.prompt', () => {
+        expect(handler).not.toMatch(/window\.prompt\s*\(/);   // a CALL, not the word in a comment
+        expect(handler).toContain('askOnPage({');
+        expect(handler).toContain("ask: 'Type it in'");
+    });
+
+    test('a normal pick still adds straight away, with no question', () => {
+        expect(handler).toContain("if (v !== '__other') { addType(v); return; }");
+    });
+
+    test('the same type cannot go on twice under a different case', () => {
+        // An import writes SEAMLESS, the dropdown offers Seamless. The rule survived the
+        // rewrite — it now lives inside addType, which BOTH paths go through.
+        expect(handler).toMatch(/lower\(t\) === lower\(v\)/);
+        expect(handler).toContain('var addType = function (v)');
+    });
+
+    test('an empty answer holds the question open instead of quietly doing nothing', () => {
+        // Exactly what prompt() did on Cancel: closed, added nothing, said nothing.
+        const ok = src.slice(src.indexOf("on(app, '[data-pd-askok]'"));
+        expect(ok).toContain('if (!typed) { if (box) box.focus(); return; }');
     });
 });

@@ -508,6 +508,21 @@ function newPendingId() {
         + Math.random().toString(36).slice(2, 7);
 }
 
+/**
+ * Add to the approval queue without ever losing what is already in it.
+ *
+ * The queue is capped, and the old code put new arrivals first and sliced the result — so a
+ * full queue silently dropped its oldest items, which are the ones that have been waiting
+ * longest. Room is whatever is left AFTER the existing queue; anything that does not fit is
+ * counted and handed back, so the owner can be told rather than left to notice.
+ */
+function queueWithoutLosingAny(existing, incoming, cap) {
+    const held = existing || [];
+    const room = Math.max(0, (cap || MAX_PENDING) - held.length);
+    const taken = (incoming || []).slice(0, room);
+    return { items: taken.concat(held), queued: taken.length, noRoom: Math.max(0, (incoming || []).length - room) };
+}
+
 function importPendingItem(firm, fresh, match) {
     const id = newPendingId();
     const company = (match && match.company) || companyFromEmail(fresh[0]) || fresh[0];
@@ -1243,6 +1258,7 @@ module.exports = {
     pendingFromUsage,
     dropAlreadyQueued,
     MAX_PENDING,
+    queueWithoutLosingAny,
     companyFromEmail,
     changeEntry,
     removalEntry,

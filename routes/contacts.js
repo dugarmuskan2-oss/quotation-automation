@@ -191,9 +191,10 @@ module.exports = function createContactsRouter({ storage, openai }) {
             const result = contactsLib.pendingFromSuggestions(
                 dir.contacts, parseBlob(freightRaw, {}), parseBlob(supplierRaw, {}));
             const fresh = contactsLib.dropAlreadyQueued(items, result.items);
-            if (fresh.length) await savePending(fresh.concat(items).slice(0, MAX_PENDING));
+            const room = contactsLib.queueWithoutLosingAny(items, fresh, MAX_PENDING);
+            if (room.queued) await savePending(room.items);
             res.json({
-                ok: true, queued: fresh.length,
+                ok: true, queued: room.queued, noRoom: room.noRoom,
                 alreadyQueued: result.items.length - fresh.length,
                 skippedFirms: result.skippedFirms, skippedAddresses: result.skippedAddresses,
             });
@@ -211,8 +212,9 @@ module.exports = function createContactsRouter({ storage, openai }) {
             const bumped = contactsLib.bumpUsage(dir.contacts, usage);
             await saveDirectory({ contacts: bumped.contacts, changes: dir.changes });
             const proposed = contactsLib.pendingFromUsage(dir.contacts, items, bumped.unknown, usage);
-            if (proposed.length) await savePending(proposed.concat(items).slice(0, MAX_PENDING));
-            res.json({ ok: true, queued: proposed.length });
+            const room = contactsLib.queueWithoutLosingAny(items, proposed, MAX_PENDING);
+            if (room.queued) await savePending(room.items);
+            res.json({ ok: true, queued: room.queued, noRoom: room.noRoom });
         } catch (error) {
             res.status(500).json({ error: 'Could not record the usage: ' + error.message });
         }

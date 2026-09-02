@@ -33,7 +33,7 @@ const contactsLib = require('../utils/contacts');
 
 const {
     ROLES, sanitizePartner, mergePartner, findByEmail, allEmails, bumpUsage,
-    pendingFromSuggestions, pendingFromUsage, dropAlreadyQueued, MAX_PENDING,
+    pendingFromSuggestions, pendingFromUsage, dropAlreadyQueued, MAX_PENDING, queueWithoutLosingAny,
     companyFromEmail, changeEntry, pushChange, diffLines,
     undoChange, sanitizePendingItem, extractionPrompt, findsFromExtraction,
 } = contactsLib;
@@ -334,6 +334,56 @@ describe('storage caps — the directory is a single JSON blob, so every list is
         // A 24-firm import behind whatever was already queued would have had its tail silently
         // dropped by the route's old inline cap of 50. Room for the biggest realistic import.
         expect(MAX_PENDING).toBe(300);
+    });
+
+    describe('queueWithoutLosingAny — a full queue never eats what is already in it', () => {
+        const item = (id) => ({ id, preview: { company: 'Firm ' + id } });
+        const many = (n, p) => Array.from({ length: n }, (_, i) => item(p + i));
+
+        test('with room to spare, new ones go on top and everything is kept', () => {
+            const r = queueWithoutLosingAny(many(3, 'old'), many(2, 'new'), 10);
+            expect(r.items.map((x) => x.id)).toEqual(['new0', 'new1', 'old0', 'old1', 'old2']);
+            expect(r.queued).toBe(2);
+            expect(r.noRoom).toBe(0);
+        });
+
+        test('when it will not all fit, the OLD queue survives and the new ones are cut', () => {
+            // The whole bug: it used to be the other way round, silently.
+            const existing = many(8, 'old');
+            const r = queueWithoutLosingAny(existing, many(5, 'new'), 10);
+            expect(r.items).toHaveLength(10);
+            existing.forEach((x) => expect(r.items.map((i) => i.id)).toContain(x.id));
+            expect(r.queued).toBe(2);
+            expect(r.noRoom).toBe(3);       // and it says how many did not fit
+        });
+
+        test('a queue already at the cap takes nothing, and loses nothing', () => {
+            const existing = many(10, 'old');
+            const r = queueWithoutLosingAny(existing, many(4, 'new'), 10);
+            expect(r.items.map((x) => x.id)).toEqual(existing.map((x) => x.id));
+            expect(r.queued).toBe(0);
+            expect(r.noRoom).toBe(4);
+        });
+
+        test('a queue OVER the cap is not trimmed as a side effect', () => {
+            // Trimming here would delete waiting items on an unrelated write.
+            const existing = many(12, 'old');
+            const r = queueWithoutLosingAny(existing, [], 10);
+            expect(r.items).toHaveLength(12);
+            expect(r.noRoom).toBe(0);
+        });
+
+        test('nothing incoming means nothing changes', () => {
+            const existing = many(3, 'old');
+            const r = queueWithoutLosingAny(existing, [], 10);
+            expect(r.items.map((x) => x.id)).toEqual(existing.map((x) => x.id));
+            expect(r.queued).toBe(0);
+        });
+
+        test('missing arguments do not throw', () => {
+            expect(queueWithoutLosingAny(null, null, 10).items).toEqual([]);
+            expect(queueWithoutLosingAny(undefined, [item('a')], 10).queued).toBe(1);
+        });
     });
 });
 
@@ -1719,9 +1769,20 @@ describe('routes/contacts.js is wired to the approval path, not the old write-th
 
     test('the queue cap is the shared MAX_PENDING, never an inline number', () => {
         expect(source).toContain('const MAX_PENDING = contactsLib.MAX_PENDING;');
-        expect(source.match(/\.slice\(0, MAX_PENDING\)/g)).toHaveLength(3);
         // The old inline cap of 50 would silently drop the tail of a 24-firm import.
         expect(source).not.toMatch(/savePending\([^;]*slice\(0,\s*\d/);
+    });
+
+    test('neither route caps the queue by slicing new arrivals over the old ones', () => {
+        // `fresh.concat(items).slice(0, MAX_PENDING)` put the NEW items first and cut the
+        // end off — and the end is the OLDEST queue, the brochures tagged in Gmail days ago
+        // and still waiting. They vanished with nothing said. Both routes go through
+        // queueWithoutLosingAny now, which fills the room that is left instead.
+        expect(source).toMatch(/contactsLib\.queueWithoutLosingAny\(items,\s*fresh,\s*MAX_PENDING\)/);
+        expect(source).toMatch(/contactsLib\.queueWithoutLosingAny\(items,\s*proposed,\s*MAX_PENDING\)/);
+        expect(source).not.toMatch(/(fresh|proposed)\.concat\(items\)\.slice/);
+        // and both hand the overflow count back, so the owner can be told
+        expect(source).toMatch(/noRoom: room\.noRoom/);
     });
 });
 
