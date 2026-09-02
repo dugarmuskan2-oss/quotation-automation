@@ -1146,7 +1146,6 @@
             + '<div class="pd-row"><b>' + esc(p.company || 'New partner — needs a name') + '</b>'
             + '<span class="pd-pill">' + esc(roleLabel(p)) + '</span>'
             + (isRegular(p) ? '<span class="pd-pill pd-pill-good">Regular</span>' : '')
-            + (p.fromEnquiry ? '<span class="pd-pill pd-pill-warn">From an enquiry — check me</span>' : '')
             + '<span class="pd-sp"></span><span class="pd-tiny">›</span></div>'
             + '<p class="pd-muted">' + esc([p.city].concat(bits).filter(Boolean).join(' · ')) + '</p>'
             + (latest ? '<p class="pd-muted pd-note-line">“' + esc(latest.t) + '” <span class="pd-tiny">— ' + ago(latest.d) + '</span></p>' : '')
@@ -1242,7 +1241,6 @@
             + '<div class="pd-row pd-close-head" data-pd-close="1" tabindex="0" role="button">'
             + '<b>' + esc(p.company || 'New partner') + '</b>'
             + '<span class="pd-pill">' + esc(roleLabel(p)) + '</span>'
-            + (p.fromEnquiry ? '<span class="pd-pill pd-pill-warn">From an enquiry — check me</span>' : '')
             + '<span class="pd-sp"></span><span class="pd-tiny">click to close</span></div>'
             + '<div class="pd-grid2">' + fld(p, 'Company', 'company', p.company, 'e.g. Annai Steel Traders')
             + '<div class="pd-fld"><label>They are a…</label><select data-pd-k="role">' + roles + '</select></div></div>'

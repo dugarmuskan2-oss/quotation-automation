@@ -566,6 +566,50 @@ function keepWhatWasAddedSince(before, incoming, fields) {
     return { partner: out, kept };
 }
 
+/**
+ * Take the cards nobody ever approved OUT of the directory and put them back in the queue.
+ *
+ * The owner's rule from the start was that nothing enters the directory without approval.
+ * Ten cards were in there anyway — built from addresses an enquiry had been sent to, with
+ * the firm name read off the email ("anmolgroup69@gmail.com", "Vsnl") and every other box
+ * left at its default. On the list they were indistinguishable from entries he had made.
+ *
+ * Nothing is thrown away. Each card becomes a queue item carrying the WHOLE card as its
+ * preview, id included — this firm is not new, and its history hangs off that id — so
+ * approving one puts back exactly what was there. A card that does not fit in the queue
+ * STAYS in the directory: losing it to a full queue is the one unacceptable outcome.
+ */
+function unapprovedToPending(contacts, pending, cap) {
+    const held = contacts || [];
+    const queue = pending || [];
+    const move = held.filter(p => p && p.fromEnquiry === true);
+    if (!move.length) return { contacts: held, pending: queue, moved: [], noRoom: 0 };
+
+    const items = move.map(p => ({
+        id: newPendingId(),
+        origin: 'import',
+        from: allEmails(p)[0] || '',
+        subject: str(p.company) || allEmails(p)[0] || 'Unnamed',
+        file: '', kind: 'photo', text: '',
+        finds: allEmails(p).map(email => ({
+            kind: 'field', key: 'email', label: 'Address you have used', value: email,
+        })),
+        receivedAt: new Date().toISOString(),
+        preview: sanitizePartner(Object.assign({}, p)),
+    }));
+
+    const room = queueWithoutLosingAny(queue, items, cap);
+    const queued = {};
+    items.slice(0, room.queued).forEach(it => { queued[it.preview.id] = true; });
+
+    return {
+        contacts: held.filter(p => !queued[p.id]),
+        pending: room.items,
+        moved: move.filter(p => queued[p.id]).map(p => str(p.company) || allEmails(p)[0] || p.id),
+        noRoom: room.noRoom,
+    };
+}
+
 function importPendingItem(firm, fresh, match) {
     const id = newPendingId();
     const company = (match && match.company) || companyFromEmail(fresh[0]) || fresh[0];
@@ -1302,6 +1346,7 @@ module.exports = {
     dropAlreadyQueued,
     MAX_PENDING,
     queueWithoutLosingAny,
+    unapprovedToPending,
     keepWhatWasAddedSince,
     LIST_KEY,
     companyFromEmail,

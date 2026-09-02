@@ -34,7 +34,7 @@ const contactsLib = require('../utils/contacts');
 const {
     ROLES, sanitizePartner, mergePartner, findByEmail, allEmails, bumpUsage,
     pendingFromSuggestions, pendingFromUsage, dropAlreadyQueued, MAX_PENDING, queueWithoutLosingAny,
-    keepWhatWasAddedSince,
+    keepWhatWasAddedSince, unapprovedToPending,
     companyFromEmail, changeEntry, pushChange, diffLines,
     undoChange, sanitizePendingItem, extractionPrompt, findsFromExtraction,
 } = contactsLib;
@@ -2611,5 +2611,126 @@ describe('source guard — the approve route runs the rescue', () => {
 
     test('and the History line says what it kept', () => {
         expect(source).toContain("' · kept ' + rescued.kept.join(', ') + ' added while it waited'");
+    });
+});
+
+describe('only cards the owner approved belong in the directory', () => {
+    /**
+     * The rule from the start: nothing enters the directory without a yes. Ten cards were in
+     * there anyway — built from addresses an enquiry had gone to, the firm name read off the
+     * email, every other box at its default. On the list they were indistinguishable from
+     * entries the owner had typed himself, and the ranking scored them as if their blanks
+     * were facts.
+     *
+     * They move back to the queue. The whole card travels as the preview, so approving one
+     * restores exactly what was there.
+     */
+    const card = (over) => Object.assign({
+        id: 'p_1', company: 'Airta Logistics', role: 'transporter',
+        people: [{ name: '', role: 'Main contact', phones: [], emails: [{ label: 'Work', v: 'a@airta.test' }] }],
+        branches: [], types: [], products: [], rules: [], routes: [], notes: [], images: [],
+        partLoad: true, moq: 0,
+    }, over);
+
+    test('an unapproved card leaves the directory and turns up in the queue', () => {
+        const mine = card({ fromEnquiry: true });
+        const r = unapprovedToPending([mine], []);
+
+        expect(r.contacts).toEqual([]);                 // gone from the directory
+        expect(r.pending).toHaveLength(1);
+        expect(r.moved).toEqual(['Airta Logistics']);
+        expect(r.pending[0].origin).toBe('import');
+        expect(r.pending[0].from).toBe('a@airta.test');
+    });
+
+    test('the WHOLE card travels, id included, so approving restores it', () => {
+        const mine = card({
+            fromEnquiry: true, city: 'Chennai', vehicles: '3 lorries',
+            routes: [{ from: 'Chennai', to: 'Hosur' }],
+            notes: [{ t: 'Pays in 30 days', d: '2026-08-01' }],
+        });
+        const r = unapprovedToPending([mine], []);
+        const back = r.pending[0].preview;
+
+        expect(back.id).toBe('p_1');                    // the same firm, not a new one
+        expect(back.company).toBe('Airta Logistics');
+        expect(back.city).toBe('Chennai');
+        expect(back.vehicles).toBe('3 lorries');
+        expect(back.routes).toHaveLength(1);
+        expect(back.notes[0].t).toBe('Pays in 30 days');
+    });
+
+    test('a card the owner DID approve is left exactly where it is', () => {
+        const approved = card({ id: 'p_ok', company: 'Sri Steel' });   // no flag
+        const r = unapprovedToPending([approved], []);
+        expect(r.contacts).toEqual([approved]);
+        expect(r.pending).toEqual([]);
+        expect(r.moved).toEqual([]);
+    });
+
+    test('a mixed directory keeps the approved ones and moves only the rest', () => {
+        const ok = card({ id: 'p_ok', company: 'Sri Steel' });
+        const bad = card({ id: 'p_bad', company: 'Vsnl', fromEnquiry: true });
+        const r = unapprovedToPending([ok, bad], []);
+        expect(r.contacts.map((c) => c.id)).toEqual(['p_ok']);
+        expect(r.moved).toEqual(['Vsnl']);
+    });
+
+    test('what is already waiting is kept, and the new ones go in front', () => {
+        const waiting = { id: 'pd_old', origin: 'gmail', preview: { company: 'Already Here' } };
+        const r = unapprovedToPending([card({ fromEnquiry: true })], [waiting]);
+        expect(r.pending).toHaveLength(2);
+        expect(r.pending[r.pending.length - 1].id).toBe('pd_old');   // the old one survives
+    });
+
+    test('a card that will not fit STAYS in the directory rather than vanishing', () => {
+        // Losing it to a full queue is the one unacceptable outcome.
+        const full = Array.from({ length: MAX_PENDING }, (_, i) => ({ id: 'pd_' + i, origin: 'gmail', preview: {} }));
+        const mine = card({ fromEnquiry: true });
+        const r = unapprovedToPending([mine], full);
+
+        expect(r.noRoom).toBe(1);
+        expect(r.contacts).toHaveLength(1);             // still there
+        expect(r.contacts[0].id).toBe('p_1');
+        expect(r.moved).toEqual([]);
+        expect(r.pending).toHaveLength(MAX_PENDING);    // and nothing waiting was pushed out
+    });
+
+    test('a card with no firm name is named by its address, never blank', () => {
+        const nameless = card({ company: '', fromEnquiry: true });
+        const r = unapprovedToPending([nameless], []);
+        expect(r.moved).toEqual(['a@airta.test']);
+        expect(r.pending[0].subject).toBe('a@airta.test');
+    });
+
+    test('an empty directory is a no-op, not a crash', () => {
+        expect(unapprovedToPending([], []).moved).toEqual([]);
+        expect(unapprovedToPending(null, null).moved).toEqual([]);
+    });
+
+    test('running it twice finds nothing the second time', () => {
+        const first = unapprovedToPending([card({ fromEnquiry: true })], []);
+        const second = unapprovedToPending(first.contacts, first.pending);
+        expect(second.moved).toEqual([]);
+        expect(second.pending).toHaveLength(1);          // and does not queue it again
+    });
+});
+
+describe('source guard — the check-me badge is gone, the flag is not', () => {
+    const pd = require('fs').readFileSync(
+        require('path').join(__dirname, '..', 'partner-directory.js'), 'utf8');
+
+    test('the badge no longer appears anywhere', () => {
+        expect(pd).not.toContain('From an enquiry — check me');
+        expect(pd).not.toContain('pd-pill-warn">From an enquiry');
+    });
+
+    test('but the flag still keeps the ranking honest', () => {
+        // Without it the app prints "Takes part load" and "No minimum in the way" as facts,
+        // off boxes it filled with defaults that nobody ever confirmed. CLAUDE.md check 5.
+        expect(pd).toContain('function unconfirmedCard(p) { return !!(p && p.fromEnquiry); }');
+        expect(pd).toContain("if (!p.moq && unconfirmedCard(p)) { why.push(['neutral', 'Minimum not recorded");
+        expect(pd).toContain("if (unconfirmedCard(p)) { why.push(['neutral', 'Part load not recorded");
+        expect(pd).toContain("bits.push(unconfirmedCard(p) && p.partLoad ? 'Part load not recorded'");
     });
 });
