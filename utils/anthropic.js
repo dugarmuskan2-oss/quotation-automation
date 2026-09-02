@@ -22,11 +22,20 @@ const MAX_TOKENS = 16000;
 
 let _client = null;
 
-/** null when no key is set, so the caller can fall back rather than crash. */
+/**
+ * null when no key is set, so the caller can fall back rather than crash.
+ *
+ * An identity-linked key must also say which workspace it is acting in, or every call comes
+ * back 400 "anthropic-workspace-id is required". A plain key ignores the header, so sending
+ * it whenever it is set is safe either way.
+ */
 function client() {
     if (_client) return _client;
     if (!process.env.ANTHROPIC_API_KEY) return null;
-    _client = new Anthropic();
+    const workspace = String(process.env.ANTHROPIC_WORKSPACE_ID || '').trim();
+    _client = new Anthropic(workspace
+        ? { defaultHeaders: { 'anthropic-workspace-id': workspace } }
+        : {});
     return _client;
 }
 
