@@ -213,11 +213,15 @@ describe('sanitizePartner keeps every field the card shows', () => {
         expect(sanitizePartner({ fromEnquiry: true }).fromEnquiry).toBe(true);
     });
 
-    test('partLoad defaults to YES — a transporter takes part loads unless told otherwise', () => {
-        // The default matters commercially: defaulting to "no part loads" would quietly rule
-        // every transporter out of the small consignments that are most of the freight work.
-        expect(sanitizePartner({}).partLoad).toBe(true);
-        expect(sanitizePartner({ partLoad: undefined }).partLoad).toBe(true);
+    test('partLoad has THREE states, and a new card is "not recorded"', () => {
+        // It used to default to yes, and the ranking then scored that blank as a fact worth
+        // +25 — which is how a full-truck-only lorry man got two-tonne enquiries off a box
+        // nobody had ever touched. The owner's words: "seems like accepts part load is the
+        // default — no need for that". Neither yes nor no may be assumed.
+        expect(sanitizePartner({}).partLoad).toBeNull();
+        expect(sanitizePartner({ partLoad: undefined }).partLoad).toBeNull();
+        expect(sanitizePartner({ partLoad: null }).partLoad).toBeNull();
+        expect(sanitizePartner({ partLoad: 'yes' }).partLoad).toBeNull();   // only a real boolean counts
         expect(sanitizePartner({ partLoad: true }).partLoad).toBe(true);
         expect(sanitizePartner({ partLoad: false }).partLoad).toBe(false);
     });
@@ -2725,12 +2729,24 @@ describe('source guard — the check-me badge is gone, the flag is not', () => {
         expect(pd).not.toContain('pd-pill-warn">From an enquiry');
     });
 
-    test('but the flag still keeps the ranking honest', () => {
-        // Without it the app prints "Takes part load" and "No minimum in the way" as facts,
-        // off boxes it filled with defaults that nobody ever confirmed. CLAUDE.md check 5.
+    test('but nothing states a blank box as a fact', () => {
+        // CLAUDE.md check 5, in two places. Part load now reads its own value — three states,
+        // so an unanswered box is neither a green tick nor a -30 verdict. The minimum still
+        // leans on the flag, because a blank there has no third state to sit in.
         expect(pd).toContain('function unconfirmedCard(p) { return !!(p && p.fromEnquiry); }');
         expect(pd).toContain("if (!p.moq && unconfirmedCard(p)) { why.push(['neutral', 'Minimum not recorded");
-        expect(pd).toContain("if (unconfirmedCard(p)) { why.push(['neutral', 'Part load not recorded");
-        expect(pd).toContain("bits.push(unconfirmedCard(p) && p.partLoad ? 'Part load not recorded'");
+        expect(pd).toContain("if (p.partLoad == null) { why.push(['neutral', 'Part load not recorded");
+        expect(pd).toContain("bits.push(p.partLoad == null ? 'Part load not recorded'");
+        // the -30 "full loads only" verdict must require an explicit no, never a blank
+        expect(pd).toContain("if (p.partLoad === false) { why.push(['warn', 'Full loads only");
+        expect(pd).not.toContain("if (!p.partLoad) { why.push(['warn', 'Full loads only");
+    });
+
+    test('a card sent back to the queue goes as "not recorded", not as a claim', () => {
+        const auto = sanitizePartner({ id: 'p_1', company: 'Vsnl', partLoad: true, fromEnquiry: true });
+        const r = unapprovedToPending([auto], []);
+        // Its box was never answered by anybody — it holds whatever the old default put
+        // there. Approving it must not turn that into something the owner has said.
+        expect(r.pending[0].preview.partLoad).toBeNull();
     });
 });

@@ -150,7 +150,9 @@ function sanitizePartner(input) {
             .map(r => ({ from: str(r && r.from), to: str(r && r.to) }))
             .filter(r => r.from || r.to).slice(0, 40),
         vehicles: str(src.vehicles),
-        partLoad: src.partLoad !== false,
+        // Three states, not two. Anything that is not an explicit yes or no is "not
+        // recorded" — a default answered for the owner, and the ranking then scored it.
+        partLoad: src.partLoad === true ? true : (src.partLoad === false ? false : null),
         notes: sanitizeNotes(src.notes),
         images: (Array.isArray(src.images) ? src.images : [])
             .map(im => ({ n: str(im && im.n), kind: str(im && im.kind), d: str(im && im.d), count: num(im && im.count, 0) }))
@@ -595,7 +597,10 @@ function unapprovedToPending(contacts, pending, cap) {
             kind: 'field', key: 'email', label: 'Address you have used', value: email,
         })),
         receivedAt: new Date().toISOString(),
-        preview: sanitizePartner(Object.assign({}, p)),
+        // Its part-load box was never answered by anybody — it holds whatever the old
+        // two-option default put there. Send it back as "not recorded" rather than as a
+        // claim the owner is about to approve without ever having made it.
+        preview: sanitizePartner(Object.assign({}, p, { partLoad: null })),
     }));
 
     const room = queueWithoutLosingAny(queue, items, cap);

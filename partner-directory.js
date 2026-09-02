@@ -500,11 +500,12 @@
     function scoreLoadSize(p, need, why) {
         if (!need.known) { why.push(['neutral', 'No weight given — part load vs full truck not checked']); return 0; }
         if (need.tons >= 9) { why.push(['ok', need.tons.toFixed(1) + ' T is a full truck — their strength']); return 15; }
-        if (!p.partLoad) { why.push(['warn', 'Full loads only — this is ' + need.tons.toFixed(1) + ' T, a part load']); return -30; }
-        // Nobody said they take part loads — the app made the card and the box defaulted to
-        // yes. A green tick worth 25 points, off a blank, is how a full-truck-only lorry man
-        // gets a 2 T enquiry and says so on the phone.
-        if (unconfirmedCard(p)) { why.push(['neutral', 'Part load not recorded — worth a call before you send it']); return 0; }
+        // Three states, and the middle one matters most. "Full loads only" is a -30 verdict
+        // and "takes part load" a +25 green tick; a box nobody has answered must be neither.
+        // It used to be read off the card's origin instead of off the box, so an approved
+        // card started claiming the default as a fact the moment it was approved.
+        if (p.partLoad == null) { why.push(['neutral', 'Part load not recorded — worth a call before you send it']); return 0; }
+        if (p.partLoad === false) { why.push(['warn', 'Full loads only — this is ' + need.tons.toFixed(1) + ' T, a part load']); return -30; }
         why.push(['ok', 'Takes part load — you only have ' + need.tons.toFixed(1) + ' T']);
         return 25;
     }
@@ -1033,7 +1034,7 @@
         return duplicateWarningHtml()
             + finderBlock()
             + '<div class="pd-filters">' + chips + '<span class="pd-sp"></span>'
-            + (D.contacts.length ? importButtonHtml() : '') + '</div>' + importNoteHtml()
+            + '</div>'
             + listHtml();
     }
 
@@ -1078,52 +1079,16 @@
     }
 
     function emptyStateHtml() {
-        if (S.imported && !S.imported.queued) {
-            return '<div class="pd-empty"><p class="pd-muted">'
-                + (S.imported.alreadyQueued
-                    ? 'Those are already waiting for you under <b>Recent changes</b>.'
-                    : 'Nothing to bring in — the app has no remembered addresses yet.') + '</p>'
-                + '<p class="pd-tiny" style="margin-top:6px;">Type one in on the <b>Add</b> tab, or tag a supplier’s email in Gmail with the Add-to-Directory label.</p></div>';
-        }
+        var waiting = D.pending.length;
         return '<div class="pd-empty"><p class="pd-muted"><b>Your directory is empty.</b></p>'
-            + '<p class="pd-tiny" style="margin:6px 0 10px;">The app has been quietly remembering every address you have sent an enquiry to. '
-            + 'Bring those in and they wait under <b>Recent changes</b> for you to approve, one firm at a time — '
-            + 'nothing is added until you say so.</p>'
-            + importButtonHtml()
-            + '<p class="pd-tiny" style="margin-top:8px;">Or type one in on the <b>Add</b> tab — a name, a number, whatever you have.</p></div>';
-    }
-
-    // Kept reachable at all times, not only while the directory is empty: one enquiry sent
-    // from the quote side queues a firm, and the button used to vanish for good the moment
-    // anything existed — taking years of remembered addresses with it.
-    /**
-     * Say what the press actually did. The answer was kept but only ever shown on a
-     * COMPLETELY EMPTY directory — and the button is deliberately left on the page once the
-     * directory has anything in it, which is when it is mostly pressed. So the usual press
-     * redrew the page byte for byte and looked broken.
-     */
-    function importResultText(d) {
-        if (!d) return '';
-        var bits = [];
-        if (d.queued) bits.push(d.queued + ' firm' + (d.queued === 1 ? '' : 's') + ' added to Recent changes');
-        if (d.alreadyQueued) bits.push(d.alreadyQueued + ' already waiting there');
-        if (d.skippedFirms) bits.push(d.skippedFirms + ' already in your directory');
-        // The queue is capped. Anything that would not fit is named, never dropped quietly.
-        if (d.noRoom) bits.push('<b>' + d.noRoom + ' could not be added — Recent changes is full. '
-            + 'Approve or discard some and press this again.</b>');
-        return bits.length ? bits.join(' · ') : 'Nothing new to bring in — every address you have '
-            + 'emailed is already in your directory or already waiting under Recent changes.';
-    }
-
-    function importNoteHtml() {
-        if (!S.importNote) return '';
-        return '<p class="pd-tiny" style="margin:7px 0 0;">' + S.importNote
-            + ' <button class="pd-linkish" data-pd-importnoteclear="1">OK</button></p>';
-    }
-
-    function importButtonHtml() {
-        return '<button class="pd-prim" data-pd-import="1"' + (S.importing ? ' disabled' : '') + '>'
-            + (S.importing ? 'Reading…' : '↓ Bring in the addresses I have already used') + '</button>';
+            + (waiting
+                ? '<p class="pd-tiny" style="margin:6px 0 10px;">' + waiting + ' firm'
+                    + (waiting === 1 ? ' is' : 's are') + ' waiting for you under '
+                    + '<b>Recent changes</b>. Approve one and it lands here.</p>'
+                : '<p class="pd-tiny" style="margin:6px 0 10px;">Nothing is waiting either. '
+                    + 'Firms arrive here when you approve them.</p>')
+            + '<p class="pd-tiny">Type one in on the <b>Add</b> tab — a name, a number, whatever '
+            + 'you have — or tag a supplier’s email in Gmail with the Add-to-Directory label.</p></div>';
     }
 
     function rowCard(p) {
@@ -1131,9 +1096,8 @@
         if (p.role === 'transporter') {
             bits.push((p.routes || []).length + ' route' + ((p.routes || []).length === 1 ? '' : 's'));
             if (p.vehicles) bits.push(p.vehicles);
-            // Nobody typed this on a card the app made itself — printing "Takes part load"
-            // off a default is a fact stated that nobody ever gave.
-            bits.push(unconfirmedCard(p) && p.partLoad ? 'Part load not recorded'
+            // Printing "Takes part load" off a box nobody answered is a fact nobody gave.
+            bits.push(p.partLoad == null ? 'Part load not recorded'
                 : (p.partLoad ? 'Takes part load' : 'Full load only'));
         } else {
             if ((p.types || []).length) bits.push(p.types.join(' · '));
@@ -1406,8 +1370,10 @@
         return '<div class="pd-sec">Vehicles &amp; routes</div>'
             + '<div class="pd-grid2">' + fld(p, 'Vehicles they keep', 'vehicles', p.vehicles)
             + '<div class="pd-fld"><label>Part load</label><select data-pd-k="partLoad">'
-            + '<option value="yes"' + (p.partLoad ? ' selected' : '') + '>Accepts part load</option>'
-            + '<option value="no"' + (p.partLoad ? '' : ' selected') + '>Full load only</option></select></div></div>'
+            + '<option value=""' + (p.partLoad == null ? ' selected' : '') + '>Not recorded</option>'
+            + '<option value="yes"' + (p.partLoad === true ? ' selected' : '') + '>Accepts part load</option>'
+            + '<option value="no"' + (p.partLoad === false ? ' selected' : '') + '>Full load only</option>'
+            + '</select></div></div>'
             + '<div class="pd-tiny pd-head-line">Regular routes</div>'
             + (p.routes || []).map(function (r, i) {
                 return '<div class="pd-cline" style="grid-template-columns:1fr 1fr 26px;">'
@@ -2102,18 +2068,6 @@
                 S.openId = null; render();
             };
         });
-        on(app, '[data-pd-import]', function () {
-            if (S.importing) return;                      // in-flight lock: no double import
-            S.importing = true; render();
-            postJson('/contacts/import-remembered', {}, function (d) {
-                S.imported = d;
-                S.importNote = importResultText(d);
-                // They go to the queue, not the directory — so land the owner where the work is.
-                if (d && d.queued) S.tab = 'changes';
-                loadDirectory(render);
-            }, function () { S.importing = false; }, 'Bringing in the addresses');
-        });
-        on(app, '[data-pd-importnoteclear]', function () { S.importNote = ''; render(); });
         on(app, '[data-pd-gonedismiss]', function () { D.goneNote = ''; render(); });
     }
 
@@ -2292,7 +2246,7 @@
             el.onchange = function () {
                 var k = el.getAttribute('data-pd-k'), v = el.value;
                 if (k === 'moq') p.moq = parseFloat(v) || 0;
-                else if (k === 'partLoad') p.partLoad = v === 'yes';
+                else if (k === 'partLoad') p.partLoad = v === 'yes' ? true : (v === 'no' ? false : null);
                 else p[k] = v;
                 save(k === 'role' || k === 'company', [k]);
             };
@@ -2846,7 +2800,7 @@
                  leavePopupHtml: leavePopupHtml, closeCardNow: closeCardNow,
                  holdCleanCopy: holdCleanCopy, restoreCleanCopy: restoreCleanCopy,
                  keepOpenEdits: keepOpenEdits,
-                 importResultText: importResultText, directoryIsOpen: directoryIsOpen,
+                 directoryIsOpen: directoryIsOpen,
                  _state: function () { return { S: S, D: D }; } },
     };
 })();

@@ -1133,38 +1133,6 @@ describe('an emptied card is never stored as a blank row', () => {
     });
 });
 
-describe('source guard — importing remembered addresses', () => {
-    const importHandler = sliceBetween("on(app, '[data-pd-import]'", 'function bindListAndCard(');
-
-    test('the lock is released whether the import succeeds OR fails', () => {
-        // A second click re-runs the whole import: every remembered address added twice.
-        // But releasing the lock only on success is its own bug — postJson's catch runs
-        // INSTEAD of the success callback, so one failed import left the button disabled and
-        // reading "Importing…" until the page was reloaded. A failure that looks like a hang.
-        // The release therefore belongs in postJson's `always` argument, never in `then`.
-        expect(importHandler).toContain('if (S.importing) return;');
-        expect(importHandler).toContain('S.importing = true;');
-        expect(importHandler.match(/S\.importing = false;/g)).toHaveLength(1);
-        expect(importHandler).toMatch(
-            /postJson\([^]*?\}\s*,\s*function \(\) \{ S\.importing = false; \}\s*,\s*'Bringing in the addresses'\s*\)/);
-        // and NOT inside the success callback, where a failed request never reaches it
-        expect(importHandler).not.toMatch(/function \(d\) \{\s*S\.importing = false;/);
-    });
-
-    test('and the button visibly disables itself', () => {
-        // CLAUDE.md check #3 wants the button visibly disabled, not only guarded in code.
-        expect(bodyOf('importButtonHtml')).toContain("(S.importing ? ' disabled' : '')");
-    });
-
-    test('the import stays reachable once the directory is no longer empty', () => {
-        // It used to live ONLY inside emptyStateHtml, so one enquiry sent from a quote — which
-        // queues a firm on its own — hid years of remembered addresses behind an empty state
-        // that could never be reached again.
-        expect(bodyOf('dirView')).toContain('importButtonHtml()');
-        expect(bodyOf('emptyStateHtml')).toContain('importButtonHtml()');
-    });
-});
-
 describe('source guard — the Recent-changes buttons that write to the directory', () => {
     // Approve writes a pending email into the directory; Discard and Undo both write too.
     // Every one of them needs the same double-click no-op as Add and Import.
@@ -1642,24 +1610,39 @@ describe('"No city on their card" is only ever said to a card with no city', () 
 });
 
 describe('a card the app made itself does not state facts nobody gave it', () => {
-    // sanitizePartner defaults partLoad to true and moq to 0, so a stub the app invented
-    // after a send was born "Accepts part load" and "No minimum in the way" — green, and
-    // worth 25 and 10 points. CLAUDE.md check five: no number, and no fact, is guessed.
+    // moq defaults to 0, so a stub the app invented after a send was born "No minimum in the
+    // way" — green, and worth 10 points. CLAUDE.md check five: no number, and no fact, is
+    // guessed. Part load used to be the same story and is now fixed at the source: it has a
+    // real third state, so the ranking reads the BOX rather than guessing from the card's
+    // origin. That is the stronger rule — an approved card with an unanswered box is hedged
+    // too, where the old test would have let it through.
     const freight = () => readEnquiry('lorry from Chennai to Madurai, 2.4 MT');
 
-    test('part load is "not recorded", and worth nothing, until someone confirms the card', () => {
+    test('part load is "not recorded", and worth nothing, until the box is answered', () => {
         setContacts([
-            partner({ company: 'GuessedCo', role: 'transporter', fromEnquiry: true, routes: [{ from: 'Chennai', to: 'Madurai' }] }),
-            partner({ company: 'ConfirmedCo', role: 'transporter', fromEnquiry: false, routes: [{ from: 'Chennai', to: 'Madurai' }] }),
+            partner({ company: 'BlankCo', role: 'transporter', partLoad: null, routes: [{ from: 'Chennai', to: 'Madurai' }] }),
+            partner({ company: 'SaidYesCo', role: 'transporter', partLoad: true, routes: [{ from: 'Chennai', to: 'Madurai' }] }),
         ]);
         const rows = rankFor('transport', freight(), 'Chennai');
-        const guessed = rowFor(rows, 'GuessedCo');
-        expect(reasonMatching(guessed, /Takes part load/)).toBeNull();
-        const line = reasonMatching(guessed, /Part load not recorded/);
+        const blank = rowFor(rows, 'BlankCo');
+        expect(reasonMatching(blank, /Takes part load/)).toBeNull();
+        const line = reasonMatching(blank, /Part load not recorded/);
         expect(line).not.toBeNull();
         expect(line[0]).toBe('neutral');
         const s = scoresByCompany(rows);
-        expect(s.ConfirmedCo - s.GuessedCo).toBe(25);
+        expect(s.SaidYesCo - s.BlankCo).toBe(25);
+    });
+
+    test('an APPROVED card with an unanswered box is hedged just the same', () => {
+        // The old rule read the card's origin, so approving one turned its untouched default
+        // into a green tick worth 25 points. Nothing about approving answers the question.
+        setContacts([
+            partner({ company: 'ApprovedBlank', role: 'transporter', fromEnquiry: false, partLoad: null, routes: [{ from: 'Chennai', to: 'Madurai' }] }),
+        ]);
+        const row = rowFor(rankFor('transport', freight(), 'Chennai'), 'ApprovedBlank');
+        expect(reasonMatching(row, /Part load not recorded/)).not.toBeNull();
+        expect(reasonMatching(row, /Takes part load/)).toBeNull();
+        expect(reasonMatching(row, /Full loads only/)).toBeNull();   // nor the -30 verdict
     });
 
     test('a confirmed full-load-only card is still sunk — the rule itself is untouched', () => {
@@ -3002,7 +2985,7 @@ describe('the six ways the Directory still went wrong', () => {
      * All six came out of a bug hunt over the shipped code, and every one of them was
      * invisible to a green suite.
      */
-    const { keepOpenEdits, markDirty, isDirty, importResultText, directoryIsOpen } =
+    const { keepOpenEdits, markDirty, isDirty, directoryIsOpen } =
         global.window.partnerDirectory._test;
     const { S } = _state();
 
@@ -3043,22 +3026,6 @@ describe('the six ways the Directory still went wrong', () => {
         expect(S.openId).toBe('g2');
     });
 
-    // ── the import that said nothing ─────────────────────────────────────────
-    test('the import always says what it did, including when it did nothing', () => {
-        expect(importResultText({ queued: 0, alreadyQueued: 0, skippedFirms: 0 }))
-            .toContain('Nothing new to bring in');
-        expect(importResultText({ queued: 3 })).toContain('3 firms added to Recent changes');
-        expect(importResultText({ queued: 1 })).toContain('1 firm added');
-        expect(importResultText({ queued: 0, alreadyQueued: 4 })).toContain('4 already waiting');
-        expect(importResultText({ queued: 0, skippedFirms: 2 })).toContain('2 already in your directory');
-    });
-
-    test('firms the waiting list had no room for are named, never dropped quietly', () => {
-        const t = importResultText({ queued: 10, noRoom: 5 });
-        expect(t).toContain('5 could not be added');
-        expect(t).toContain('Recent changes is full');
-        expect(t).toContain('press this again');
-    });
 });
 
 describe('source guard — the last six Directory fixes are actually wired in', () => {
@@ -3091,11 +3058,26 @@ describe('source guard — the last six Directory fixes are actually wired in', 
         expect(fn.indexOf('delete S.busy[id];')).toBeGreaterThan(fn.indexOf('loadDirectory(function () {'));
     });
 
-    test('the import result is shown on a directory that already has firms in it', () => {
-        // It was only ever rendered on a COMPLETELY empty directory — which is not the state
-        // the button is normally pressed in, so a press redrew the page byte for byte.
-        expect(src).toContain("+ (D.contacts.length ? importButtonHtml() : '') + '</div>' + importNoteHtml()");
-        expect(src).toContain('S.importNote = importResultText(d);');
+    test('the import button is gone, and nothing still points at it', () => {
+        // It was a catch-up for the addresses remembered before the directory existed. Those
+        // are in, and every enquiry since queues an unknown firm on its own, so it had
+        // nothing left to find. Removed on the owner's word: "we have already brought in
+        // the addresses". A dead button that redraws the page unchanged is worse than none.
+        expect(src).not.toContain('data-pd-import');
+        expect(src).not.toContain('importButtonHtml');
+        expect(src).not.toContain('importResultText');
+        expect(src).not.toContain('S.importing');
+    });
+
+    test('the empty directory still says where firms come from', () => {
+        // Losing the button must not leave a new owner staring at an empty list with no
+        // stated way to fill it.
+        const fn = sliceBetween('function emptyStateHtml()', 'function rowCard');
+        expect(fn).toContain('Recent changes');
+        expect(fn).toContain('<b>Add</b> tab');
+        expect(fn).toContain('Add-to-Directory label');
+        // and it counts what is waiting rather than claiming there is nothing
+        expect(fn).toContain('var waiting = D.pending.length;');
     });
 
     test('closing the browser tab with unsaved card edits asks first', () => {
@@ -3103,5 +3085,30 @@ describe('source guard — the last six Directory fixes are actually wired in', 
         const page = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
         expect(page).toContain('window.partnerDirectory.hasUnsavedWork()');
         expect(page).toContain('if (!dirty && !draftOpen && !pdDirty) return;');
+    });
+});
+
+describe('source guard — the part-load box offers "not recorded", and stores it', () => {
+    /**
+     * The behaviour tests above drive rankFor and rowCard, and both passed with the dropdown
+     * and the field handler broken — nothing exercised the markup or the onchange. Two
+     * mutations escaped clean: dropping the "Not recorded" option, and having the handler
+     * store a plain `v === 'yes'` so picking "not recorded" saved a NO.
+     */
+    test('all three options are there, and the blank one is selected on a new card', () => {
+        const fn = sliceBetween('function transporterBlock(p)', 'function notesBlock');
+        expect(fn).toContain('>Not recorded</option>');
+        expect(fn).toContain('>Accepts part load</option>');
+        expect(fn).toContain('>Full load only</option>');
+        expect(fn).toContain("(p.partLoad == null ? ' selected' : '')");
+        // and yes/no are selected only on an explicit boolean, never on a blank
+        expect(fn).toContain("(p.partLoad === true ? ' selected' : '')");
+        expect(fn).toContain("(p.partLoad === false ? ' selected' : '')");
+    });
+
+    test('picking "not recorded" stores nothing, not a no', () => {
+        const fn = sliceBetween('function bindCardFields(app)', 'function bindPeople');
+        expect(fn).toContain("p.partLoad = v === 'yes' ? true : (v === 'no' ? false : null);");
+        expect(fn).not.toContain("p.partLoad = v === 'yes';");
     });
 });
