@@ -731,12 +731,36 @@
     }
 
     /**
+     * The card exactly as the directory has it, taken the moment it is opened and before a
+     * single key is pressed. "Close without saving" has to have something to put back: the
+     * edits are written straight onto the card object, so forgetting the dirty flags alone
+     * left every discarded character still sitting there.
+     */
+    function holdCleanCopy(p) {
+        if (!p || S.clean[p.id]) return;
+        S.clean[p.id] = JSON.parse(JSON.stringify(p));
+    }
+
+    /** Put the card back the way it was, throwing the typing away for real. */
+    function restoreCleanCopy(id) {
+        var was = S.clean[id];
+        if (!was) return;
+        var at = -1;
+        D.contacts.forEach(function (c, i) { if (c.id === id) at = i; });
+        if (at !== -1) D.contacts[at] = was;
+        delete S.clean[id];
+    }
+
+    /**
      * Close a card, whichever way the question was answered — and then do whatever they were
      * trying to do when the question interrupted them (switch tab, open another card). Being
      * dropped back on a blank directory having forgotten the click is its own small fault.
      */
-    function closeCardNow() {
-        delete S.dirty[S.confirmLeave];
+    function closeCardNow(discard) {
+        var id = S.confirmLeave;
+        if (discard) restoreCleanCopy(id);      // "Close without saving" means it
+        delete S.dirty[id];
+        delete S.clean[id];
         S.confirmLeave = ''; S.openId = null; S.saveNote = '';
         var then = S.leaveThen; S.leaveThen = null;
         if (then) then();
@@ -778,12 +802,31 @@
         // clear the company name and the contact, and what is left is not worth storing.
         if (isBlankCard(p)) { S.saveNote = 'Type a name, a person or a number first — there is nothing to save yet.'; render(); return Promise.resolve(false); }
         S.busy['save' + id] = true; S.saveNote = ''; render();
+        // What this request is actually carrying, and the value of each box as it goes. A
+        // save takes a moment, and anything typed DURING it was being marked saved without
+        // ever being sent — with the bar then reading "Saved." Only boxes that still hold
+        // what was sent are cleared.
+        var sending = dirtyFields(id);
+        var sent = {};
+        sending.forEach(function (f) { sent[f] = JSON.stringify(p[f]); });
         // Resolves TRUE only when the directory really has it. "Save and close" must not
         // close on a save that failed — that is how the typing would vanish for good.
-        return savePartner(p, dirtyFields(id)).then(function () {
+        return savePartner(p, sending).then(function () {
             delete S.busy['save' + id];
             var ok = !D.saveError;
-            if (ok) { delete S.dirty[id]; S.saveNote = 'Saved.'; }
+            if (ok) {
+                var still = S.dirty[id] || {};
+                sending.forEach(function (f) {
+                    if (JSON.stringify(p[f]) === sent[f]) delete still[f];
+                });
+                if (!isDirty(id)) {
+                    delete S.dirty[id];
+                    delete S.clean[id];          // what is on the card IS the directory now
+                    S.saveNote = 'Saved.';
+                } else {
+                    S.saveNote = 'Saved — but you have changed more since. Press Save again.';
+                }
+            }
             render();
             return ok;
         });
@@ -801,7 +844,7 @@
     var S = { tab: 'dir', filter: 'all', openId: null, openPending: null, openChange: null,
               find: { text: '', state: 'idle', need: null, note: '' }, busy: {}, add: freshAdd(),
               confirmDelete: '',     // the card whose "are you sure?" is on screen
-              dirty: {}, saveNote: '', confirmLeave: '', leaveThen: null, ask: null };   // directory cards edited but not yet saved
+              dirty: {}, clean: {}, saveNote: '', confirmLeave: '', leaveThen: null, ask: null };   // directory cards edited but not yet saved
 
     function byId(id) {
         var p = D.contacts.filter(function (x) { return x.id === id; })[0];
@@ -1985,7 +2028,14 @@
             };
         });
         on(app, '[data-pd-reload]', function () { loadDirectory(render); });
-        each(app, '[data-pd-filter]', function (el) { el.onclick = function () { S.filter = el.getAttribute('data-pd-filter'); S.openId = null; render(); }; });
+        each(app, '[data-pd-filter]', function (el) {
+            // A chip sits directly above the open card, and closing it that way skipped the
+            // question entirely — the typing then went at the next refresh, silently.
+            el.onclick = function () {
+                if (!leaveCardOk(function () { el.onclick(); })) return;
+                S.filter = el.getAttribute('data-pd-filter'); S.openId = null; render();
+            };
+        });
         bindFinder(app); bindAdd(app); bindListAndCard(app); bindChanges(app);
     }
 
@@ -2128,12 +2178,12 @@
         });
         on(app, '[data-pd-leavedrop]', function () {
             if (S.busy['save' + S.confirmLeave]) return;
-            closeCardNow();                             // they were told, and chose this
+            closeCardNow(true);                         // they were told, and chose this
         });
         on(app, '[data-pd-leavesave]', function () {
             var id = S.confirmLeave;
             if (!id || S.busy['save' + id]) return;      // one press is one save
-            saveOpenCard(id).then(function (ok) { if (ok) closeCardNow(); });
+            saveOpenCard(id).then(function (ok) { if (ok) closeCardNow(false); });
         });
         on(app, '[data-pd-save]', function () {
             saveOpenCard(app.querySelector('[data-pd-save]').getAttribute('data-pd-save'));
@@ -2173,6 +2223,7 @@
         if (!card) return;
         var p = byId(card.getAttribute('data-pd-card'));
         if (!p) return;
+        holdCleanCopy(p);      // before the first keystroke, so there is something to put back
         var save = function (rerender, fields) {
             p.checked = new Date().toISOString().slice(0, 10);
             // A pending-queue PREVIEW is never saved here — approval is its only write path.
@@ -2710,6 +2761,7 @@
                  markDirty: markDirty, dirtyFields: dirtyFields, isDirty: isDirty,
                  saveBarHtml: saveBarHtml, leaveCardOk: leaveCardOk, saveOpenCard: saveOpenCard,
                  leavePopupHtml: leavePopupHtml, closeCardNow: closeCardNow,
+                 holdCleanCopy: holdCleanCopy, restoreCleanCopy: restoreCleanCopy,
                  keepOpenEdits: keepOpenEdits,
                  _state: function () { return { S: S, D: D }; } },
     };

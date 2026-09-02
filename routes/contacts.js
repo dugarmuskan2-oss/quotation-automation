@@ -295,13 +295,17 @@ module.exports = function createContactsRouter({ storage, openai }) {
             // Only what the review screen shows, for a card that already exists. Approving is
             // a read of one email — it must not carry the browser's older copy of the counts
             // the app keeps for itself back over the stored ones (CLAUDE.md check #2).
-            const merged = contactsLib.mergePartner(dir.contacts, partner, before ? REVIEWED_FIELDS : null);
+            // The review card was frozen when the item was queued. Anything added to the
+            // stored card since — a contact, a note, a route — must survive being approved.
+            const rescued = contactsLib.keepWhatWasAddedSince(before, partner, REVIEWED_FIELDS);
+            const merged = contactsLib.mergePartner(dir.contacts, rescued.partner, before ? REVIEWED_FIELDS : null);
             // The item stays in the queue on a clash — nothing is half-applied, and the owner
             // can fix the other card and approve again.
             if (merged.conflict) return res.status(409).json({ error: conflictMessage(merged.conflict) });
             const entry = contactsLib.changeEntry(
                 changeTitle(merged.partner, before),
-                item.finds.length + ' detail' + (item.finds.length === 1 ? '' : 's') + ' from “' + item.subject + '” (' + item.file + ')',
+                item.finds.length + ' detail' + (item.finds.length === 1 ? '' : 's') + ' from “' + item.subject + '” (' + item.file + ')'
+                    + (rescued.kept.length ? ' · kept ' + rescued.kept.join(', ') + ' added while it waited' : ''),
                 String(source || 'Gmail label'), merged.partner.id, before, merged.partner);
             await saveDirectory({ contacts: merged.contacts, changes: contactsLib.pushChange(dir.changes, entry) });
             await savePending(items.filter(x => x.id !== item.id));

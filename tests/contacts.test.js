@@ -34,6 +34,7 @@ const contactsLib = require('../utils/contacts');
 const {
     ROLES, sanitizePartner, mergePartner, findByEmail, allEmails, bumpUsage,
     pendingFromSuggestions, pendingFromUsage, dropAlreadyQueued, MAX_PENDING, queueWithoutLosingAny,
+    keepWhatWasAddedSince,
     companyFromEmail, changeEntry, pushChange, diffLines,
     undoChange, sanitizePendingItem, extractionPrompt, findsFromExtraction,
 } = contactsLib;
@@ -2507,5 +2508,108 @@ describe('routes/contacts.js — deleting, approving and an email nobody could r
 
         expect(res.body.finds).toBe(1);
         expect(res.body.readFailed).toBe(false);
+    });
+});
+
+describe('approving a firm that has been waiting does not delete work done since', () => {
+    /**
+     * The review card is a copy of the stored card FROZEN when the item was queued, and
+     * approving writes the list fields from it wholesale. So a contact or a note added to
+     * that firm in the days between — the normal thing to do with a firm you are dealing
+     * with — was silently wiped, and the History line said only "Contact added".
+     */
+    const card = (over) => Object.assign({
+        id: 'p_msl', company: 'MSL Tubes',
+        people: [{ name: 'Ravi', role: 'Sales', phones: [], emails: [{ label: 'Work', v: 'ravi@msltubes.com' }] }],
+        notes: [{ t: 'Pays in 30 days', d: '2026-08-01' }],
+        branches: [], types: [], products: [], rules: [], routes: [], images: [],
+    }, over);
+
+    const FIELDS = ['company', 'role', 'roleOther', 'city', 'address', 'branches', 'types',
+        'moq', 'products', 'rules', 'routes', 'vehicles', 'partLoad', 'notes', 'people', 'images'];
+
+    test('a contact added while it waited survives the approval', () => {
+        // stored card, as it is NOW — the owner added Kumar after the item was queued
+        const before = card({ people: [
+            { name: 'Ravi', role: 'Sales', phones: [], emails: [{ label: 'Work', v: 'ravi@msltubes.com' }] },
+            { name: 'Kumar', role: 'Owner', phones: [{ label: 'Mobile', v: '9840000009' }], emails: [] },
+        ] });
+        // the review card, frozen earlier, plus the new address the email turned up
+        const incoming = card({ people: [
+            { name: 'Ravi', role: 'Sales', phones: [], emails: [{ label: 'Work', v: 'ravi@msltubes.com' }] },
+            { name: '', role: '', phones: [], emails: [{ label: 'Work', v: 'suresh@msltubes.com' }] },
+        ] });
+
+        const r = keepWhatWasAddedSince(before, incoming, FIELDS);
+        const names = r.partner.people.map((c) => c.name);
+        expect(names).toContain('Kumar');                 // not deleted
+        expect(r.partner.people.map((c) => (c.emails[0] || {}).v)).toContain('suresh@msltubes.com');
+        expect(r.kept).toContain('1 people');             // and it is reported, not silent
+    });
+
+    test('a note added while it waited survives too', () => {
+        const before = card({ notes: [
+            { t: 'Pays in 30 days', d: '2026-08-01' },
+            { t: 'Gave 3% extra on 100 NB', d: '2026-08-28' },
+        ] });
+        const r = keepWhatWasAddedSince(before, card(), FIELDS);
+        expect(r.partner.notes.map((n) => n.t)).toContain('Gave 3% extra on 100 NB');
+    });
+
+    test('nothing is duplicated when the two agree', () => {
+        const r = keepWhatWasAddedSince(card(), card(), FIELDS);
+        expect(r.partner.people).toHaveLength(1);
+        expect(r.partner.notes).toHaveLength(1);
+        expect(r.kept).toEqual([]);
+    });
+
+    test('the same contact under a different case is not added twice', () => {
+        const before = card({ people: [
+            { name: 'Ravi', role: 'Sales', phones: [], emails: [{ label: 'Work', v: 'RAVI@MSLTUBES.COM' }] },
+        ] });
+        expect(keepWhatWasAddedSince(before, card(), FIELDS).partner.people).toHaveLength(1);
+    });
+
+    test('routes, rules, products and branches are protected the same way', () => {
+        const before = card({
+            routes: [{ from: 'Chennai', to: 'Hosur' }],
+            rules: ['GST extra'],
+            products: [{ p: 'GI', spec: 'Medium', sizes: [], moq: 0, rule: '' }],
+            branches: [{ city: 'Salem', area: '', address: 'Bypass Road' }],
+        });
+        const r = keepWhatWasAddedSince(before, card(), FIELDS);
+        expect(r.partner.routes).toHaveLength(1);
+        expect(r.partner.rules).toEqual(['GST extra']);
+        expect(r.partner.products).toHaveLength(1);
+        expect(r.partner.branches).toHaveLength(1);
+    });
+
+    test('a brand-new firm has nothing to protect and is passed through untouched', () => {
+        const incoming = card();
+        expect(keepWhatWasAddedSince(null, incoming, FIELDS).partner).toBe(incoming);
+        expect(keepWhatWasAddedSince(null, incoming, FIELDS).kept).toEqual([]);
+    });
+
+    test('it does not mutate the card it was given', () => {
+        const before = card({ notes: [{ t: 'Pays in 30 days', d: '2026-08-01' }, { t: 'New note', d: '2026-08-30' }] });
+        const incoming = card();
+        const originalLength = incoming.notes.length;
+        keepWhatWasAddedSince(before, incoming, FIELDS);
+        expect(incoming.notes).toHaveLength(originalLength);
+    });
+});
+
+describe('source guard — the approve route runs the rescue', () => {
+    const source = require('fs').readFileSync(
+        require('path').join(__dirname, '..', 'routes', 'contacts.js'), 'utf8');
+
+    test('it rescues BEFORE merging, and merges the rescued card', () => {
+        expect(source).toContain('contactsLib.keepWhatWasAddedSince(before, partner, REVIEWED_FIELDS)');
+        expect(source).toContain('contactsLib.mergePartner(dir.contacts, rescued.partner,');
+        expect(source).not.toContain('mergePartner(dir.contacts, partner, before ? REVIEWED_FIELDS');
+    });
+
+    test('and the History line says what it kept', () => {
+        expect(source).toContain("' · kept ' + rescued.kept.join(', ') + ' added while it waited'");
     });
 });

@@ -956,7 +956,8 @@ describe('source guard — saving a partner by hand', () => {
         expect(fn).toContain('if (isBlankCard(p))');
         expect(fn).toContain('there is nothing to save yet');
         // ...and it writes only the boxes that were actually touched.
-        expect(fn).toContain('savePartner(p, dirtyFields(id))');
+        expect(fn).toContain('var sending = dirtyFields(id);');
+        expect(fn).toContain('savePartner(p, sending)');
     });
 
     test('the button that made blank cards is gone, and nothing still points at it', () => {
@@ -2694,7 +2695,7 @@ describe('source guard — the WIRING of the unsaved-work question', () => {
 
     test('"Save and close" closes only on the promise resolving TRUE', () => {
         const fn = sliceBetween("on(app, '[data-pd-leavesave]'", "on(app, '[data-pd-save]'");
-        expect(fn).toContain('saveOpenCard(id).then(function (ok) { if (ok) closeCardNow(); });');
+        expect(fn).toContain('saveOpenCard(id).then(function (ok) { if (ok) closeCardNow(false); });');
         expect(fn).toContain("if (!id || S.busy['save' + id]) return;");   // one press, one save
     });
 
@@ -2707,7 +2708,9 @@ describe('source guard — the WIRING of the unsaved-work question', () => {
 
     test('"Close without saving" is the only answer that throws typing away', () => {
         const fn = sliceBetween("on(app, '[data-pd-leavedrop]'", "on(app, '[data-pd-leavesave]'");
-        expect(fn).toContain('closeCardNow();');
+        // TRUE means "put the card back". It used to clear the dirty flags only, leaving
+        // every discarded character sitting on the card.
+        expect(fn).toContain('closeCardNow(true);');
         expect(fn).not.toContain('savePartner');
     });
 });
@@ -2791,5 +2794,202 @@ describe('"＋ Add another…" pipe type asks on the page too', () => {
         // Exactly what prompt() did on Cancel: closed, added nothing, said nothing.
         const ok = src.slice(src.indexOf("on(app, '[data-pd-askok]'"));
         expect(ok).toContain('if (!typed) { if (box) box.focus(); return; }');
+    });
+});
+
+describe('the three ways the Save button could still lose your typing', () => {
+    /**
+     * All three were found by hunting the code AFTER the Save button shipped, not by the
+     * suite — which was green through every one of them.
+     *
+     *  1. "Close without saving" cleared the dirty FLAGS and nothing else. The edits are
+     *     written straight onto the card object, so the discarded text stayed on the row,
+     *     stayed in the boxes under "No unsaved changes.", and went into the directory for
+     *     real on the next save of that same group.
+     *  2. Anything typed WHILE a save was in flight was marked saved without ever being
+     *     sent, and the bar then read "Saved."
+     *  3. The role chips sit directly above the open card and closed it with no question.
+     */
+    const { markDirty, isDirty, dirtyFields, saveOpenCard, leaveCardOk, closeCardNow,
+            holdCleanCopy, restoreCleanCopy, saveBarHtml } = global.window.partnerDirectory._test;
+    const { S } = _state();
+    let POSTS;
+
+    beforeEach(() => {
+        POSTS = [];
+        S.dirty = {}; S.clean = {}; S.saveNote = ''; S.busy = {}; S.openId = null;
+        S.confirmLeave = ''; S.leaveThen = null; S.filter = 'all';
+        D.contacts = []; D.saveError = '';
+        FETCH = (url, opt) => {
+            POSTS.push({ url: String(url), body: JSON.parse((opt && opt.body) || '{}') });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
+        };
+    });
+
+    test('"Close without saving" really puts the card back', async () => {
+        const p = partner({ id: 'r1', company: 'MSL Tubes', city: 'Chennai' });
+        D.contacts = [p];
+        S.openId = 'r1';
+        holdCleanCopy(p);                      // as bindCardFields does, before any keystroke
+
+        p.company = 'MSL Tubes Pvt Ltd';       // as the field handler does
+        p.city = 'Hosur';
+        markDirty(p, ['company', 'city']);
+
+        leaveCardOk();
+        closeCardNow(true);
+
+        const back = D.contacts.filter((c) => c.id === 'r1')[0];
+        expect(back.company).toBe('MSL Tubes');   // not the discarded text
+        expect(back.city).toBe('Chennai');
+        expect(isDirty('r1')).toBe(false);
+        expect(S.clean.r1).toBeUndefined();
+    });
+
+    test('the clean copy is taken ONCE, not refreshed on every redraw', async () => {
+        // bindCardFields runs on EVERY render of the open card, and a render happens on every
+        // keystroke that marks the card dirty. Without the "already held" guard the copy would
+        // be retaken carrying the typing, and "Close without saving" would restore the very
+        // text it was asked to throw away — looking fixed while doing nothing.
+        const p = partner({ id: 'r1b', company: 'MSL Tubes' });
+        D.contacts = [p];
+        S.openId = 'r1b';
+        holdCleanCopy(p);                  // first render, nothing typed yet
+
+        p.company = 'Typed after opening';
+        markDirty(p, ['company']);         // markDirty renders, so bindCardFields runs again
+        holdCleanCopy(p);                  // ...and this is that second call
+        holdCleanCopy(p);                  // and a third, for good measure
+
+        expect(S.clean['r1b'].company).toBe('MSL Tubes');
+
+        leaveCardOk();
+        closeCardNow(true);
+        expect(D.contacts.filter((c) => c.id === 'r1b')[0].company).toBe('MSL Tubes');
+    });
+
+    test('a discarded edit cannot ride along on the NEXT save of that card', async () => {
+        // The nastiest half: savePartner sends p[field] as it stands. With the discarded
+        // text still on the card, saving anything in that same group wrote it for real.
+        const p = partner({ id: 'r2', company: 'MSL Tubes' });
+        D.contacts = [p];
+        S.openId = 'r2';
+        holdCleanCopy(p);
+
+        p.company = 'Typed by mistake';
+        markDirty(p, ['company']);
+        leaveCardOk();
+        closeCardNow(true);
+
+        // Reopen and save something else entirely.
+        S.openId = 'r2';
+        const again = D.contacts.filter((c) => c.id === 'r2')[0];
+        holdCleanCopy(again);
+        again.city = 'Salem';
+        markDirty(again, ['city']);
+        await saveOpenCard('r2');
+        await flush();
+
+        const sent = POSTS.filter((r) => r.url.indexOf('/contacts/save') !== -1)[0];
+        expect(sent.body.partner.company).toBe('MSL Tubes');
+        expect(sent.body.fields).toEqual(['city']);
+    });
+
+    test('"Save and close" keeps the edit — it does not put the card back', async () => {
+        const p = partner({ id: 'r3', company: 'MSL Tubes' });
+        D.contacts = [p];
+        S.openId = 'r3';
+        holdCleanCopy(p);
+        p.company = 'MSL Tubes Pvt Ltd';
+        markDirty(p, ['company']);
+
+        const ok = await saveOpenCard('r3');
+        await flush();
+        expect(ok).toBe(true);
+        closeCardNow(false);
+
+        expect(D.contacts.filter((c) => c.id === 'r3')[0].company).toBe('MSL Tubes Pvt Ltd');
+    });
+
+    test('typing WHILE it saves is not marked saved, and the bar says so', async () => {
+        const p = partner({ id: 'r4', company: 'MSL Tubes', city: '' });
+        D.contacts = [p];
+        S.openId = 'r4';
+        markDirty(p, ['city']);
+
+        let release;
+        FETCH = (url, opt) => {
+            POSTS.push({ url: String(url), body: JSON.parse((opt && opt.body) || '{}') });
+            return new Promise((r) => { release = () => r({ ok: true, json: () => Promise.resolve({ ok: true }) }); });
+        };
+        const saving = saveOpenCard('r4');
+
+        // ...and while it is in the air, the owner types somewhere else.
+        p.vehicles = '3 lorries';
+        markDirty(p, ['vehicles']);
+
+        release();
+        await saving;
+        await flush();
+
+        expect(dirtyFields('r4')).toEqual(['vehicles']);        // still waiting, not "saved"
+        expect(saveBarHtml(p)).toContain('1 change not saved yet');
+        expect(S.saveNote).toContain('changed more since');
+        expect(POSTS[0].body.fields).toEqual(['city']);          // only what was actually sent
+    });
+
+    test('re-typing the SAME box mid-save leaves it waiting, not falsely saved', async () => {
+        const p = partner({ id: 'r5', company: 'MSL Tubes', city: 'Hosur' });
+        D.contacts = [p];
+        S.openId = 'r5';
+        markDirty(p, ['city']);
+
+        let release;
+        FETCH = (url, opt) => {
+            POSTS.push({ url: String(url), body: JSON.parse((opt && opt.body) || '{}') });
+            return new Promise((r) => { release = () => r({ ok: true, json: () => Promise.resolve({ ok: true }) }); });
+        };
+        const saving = saveOpenCard('r5');
+        p.city = 'Salem';                       // changed again before the reply came back
+        release();
+        await saving;
+        await flush();
+
+        expect(POSTS[0].body.partner.city).toBe('Hosur');   // what actually went
+        expect(dirtyFields('r5')).toEqual(['city']);        // the newer value still needs saving
+    });
+
+    test('a role chip asks before closing a card being typed in', () => {
+        const p = partner({ id: 'r6', company: 'MSL Tubes' });
+        D.contacts = [p];
+        S.openId = 'r6';
+        markDirty(p, ['city']);
+
+        let switched = false;
+        expect(leaveCardOk(() => { switched = true; })).toBe(false);
+        expect(S.confirmLeave).toBe('r6');
+        expect(switched).toBe(false);
+    });
+});
+
+describe('source guard — the chips and the finder do not sneak past the question', () => {
+    test('the role chips ask', () => {
+        const fn = sliceBetween("each(app, '[data-pd-filter]'", 'bindFinder(app);');
+        expect(fn).toContain('if (!leaveCardOk(');
+        expect(fn.indexOf('leaveCardOk')).toBeLessThan(fn.indexOf('S.openId = null'));
+    });
+
+    test('the clean copy is taken before the first keystroke, not after', () => {
+        const fn = sliceBetween('function bindCardFields(app)', 'function bindPeople');
+        expect(fn).toContain('holdCleanCopy(p);');
+        // it must be taken at BIND time, before any field handler can write to the card
+        expect(fn.indexOf('holdCleanCopy(p);')).toBeLessThan(fn.indexOf('p[k] = v'));
+    });
+
+    test('the clean copy is a real copy, not a second name for the same card', () => {
+        // Object.assign or a bare reference would mutate along with the card and restore
+        // nothing at all — the bug would look fixed and not be.
+        const fn = sliceBetween('function holdCleanCopy(p)', 'function restoreCleanCopy');
+        expect(fn).toContain('JSON.parse(JSON.stringify(p))');
     });
 });

@@ -523,6 +523,49 @@ function queueWithoutLosingAny(existing, incoming, cap) {
     return { items: taken.concat(held), queued: taken.length, noRoom: Math.max(0, (incoming || []).length - room) };
 }
 
+/**
+ * How to tell two entries in a list apart, per field. Used only to decide whether an entry
+ * the stored card has is already present in the one being approved.
+ */
+const LIST_KEY = {
+    people: c => lower(str(((c.emails || [])[0] || {}).v) || str(c.name)),
+    notes: n => lower(str(n && n.t)),
+    branches: b => lower(str(b && b.city) + '|' + str(b && b.address)),
+    products: p => lower(str(p && p.p) + '|' + str(p && p.spec)),
+    rules: r => lower(str(r)),
+    routes: r => lower(str(r && r.from) + '|' + str(r && r.to)),
+    types: t => lower(str(t)),
+    images: i => lower(str(i && i.n)),
+};
+
+/**
+ * Approving a queued firm must not delete work done while it was queued.
+ *
+ * The review card is a copy of the stored card FROZEN when the item was queued, and approving
+ * writes the list fields from it wholesale. So a contact or a note added to that firm in the
+ * days between — which is exactly what the owner does with a firm they are dealing with —
+ * was silently wiped, and the History line said only "Contact added". Anything the stored
+ * card has that the approved copy does not is put back.
+ *
+ * It errs towards keeping. A contact deleted on the review screen comes back, which is visible
+ * and can be deleted again; a contact deleted behind the owner's back is not.
+ */
+function keepWhatWasAddedSince(before, incoming, fields) {
+    if (!before || !incoming) return { partner: incoming, kept: [] };
+    const out = Object.assign({}, incoming);
+    const kept = [];
+    (fields || []).forEach(f => {
+        const key = LIST_KEY[f];
+        if (!key || !Array.isArray(before[f])) return;
+        const have = new Set((out[f] || []).map(key));
+        const missing = before[f].filter(x => !have.has(key(x)));
+        if (!missing.length) return;
+        out[f] = (out[f] || []).concat(missing);
+        kept.push(missing.length + ' ' + f);
+    });
+    return { partner: out, kept };
+}
+
 function importPendingItem(firm, fresh, match) {
     const id = newPendingId();
     const company = (match && match.company) || companyFromEmail(fresh[0]) || fresh[0];
@@ -1259,6 +1302,8 @@ module.exports = {
     dropAlreadyQueued,
     MAX_PENDING,
     queueWithoutLosingAny,
+    keepWhatWasAddedSince,
+    LIST_KEY,
     companyFromEmail,
     changeEntry,
     removalEntry,
