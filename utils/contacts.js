@@ -153,6 +153,7 @@ function sanitizePartner(input) {
         // Three states, not two. Anything that is not an explicit yes or no is "not
         // recorded" — a default answered for the owner, and the ranking then scored it.
         partLoad: src.partLoad === true ? true : (src.partLoad === false ? false : null),
+        enquiries: sanitizeEnquiries(src.enquiries),
         notes: sanitizeNotes(src.notes),
         images: (Array.isArray(src.images) ? src.images : [])
             .map(im => ({ n: str(im && im.n), kind: str(im && im.kind), d: str(im && im.d), count: num(im && im.count, 0) }))
@@ -287,6 +288,64 @@ function companyFromEmail(email) {
  * Record that enquiries went out to (or a reply came in from) these addresses.
  * Unknown addresses become stubs the owner tidies later — the directory fills itself.
  */
+const MAX_ENQUIRIES = 50;
+
+/**
+ * The enquiries actually sent to a firm, so "Enquiries sent: 1" can be opened and read.
+ *
+ * The card only ever held COUNTS — the number 1, with no way back to the email it stood for.
+ * The exchange itself lives on the quote, keyed by its Gmail thread; this keeps that thread
+ * id beside the firm so the card can link straight to it.
+ *
+ * Newest first, and capped: a firm asked every week for a year would otherwise grow the
+ * directory blob without limit.
+ */
+function sanitizeEnquiries(input) {
+    return (Array.isArray(input) ? input : [])
+        .filter(e => e && typeof e === 'object')
+        .map(e => ({
+            thread: str(e.thread),
+            at: str(e.at).slice(0, 10),
+            quote: str(e.quote),
+            asked: str(e.asked).slice(0, 200),
+            replied: e.replied === true,
+            repliedAt: str(e.repliedAt).slice(0, 10),
+        }))
+        .filter(e => e.thread || e.at)
+        .slice(0, MAX_ENQUIRIES);
+}
+
+/**
+ * Note an enquiry against the firm it went to, or mark one answered.
+ *
+ * Matched on the Gmail THREAD, never on position: the same firm can be asked twice in one
+ * day, and replies come back in whatever order people get round to them. A reply on a thread
+ * this card has no record of is ignored rather than guessed at — putting a reply beside a
+ * question nobody asked is worse than not showing it.
+ */
+function noteEnquiry(partner, entry, when) {
+    const list = sanitizeEnquiries(partner && partner.enquiries);
+    const thread = str(entry && entry.thread);
+    const day = str(when) || new Date().toISOString().slice(0, 10);
+
+    if (entry && entry.replied) {
+        const at = thread ? list.findIndex(e => e.thread === thread) : -1;
+        if (at === -1) return list;
+        const hit = Object.assign({}, list[at], { replied: true, repliedAt: day });
+        return list.slice(0, at).concat([hit], list.slice(at + 1));
+    }
+    // Sending on a thread already listed is the same enquiry, not a second one.
+    if (thread && list.some(e => e.thread === thread)) return list;
+    return [{
+        thread,
+        at: day,
+        quote: str(entry && entry.quote),
+        asked: str(entry && entry.asked).slice(0, 200),
+        replied: false,
+        repliedAt: '',
+    }].concat(list).slice(0, MAX_ENQUIRIES);
+}
+
 function bumpUsage(list, usage) {
     const now = new Date().toISOString().slice(0, 10);
     const reply = (usage && usage.kind) === 'reply';
@@ -313,6 +372,17 @@ function bumpUsage(list, usage) {
             counted[idx] = true;
             if (reply) { target.rep = num(target.rep, 0) + 1; }
             else { target.enq = num(target.enq, 0) + 1; }
+        }
+        // WHICH enquiry, not just how many. The caller sends one entry per address; an
+        // address with no thread simply bumps the count as before, which is what every
+        // older caller does and what the counts on today's cards came from.
+        const sent = ((usage && usage.threads) || [])
+            .filter(t => t && lower(t.email) === email)[0];
+        if (sent) {
+            target.enquiries = noteEnquiry(target, {
+                thread: str(sent.thread), quote: str(sent.quote),
+                asked: str(sent.asked), replied: reply,
+            }, now);
         }
         target.last = now;
         contacts[idx] = target;
@@ -1351,6 +1421,9 @@ module.exports = {
     dropAlreadyQueued,
     MAX_PENDING,
     queueWithoutLosingAny,
+    MAX_ENQUIRIES,
+    sanitizeEnquiries,
+    noteEnquiry,
     unapprovedToPending,
     keepWhatWasAddedSince,
     LIST_KEY,

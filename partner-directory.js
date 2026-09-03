@@ -1405,7 +1405,58 @@
             + ro('Last dealt with', ago(p.last)) + ro('Last edited', ago(p.checked)) + '</div>'
             + '<p class="pd-tiny">You never type these. "Regular" means asked 5+ times and dealt with in the last 4 months. '
             + 'Replies have only been counted since the app started watching for them, so "none recorded" is not the same as "they never answer". '
-            + '"Last edited" moves on its own.</p>';
+            + '"Last edited" moves on its own.</p>'
+            + enquiriesBlock(p);
+    }
+
+    // Gmail opens a thread by its id under #all — the same shape the quote side already uses
+    // for "View in Gmail".
+    var GMAIL_THREAD_URL = 'https://mail.google.com/mail/u/0/#all/';
+
+    /**
+     * The enquiries themselves, under the count that used to stand alone.
+     *
+     * "Enquiries sent: 1" was a number with nothing behind it — no way to see which email it
+     * meant, what was asked, or whether they ever came back. Each row here opens the real
+     * Gmail thread, where the enquiry and the reply are exactly as they were sent.
+     *
+     * Only enquiries sent from now on are listed. The older ones were never recorded against
+     * the firm, and inventing rows to match the count would be making up history — so the
+     * count is explained instead.
+     */
+    function enquiriesBlock(p) {
+        var list = (p.enquiries || []).filter(function (e) { return e && (e.thread || e.at); });
+        if (!list.length) {
+            if (!p.enq) return '';
+            return '<p class="pd-tiny" style="margin-top:9px;">The ' + p.enq + ' '
+                + (p.enq === 1 ? 'enquiry' : 'enquiries') + ' counted above went out before the app '
+                + 'started keeping the link to them. Ones you send from now on are listed here, '
+                + 'with a way straight into the Gmail thread.</p>';
+        }
+        return '<div class="pd-sec">Enquiries sent<span class="pd-sp"></span>'
+            + '<span class="pd-tiny">' + list.length + ' recorded</span></div>'
+            + list.map(enquiryRowHtml).join('')
+            + '<p class="pd-tiny" style="margin-top:6px;">Each opens the real thread in Gmail — '
+            + 'what you asked and what they said back, exactly as it was sent.</p>';
+    }
+
+    function enquiryRowHtml(e) {
+        var when = str(e.at) ? ago(e.at) : 'date not recorded';
+        return '<div class="pd-row pd-enq">'
+            + '<span style="min-width:0;"><b>' + esc(when) + '</b>'
+            + (str(e.quote) ? ' <span class="pd-tiny">· ' + esc(e.quote) + '</span>' : '')
+            + (str(e.asked) ? '<div class="pd-tiny">' + esc(e.asked) + '</div>' : '')
+            + '</span><span class="pd-sp"></span>'
+            + '<span class="pd-pill' + (e.replied ? '' : ' pd-pill-warn') + '">'
+            + (e.replied
+                ? 'Replied' + (str(e.repliedAt) ? ' ' + esc(ago(e.repliedAt)) : '')
+                : 'No reply yet')
+            + '</span>'
+            + (str(e.thread)
+                ? '<a class="pd-linkish" target="_blank" rel="noopener noreferrer" href="'
+                    + esc(GMAIL_THREAD_URL + str(e.thread)) + '">Open in Gmail</a>'
+                : '<span class="pd-tiny">no thread recorded</span>')
+            + '</div>';
     }
     function ro(label, v) { return '<div class="pd-fld"><label>' + esc(label) + '</label><div class="pd-ro">' + esc(v) + '</div></div>'; }
 
@@ -2658,6 +2709,11 @@
      * is hidden while the owner is on the Quotation tab. Days later the banner surfaces and
      * accuses him of losing work. Its own quiet note, in its own words, on its own page.
      */
+    /**
+     * `usage.threads` is [{ email, thread, quote, asked }] — one entry per ADDRESS, so a
+     * chip carrying three colleagues at one mill puts the same enquiry on all three cards.
+     * Callers that send none still bump the counts exactly as before.
+     */
     function recordUsage(usage) {
         return fetch(apiBase() + '/contacts/usage', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -2800,7 +2856,7 @@
                  leavePopupHtml: leavePopupHtml, closeCardNow: closeCardNow,
                  holdCleanCopy: holdCleanCopy, restoreCleanCopy: restoreCleanCopy,
                  keepOpenEdits: keepOpenEdits,
-                 directoryIsOpen: directoryIsOpen,
+                 directoryIsOpen: directoryIsOpen, enquiriesBlock: enquiriesBlock,
                  _state: function () { return { S: S, D: D }; } },
     };
 })();

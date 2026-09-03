@@ -64,6 +64,31 @@
     function apiBase() {
         return (typeof API_BASE_URL !== 'undefined' && API_BASE_URL) ? API_BASE_URL : '/api';
     }
+
+    function threadsForUsage(sentOk, quote, asked) {
+        var out = [];
+        (sentOk || []).forEach(function (r) {
+            var thread = (r.d && r.d.threadId) || '';
+            chipAddrs(r.addr).map(bareAddress).filter(Boolean).forEach(function (email) {
+                out.push({ email: email, thread: thread, quote: quote || '', asked: asked || '' });
+            });
+        });
+        return out;
+    }
+
+    // The thread each REPLY came back on, so the right enquiry is the one marked answered —
+    // the same supplier can be asked twice in a day.
+    function repliedThreadsForUsage(threads) {
+        return (threads || [])
+            .filter(function (t) { return t && t.replied && t.email && t.threadId; })
+            .reduce(function (acc, t) {
+                return acc.concat(String(t.email).split(/[,;]+/).map(function (e) {
+                    return { email: e.trim(), thread: t.threadId };
+                }));
+            }, [])
+            .filter(function (x) { return x.email; });
+    }
+
     // Tell the Partner Directory a supplier answered — the reply is detected here and
     // nowhere else, so without this the directory's "replied %" never moves off 0.
     function tellDirectoryReplied(threads) {
@@ -71,7 +96,11 @@
         var emails = (threads || []).filter(function (t) { return t && t.replied && t.email; })
             .reduce(function (acc, t) { return acc.concat(String(t.email).split(/[,;]+/)); }, [])
             .map(function (s) { return s.trim(); }).filter(Boolean);
-        if (emails.length) window.partnerDirectory.recordUsage({ emails: emails, kind: 'reply', role: 'dealer' });
+        if (!emails.length) return;
+        window.partnerDirectory.recordUsage({
+            emails: emails, kind: 'reply', role: 'dealer',
+            threads: repliedThreadsForUsage(threads),
+        });
     }
 
     // One chip can hold several addresses from the SAME firm. They ride on one email and are
@@ -1157,7 +1186,15 @@
                 var used = [];
                 sentOk.forEach(function (r) { used = used.concat(String(r.addr).split(', ')); });
                 recordSupplierUsage(used, quotation);
-                if (typeof window !== 'undefined' && window.partnerDirectory) window.partnerDirectory.recordUsage({ emails: used, kind: 'sent', role: 'dealer', pipeTypes: quotePipeTypes(quotation) });
+                if (typeof window !== 'undefined' && window.partnerDirectory) {
+                    window.partnerDirectory.recordUsage({
+                        emails: used, kind: 'sent', role: 'dealer',
+                        pipeTypes: quotePipeTypes(quotation),
+                        // ...and WHICH enquiry, so the count on the card can be opened
+                        threads: threadsForUsage(sentOk, (quotation && quotation.quoteNumber) || '',
+                            quotePipeTypes(quotation).join(' · ')),
+                    });
+                }
             }
             render(quotation, mountEl);
         });

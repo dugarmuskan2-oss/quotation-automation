@@ -1678,6 +1678,7 @@ describe('a reply is counted only after the "answered" flag has saved', () => {
             + 'var fetch = function () { return Promise.resolve({ ok: true, json: function () {\n'
             + '  return Promise.resolve({ messages: [{ direction: "customer", auto: false, body: "Rs 62/kg" }] });\n'
             + '} }); };\n'
+            + grabFromTab('repliedThreadsForUsage') + '\n'
             + grabFromTab('tellDirectoryReplied') + '\n'
             + grabFromTab('trimReplyForStorage') + '\n'
             + grabFromTab('checkSupplierRepliesForQuote') + '\n'

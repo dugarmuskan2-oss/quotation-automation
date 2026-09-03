@@ -3112,3 +3112,93 @@ describe('source guard — the part-load box offers "not recorded", and stores i
         expect(fn).not.toContain("p.partLoad = v === 'yes';");
     });
 });
+
+describe('the enquiry list on a card, and the way into Gmail', () => {
+    const { enquiriesBlock } = global.window.partnerDirectory._test;
+
+    const withEnq = (over) => partner(Object.assign({
+        company: 'Airta Logistics', role: 'transporter', enq: 2,
+        enquiries: [
+            { thread: 'T2', at: TODAY, quote: 'DSC-109', asked: 'Chennai to Hosur', replied: false, repliedAt: '' },
+            { thread: 'T1', at: day(9), quote: 'DSC-108', asked: 'Chennai to Salem', replied: true, repliedAt: day(7) },
+        ],
+    }, over));
+
+    test('each enquiry opens the real Gmail thread', () => {
+        const html = enquiriesBlock(withEnq());
+        expect(html).toContain('https://mail.google.com/mail/u/0/#all/T1');
+        expect(html).toContain('https://mail.google.com/mail/u/0/#all/T2');
+        expect(html).toContain('Open in Gmail');
+        expect(html).toContain('target="_blank"');
+        expect(html).toContain('rel="noopener noreferrer"');   // never hand Gmail the opener
+    });
+
+    test('it says what was asked, on which quote, and how long ago', () => {
+        const html = enquiriesBlock(withEnq());
+        expect(html).toContain('Chennai to Hosur');
+        expect(html).toContain('DSC-109');
+        expect(html).toContain('today');
+    });
+
+    test('a reply is shown as a reply; silence is shown as silence', () => {
+        const html = enquiriesBlock(withEnq());
+        expect(html).toContain('Replied');
+        expect(html).toContain('No reply yet');
+    });
+
+    test('a count with no enquiries behind it says so, instead of showing nothing', () => {
+        // Every card today is in this state: the counts were kept, the link never was.
+        // Silence here reads as "the count is wrong".
+        const html = enquiriesBlock(withEnq({ enquiries: [], enq: 3 }));
+        expect(html).toContain('3 enquiries');
+        expect(html).toContain('before the app started keeping the link');
+        expect(html).not.toContain('Open in Gmail');
+    });
+
+    test('one enquiry reads "1 enquiry", not "1 enquiries"', () => {
+        expect(enquiriesBlock(withEnq({ enquiries: [], enq: 1 }))).toContain('1 enquiry ');
+    });
+
+    test('a firm never asked shows nothing at all', () => {
+        expect(enquiriesBlock(withEnq({ enquiries: [], enq: 0 }))).toBe('');
+    });
+
+    test('an enquiry with no thread still lists, and says why it cannot link', () => {
+        const html = enquiriesBlock(withEnq({ enquiries: [{ thread: '', at: TODAY, replied: false }] }));
+        expect(html).toContain('no thread recorded');
+        expect(html).not.toContain('#all/"');      // never a link to nowhere
+    });
+
+    test('what a firm typed into a quote number cannot inject markup', () => {
+        const html = enquiriesBlock(withEnq({
+            enquiries: [{ thread: 'T1', at: TODAY, quote: '<img src=x onerror=alert(1)>', replied: false }],
+        }));
+        expect(html).not.toContain('<img src=x');
+        expect(html).toContain('&lt;img');
+    });
+});
+
+describe('source guard — the senders say which thread the enquiry went on', () => {
+    const fw = fs.readFileSync(path.join(__dirname, '..', 'freight-tab-weight-editor.js'), 'utf8');
+    const qe = fs.readFileSync(path.join(__dirname, '..', 'quote-enquiry-tab.js'), 'utf8');
+
+    [['the Freight tab', fw], ['the Enquiry tab', qe]].forEach(([name, src]) => {
+        test(name + ' sends the thread with the count', () => {
+            // The property name in full, with its leading space — asserting the bare
+            // substring passed happily when the key was renamed to _threads and the
+            // directory stopped being told anything.
+            expect(src).toContain(' threads: threadsForUsage(sentOk,');
+            expect(src).toContain(' threads: repliedThreadsForUsage(threads),');
+            expect(src).not.toContain('_threads:');
+        });
+
+        test(name + ' puts the enquiry on EVERY colleague at the firm', () => {
+            // One chip is one email to one firm. Recording only the first address would leave
+            // the other people at that mill showing a count with nothing behind it.
+            const fn = src.slice(src.indexOf('function threadsForUsage'),
+                                 src.indexOf('function repliedThreadsForUsage'));
+            expect(fn).toContain('chipAddrs(r.addr).map(bareAddress).filter(Boolean).forEach');
+            expect(fn).toContain('thread: thread,');
+        });
+    });
+});

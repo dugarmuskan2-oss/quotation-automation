@@ -890,6 +890,31 @@
     }
 
 
+
+    function threadsForUsage(sentOk, quote, asked) {
+        var out = [];
+        (sentOk || []).forEach(function (r) {
+            var thread = (r.d && r.d.threadId) || '';
+            chipAddrs(r.addr).map(bareAddress).filter(Boolean).forEach(function (email) {
+                out.push({ email: email, thread: thread, quote: quote || '', asked: asked || '' });
+            });
+        });
+        return out;
+    }
+
+    // The thread each REPLY came back on, so the right enquiry is the one marked answered —
+    // the same transporter can be asked twice in a day.
+    function repliedThreadsForUsage(threads) {
+        return (threads || [])
+            .filter(function (t) { return t && t.replied && t.email && t.threadId; })
+            .reduce(function (acc, t) {
+                return acc.concat(String(t.email).split(/[,;]+/).map(function (e) {
+                    return { email: e.trim(), thread: t.threadId };
+                }));
+            }, [])
+            .filter(function (x) { return x.email; });
+    }
+
     // Tell the Partner Directory a transporter answered. Without this the directory's
     // "replied %" stays 0 for ever and the reply-rate part of its ranking does nothing.
     function tellDirectoryReplied(threads) {
@@ -897,7 +922,11 @@
         var emails = (threads || []).filter(function (t) { return t && t.replied && t.email; })
             .reduce(function (acc, t) { return acc.concat(String(t.email).split(/[,;]+/)); }, [])
             .map(function (s) { return s.trim(); }).filter(Boolean);
-        if (emails.length) window.partnerDirectory.recordUsage({ emails: emails, kind: 'reply', role: 'transporter' });
+        if (!emails.length) return;
+        window.partnerDirectory.recordUsage({
+            emails: emails, kind: 'reply', role: 'transporter',
+            threads: repliedThreadsForUsage(threads),
+        });
     }
 
     // The ONLY route from "a reply came in" to the Partner Directory. It waits for the save,
@@ -1190,7 +1219,15 @@
                 var used = [];
                 sentOk.forEach(function (r) { used = used.concat(String(r.addr).split(', ')); });
                 recordFreightUsage(used, enq);
-                if (typeof window !== 'undefined' && window.partnerDirectory) window.partnerDirectory.recordUsage({ emails: used, kind: 'sent', role: 'transporter', pickup: enq.pickup, drop: enq.drop });
+                if (typeof window !== 'undefined' && window.partnerDirectory) {
+                    window.partnerDirectory.recordUsage({
+                        emails: used, kind: 'sent', role: 'transporter',
+                        pickup: enq.pickup, drop: enq.drop,
+                        // ...and WHICH enquiry, so the count on the card can be opened
+                        threads: threadsForUsage(sentOk, (q && q.quoteNumber) || '',
+                            [enq.pickup, enq.drop].filter(Boolean).join(' to ')),
+                    });
+                }
             }
             render(q, mountEl);
         });

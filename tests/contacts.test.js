@@ -34,7 +34,7 @@ const contactsLib = require('../utils/contacts');
 const {
     ROLES, sanitizePartner, mergePartner, findByEmail, allEmails, bumpUsage,
     pendingFromSuggestions, pendingFromUsage, dropAlreadyQueued, MAX_PENDING, queueWithoutLosingAny,
-    keepWhatWasAddedSince, unapprovedToPending,
+    keepWhatWasAddedSince, unapprovedToPending, sanitizeEnquiries, noteEnquiry, MAX_ENQUIRIES,
     companyFromEmail, changeEntry, pushChange, diffLines,
     undoChange, sanitizePendingItem, extractionPrompt, findsFromExtraction,
 } = contactsLib;
@@ -2748,5 +2748,156 @@ describe('source guard — the check-me badge is gone, the flag is not', () => {
         // Its box was never answered by anybody — it holds whatever the old default put
         // there. Approving it must not turn that into something the owner has said.
         expect(r.pending[0].preview.partLoad).toBeNull();
+    });
+});
+
+describe('"Enquiries sent: 1" is now something you can open', () => {
+    /**
+     * The card held COUNTS and nothing else — the number 1, with no way back to the email it
+     * stood for, what was asked, or whether they ever came back. The exchange itself lives on
+     * the quote, keyed by its Gmail thread; the firm now keeps that thread id so the card can
+     * link straight into it.
+     */
+    const sent = (over) => Object.assign({ thread: 'T1', quote: 'DSC-108', asked: 'Chennai to Hosur' }, over);
+
+    test('an enquiry is noted against the firm it went to', () => {
+        const list = noteEnquiry({}, sent(), '2026-09-02');
+        expect(list).toHaveLength(1);
+        expect(list[0]).toMatchObject({
+            thread: 'T1', quote: 'DSC-108', asked: 'Chennai to Hosur',
+            at: '2026-09-02', replied: false, repliedAt: '',
+        });
+    });
+
+    test('the newest is first, so the card reads top-down', () => {
+        let list = noteEnquiry({}, sent({ thread: 'T1' }), '2026-09-01');
+        list = noteEnquiry({ enquiries: list }, sent({ thread: 'T2' }), '2026-09-02');
+        expect(list.map((e) => e.thread)).toEqual(['T2', 'T1']);
+    });
+
+    test('the same thread twice is ONE enquiry, not two', () => {
+        // A resend on the same thread, or a second sweep, must not double the list.
+        let list = noteEnquiry({}, sent(), '2026-09-01');
+        list = noteEnquiry({ enquiries: list }, sent(), '2026-09-02');
+        expect(list).toHaveLength(1);
+        expect(list[0].at).toBe('2026-09-01');       // and keeps the date it really went
+    });
+
+    test('a reply marks the RIGHT enquiry, matched on the thread', () => {
+        // The same firm can be asked twice in one day, and replies come back in any order.
+        let list = noteEnquiry({}, sent({ thread: 'T1' }), '2026-09-01');
+        list = noteEnquiry({ enquiries: list }, sent({ thread: 'T2' }), '2026-09-02');
+        list = noteEnquiry({ enquiries: list }, { thread: 'T1', replied: true }, '2026-09-03');
+
+        const byThread = Object.fromEntries(list.map((e) => [e.thread, e]));
+        expect(byThread.T1.replied).toBe(true);
+        expect(byThread.T1.repliedAt).toBe('2026-09-03');
+        expect(byThread.T2.replied).toBe(false);      // untouched
+    });
+
+    test('a reply on a thread this card never sent is ignored, not guessed at', () => {
+        // Putting a reply beside a question nobody asked is worse than not showing it.
+        const list = noteEnquiry({ enquiries: [] }, { thread: 'UNKNOWN', replied: true }, '2026-09-03');
+        expect(list).toEqual([]);
+    });
+
+    test('the list is capped, so one firm cannot grow the directory without limit', () => {
+        let list = [];
+        for (let i = 0; i < MAX_ENQUIRIES + 10; i++) {
+            list = noteEnquiry({ enquiries: list }, sent({ thread: 'T' + i }), '2026-09-02');
+        }
+        expect(list).toHaveLength(MAX_ENQUIRIES);
+        expect(list[0].thread).toBe('T' + (MAX_ENQUIRIES + 9));   // newest kept
+    });
+
+    test('rubbish in the stored blob is dropped rather than rendered', () => {
+        expect(sanitizeEnquiries([null, 'x', 42, {}, { thread: 'T1' }])).toEqual([
+            { thread: 'T1', at: '', quote: '', asked: '', replied: false, repliedAt: '' },
+        ]);
+        expect(sanitizeEnquiries(undefined)).toEqual([]);
+        expect(sanitizeEnquiries('nope')).toEqual([]);
+    });
+
+    test('sanitizePartner carries the list, so a reload does not lose it', () => {
+        const p = sanitizePartner({ company: 'Airta', enquiries: [{ thread: 'T1', at: '2026-09-02' }] });
+        expect(p.enquiries).toHaveLength(1);
+        expect(p.enquiries[0].thread).toBe('T1');
+    });
+
+    test('bumpUsage records WHICH enquiry, not only how many', () => {
+        const before = [sanitizePartner({
+            id: 'p1', company: 'Airta',
+            people: [{ name: '', role: '', phones: [], emails: [{ label: 'Work', v: 'a@airta.test' }] }],
+        })];
+        const r = bumpUsage(before, {
+            emails: ['a@airta.test'], kind: 'sent',
+            threads: [{ email: 'a@airta.test', thread: 'T9', quote: 'DSC-200', asked: 'GI' }],
+        });
+        expect(r.contacts[0].enq).toBe(1);
+        expect(r.contacts[0].enquiries).toHaveLength(1);
+        expect(r.contacts[0].enquiries[0]).toMatchObject({ thread: 'T9', quote: 'DSC-200' });
+    });
+
+    test('every colleague at the firm gets the same enquiry on their card', () => {
+        // One chip is ONE email to one mill; all of them were written to.
+        const before = [sanitizePartner({
+            id: 'p1', company: 'Airta',
+            people: [
+                { name: 'A', role: '', phones: [], emails: [{ label: 'Work', v: 'a@airta.test' }] },
+                { name: 'B', role: '', phones: [], emails: [{ label: 'Work', v: 'b@airta.test' }] },
+            ],
+        })];
+        const r = bumpUsage(before, {
+            emails: ['a@airta.test', 'b@airta.test'], kind: 'sent',
+            threads: [{ email: 'a@airta.test', thread: 'T9' }, { email: 'b@airta.test', thread: 'T9' }],
+        });
+        expect(r.contacts[0].enquiries).toHaveLength(1);   // one firm, one enquiry
+        expect(r.contacts[0].enq).toBe(1);
+    });
+
+    test('a caller that sends no threads still bumps the count, exactly as before', () => {
+        // Every older caller, and every count already on a card today.
+        const before = [sanitizePartner({
+            id: 'p1', company: 'Airta',
+            people: [{ name: '', role: '', phones: [], emails: [{ label: 'Work', v: 'a@airta.test' }] }],
+        })];
+        const r = bumpUsage(before, { emails: ['a@airta.test'], kind: 'sent' });
+        expect(r.contacts[0].enq).toBe(1);
+        expect(r.contacts[0].enquiries).toEqual([]);
+    });
+});
+
+describe('the enquiry list cannot be sent to the wrong firm, or grow forever', () => {
+    test('two firms asked in one send each get their OWN thread', () => {
+        // The entry is matched to the address it was written to. Taking whichever entry came
+        // first would file Airta's enquiry on Krs's card — a firm showing an email it never
+        // received, linking to a thread that is not theirs.
+        const before = [
+            sanitizePartner({ id: 'p1', company: 'Airta', people: [{ name: '', role: '', phones: [], emails: [{ label: 'Work', v: 'a@airta.test' }] }] }),
+            sanitizePartner({ id: 'p2', company: 'Krs', people: [{ name: '', role: '', phones: [], emails: [{ label: 'Work', v: 'k@krs.test' }] }] }),
+        ];
+        const r = bumpUsage(before, {
+            emails: ['a@airta.test', 'k@krs.test'], kind: 'sent',
+            threads: [{ email: 'a@airta.test', thread: 'T_AIRTA' }, { email: 'k@krs.test', thread: 'T_KRS' }],
+        });
+        expect(r.contacts[0].enquiries[0].thread).toBe('T_AIRTA');
+        expect(r.contacts[1].enquiries[0].thread).toBe('T_KRS');
+    });
+
+    test('an address with no entry of its own gets no enquiry at all', () => {
+        const before = [sanitizePartner({ id: 'p1', company: 'Airta', people: [{ name: '', role: '', phones: [], emails: [{ label: 'Work', v: 'a@airta.test' }] }] })];
+        const r = bumpUsage(before, {
+            emails: ['a@airta.test'], kind: 'sent',
+            threads: [{ email: 'someone@else.test', thread: 'T_OTHER' }],
+        });
+        expect(r.contacts[0].enq).toBe(1);          // the count still moves
+        expect(r.contacts[0].enquiries).toEqual([]); // but nothing is filed against them
+    });
+
+    test('reading a stored blob caps the list too, not only writing to it', () => {
+        // Both doors: a blob that arrived over-long from anywhere must come back capped.
+        const long = Array.from({ length: MAX_ENQUIRIES + 25 }, (_, i) => ({ thread: 'T' + i, at: '2026-09-02' }));
+        expect(sanitizeEnquiries(long)).toHaveLength(MAX_ENQUIRIES);
+        expect(sanitizePartner({ enquiries: long }).enquiries).toHaveLength(MAX_ENQUIRIES);
     });
 });
