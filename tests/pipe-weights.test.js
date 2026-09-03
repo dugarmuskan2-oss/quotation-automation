@@ -299,3 +299,83 @@ describe('source guard — routes/rates.js wires up the weight sheet import', ()
         expect(src).toContain("router.get('/pipe-weights'");
     });
 });
+
+// ── The AI's own size format, and the large-bore rows ────────────────────────
+// Two faults kept this lookup from ever firing on a real quote:
+//   1. parseDescription only understood the DISPLAY form (`2" NB X Heavy`), but what it is
+//      handed is the AI's own code (`2XH`, `8X6.35`). It matched nothing and nobody noticed,
+//      because nothing called it.
+//   2. Every 8"-and-up row keys to the same "8|" — those rows carry no class, only a wall
+//      thickness — so all but the last silently overwrote each other.
+describe('the AI\'s size format and the large-bore rows', () => {
+    const PW2 = require('../utils/pipeWeights');
+
+    // Exactly the column layout of the real ERW sheet, including the empty class cells.
+    const SHEET = [
+        'Size,Inch,NB,OD,Light/Medium/Heavy,Wall Thickness (mm),Cost/Meter,Price,KG/MTR',
+        '2XH,2,50,60.3,Heavy,4.5,373,391,6.19',
+        '21/2XH,2-1/2,65,76.1,Heavy,5,479,503,7.93',
+        '5XH,5,125,139.7,Heavy,5.4,1078,1132,17.9',
+        '6XH,6,150,165.1,Heavy,5.4,1284,1348,21.3',
+        '8X4.8,8,200,219.1,,4.8,1496,1570,25.4',
+        '8X6.0,8,200,219.1,,6,1902,1997,31.56',
+        '8X6.35,8,200,219.1,,6.35,2070,2173,33.34',
+        '10X6.35,10,250,273,,6.35,2614,2745,41.8',
+    ].join('\n');
+    const maps = { erw: PW2.buildWeightMap(PW2.parseCsv(SHEET)) };
+    const kg = (d) => PW2.lookupKgPerMeter(maps, 'ERW', d);
+
+    test('the three 8" rows are separate rows, not one', () => {
+        expect(kg('8X4.8')).toBe(25.4);
+        expect(kg('8X6.0')).toBe(31.56);
+        expect(kg('8X6.35')).toBe(33.34);
+    });
+
+    test.each([
+        ['2XH', 6.19], ['21/2XH', 7.93], ['5XH', 17.9], ['6XH', 21.3], ['10X6.35', 41.8],
+    ])('the AI\'s own code %s resolves', (code, want) => {
+        expect(kg(code)).toBe(want);
+    });
+
+    test.each([
+        ['2" NB X Heavy -- ERW', 6.19],
+        ['2-1/2" NB X Heavy -- ERW', 7.93],
+        ['6" NB X HEAVY -- ERW', 21.3],
+        ['8" NB X 6.35mm thk -- ERW', 33.34],
+    ])('the display form %s resolves to the same row', (desc, want) => {
+        expect(kg(desc)).toBe(want);
+    });
+
+    test('a size the sheet does not carry returns null — never a computed guess', () => {
+        expect(kg('99XH')).toBeNull();
+        expect(kg('3XH')).toBeNull();          // real size, absent from THIS cut of the sheet
+    });
+
+    describe('fillBlankKgPerMeter', () => {
+        test('fills blanks, leaves supplied weights alone, and counts what it did', () => {
+            const items = [
+                { originalDescription: '6XH', identifiedPipeType: 'ERW', kgPerMeter: '' },
+                { originalDescription: '8X6.35', identifiedPipeType: 'ERW', kgPerMeter: '' },
+                { originalDescription: '2XH', identifiedPipeType: 'ERW', kgPerMeter: '6.19' },
+                { originalDescription: '99XH', identifiedPipeType: 'ERW', kgPerMeter: '' },
+            ];
+            expect(PW2.fillBlankKgPerMeter(maps, items)).toEqual({ filled: 2, unknown: 1, alreadySet: 1 });
+            expect(items[0].kgPerMeter).toBe('21.3');
+            expect(items[1].kgPerMeter).toBe('33.34');
+            expect(items[2].kgPerMeter).toBe('6.19');    // untouched
+            expect(items[3].kgPerMeter).toBe('');        // still blank, so the app shows it red
+        });
+
+        test('a weight the AI already gave is never overwritten, even when the sheet disagrees', () => {
+            const items = [{ originalDescription: '6XH', identifiedPipeType: 'ERW', kgPerMeter: '99' }];
+            PW2.fillBlankKgPerMeter(maps, items);
+            expect(items[0].kgPerMeter).toBe('99');
+        });
+
+        test('no table, or no items, changes nothing and never throws', () => {
+            expect(PW2.fillBlankKgPerMeter(null, [{ kgPerMeter: '' }])).toEqual({ filled: 0, unknown: 0, alreadySet: 0 });
+            expect(PW2.fillBlankKgPerMeter({}, [{ kgPerMeter: '' }])).toEqual({ filled: 0, unknown: 0, alreadySet: 0 });
+            expect(PW2.fillBlankKgPerMeter(maps, null)).toEqual({ filled: 0, unknown: 0, alreadySet: 0 });
+        });
+    });
+});

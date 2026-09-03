@@ -100,6 +100,45 @@
     function quoteRowKey(li) {
         return liDesc(li) + '|' + String(li.identifiedPipeType || '');
     }
+
+    // ── kg/m from the price list ─────────────────────────────────────────────
+    // The server fills blank weights at generation time, but every quote made BEFORE that
+    // existed still has them — including the one that started this, where 5" and up were all
+    // "not counted" and 660 metres of pipe simply vanished from the freight enquiry. So the
+    // panel does the same lookup when it builds its rows. Fetched once, and its absence is
+    // never fatal: no table just means the blanks stay blank, exactly as before.
+    var _weightMaps = null;
+    function loadWeightMaps(then) {
+        if (_weightMaps) { if (then) then(_weightMaps); return; }
+        fetch(apiBase() + '/pipe-weights')
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (m) { _weightMaps = m || {}; if (then) then(_weightMaps); })
+            .catch(function () { _weightMaps = {}; if (then) then(_weightMaps); });
+    }
+    // kg/m for one row from the price list, or null. Uses the SHIPPED lookup (utils/pipeWeights.js,
+    // loaded in the browser) so the panel and the server can never disagree about a size.
+    var _pwOverride = null;                       // tests inject the module here (no window in node)
+    function pipeWeightsLib() {
+        if (_pwOverride) return _pwOverride;
+        return (typeof window !== 'undefined' && window.pipeWeights) ? window.pipeWeights : null;
+    }
+    function sheetKgFor(row) {
+        var lib = pipeWeightsLib();
+        if (!_weightMaps || !lib) return null;
+        var kg = lib.lookupKgPerMeter(_weightMaps, row.type, row.d);
+        return kg > 0 ? kg : null;
+    }
+    // Fill blanks only — a weight typed here by hand, or supplied by the AI, is never touched.
+    function fillBlankWeightsFromSheet(st) {
+        if (!st || !Array.isArray(st.rows)) return 0;
+        var filled = 0;
+        st.rows.forEach(function (r) {
+            if (r.kgm || r.removed) return;
+            var kg = sheetKgFor(r);
+            if (kg) { r.kgm = kg; r.kgmFromSheet = true; filled++; }
+        });
+        return filled;
+    }
     function syncRowsWithQuote(q, st, opts) {
         // onSave: the quote has just been persisted, so this is the moment to follow a changed
         // row. Deliberately NOT done on every render — an edit half-typed on the Quote tab must
@@ -358,6 +397,13 @@
         injectStylesOnce();
         var st = getState(q);
         syncRowsWithQuote(q, st);   // pick up Quote-tab edits made since the panel was first built
+        // Fill any weight the quote never carried, from the price list. The table is fetched
+        // once; the first render after it lands repaints, so a slow fetch shows blanks briefly
+        // rather than blocking the tab.
+        if (_weightMaps) fillBlankWeightsFromSheet(st);
+        else loadWeightMaps(function () {
+            if (fillBlankWeightsFromSheet(st)) repaintOpenPanel(q);
+        });
         var html = weightBoxHtml(st) + freightEnquiryBoxHtml(q) + addFreightBoxHtml(q);
         mountEl.innerHTML = html;
         bind(q, mountEl);
@@ -1749,6 +1795,8 @@
             fmtWeight: fmtWeight,
             // Keeping the panel in step with the quote, and the in-place repaint that replaced
             // the full re-render (which used to eat the first click after any edit).
+            fillBlankWeightsFromSheet: fillBlankWeightsFromSheet,
+            _setWeightSource: function (maps, lib) { _weightMaps = maps; _pwOverride = lib; },
             syncRowsWithQuote: syncRowsWithQuote,
             quoteRowId: quoteRowId,
             quoteRowKey: quoteRowKey,

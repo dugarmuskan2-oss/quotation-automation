@@ -19,6 +19,7 @@ require('dotenv').config();
 
 const storage = require('./storage');
 const { createLineItemId, parseFlexibleNumber, calculateLineItem } = require('./utils/calculations');
+const { fillBlankKgPerMeter } = require('./utils/pipeWeights');
 const {
     ENTITY_QUOTATION,
     ENTITY_GMAIL_MSG_MARKER,
@@ -327,7 +328,7 @@ SIZE MATCHING RULES — apply when reading rate-file rows:
 - VERIFY the match against the row's NB and/or OD columns: 1/2"=15NB/21.3mm, 3/4"=20NB/26.7, 1"=25NB/33.4, 1-1/4"=32NB/42.2, 1-1/2"=40NB/48.3, 2"=50NB/60.3, 2-1/2"=65NB/73, 3"=80NB/88.9, 3-1/2"=90NB/101.6, 4"=100NB/114.3, 5"=125NB/141.3, 6"=150NB/168.3, 8"=200NB/219.1. If the NB/OD does not agree with the size you identified, you are reading the WRONG ROW — re-match.
 - Sanity check before returning: within the same pipe type and the same schedule/class, the rate always INCREASES with size. If a larger pipe came out cheaper than a smaller one, a row was misread — re-match those items.`;
 
-async function handleGenerateQuotation({ emailContent, fileContent, instructions, enquiryFileId, enquiryFileIds, enquiryImageDataUrl, enquiryImageDataUrls }, res) {
+async function handleGenerateQuotation({ emailContent, fileContent, instructions, enquiryFileId, enquiryFileIds, enquiryImageDataUrl, enquiryImageDataUrls, reasoningEffort }, res) {
     try {
         // All enquiry images (a photographed requirement can span several photos).
         // Accepts the new enquiryImageDataUrls array and the legacy single param.
@@ -519,6 +520,10 @@ async function handleGenerateQuotation({ emailContent, fileContent, instructions
 
         const completion = await openai.responses.create({
             model: 'gpt-5.2',
+            // How hard the model thinks inside this ONE call. Unset, it runs on the account
+            // default, which is what every quote has used so far. This is the only lever that
+            // makes the same call do more work rather than adding a second call.
+            ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
             input: [
                 {
                     role: 'system',
@@ -566,6 +571,20 @@ async function handleGenerateQuotation({ emailContent, fileContent, instructions
         // Calculate final rates and line totals if not provided
         quotationData.lineItems = quotationData.lineItems.map(item => calculateLineItem(item));
 
+        // Any kg/m the AI left blank now comes from the price list itself. Measured over 12 real
+        // enquiries the AI filled about 80% of them, and it misses by whole enquiries — one came
+        // back with 0 of 52. A blank weight drops that line's tonnage out of the freight enquiry
+        // without saying so. Reading the column is a lookup, so code does it: same answer every
+        // time, no tokens. Blanks only, and a size the sheet lacks stays blank rather than guessed.
+        // Never let this break generation — a quote with some blank weights beats no quote.
+        let kgFill = { filled: 0, unknown: 0, alreadySet: 0 };
+        try {
+            const weightMaps = await storage.loadPipeWeights();
+            kgFill = fillBlankKgPerMeter(weightMaps, quotationData.lineItems);
+        } catch (e) {
+            console.warn('kg/m backfill skipped:', e.message);
+        }
+
         // Set quotation date if not provided
         if (!quotationData.quotationDate) {
             const today = new Date();
@@ -578,6 +597,7 @@ async function handleGenerateQuotation({ emailContent, fileContent, instructions
 
         res.json({
             ...quotationData,
+            _kgFill: kgFill,          // what the price-list backfill did, so it is never invisible
             _ai: {
                 raw: responseText,
                 model: 'gpt-5.2',
@@ -596,7 +616,7 @@ async function handleGenerateQuotation({ emailContent, fileContent, instructions
 // Main API: Generate quotation using OpenAI
 app.post('/api/generate-quotation', async (req, res) => {
     const { emailContent, fileContent, instructions } = req.body || {};
-    return handleGenerateQuotation({ emailContent, fileContent, instructions }, res);
+    return handleGenerateQuotation({ emailContent, fileContent, instructions, reasoningEffort: req.body.reasoningEffort }, res);
 });
 
 // Generate quotation using OpenAI with multipart upload
