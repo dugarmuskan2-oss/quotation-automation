@@ -858,7 +858,9 @@
               find: { text: '', state: 'idle', need: null, note: '' }, busy: {}, add: freshAdd(),
               confirmDelete: '',     // the card whose "are you sure?" is on screen
               dirty: {}, clean: {}, saveNote: '', confirmLeave: '', leaveThen: null, ask: null,
-              approving: '', importNote: '' };   // directory cards edited but not yet saved
+              approving: '', importNote: '',
+              google: { checked: false, ready: false, waiting: 0, brought: 0,
+                        counts: {}, heldBack: {}, busy: false, note: '', showHeld: false } };   // directory cards edited but not yet saved
 
     function byId(id) {
         var p = D.contacts.filter(function (x) { return x.id === id; })[0];
@@ -1198,9 +1200,12 @@
 
     // ── The edit card (identical wherever a partner opens) ────────────────────
     function editCard(p) {
-        var roles = ROLE_ORDER.map(function (r) {
-            return '<option value="' + r + '"' + (p.role === r ? ' selected' : '') + '>' + ROLE_LABEL[r] + '</option>';
-        }).join('');
+        // A blank first option, so a card that has never been given a role does not show
+        // "Dealer" as though somebody chose it.
+        var roles = (str(p.role) ? '' : '<option value="" selected>— pick one —</option>')
+            + ROLE_ORDER.map(function (r) {
+                return '<option value="' + r + '"' + (p.role === r ? ' selected' : '') + '>' + ROLE_LABEL[r] + '</option>';
+            }).join('');
         return '<div class="pd-card pd-open-card" data-pd-card="' + esc(p.id) + '">'
             + '<div class="pd-row pd-close-head" data-pd-close="1" tabindex="0" role="button">'
             + '<b>' + esc(p.company || 'New partner') + '</b>'
@@ -1481,7 +1486,75 @@
             + addBoxHtml()
             + (S.add.error ? '<div class="pd-error">' + esc(S.add.error) + '</div>' : '')
             + (S.add.notice ? '<div class="pd-read"><p class="pd-muted">' + esc(S.add.notice) + '</p></div>' : '')
-            + addNothingHtml() + addQuestionsHtml() + addPopupHtml();
+            + addNothingHtml() + addQuestionsHtml() + addPopupHtml()
+            + googleBlockHtml();
+    }
+
+    /**
+     * Bringing firms in from Google Contacts, a batch at a time.
+     *
+     * The working out — 5,507 contacts, everyone ever emailed, every quotation — is done by
+     * tools/google-contacts-scan.js on the owner's own computer, because it takes minutes and
+     * the live site stops a request at sixty seconds. This only ever reads what that worked
+     * out, and the only thing it writes is the approval queue.
+     */
+    function googleBlockHtml() {
+        var g = S.google;
+        if (!g.ready) {
+            return '<div class="pd-sec">From your Google Contacts</div>'
+                + '<p class="pd-tiny">' + (g.checked
+                    ? 'Nothing worked out yet. On your computer run <b>node tools/google-contacts-scan.js</b> '
+                        + 'once, then come back — it reads your contacts and works out which firms are worth '
+                        + 'your time. It writes nothing to the directory.'
+                    : 'Checking…') + '</p>';
+        }
+        var held = g.heldBack || {};
+        return '<div class="pd-sec">From your Google Contacts<span class="pd-sp"></span>'
+            + '<span class="pd-tiny">' + g.waiting + ' to go</span></div>'
+            + '<p class="pd-tiny">' + (g.counts.contacts || 0) + ' contacts, grouped into '
+            + (g.counts.contacted || 0) + ' firms you have actually emailed. '
+            + (g.brought ? g.brought + ' already brought in. ' : '')
+            + 'They land under <b>Recent changes</b> — nothing joins the directory until you approve it.</p>'
+            + ((held.quotedTo || []).length || (held.crowded || []).length
+                ? '<p class="pd-tiny">Left out on purpose: ' + (held.quotedTo || []).length
+                    + ' you have quoted to, and ' + (held.crowded || []).length
+                    + ' with ten or more people — those are customers, not suppliers. '
+                    + '<button class="pd-linkish" data-pd-gheld="1">See which</button></p>'
+                : '')
+            + (g.waiting
+                ? '<div class="pd-row" style="margin-top:8px;">'
+                    + '<button class="pd-prim" data-pd-gqueue="1"' + (g.busy ? ' disabled' : '') + '>'
+                    + (g.busy ? 'Bringing them in…' : 'Bring in the next ' + Math.min(50, g.waiting))
+                    + '</button></div>'
+                : '<p class="pd-tiny" style="margin-top:8px;">All of them have been brought in.</p>')
+            + (g.note ? '<p class="pd-tiny" style="margin-top:7px;">' + esc(g.note)
+                + ' <button class="pd-linkish" data-pd-gnote="1">OK</button></p>' : '')
+            + (g.showHeld ? googleHeldHtml(held) : '');
+    }
+
+    /** What was left out, by name, so "left out" is never something he has to take on trust. */
+    function googleHeldHtml(held) {
+        var list = function (title, names) {
+            if (!names || !names.length) return '';
+            return '<p class="pd-tiny" style="margin-top:7px;"><b>' + esc(title) + '</b><br>'
+                + names.map(esc).join(' · ') + '</p>';
+        };
+        return '<div class="pd-read">'
+            + list('Firms you have quoted to — customers', held.quotedTo)
+            + list('Ten or more people — almost certainly customers', held.crowded)
+            + '<p class="pd-tiny" style="margin-top:7px;">If one of these is really a supplier, '
+            + 'add it on the box above instead.</p></div>';
+    }
+
+    /** Say what the press actually did — a silent redraw reads as a broken button. */
+    function googleQueuedText(d) {
+        if (!d) return '';
+        var bits = [];
+        if (d.queued) bits.push(d.queued + ' firm' + (d.queued === 1 ? '' : 's') + ' added to Recent changes');
+        if (d.alreadyThere) bits.push(d.alreadyThere + ' were already here');
+        if (d.noRoom) bits.push(d.noRoom + ' would not fit — Recent changes is full');
+        if (d.left) bits.push(d.left + ' still to come');
+        return bits.length ? bits.join(' · ') : 'Nothing new to bring in.';
     }
 
     function addBoxHtml() {
@@ -1702,6 +1775,19 @@
         // Cleared the moment it is read: a picker left holding yesterday's brochure is how
         // one firm's details end up on another firm's card.
         if (file) file.onchange = function () { var f = this.files && this.files[0]; this.value = ''; chooseAddFile(f); };
+        on(app, '[data-pd-gheld]', function () { S.google.showHeld = !S.google.showHeld; render(); });
+        on(app, '[data-pd-gnote]', function () { S.google.note = ''; render(); });
+        on(app, '[data-pd-gqueue]', function () {
+            if (S.google.busy) return;              // one press is one batch, never two
+            S.google.busy = true; render();
+            postJson('/contacts/google/queue', { size: 50 }, function (d) {
+                S.google.note = googleQueuedText(d);
+                S.google.waiting = (d && d.left) || 0;
+                S.google.brought += (d && d.queued) || 0;
+                S.tab = 'changes';                 // land him where the work now is
+                loadDirectory(render);
+            }, function () { S.google.busy = false; }, 'Bringing in your Google contacts');
+        });
         on(app, '[data-pd-addfileclear]', function () { S.add.fileName = ''; S.add.fileB64 = ''; render(); });
         on(app, '[data-pd-addread]', readAdd);
         on(app, '[data-pd-addapply]', applyAdd);
@@ -1836,10 +1922,16 @@
         // A card with no firm name goes in as "New partner — needs a name" and is logged as
         // the sentence "Added " with nothing after it. Ask for the name here instead.
         var nameless = !str((pi.preview && pi.preview.company) || (match && match.company) || companyGuess(pi));
+        // A card brought in from Google carries no role — there were no labels to read one
+        // from. It is not a detail: the role decides who receives a freight enquiry.
+        var roleless = !match && !str(pi.preview && pi.preview.role);
         // Every other row is held too while one is being approved — see the approve handler.
-        var stop = busy || S.approving || clashingCard(pi, match) || nameless;
+        var stop = busy || S.approving || clashingCard(pi, match) || nameless || roleless;
         return (nameless ? '<p class="pd-tiny pd-need-name">No firm name was found in this one. '
             + 'Open it above and type their name, and it can be approved.</p>' : '')
+            + (roleless ? '<p class="pd-tiny pd-need-name">Open it above and say what kind of firm '
+                + 'this is — dealer, transporter, manufacturer. Nothing was guessed, because it '
+                + 'decides who gets sent a freight enquiry.</p>' : '')
             + '<div class="pd-row" style="margin:0 0 14px;">'
             + '<button class="pd-prim" data-pd-approve="' + esc(pi.id) + '"' + (stop ? ' disabled' : '') + '>'
             + (busy ? 'Saving…' : 'Approve — ' + (match ? 'update ' + esc(match.company) : 'add them')) + '</button>'
@@ -2836,7 +2928,28 @@
         }
     }
 
-    function checkWhatIsWaiting() { loadDirectory(); startBadgeWatch(); }
+    /**
+     * What the Google scan worked out, if it has been run. Read once on load: it is a small
+     * read of a cached answer, and failing it must not stop the directory opening.
+     */
+    function loadGoogleStatus() {
+        fetch(apiBase() + '/contacts/google/status')
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (d) {
+                S.google.checked = true;
+                if (d && d.ready) {
+                    S.google.ready = true;
+                    S.google.waiting = d.waiting || 0;
+                    S.google.brought = d.brought || 0;
+                    S.google.counts = d.counts || {};
+                    S.google.heldBack = d.heldBack || {};
+                }
+                if (S.tab === 'add') render();
+            })
+            .catch(function () { S.google.checked = true; });
+    }
+
+    function checkWhatIsWaiting() { loadDirectory(); loadGoogleStatus(); startBadgeWatch(); }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', checkWhatIsWaiting);
     else checkWhatIsWaiting();
 

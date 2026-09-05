@@ -685,6 +685,84 @@ function unapprovedToPending(contacts, pending, cap) {
     };
 }
 
+/**
+ * Every address already spoken for — on a card, or already waiting in the queue.
+ *
+ * Bringing in a batch must not offer a firm the owner has already dealt with. He works
+ * through these fifty at a time over days; without this, batch two would re-offer half of
+ * batch one, and approving both would put the same mill in twice.
+ */
+function addressesSpokenFor(pending, contacts) {
+    const taken = new Set();
+    (contacts || []).forEach(p => allEmails(p).forEach(e => taken.add(lower(e))));
+    (pending || []).forEach(it => {
+        allEmails((it && it.preview) || {}).forEach(e => taken.add(lower(e)));
+        if (it && it.from) taken.add(lower(it.from));
+    });
+    return taken;
+}
+
+/** How many of the Google firms have already been brought in or approved. */
+function googleAlreadyHandled(pending, firms) {
+    const taken = addressesSpokenFor(pending, []);
+    return (firms || []).filter(f => allEmails((f && f.preview) || {}).some(e => taken.has(lower(e)))).length;
+}
+
+/**
+ * The next batch of Google firms to put in front of the owner.
+ *
+ * Skips anything already on a card or already waiting, so working through the list in
+ * fifties never doubles back. Returns what is left as well, because "189 to go" turning
+ * into "139 to go" is the only way he can tell the press did anything.
+ */
+function nextGoogleBatch(firms, pending, contacts, size) {
+    const taken = addressesSpokenFor(pending, contacts);
+    const isNew = (f) => {
+        const mails = allEmails((f && f.preview) || {});
+        return mails.length ? !mails.some(e => taken.has(lower(e))) : false;
+    };
+    const waiting = (firms || []).filter(isNew);
+    const take = waiting.slice(0, Math.max(0, size || 0));
+
+    return {
+        items: take.map(f => googlePendingItem(f)),
+        alreadyThere: (firms || []).length - waiting.length,
+        left: waiting.length,
+    };
+}
+
+/**
+ * One Google firm, as a queue item.
+ *
+ * It carries no id: this firm is NOT in the directory, so approving it makes a new card and
+ * the server assigns the id. The 'google' origin is what lets the review screen say where it
+ * came from, and what the Discard warning reads to tell the truth about what happens next.
+ */
+function googlePendingItem(firm) {
+    const preview = sanitizePartner(Object.assign({}, firm.preview, { id: '' }));
+    const mails = allEmails(preview);
+    const id = newPendingId();
+    preview.id = 'p_new_' + id;
+    // sanitizePartner has no "unset" for role — a blank comes back as 'other', which is a
+    // real choice the owner might make and so cannot be told apart from nobody choosing.
+    // The blank is put back and the review screen holds Approve until he picks, the same
+    // way it already does for a firm with no name. Google gave us no labels to guess from,
+    // and the role decides who gets sent a freight enquiry.
+    preview.role = '';
+    return {
+        id,
+        origin: 'google',
+        from: mails[0] || '',
+        subject: str(preview.company) || mails[0] || 'Unnamed',
+        file: '', kind: 'photo', text: '',
+        finds: mails.map(email => ({
+            kind: 'field', key: 'email', label: 'From your Google Contacts', value: email,
+        })),
+        receivedAt: new Date().toISOString(),
+        preview,
+    };
+}
+
 function importPendingItem(firm, fresh, match) {
     const id = newPendingId();
     const company = (match && match.company) || companyFromEmail(fresh[0]) || fresh[0];
@@ -958,7 +1036,10 @@ function sanitizePendingItem(input) {
         // 'import' items come from the addresses the app already remembered, and carry a
         // ready-made preview holding every person at the firm. 'gmail' items are built from
         // `finds` on the client, one address at a time.
-        origin: str(src.origin) === 'import' ? 'import' : 'gmail',
+        // Three origins now, and each means something different when the owner discards one:
+        // a gmail item can be re-labelled to get it back, an import returns on the next
+        // press, and a google one returns on the next scan.
+        origin: ['import', 'google'].indexOf(str(src.origin)) !== -1 ? str(src.origin) : 'gmail',
         preview: (src.preview && typeof src.preview === 'object') ? src.preview : null,
         from: lower(src.from),
         subject: str(src.subject).slice(0, 300),
@@ -1425,6 +1506,10 @@ module.exports = {
     sanitizeEnquiries,
     noteEnquiry,
     unapprovedToPending,
+    addressesSpokenFor,
+    googleAlreadyHandled,
+    nextGoogleBatch,
+    googlePendingItem,
     keepWhatWasAddedSince,
     LIST_KEY,
     companyFromEmail,

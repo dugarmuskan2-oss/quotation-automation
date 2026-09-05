@@ -64,6 +64,11 @@ const CONFIG_KEY_STAFF_LIST           = 'staff-list.json';
 const CONFIG_KEY_CONTACTS             = 'contacts.json';
 /** Emails tagged with the Add-to-Directory Gmail label, waiting for the owner's approval. */
 const CONFIG_KEY_CONTACTS_PENDING     = 'contacts-pending.json';
+/** Firms worked out from Google Contacts, waiting to be brought in a batch at a time.
+ *  Built by tools/google-contacts-scan.js, which takes minutes — far past the live
+ *  site's 60-second limit — so the slow read happens once and the app only ever
+ *  reads this. */
+const CONFIG_KEY_GOOGLE_FIRMS         = 'google-firms.json';
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -86,4 +91,5 @@ module.exports = {
     CONFIG_KEY_STAFF_LIST,
     CONFIG_KEY_CONTACTS,
     CONFIG_KEY_CONTACTS_PENDING,
+    CONFIG_KEY_GOOGLE_FIRMS,
 };

@@ -1845,7 +1845,10 @@ describe('source guard — you can see what you are being asked to approve', () 
     test('Approve is held back while the firm has no name', () => {
         const body = bodyOf('approveRowHtml');
         expect(body).toMatch(/var nameless =/);
-        expect(body).toContain('var stop = busy || S.approving || clashingCard(pi, match) || nameless;');
+        expect(body).toContain('var stop = busy || S.approving || clashingCard(pi, match) || nameless || roleless;');
+        // roleless joined it: a firm brought in from Google has no role, and the role
+        // decides who receives a freight enquiry. Nothing is guessed for him.
+        expect(body).toContain('var roleless = !match && !str(pi.preview && pi.preview.role);');
         // S.approving holds EVERY row while one approval is in the air — two at once each
         // read the whole directory and write it back, so the second wrote a list that
         // never held the first firm, and both said 'done'.
@@ -3200,5 +3203,38 @@ describe('source guard — the senders say which thread the enquiry went on', ()
             expect(fn).toContain('chipAddrs(r.addr).map(bareAddress).filter(Boolean).forEach');
             expect(fn).toContain('thread: thread,');
         });
+    });
+});
+
+describe('source guard — bringing in Google contacts', () => {
+    test('one press is one batch, never two', () => {
+        // Fifty firms queued twice is fifty duplicates for him to discard by hand.
+        const fn = sliceBetween("on(app, '[data-pd-gqueue]'", "on(app, '[data-pd-addfileclear]'");
+        expect(fn).toContain('if (S.google.busy) return;');
+        expect(fn).toContain('S.google.busy = true; render();');
+        // ...and released whether it worked or failed, or the button hangs disabled for good
+        expect(fn).toContain('function () { S.google.busy = false; }');
+        // the button visibly disables too, not only the code
+        expect(bodyOf('googleBlockHtml')).toContain("(g.busy ? ' disabled' : '')");
+    });
+
+    test('a card with no role shows a blank, not Dealer', () => {
+        // ROLE_ORDER starts at dealer, so without the blank option a firm nobody has
+        // classified silently reads as a dealer — and dealers get supplier enquiries.
+        const fn = sliceBetween('function editCard(p)', 'function fld(');
+        expect(fn).toContain("(str(p.role) ? '' : '<option value=\"\" selected>— pick one —</option>')");
+    });
+
+    test('the press says what it did', () => {
+        const fn = sliceBetween('function googleQueuedText(d)', 'function addBoxHtml');
+        expect(fn).toContain('added to Recent changes');
+        expect(fn).toContain('still to come');
+        expect(fn).toContain('Nothing new to bring in.');
+    });
+
+    test('what was left out can be seen, not just counted', () => {
+        // "20 held back" that he cannot inspect is something he has to take on trust.
+        expect(bodyOf('googleHeldHtml')).toContain('held.quotedTo');
+        expect(bodyOf('googleHeldHtml')).toContain('held.crowded');
     });
 });

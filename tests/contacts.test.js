@@ -35,6 +35,7 @@ const {
     ROLES, sanitizePartner, mergePartner, findByEmail, allEmails, bumpUsage,
     pendingFromSuggestions, pendingFromUsage, dropAlreadyQueued, MAX_PENDING, queueWithoutLosingAny,
     keepWhatWasAddedSince, unapprovedToPending, sanitizeEnquiries, noteEnquiry, MAX_ENQUIRIES,
+    addressesSpokenFor, googleAlreadyHandled, nextGoogleBatch, googlePendingItem,
     companyFromEmail, changeEntry, pushChange, diffLines,
     undoChange, sanitizePendingItem, extractionPrompt, findsFromExtraction,
 } = contactsLib;
@@ -2899,5 +2900,114 @@ describe('the enquiry list cannot be sent to the wrong firm, or grow forever', (
         const long = Array.from({ length: MAX_ENQUIRIES + 25 }, (_, i) => ({ thread: 'T' + i, at: '2026-09-02' }));
         expect(sanitizeEnquiries(long)).toHaveLength(MAX_ENQUIRIES);
         expect(sanitizePartner({ enquiries: long }).enquiries).toHaveLength(MAX_ENQUIRIES);
+    });
+});
+
+describe('bringing Google firms in a batch at a time', () => {
+    /**
+     * The owner works through 189 firms fifty at a time, over days. The danger is the second
+     * press: without a check, batch two re-offers half of batch one, and approving both puts
+     * the same mill in the directory twice — the duplicate problem this directory exists to
+     * prevent.
+     */
+    const firm = (domain, over) => ({
+        key: 'd:' + domain,
+        preview: Object.assign({
+            company: domain.split('.')[0],
+            people: [{ name: '', role: 'Main contact', phones: [], emails: [{ label: 'Work', v: 'a@' + domain }] }],
+            role: '', partLoad: null, moq: 0,
+            branches: [], types: [], products: [], rules: [], routes: [], notes: [], images: [],
+        }, over),
+    });
+    const card = (domain) => sanitizePartner({
+        id: 'p_' + domain, company: domain,
+        people: [{ name: '', role: '', phones: [], emails: [{ label: 'Work', v: 'a@' + domain }] }],
+    });
+
+    test('the first press takes the first fifty', () => {
+        const firms = Array.from({ length: 189 }, (_, i) => firm('firm' + i + '.com'));
+        const r = nextGoogleBatch(firms, [], [], 50);
+        expect(r.items).toHaveLength(50);
+        expect(r.left).toBe(189);
+        expect(r.alreadyThere).toBe(0);
+    });
+
+    test('the SECOND press does not offer the first fifty again', () => {
+        const firms = Array.from({ length: 120 }, (_, i) => firm('firm' + i + '.com'));
+        const first = nextGoogleBatch(firms, [], [], 50);
+        const second = nextGoogleBatch(firms, first.items, [], 50);
+
+        expect(second.items).toHaveLength(50);
+        const firstMails = first.items.map((it) => it.from);
+        const secondMails = second.items.map((it) => it.from);
+        expect(secondMails.some((m) => firstMails.indexOf(m) !== -1)).toBe(false);
+        expect(second.left).toBe(70);
+    });
+
+    test('a firm already ON A CARD is never offered', () => {
+        const firms = [firm('msltubes.com'), firm('other.com')];
+        const r = nextGoogleBatch(firms, [], [card('msltubes.com')], 50);
+        expect(r.items).toHaveLength(1);
+        expect(r.items[0].from).toBe('a@other.com');
+        expect(r.alreadyThere).toBe(1);
+    });
+
+    test('and one already waiting in the queue is not offered twice', () => {
+        const firms = [firm('msltubes.com')];
+        const waiting = nextGoogleBatch(firms, [], [], 50).items;
+        expect(nextGoogleBatch(firms, waiting, [], 50).items).toEqual([]);
+    });
+
+    test('what is left is reported, so a press that did nothing looks like it', () => {
+        const firms = [firm('a.com'), firm('b.com')];
+        expect(nextGoogleBatch(firms, [], [], 50).left).toBe(2);
+        expect(nextGoogleBatch(firms, [], [card('a.com'), card('b.com')], 50).left).toBe(0);
+    });
+
+    test('a firm with no address at all is not offered — there is nothing to match on', () => {
+        const blank = { key: 'x', preview: { company: 'No Address', people: [] } };
+        expect(nextGoogleBatch([blank], [], [], 50).items).toEqual([]);
+    });
+
+    test('the queue item is a NEW firm, with no directory id claimed', () => {
+        const it = nextGoogleBatch([firm('msltubes.com')], [], [], 1).items[0];
+        expect(it.origin).toBe('google');
+        expect(it.preview.id).toMatch(/^p_new_/);      // approving makes a new card
+        expect(it.preview.matchId).toBeUndefined();
+        expect(it.from).toBe('a@msltubes.com');
+        expect(it.subject).toBeTruthy();
+    });
+
+    test('nothing the owner has not chosen is filled in', () => {
+        const it = googlePendingItem(firm('msltubes.com'));
+        expect(it.preview.role).toBe('');
+        expect(it.preview.partLoad).toBeNull();
+        expect(it.preview.moq).toBe(0);
+    });
+
+    test('the "google" origin survives being stored', () => {
+        // Without this the origin is read back as 'gmail', and the Discard warning then tells
+        // him to re-label an email that never existed.
+        expect(sanitizePendingItem({ origin: 'google' }).origin).toBe('google');
+        expect(sanitizePendingItem({ origin: 'import' }).origin).toBe('import');
+        expect(sanitizePendingItem({ origin: 'nonsense' }).origin).toBe('gmail');
+    });
+
+    test('how many have been handled already, for the "184 to go" line', () => {
+        const firms = [firm('a.com'), firm('b.com'), firm('c.com')];
+        const waiting = nextGoogleBatch(firms, [], [], 1).items;
+        expect(googleAlreadyHandled(waiting, firms)).toBe(1);
+        expect(googleAlreadyHandled([], firms)).toBe(0);
+    });
+
+    test('addresses are matched whatever the case', () => {
+        // The stored card lower-cases as it is sanitised, so the mismatch can only come
+        // from the Google side. A firm written A@MSLTUBES.COM must still be recognised as
+        // the one already on the card, or it comes back in every single batch.
+        const shouty = { key: 'd:msltubes.com', preview: { company: 'MSL',
+            people: [{ name: '', role: '', phones: [], emails: [{ label: 'Work', v: 'A@MSLTubes.COM' }] }] } };
+        const r = nextGoogleBatch([shouty], [], [card('msltubes.com')], 50);
+        expect(r.items).toEqual([]);
+        expect(r.alreadyThere).toBe(1);
     });
 });

@@ -20,6 +20,7 @@ const {
     CONFIG_KEY_CONTACTS_PENDING,
     CONFIG_KEY_FREIGHT_SUGGESTIONS,
     CONFIG_KEY_SUPPLIER_SUGGESTIONS,
+    CONFIG_KEY_GOOGLE_FIRMS,
 } = require('../utils/constants');
 
 const contactsLib = require('../utils/contacts');
@@ -180,6 +181,64 @@ module.exports = function createContactsRouter({ storage, openai }) {
     // waiting for approval. Nothing reaches the directory here: approval is the only write
     // path, the same as for an email arriving on the Gmail label. Safe to run twice; an
     // address already in the directory or already in the queue is not offered again.
+    // ── Google Contacts ───────────────────────────────────────────────────────
+    // The slow work — 5,507 contacts, 19 more pages of everyone ever emailed, then every
+    // quotation — happens in tools/google-contacts-scan.js, on the owner's own computer.
+    // It takes minutes, which is well past the sixty seconds the live site allows a
+    // request. These two routes only ever read what it worked out.
+
+    async function loadGoogleFirms() {
+        return parseBlob(await storage.readText(CONFIG_KEY_GOOGLE_FIRMS), null);
+    }
+
+    /** What is waiting, and what was deliberately left out. Reads only. */
+    router.get('/contacts/google/status', async (req, res) => {
+        try {
+            const blob = await loadGoogleFirms();
+            if (!blob) return res.json({ ok: true, ready: false });
+            const items = await loadPending();
+            const done = contactsLib.googleAlreadyHandled(items, blob.firms);
+            res.json({
+                ok: true, ready: true, builtAt: blob.builtAt || '',
+                waiting: blob.firms.length - done, brought: done,
+                counts: blob.counts || {}, heldBack: blob.heldBack || {},
+            });
+        } catch (error) {
+            res.status(500).json({ error: 'Could not read the Google list: ' + error.message });
+        }
+    });
+
+    /**
+     * Bring the next batch into the approval queue.
+     *
+     * The ONLY write is to the queue. Nothing reaches the directory here — every firm still
+     * has to be approved one at a time, which is the rule the whole directory is built on.
+     */
+    router.post('/contacts/google/queue', express.json(), async (req, res) => {
+        try {
+            const size = Math.max(1, Math.min(100, Number((req.body || {}).size) || 50));
+            const blob = await loadGoogleFirms();
+            if (!blob) {
+                return res.status(400).json({
+                    error: 'No Google list yet. Run "node tools/google-contacts-scan.js" first.',
+                });
+            }
+            const [dir, items] = await Promise.all([loadDirectory(), loadPending()]);
+            const next = contactsLib.nextGoogleBatch(blob.firms, items, dir.contacts, size);
+            const room = contactsLib.queueWithoutLosingAny(items, next.items, MAX_PENDING);
+            if (room.queued) await savePending(room.items);
+            res.json({
+                ok: true,
+                queued: room.queued,
+                noRoom: room.noRoom,
+                alreadyThere: next.alreadyThere,
+                left: next.left - room.queued,
+            });
+        } catch (error) {
+            res.status(500).json({ error: 'Could not bring them in: ' + error.message });
+        }
+    });
+
     router.post('/contacts/import-remembered', express.json(), async (req, res) => {
         try {
             const [dir, items, freightRaw, supplierRaw] = await Promise.all([
