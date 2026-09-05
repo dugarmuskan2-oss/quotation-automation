@@ -1443,6 +1443,8 @@ module.exports = {
     applyAddSteps,
     addChangeList,
     addDraftMode,
+    // Shared with utils/googleContacts.js: one firm is one email domain, everywhere.
+    firmKeyOf,
     addAfterCard,
     _test: { normalizeRole, sanitizePerson, sanitizePeople, splitTradeWord, isEmail,
         canonicalPipeType, firstReach,
