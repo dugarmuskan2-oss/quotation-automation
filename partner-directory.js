@@ -1322,10 +1322,12 @@
         var canAdd = offerableTypes().filter(function (t) { return have.indexOf(lower(t)) === -1; });
         return '<div class="pd-sec">What they supply</div>'
             + '<div class="pd-grid2"><div class="pd-fld"><label>Pipe types</label>'
-            + '<div style="display:flex;gap:6px;"><select id="pdTypePick" style="flex:1;"><option value="">Pick a type…</option>'
+            + '<div style="display:flex;gap:6px;align-items:center;">'
+            + '<select id="pdTypePick" style="flex:1;min-width:0;"><option value="">Pick a type…</option>'
             + canAdd.map(function (t) { return '<option>' + t + '</option>'; }).join('')
             + '<option value="__other">＋ Add another…</option></select>'
-            + '<button data-pd-addtype="1">Add</button></div></div>'
+            + '<button class="pd-prim" data-pd-addtype="1" style="flex:0 0 auto;white-space:nowrap;">Add</button>'
+            + '</div></div>'
             + fld(p, 'Overall MOQ (tonnes)', 'moq', p.moq) + '</div>'
             + ((p.types || []).length ? '<div style="margin-bottom:8px;">' + (p.types || []).map(function (t, i) {
                 return '<span class="pd-tag">' + esc(t) + ' <span class="pd-x" data-pd-deltype="' + i + '">✕</span></span>';
@@ -2465,6 +2467,16 @@
 
     function bindSupply(card, p, save) {
         var pick = $('pdTypePick');
+        // Choosing "＋ Add another…" asks straight away. Waiting for a second press on a
+        // button beside it is a step nobody expects — and that button was the one being
+        // squeezed off the row in the first place.
+        if (pick) {
+            pick.onchange = function () {
+                if (pick.value !== '__other') return;
+                pick.value = '';                        // so cancelling leaves it on "Pick a type…"
+                askForAnotherType();
+            };
+        }
         on(card, '[data-pd-addtype]', function () {
             // Compared without case: an import writes SEAMLESS, the dropdown offers Seamless,
             // and the same type went onto the card twice.
@@ -2477,15 +2489,30 @@
             };
             var v = pick ? pick.value : '';
             if (v !== '__other') { addType(v); return; }
-            // window.prompt THROWS here rather than returning nothing, so the handler died
-            // half-way and "＋ Add another…" did nothing at all.
+            askForAnotherType();
+        });
+        /**
+         * Ask what else they deal in.
+         *
+         * On the page, never window.prompt — prompt THROWS in this view rather than
+         * returning nothing, so the handler died half-way and "＋ Add another…" did nothing
+         * at all. Reachable from the dropdown and from the Add button alike.
+         */
+        function askForAnotherType() {
             askOnPage({
                 title: 'What else do they deal in?',
                 ask: 'Type it in', placeholder: 'e.g. Ductile iron',
                 okLabel: 'Add it', danger: false,
-                run: addType,
+                run: function (v) {
+                    var t = str(v);
+                    if (!t) return;
+                    var has = (p.types = p.types || []).some(function (x) { return lower(x) === lower(t); });
+                    if (!has) p.types.push(t);
+                    save(true, ['types']);
+                },
             });
-        });
+        }
+
         each(card, '[data-pd-deltype]', function (el) { el.onclick = function () { p.types.splice(Number(el.getAttribute('data-pd-deltype')), 1); save(true, ['types']); }; });
         on(card, '[data-pd-addproduct]', function () { (p.products = p.products || []).push({ p: '', spec: '', sizes: [], moq: 0, rule: '' }); save(true, ['products']); });
         each(card, '[data-pd-delproduct]', function (el) { el.onclick = function () { p.products.splice(Number(el.getAttribute('data-pd-delproduct')), 1); save(true, ['products']); }; });

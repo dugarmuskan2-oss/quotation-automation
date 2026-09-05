@@ -3238,3 +3238,35 @@ describe('source guard — bringing in Google contacts', () => {
         expect(bodyOf('googleHeldHtml')).toContain('held.crowded');
     });
 });
+
+describe('source guard — adding a pipe type the list does not offer', () => {
+    /**
+     * Reported live: "add another has no space for me to add another". Two faults in one
+     * control. The Add button beside the dropdown was a bare <button> with no padding — 28
+     * pixels wide, its text jammed against the edge of the select, and easy to read as
+     * clipped. And picking "＋ Add another…" did nothing until that button was found and
+     * pressed, which is a step nobody expects from a dropdown.
+     */
+    test('the Add button is a real button, and keeps its width', () => {
+        const fn = sliceBetween('function supplierBlock(p)', 'function productRow');
+        expect(fn).toContain('class="pd-prim" data-pd-addtype="1"');
+        expect(fn).toContain('flex:0 0 auto;white-space:nowrap;');
+        // ...and the select must be allowed to shrink, or it squeezes the button out
+        expect(fn).toContain('style="flex:1;min-width:0;"');
+    });
+
+    test('picking "Add another" asks straight away, with no second click', () => {
+        const fn = sliceBetween("pick.onchange = function () {", "on(card, '[data-pd-addtype]'");
+        expect(fn).toContain("if (pick.value !== '__other') return;");
+        expect(fn).toContain('askForAnotherType();');
+        expect(fn).toContain("pick.value = '';");     // cancelling leaves it on "Pick a type…"
+    });
+
+    test('the asking is on the page — window.prompt throws in this view', () => {
+        const fn = sliceBetween('function askForAnotherType()', "each(card, '[data-pd-deltype]'");
+        expect(fn).toContain('askOnPage({');
+        expect(fn).not.toContain('window.prompt');
+        // the same type twice, in any case, is still one type
+        expect(fn).toContain('lower(x) === lower(t)');
+    });
+});
