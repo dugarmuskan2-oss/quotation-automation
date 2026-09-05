@@ -139,9 +139,11 @@ describe('source guards — the gate and its pairing stay in step', () => {
         expect(src).toContain('quotation.everApproved = true;');
     });
 
-    test('Save as Revision still requires the quote to have been sent', () => {
+    // Reversed by the owner: a revision can be taken before the quote is sent, so the desk can
+    // version a draft on its way out. The only bail-out left is a quote that is not in the list.
+    test('Save as Revision does not require the quote to have been sent', () => {
         const src = extractFunction(html, 'saveAsRevision');
-        expect(src).toContain('if (!quotation.sent)');
+        expect(src).not.toContain('if (!quotation.sent)');
         expect(src).toContain("saveQuotationChanges(quotationId, { asRevision: true })");
     });
 });

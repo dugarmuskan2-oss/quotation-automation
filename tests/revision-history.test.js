@@ -229,16 +229,20 @@ describe('buildHistoryTabContent — empty state', () => {
 });
 
 describe('source guard — Save-as-Revision button-after-save + baseline wiring', () => {
-    // The button now shows ONLY once the quote has been sent, matching the gate inside
-    // saveAsRevision. It used to appear on every saved-but-unsent quote — most of the list —
-    // where clicking it could do nothing but scold.
-    test('the button shows only once the quote has been sent', () => {
-        expect(html).toContain('const canRevise = !!quotation.sent;');
+    // The button was briefly limited to SENT quotes, on the reasoning that a revision only
+    // preserves the version the customer already has. The owner reversed that: the desk also
+    // versions a quote before it goes out, so the button is always shown and the function no
+    // longer refuses. Both halves matter — showing the button while the function still blocked
+    // is exactly the "does nothing but scold" state the sent-only gate was introduced to fix.
+    test('the button is rendered unconditionally', () => {
         expect(html).toContain('🔖 Save as Revision');
         expect(html).toContain('saveQuotationChanges(quotationId, { asRevision: true });');
+        expect(html).not.toContain('const canRevise = !!quotation.sent;');
     });
-    test('Save as Revision requires the quote to have been sent first', () => {
-        expect(html).toContain('Send this quote to the customer first — a revision keeps the version they already have.');
+    test('saveAsRevision does not refuse an unsent quote', () => {
+        expect(html).not.toContain('Send this quote to the customer first — a revision keeps the version they already have.');
+        // the only bail-out left is a quote that genuinely is not in the list
+        expect(html).toContain("if (!quotation) { alert('Quotation not found!'); return; }");
     });
     test('the first save/approve establishes the revision baseline', () => {
         expect(html).toContain("if (!quotation.revisionBaseline) quotation.revisionBaseline = buildRevisionSnapshotData(quotation, 'Original');");

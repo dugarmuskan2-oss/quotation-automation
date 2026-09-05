@@ -6772,14 +6772,12 @@
 
         function buildApprovalSplitLayout({ quotation, termsText, approveButtonHTML, saveButtonHTML, printButtonHTML, downloadButtonHTML, sendButtonHTML, copyLinkButtonHTML }) {
             const sidePanelHTML = buildApprovalSidePanelHTML(quotation);
-            // "Save as Revision" only once the quote has actually been SENT — a revision exists to
-            // preserve the version the customer already has, so there is nothing to preserve before
-            // that. This matches the gate inside saveAsRevision; the button used to appear on every
-            // saved-but-unsent quote (most of the list) and did nothing but scold when clicked.
-            const canRevise = !!quotation.sent;
-            const saveRevisionButtonHTML = canRevise
-                ? `<button class="save-btn save-rev-btn" type="button" onclick="event.stopPropagation(); saveAsRevision(${JSON.stringify(quotation.id)})">🔖 Save as Revision</button>`
-                : '';
+            // "Save as Revision" shows on every saved quote, sent or not. It was briefly limited to
+            // sent quotes on the reasoning that a revision only preserves what the customer already
+            // has — but the desk also versions a quote before it goes out, and hiding the button
+            // took that away. Owner's call: always visible, and saveAsRevision no longer refuses.
+            const saveRevisionButtonHTML =
+                `<button class="save-btn save-rev-btn" type="button" onclick="event.stopPropagation(); saveAsRevision(${JSON.stringify(quotation.id)})">🔖 Save as Revision</button>`;
 
             // "From the admin" strip — the compiled margin decisions + note left
             // on the margins desk. Shown once the quote has been through it.
@@ -7898,15 +7896,13 @@
             refreshHistoryTab(quotation.id);
             return true;
         }
-        // Explicit "Save as Revision" — keeps the customer's current version in History and
-        // makes this the next revision. Only meaningful once the quote has been sent.
+        // Explicit "Save as Revision" — archives the current version into History and makes this
+        // the next revision. Available before the quote is sent as well as after: the archived
+        // snapshot is then the last saved draft rather than the version the customer holds, which
+        // is what the desk wants when it versions a quote on the way to sending it.
         function saveAsRevision(quotationId) {
             var quotation = approvedQuotations.find(function(q) { return idsMatch(q.id, quotationId); });
             if (!quotation) { alert('Quotation not found!'); return; }
-            if (!quotation.sent) {
-                alert('Send this quote to the customer first — a revision keeps the version they already have.');
-                return;
-            }
             saveQuotationChanges(quotationId, { asRevision: true });
         }
         // Re-render the History tab of an open card so a just-created revision shows without
