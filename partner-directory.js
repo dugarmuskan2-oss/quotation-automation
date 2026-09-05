@@ -1346,6 +1346,7 @@
         var cls = specClass(pr.spec);
         return '<div class="pd-pcard"><div class="pd-pcard-r1">'
             + f('p', 'Product — e.g. GI pipe', pr.p) + f('spec', 'Specification — e.g. IS 1239 Heavy', pr.spec)
+            + f('make', 'Make — e.g. Jindal', pr.make)
             + '<button class="pd-del" data-pd-delproduct="' + i + '">✕</button></div>'
             + '<div class="pd-row" style="margin-top:6px;"><span class="pd-tiny">Minimum order</span>'
             + '<span style="width:80px;">' + f('moq', 'T', pr.moq) + '</span><span class="pd-tiny">tonnes</span><span class="pd-sp"></span>'

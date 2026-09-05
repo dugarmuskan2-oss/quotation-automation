@@ -100,10 +100,13 @@ function sanitizeProducts(list) {
     return (Array.isArray(list) ? list : [])
         .map(pr => ({
             p: str(pr && pr.p), spec: str(pr && pr.spec),
+            make: str(pr && pr.make),
             sizes: sanitizeSizes(pr && pr.sizes),
             moq: num(pr && pr.moq, 0), rule: str(pr && pr.rule),
         }))
-        .filter(pr => pr.p || pr.spec || pr.sizes.length)
+        // A row holding only a make is still worth keeping — "they stock Jindal" is a real
+        // thing to have written down, and dropping it would lose what was just typed.
+        .filter(pr => pr.p || pr.spec || pr.make || pr.sizes.length)
         .slice(0, 40);
 }
 
@@ -1436,7 +1439,7 @@ function mergeProductInto(card, incoming) {
     const at = list.findIndex(pr => pr && lower(pr.p) === lower(incoming.p));
     if (at === -1) { list.push(incoming); return; }
     const merged = Object.assign({}, list[at]);
-    ['spec', 'rule'].forEach(k => { if (str(incoming[k])) merged[k] = incoming[k]; });
+    ['spec', 'rule', 'make'].forEach(k => { if (str(incoming[k])) merged[k] = incoming[k]; });
     if (num(incoming.moq, 0) > 0) merged.moq = num(incoming.moq, 0);
     if ((incoming.sizes || []).length) merged.sizes = incoming.sizes;
     list[at] = merged;

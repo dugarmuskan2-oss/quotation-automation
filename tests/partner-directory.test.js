@@ -3270,3 +3270,16 @@ describe('source guard — adding a pipe type the list does not offer', () => {
         expect(fn).toContain('lower(x) === lower(t)');
     });
 });
+
+describe('source guard — the Make box on a product', () => {
+    test('it is on the row, beside the product and specification', () => {
+        const fn = sliceBetween('function productRow(pr, i)', 'function transporterBlock');
+        expect(fn).toContain("f('make', 'Make — e.g. Jindal', pr.make)");
+    });
+
+    test('and the row has a column for it, so nothing gets squeezed', () => {
+        // The last one of these squeezed the Add button down to 28 pixels.
+        const css = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+        expect(css).toContain('.pd-pcard-r1 { display: grid; grid-template-columns: 1fr 1.3fr .9fr 26px;');
+    });
+});

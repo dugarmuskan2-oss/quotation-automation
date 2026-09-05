@@ -3011,3 +3011,47 @@ describe('bringing Google firms in a batch at a time', () => {
         expect(r.alreadyThere).toBe(1);
     });
 });
+
+describe('the make on a product — whose pipe it is', () => {
+    const { mergeProductInto } = require('../utils/contacts')._test;
+    /**
+     * Asked for directly. In this trade the make is half the answer: "GI heavy" from two
+     * mills is two different prices and two different lead times, and the owner asks for it
+     * by name — Jindal, Tata, Surya, APL Apollo.
+     */
+    test('it is kept on the card', () => {
+        const p = sanitizePartner({ products: [{ p: 'GI pipe', spec: 'IS 1239 Heavy', make: 'Jindal' }] });
+        expect(p.products[0].make).toBe('Jindal');
+    });
+
+    test('a row holding ONLY a make is still worth keeping', () => {
+        // "They stock Jindal" is a real thing to have written down. Dropping the row would
+        // throw away what was just typed.
+        const p = sanitizePartner({ products: [{ make: 'Jindal' }] });
+        expect(p.products).toHaveLength(1);
+        expect(p.products[0].make).toBe('Jindal');
+    });
+
+    test('a row with nothing at all is still dropped', () => {
+        expect(sanitizePartner({ products: [{ p: '', spec: '', make: '', sizes: [] }] }).products).toEqual([]);
+    });
+
+    test('spaces around it are trimmed, like every other box', () => {
+        expect(sanitizePartner({ products: [{ p: 'GI', make: '  Tata  ' }] }).products[0].make).toBe('Tata');
+    });
+
+    test('a make read from a brochure updates the product, it does not replace the row', () => {
+        const card = { products: [{ p: 'GI pipe', spec: 'IS 1239 Heavy', make: '', moq: 5, rule: '' }] };
+        mergeProductInto(card, { p: 'GI pipe', make: 'Jindal' });
+        expect(card.products).toHaveLength(1);
+        expect(card.products[0].make).toBe('Jindal');
+        expect(card.products[0].spec).toBe('IS 1239 Heavy');   // nothing else disturbed
+        expect(card.products[0].moq).toBe(5);
+    });
+
+    test('and a blank make never wipes one that is already there', () => {
+        const card = { products: [{ p: 'GI pipe', make: 'Jindal' }] };
+        mergeProductInto(card, { p: 'GI pipe', make: '' });
+        expect(card.products[0].make).toBe('Jindal');
+    });
+});
