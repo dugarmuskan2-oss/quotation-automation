@@ -379,3 +379,33 @@ describe('the AI\'s size format and the large-bore rows', () => {
         });
     });
 });
+
+// An empty spreadsheet cell does not always arrive empty. Google Sheets exports the blank class
+// cell on every large-bore row as the literal text "NaN" — a non-empty string, so the class never
+// fell through to the wall thickness and all 8"-and-up rows keyed to "8|nan". Built from the real
+// sheet this dropped the table from 48 usable sizes to 27, and not one large-bore weight resolved.
+describe('a blank cell written as "NaN" is treated as blank', () => {
+    const PW3 = require('../utils/pipeWeights');
+    const SHEET = [
+        'Size,Inch,NB,OD,Light/Medium/Heavy,Wall Thickness (mm),Cost/Meter,Price,KG/MTR',
+        '2XH,2,50,60.3,Heavy,4.5,384,403,6.19',
+        '8X6.0,8,200,219.1,NaN,6,1960,2058,31.56',
+        '8X6.35,8,200,219.1,NaN,6.35,2133,2239,33.34',
+        '10X6.35,10,250,273,#N/A,6.35,2693,2828,41.8',
+    ].join('\n');
+    const maps = { erw: PW3.buildWeightMap(PW3.parseCsv(SHEET)) };
+
+    test('the large-bore rows key on their wall, not on the word "NaN"', () => {
+        expect(PW3.lookupKgPerMeter(maps, 'ERW', '8X6.0')).toBe(31.56);
+        expect(PW3.lookupKgPerMeter(maps, 'ERW', '8X6.35')).toBe(33.34);
+        expect(PW3.lookupKgPerMeter(maps, 'ERW', '10X6.35')).toBe(41.8);
+    });
+
+    test('the class rows are unaffected', () => {
+        expect(PW3.lookupKgPerMeter(maps, 'ERW', '2XH')).toBe(6.19);
+    });
+
+    test('no row is lost to a shared key', () => {
+        expect(Object.keys(maps.erw)).toHaveLength(4);
+    });
+});

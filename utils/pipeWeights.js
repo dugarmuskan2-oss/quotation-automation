@@ -74,6 +74,15 @@ function parseCsv(text) {
     return rows;
 }
 
+// An empty spreadsheet cell does not always arrive empty. The large-bore ERW/GI rows carry no
+// class, and the export writes the literal text "NaN" there — which is a non-empty string, so a
+// plain truthiness check took "NaN" as the class and every 8"-and-up row keyed to "8|nan". The
+// class then never fell through to the wall thickness, and not one large-bore weight resolved.
+function cellOrBlank(v) {
+    const s = String(v == null ? '' : v).trim();
+    return /^(nan|#n\/a|n\/a|null|-|--)$/i.test(s) ? '' : s;
+}
+
 // Index of the first header cell matching any regex; -1 if none.
 function findCol(header, regexes) {
     for (let i = 0; i < header.length; i++) {
@@ -102,10 +111,10 @@ function buildWeightMap(rows) {
         // Class first, then schedule, then WALL THICKNESS — the 8"-and-up ERW/GI rows leave the
         // class cell empty and are distinguished only by their wall, so without that fallback
         // every large-bore row of one size shares a key and all but the last are lost.
-        const clsCell = iClass >= 0 ? row[iClass] : '';
-        const schCell = iSch >= 0 ? row[iSch] : '';
-        const wallCell = iWall >= 0 ? row[iWall] : '';
-        const cls = String(clsCell || '').trim() || String(schCell || '').trim() || String(wallCell || '').trim();
+        const clsCell = cellOrBlank(iClass >= 0 ? row[iClass] : '');
+        const schCell = cellOrBlank(iSch >= 0 ? row[iSch] : '');
+        const wallCell = cellOrBlank(iWall >= 0 ? row[iWall] : '');
+        const cls = clsCell || schCell || wallCell;
         const kg = parseFloat(String(row[kgCol] == null ? '' : row[kgCol]).replace(/,/g, '').trim());
         if (size == null || String(size).trim() === '') continue;
         if (!Number.isFinite(kg) || kg <= 0) continue;
