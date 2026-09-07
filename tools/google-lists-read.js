@@ -35,6 +35,9 @@ const lists = require('../utils/contactLists');
 const { CONFIG_KEY_GOOGLE_FIRMS } = require('../utils/constants');
 
 const GO = process.argv.includes('--go');
+// Lists written off by an earlier run go back on the pile — used after fixing whatever
+// stopped them, so the ones that never reached Claude get their turn.
+const RETRY = process.argv.includes('--retry-failed');
 const ONLY = (() => {
     const at = process.argv.indexOf('--only');
     return at === -1 ? 0 : Math.max(0, parseInt(process.argv[at + 1], 10) || 0);
@@ -192,6 +195,12 @@ async function main() {
     const progress = progressOf(blob);
     const held = heldBackNames(blob);
 
+    if (RETRY) {
+        Object.keys(progress.failed).forEach((k) => { delete progress.read[k]; });
+        say('  putting ' + Object.keys(progress.failed).length + ' failed lists back on the pile');
+        progress.failed = {};
+    }
+
     const skipped = candidates.filter((p) => held.has(titleAsFirmName(titleOf(p))));
     const todo = candidates
         .filter((p) => !progress.read[keyOf(p)] && !held.has(titleAsFirmName(titleOf(p))))
@@ -221,6 +230,7 @@ async function main() {
     say('\nReading ' + batch.length + ' list' + (batch.length === 1 ? '' : 's') + '...\n');
 
     let firmsSoFar = 0;
+    let stoppedBy = null;
     for (let i = 0; i < batch.length; i++) {
         const person = batch[i];
         const title = titleOf(person) || '(untitled)';
@@ -243,11 +253,20 @@ async function main() {
         } catch (e) {
             // Running out of room is not the same as failing to read, and the owner can act
             // on one of them: that list is worth opening by hand.
+            const mine = anthropic.accountProblem(e);
             const why = e.ranOutOfRoom ? 'too long to read in one go'
-                : String(e.message || '').slice(0, 80);
+                : mine ? 'not read — ' + String(e.message || '').slice(0, 120)
+                    : String(e.message || '').slice(0, 120);
             progress.failed[keyOf(person)] = title + ' — ' + why;
-            progress.read[keyOf(person)] = title;      // do not pay to fail on it twice
-            say('FAILED: ' + why);
+            // A list Claude could not make sense of is written off, so it is not paid for
+            // twice. One that never reached Claude at all is left on the pile.
+            if (!mine) progress.read[keyOf(person)] = title;
+            say('FAILED: ' + why.slice(0, 70));
+            if (mine) {
+                stoppedBy = e;
+                say('\nStopping — this is your account, not the list. Nothing more would work.');
+                break;
+            }
         }
         // Written every time, so stopping here loses nothing that was paid for.
         await saveProgress(blob, progress);
@@ -271,6 +290,14 @@ async function main() {
     say('  added to the queue list: ' + fresh.length);
     say('  lists that failed:      ' + Object.keys(progress.failed).length);
     say('  still to read:          ' + (todo.length - batch.length));
+    if (stoppedBy) {
+        say('');
+        say('It stopped early. The reason was:');
+        say('  ' + String(stoppedBy.message || '').slice(0, 300));
+        say('Fix that, then run it again — it carries on from here.');
+        process.exitCode = 1;
+        return;
+    }
     say('');
     say('Open the Partner Directory, go to Add, and bring them in a batch at a time.');
     say('Nothing has been added to your directory — every firm still needs approving.');

@@ -42,6 +42,29 @@ function client() {
 function isAvailable() { return !!client(); }
 
 /**
+ * Was the failure the ACCOUNT's, rather than the thing being read?
+ *
+ * 298 of the 316 phone-book lists came back "Your credit balance is too low", and the reader
+ * wrote every one of them off as read so it would not pay to fail twice. That rule is right
+ * for a list Claude genuinely cannot make sense of, and exactly wrong here: nothing was
+ * charged, nothing was read, and marking them read stranded 298 lists behind a problem that
+ * a top-up fixes in a minute.
+ *
+ * So the two are separated. Out of credit, a bad key, a rate limit, a server having a bad
+ * day, a dropped connection — none of those say anything about the list, and all of them are
+ * worth trying again. Anything else is the list's own fault and is not retried.
+ */
+function accountProblem(err) {
+    const status = Number((err && err.status) || 0);
+    const text = String((err && err.message) || '');
+    if (status === 401 || status === 403 || status === 429 || status >= 500) return true;
+    if (/credit balance|billing|quota|rate limit|overloaded/i.test(text)) return true;
+    if (/anthropic-workspace-id|authentication|api[- ]key/i.test(text)) return true;
+    // No status at all is a connection that never arrived, not an answer.
+    return !status && /ECONN|ETIMEDOUT|ENOTFOUND|socket|network|fetch failed/i.test(text);
+}
+
+/**
  * A PDF or a photo as Claude takes it: base64 inline, no upload step at all.
  * (The OpenAI path had to upload a PDF first and reference it by id.)
  */
@@ -142,6 +165,7 @@ async function readWithClaude({ prompt, fileBase64, fileName }) {
 }
 
 module.exports = {
+    accountProblem,
     readLongWithClaude,
     readWithClaude,
     isAvailable,
