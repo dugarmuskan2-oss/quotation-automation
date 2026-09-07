@@ -36,6 +36,7 @@ const {
     pendingFromSuggestions, pendingFromUsage, dropAlreadyQueued, MAX_PENDING, queueWithoutLosingAny,
     keepWhatWasAddedSince, unapprovedToPending, sanitizeEnquiries, noteEnquiry, MAX_ENQUIRIES,
     addressesSpokenFor, googleAlreadyHandled, nextGoogleBatch, googlePendingItem,
+    removalPendingItem, removalsFor,
     companyFromEmail, changeEntry, pushChange, diffLines,
     undoChange, sanitizePendingItem, extractionPrompt, findsFromExtraction,
 } = contactsLib;
@@ -3053,5 +3054,51 @@ describe('the make on a product — whose pipe it is', () => {
         const card = { products: [{ p: 'GI pipe', make: 'Jindal' }] };
         mergeProductInto(card, { p: 'GI pipe', make: '' });
         expect(card.products[0].make).toBe('Jindal');
+    });
+});
+
+describe('a removal in the queue', () => {
+    const req = (over) => Object.assign({
+        cardId: 'p_1', cardName: 'Sri Steel', what: 'phone',
+        value: { label: 'Office', v: '044 2222' },
+        at: { person: { name: 'Ravi', emails: [{ v: 'ravi@x.com' }] } },
+    }, over);
+
+    test('what to take off SURVIVES being stored — without it the request is empty', () => {
+        // sanitizePendingItem is what every queue item passes through on its way to and from
+        // storage. Dropping the removal there leaves an item that says "remove something".
+        const it = sanitizePendingItem(removalPendingItem(req(), 'Remove the phone number'));
+        expect(it.origin).toBe('removal');
+        expect(it.removal).not.toBeNull();
+        expect(it.removal.what).toBe('phone');
+        expect(it.removal.value.v).toBe('044 2222');
+        expect(it.removal.cardId).toBe('p_1');
+    });
+
+    test('an ordinary queue item has no removal on it', () => {
+        expect(sanitizePendingItem({ origin: 'gmail' }).removal).toBeNull();
+    });
+
+    test('a removal carries no firm to preview — it is not a firm arriving', () => {
+        expect(removalPendingItem(req(), 'x').preview).toBeNull();
+        expect(removalPendingItem(req(), 'Remove the phone number').subject).toBe('Remove the phone number');
+    });
+
+    test('removals are found by the CARD they belong to, never all at once', () => {
+        // Getting this wrong would grey out things on every other card in the directory.
+        const items = [
+            removalPendingItem(req({ cardId: 'p_1' }), 'a'),
+            removalPendingItem(req({ cardId: 'p_2' }), 'b'),
+            { id: 'x', origin: 'gmail', preview: {} },
+        ];
+        expect(removalsFor(items, 'p_1')).toHaveLength(1);
+        expect(removalsFor(items, 'p_1')[0].cardId).toBe('p_1');
+        expect(removalsFor(items, 'p_2')).toHaveLength(1);
+        expect(removalsFor(items, 'p_nobody')).toEqual([]);
+    });
+
+    test('a card with nothing waiting gets an empty list, not everything', () => {
+        expect(removalsFor([], 'p_1')).toEqual([]);
+        expect(removalsFor(null, 'p_1')).toEqual([]);
     });
 });

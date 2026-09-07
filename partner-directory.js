@@ -1199,6 +1199,45 @@
     }
 
     // ── The edit card (identical wherever a partner opens) ────────────────────
+    /** The removals waiting against this card, read back from the queue. */
+    function waitingRemovals(p) {
+        return D.pending.filter(function (it) {
+            return it && it.origin === 'removal' && it.removal && it.removal.cardId === p.id;
+        }).map(function (it) { return it.removal; });
+    }
+
+    /**
+     * A line at the top of the card naming what is waiting to come off it.
+     *
+     * Without this, pressing ✕ and watching nothing happen reads as a broken button — which
+     * is exactly the fault the "Add another…" dropdown had. The card has to say that the
+     * press landed and where the answer is.
+     */
+    function removalsWaitingHtml(p) {
+        var waiting = waitingRemovals(p);
+        if (!waiting.length) return '';
+        return '<div class="pd-read" style="margin-bottom:9px;">'
+            + '<p class="pd-tiny"><b>' + waiting.length + ' thing' + (waiting.length === 1 ? '' : 's')
+            + ' waiting to be removed.</b> Nothing has come off this card yet — approve them under '
+            + '<b>Recent changes</b>, or discard the request to keep them.</p>'
+            + waiting.map(function (r) {
+                return '<p class="pd-tiny" style="margin-top:4px;">· ' + esc(removalLine(r)) + '</p>';
+            }).join('') + '</div>';
+    }
+
+    /** The same wording the queue uses, so the two never disagree. */
+    function removalLine(r) {
+        var v = r.value;
+        if (r.what === 'phone' || r.what === 'email') return str(v && v.v);
+        if (r.what === 'person') return str(v && v.name) || str(((v && v.emails) || [{}])[0].v) || 'a contact';
+        if (r.what === 'route') return str(v && v.from) + ' to ' + str(v && v.to);
+        if (r.what === 'note') return str(v && v.t).slice(0, 60);
+        if (r.what === 'product') return str(v && v.p);
+        if (r.what === 'branch') return str(v && v.city);
+        if (r.what === 'size') return [str(v && v.nb), str(v && v.inch)].filter(Boolean).join(' ');
+        return str(v);
+    }
+
     function editCard(p) {
         // A blank first option, so a card that has never been given a role does not show
         // "Dealer" as though somebody chose it.
@@ -1211,6 +1250,7 @@
             + '<b>' + esc(p.company || 'New partner') + '</b>'
             + '<span class="pd-pill">' + esc(roleLabel(p)) + '</span>'
             + '<span class="pd-sp"></span><span class="pd-tiny">click to close</span></div>'
+            + removalsWaitingHtml(p)
             + '<div class="pd-grid2">' + fld(p, 'Company', 'company', p.company, 'e.g. Annai Steel Traders')
             + '<div class="pd-fld"><label>They are a…</label><select data-pd-k="role">' + roles + '</select></div></div>'
             + (p.role === 'other' ? fld(p, 'What are they?', 'roleOther', p.roleOther, 'e.g. galvaniser, testing lab') : '')
@@ -1878,6 +1918,7 @@
     }
 
     function pendingStrip(pi) {
+        if (pi.origin === 'removal') return removalStrip(pi);
         var imported = pi.origin === 'import';
         var match = imported ? matchedPartner(pi) : (pi.from ? knownEmail(pi.from) : null);
         var open = S.openPending === pi.id;
@@ -1939,6 +1980,28 @@
             + '<button class="pd-prim" data-pd-approve="' + esc(pi.id) + '"' + (stop ? ' disabled' : '') + '>'
             + (busy ? 'Saving…' : 'Approve — ' + (match ? 'update ' + esc(match.company) : 'add them')) + '</button>'
             + '<button data-pd-discard="' + esc(pi.id) + '"' + (busy ? ' disabled' : '') + '>Discard</button></div>';
+    }
+
+    /**
+     * A removal waiting for a yes.
+     *
+     * There is no firm to preview and nothing to correct — one sentence, and two answers.
+     * "Keep it" discards the request and leaves the card exactly as it is.
+     */
+    function removalStrip(pi) {
+        var busy = S.busy[pi.id];
+        var card = byId(pi.removal && pi.removal.cardId);
+        return '<div class="pd-src-strip">'
+            + '<div class="pd-row"><span class="pd-pill pd-pill-warn">Remove</span>'
+            + '<b style="min-width:0;">' + esc(pi.subject || 'Something is to be removed') + '</b>'
+            + '<span class="pd-sp"></span><span class="pd-tiny">' + ago(pi.receivedAt) + '</span></div>'
+            + (card ? '' : '<p class="pd-tiny" style="margin-left:20px;">That card is no longer in '
+                + 'the directory — approving this will simply clear the request.</p>')
+            + '<div class="pd-row" style="margin:8px 0 4px;"><span class="pd-sp"></span>'
+            + '<button data-pd-rmkeep="' + esc(pi.id) + '"' + (busy ? ' disabled' : '') + '>Keep it</button>'
+            + '<button class="pd-danger" data-pd-rmok="' + esc(pi.id) + '"' + (busy ? ' disabled' : '') + '>'
+            + (busy ? 'Removing…' : 'Yes, remove it') + '</button></div>'
+            + '</div>';
     }
 
     // One address belongs to one company, so say so BEFORE the button is pressed — pressing
@@ -2443,11 +2506,50 @@
             };
         });
         on(card, '[data-pd-addperson]', function () { p.people.push({ name: '', role: '', phones: [{ label: 'Mobile', v: '' }], emails: [{ label: 'Work', v: '' }] }); save(true, ['people']); });
-        each(card, '[data-pd-delperson]', function (el) { el.onclick = function () { p.people.splice(Number(el.getAttribute('data-pd-delperson')), 1); save(true, ['people']); }; });
+        /**
+         * Pressing ✕ asks; it does not delete.
+         *
+         * The owner's rule: edits save as they always did, but anything REMOVED goes to
+         * Recent changes and waits for his approval. Ten buttons on this card used to splice
+         * the thing out and save, leaving no record and no way back.
+         *
+         * The card is not touched here. What is marked is shown greyed out, read back from
+         * the queue, so it survives a reload and shows on his phone too.
+         */
+        function askRemoval(what, value, at) {
+            if (S.busy['rm']) return;                 // one press is one request
+            S.busy['rm'] = true; render();
+            postJson('/contacts/removal/ask',
+                { cardId: p.id, what: what, value: value, at: at || null },
+                function (d) {
+                    S.saveNote = (d && d.already)
+                        ? 'That is already waiting in Recent changes.'
+                        : 'Marked for removal — approve it under Recent changes.';
+                    loadDirectory(render);
+                },
+                function () { delete S.busy['rm']; },
+                'Marking that for removal');
+        }
+
+        each(card, '[data-pd-delperson]', function (el) {
+            el.onclick = function () { askRemoval('person', p.people[Number(el.getAttribute('data-pd-delperson'))]); };
+        });
         each(card, '[data-pd-addph]', function (el) { el.onclick = function () { var c = p.people[Number(el.getAttribute('data-pd-addph'))]; (c.phones = c.phones || []).push({ label: 'Mobile', v: '' }); save(true, ['people']); }; });
         each(card, '[data-pd-addem]', function (el) { el.onclick = function () { var c = p.people[Number(el.getAttribute('data-pd-addem'))]; (c.emails = c.emails || []).push({ label: 'Work', v: '' }); save(true, ['people']); }; });
-        each(card, '[data-pd-delph]', function (el) { el.onclick = function () { var a = el.getAttribute('data-pd-delph').split(':'); p.people[+a[0]].phones.splice(+a[1], 1); save(true, ['people']); }; });
-        each(card, '[data-pd-delem]', function (el) { el.onclick = function () { var a = el.getAttribute('data-pd-delem').split(':'); p.people[+a[0]].emails.splice(+a[1], 1); save(true, ['people']); }; });
+        each(card, '[data-pd-delph]', function (el) {
+            el.onclick = function () {
+                var a = el.getAttribute('data-pd-delph').split(':');
+                var who = p.people[+a[0]];
+                askRemoval('phone', who.phones[+a[1]], { person: who });
+            };
+        });
+        each(card, '[data-pd-delem]', function (el) {
+            el.onclick = function () {
+                var a = el.getAttribute('data-pd-delem').split(':');
+                var who = p.people[+a[0]];
+                askRemoval('email', who.emails[+a[1]], { person: who });
+            };
+        });
     }
 
     // Each write names ONLY what was touched. Sending branches, routes, city and address
@@ -2458,12 +2560,16 @@
         each(card, '[data-pd-br]', function (el) {
             el.onchange = function () { p.branches[Number(el.getAttribute('data-pd-br'))][el.getAttribute('data-pd-k')] = el.value; save(false, ['branches']); };
         });
-        each(card, '[data-pd-delbranch]', function (el) { el.onclick = function () { p.branches.splice(Number(el.getAttribute('data-pd-delbranch')), 1); save(true, ['branches']); }; });
+        each(card, '[data-pd-delbranch]', function (el) {
+            el.onclick = function () { askRemoval('branch', p.branches[Number(el.getAttribute('data-pd-delbranch'))]); };
+        });
         on(card, '[data-pd-addroute]', function () { (p.routes = p.routes || []).push({ from: '', to: '' }); save(true, ['routes']); });
         each(card, '[data-pd-rt]', function (el) {
             el.onchange = function () { p.routes[Number(el.getAttribute('data-pd-rt'))][el.getAttribute('data-pd-k')] = el.value; save(false, ['routes']); };
         });
-        each(card, '[data-pd-delroute]', function (el) { el.onclick = function () { p.routes.splice(Number(el.getAttribute('data-pd-delroute')), 1); save(true, ['routes']); }; });
+        each(card, '[data-pd-delroute]', function (el) {
+            el.onclick = function () { askRemoval('route', p.routes[Number(el.getAttribute('data-pd-delroute'))]); };
+        });
     }
 
     function bindSupply(card, p, save) {
@@ -2514,9 +2620,13 @@
             });
         }
 
-        each(card, '[data-pd-deltype]', function (el) { el.onclick = function () { p.types.splice(Number(el.getAttribute('data-pd-deltype')), 1); save(true, ['types']); }; });
+        each(card, '[data-pd-deltype]', function (el) {
+            el.onclick = function () { askRemoval('type', p.types[Number(el.getAttribute('data-pd-deltype'))]); };
+        });
         on(card, '[data-pd-addproduct]', function () { (p.products = p.products || []).push({ p: '', spec: '', sizes: [], moq: 0, rule: '' }); save(true, ['products']); });
-        each(card, '[data-pd-delproduct]', function (el) { el.onclick = function () { p.products.splice(Number(el.getAttribute('data-pd-delproduct')), 1); save(true, ['products']); }; });
+        each(card, '[data-pd-delproduct]', function (el) {
+            el.onclick = function () { askRemoval('product', p.products[Number(el.getAttribute('data-pd-delproduct'))]); };
+        });
         each(card, '[data-pd-pr]', function (el) {
             el.onchange = function () {
                 var i = Number(el.getAttribute('data-pd-pr')), k = el.getAttribute('data-pd-k');
@@ -2526,7 +2636,13 @@
             };
         });
         each(card, '[data-pd-addsz]', function (el) { el.onclick = function () { var pr = p.products[Number(el.getAttribute('data-pd-addsz'))]; (pr.sizes = pr.sizes || []).push({ nb: '', inch: '', od: '', thk: '' }); save(true, ['products']); }; });
-        each(card, '[data-pd-delsz]', function (el) { el.onclick = function () { var a = el.getAttribute('data-pd-delsz').split(':'); p.products[+a[0]].sizes.splice(+a[1], 1); save(true, ['products']); }; });
+        each(card, '[data-pd-delsz]', function (el) {
+            el.onclick = function () {
+                var a = el.getAttribute('data-pd-delsz').split(':');
+                var pr = p.products[+a[0]];
+                askRemoval('size', pr.sizes[+a[1]], { product: { p: pr.p } });
+            };
+        });
         each(card, '[data-pd-loadis]', function (el) {
             el.onclick = function () {
                 var pr = p.products[Number(el.getAttribute('data-pd-loadis'))], cls = specClass(pr.spec);
@@ -2551,7 +2667,9 @@
         });
         on(card, '[data-pd-addorule]', function () { (p.rules = p.rules || []).push(''); save(true, ['rules']); });
         each(card, '[data-pd-orule]', function (el) { el.onchange = function () { p.rules[Number(el.getAttribute('data-pd-orule'))] = el.value; save(false, ['rules']); }; });
-        each(card, '[data-pd-delorule]', function (el) { el.onclick = function () { p.rules.splice(Number(el.getAttribute('data-pd-delorule')), 1); save(true, ['rules']); }; });
+        each(card, '[data-pd-delorule]', function (el) {
+            el.onclick = function () { askRemoval('rule', p.rules[Number(el.getAttribute('data-pd-delorule'))]); };
+        });
     }
 
     function bindNotes(card, p, save) {
@@ -2564,7 +2682,9 @@
         };
         on(card, '[data-pd-addnote]', add);
         if (input) input.onkeydown = function (e) { if (e.key === 'Enter') add(); };
-        each(card, '[data-pd-delnote]', function (el) { el.onclick = function () { p.notes.splice(Number(el.getAttribute('data-pd-delnote')), 1); save(true, ['notes']); }; });
+        each(card, '[data-pd-delnote]', function (el) {
+            el.onclick = function () { askRemoval('note', p.notes[Number(el.getAttribute('data-pd-delnote'))]); };
+        });
     }
 
     /**
@@ -2608,6 +2728,32 @@
             };
             el.onclick = go;
             el.onkeydown = function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } };
+        });
+        each(app, '[data-pd-rmok]', function (el) {
+            el.onclick = function () {
+                var id = el.getAttribute('data-pd-rmok');
+                if (S.busy[id]) return;               // one press is one removal
+                S.busy[id] = true; render();
+                postJson('/contacts/removal/apply', { id: id }, function (d) {
+                    // It may have been taken off by hand while this waited. That is not a
+                    // failure, and saying "done" when nothing changed would be a lie.
+                    S.saveNote = (d && d.changed) ? 'Removed.'
+                        : 'Nothing to remove — ' + ((d && d.reason) || 'it had already gone') + '.';
+                    loadDirectory(render);
+                }, function () { delete S.busy[id]; }, 'Removing that');
+            };
+        });
+        each(app, '[data-pd-rmkeep]', function (el) {
+            el.onclick = function () {
+                var id = el.getAttribute('data-pd-rmkeep');
+                if (S.busy[id]) return;
+                S.busy[id] = true; render();
+                // The ordinary discard route: the request goes, the card is untouched.
+                postJson('/contacts/pending/discard', { id: id }, function () {
+                    S.saveNote = 'Kept — nothing was removed.';
+                    loadDirectory(render);
+                }, function () { delete S.busy[id]; }, 'Keeping that');
+            };
         });
         each(app, '[data-pd-approve]', function (el) {
             el.onclick = function () {

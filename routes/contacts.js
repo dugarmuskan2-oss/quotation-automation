@@ -24,6 +24,7 @@ const {
 } = require('../utils/constants');
 
 const contactsLib = require('../utils/contacts');
+const removals = require('../utils/removals');
 const anthropic = require('../utils/anthropic');
 const MAX_PENDING = contactsLib.MAX_PENDING;
 
@@ -181,6 +182,73 @@ module.exports = function createContactsRouter({ storage, openai }) {
     // waiting for approval. Nothing reaches the directory here: approval is the only write
     // path, the same as for an email arriving on the Gmail label. Safe to run twice; an
     // address already in the directory or already in the queue is not offered again.
+    // ── Taking something off a card ───────────────────────────────────────────
+    // Edits save as they always did. A removal waits: it goes to Recent changes and comes
+    // off the card only when the owner approves it.
+
+    /** Mark something for removal. Writes to the QUEUE only — the card is untouched. */
+    router.post('/contacts/removal/ask', express.json(), async (req, res) => {
+        try {
+            const { cardId, what, value, at } = req.body || {};
+            const dir = await loadDirectory();
+            const card = dir.contacts.find(p => p && p.id === String(cardId || ''));
+            if (!card) return res.status(404).json({ error: 'That card is no longer in the directory.' });
+
+            const request = removals.removalRequest(card, String(what || ''), value, at);
+            if (!request) return res.status(400).json({ error: 'Nothing to remove.' });
+
+            const items = await loadPending();
+            // Pressing ✕ twice must not queue it twice.
+            if (removals.isMarked(contactsLib.removalsFor(items, card.id), request.what, request.value, request.at)) {
+                return res.json({ ok: true, already: true });
+            }
+            const room = contactsLib.queueWithoutLosingAny(items, [contactsLib.removalPendingItem(request, removals.describeRemoval(request))], MAX_PENDING);
+            if (!room.queued) return res.status(409).json({ error: 'Recent changes is full — approve or discard some first.' });
+            await savePending(room.items);
+            res.json({ ok: true, asked: removals.describeRemoval(request) });
+        } catch (error) {
+            res.status(500).json({ error: 'Could not mark that for removal: ' + error.message });
+        }
+    });
+
+    /**
+     * Approve it: NOW it comes off the card.
+     *
+     * Matched by value, so a card edited while this waited cannot lose the wrong thing —
+     * and if it has already gone, this says so rather than taking its neighbour.
+     */
+    router.post('/contacts/removal/apply', express.json(), async (req, res) => {
+        try {
+            const id = String((req.body && req.body.id) || '');
+            const items = await loadPending();
+            const item = items.find(x => x && x.id === id && x.origin === 'removal');
+            if (!item) return res.status(404).json({ error: 'That request was not found — it may already be handled.' });
+
+            const dir = await loadDirectory();
+            const at = dir.contacts.findIndex(p => p && p.id === item.removal.cardId);
+            if (at === -1) {
+                await savePending(items.filter(x => x.id !== id));
+                return res.json({ ok: true, changed: false, reason: 'that card has been deleted' });
+            }
+            const before = JSON.parse(JSON.stringify(dir.contacts[at]));
+            const card = JSON.parse(JSON.stringify(before));
+            const result = removals.applyRemoval(card, item.removal);
+
+            if (result.changed) {
+                const contacts = dir.contacts.slice();
+                contacts[at] = contactsLib.sanitizePartner(card);
+                const entry = contactsLib.changeEntry(
+                    removals.describeRemoval(item.removal), 'Approved by hand',
+                    'Removal', before.id, before, contacts[at]);
+                await saveDirectory({ contacts, changes: contactsLib.pushChange(dir.changes, entry) });
+            }
+            await savePending(items.filter(x => x.id !== id));
+            res.json({ ok: true, changed: result.changed, reason: result.reason || '' });
+        } catch (error) {
+            res.status(500).json({ error: 'Could not carry that out: ' + error.message });
+        }
+    });
+
     // ── Google Contacts ───────────────────────────────────────────────────────
     // The slow work — 5,507 contacts, 19 more pages of everyone ever emailed, then every
     // quotation — happens in tools/google-contacts-scan.js, on the owner's own computer.

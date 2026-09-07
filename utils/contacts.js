@@ -741,6 +741,32 @@ function nextGoogleBatch(firms, pending, contacts, size) {
  * the server assigns the id. The 'google' origin is what lets the review screen say where it
  * came from, and what the Discard warning reads to tell the truth about what happens next.
  */
+/**
+ * A request to take something off a card, as a queue item.
+ *
+ * It sits in Recent changes beside the firms waiting to be approved, because that is where
+ * the owner already looks for things needing his word. Nothing is taken off the card until
+ * he approves it.
+ */
+function removalPendingItem(req, subject) {
+    return {
+        id: newPendingId(),
+        origin: 'removal',
+        from: '', subject: str(subject), file: '', kind: '', text: '',
+        finds: [],
+        receivedAt: new Date().toISOString(),
+        preview: null,
+        removal: req,
+    };
+}
+
+/** The removals waiting against one card, so it can show what is marked. */
+function removalsFor(pending, cardId) {
+    return (pending || [])
+        .filter(it => it && it.origin === 'removal' && it.removal && it.removal.cardId === str(cardId))
+        .map(it => it.removal);
+}
+
 function googlePendingItem(firm) {
     const preview = sanitizePartner(Object.assign({}, firm.preview, { id: '' }));
     const mails = allEmails(preview);
@@ -1042,7 +1068,10 @@ function sanitizePendingItem(input) {
         // Three origins now, and each means something different when the owner discards one:
         // a gmail item can be re-labelled to get it back, an import returns on the next
         // press, and a google one returns on the next scan.
-        origin: ['import', 'google'].indexOf(str(src.origin)) !== -1 ? str(src.origin) : 'gmail',
+        origin: ['import', 'google', 'removal'].indexOf(str(src.origin)) !== -1 ? str(src.origin) : 'gmail',
+        // A removal is not a firm arriving — it is a request to take something OFF one. It
+        // carries no preview; what it carries is which card, and which thing on it.
+        removal: (src.removal && typeof src.removal === 'object') ? src.removal : null,
         preview: (src.preview && typeof src.preview === 'object') ? src.preview : null,
         from: lower(src.from),
         subject: str(src.subject).slice(0, 300),
@@ -1513,6 +1542,8 @@ module.exports = {
     googleAlreadyHandled,
     nextGoogleBatch,
     googlePendingItem,
+    removalPendingItem,
+    removalsFor,
     keepWhatWasAddedSince,
     LIST_KEY,
     companyFromEmail,

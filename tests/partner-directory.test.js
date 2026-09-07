@@ -3283,3 +3283,80 @@ describe('source guard — the Make box on a product', () => {
         expect(css).toContain('.pd-pcard-r1 { display: grid; grid-template-columns: 1fr 1.3fr .9fr 26px;');
     });
 });
+
+describe('source guard — pressing ✕ asks, it does not delete', () => {
+    /**
+     * The owner's rule: "edits are allowed but anything deleted must go to recent changes
+     * and approved". Ten buttons inside a card used to splice the thing out and save it,
+     * leaving no record and no way back.
+     */
+    const bind = sliceBetween('function bindCardFields(app)', 'function bindPeople');
+
+    test('not one of the ten still deletes on the spot', () => {
+        // The handler runs from its own marker to the START OF THE NEXT ONE. Ending the
+        // slice at the first "});" cut it short — "{ person: who })" contains that — and a
+        // save() appended after the askRemoval call sat outside the slice and went unseen.
+        // That mutation escaped until this was fixed.
+        const handlerFor = (b) => {
+            const from = src.indexOf("each(card, '[data-pd-" + b + "]'");
+            expect(from).toBeGreaterThan(-1);
+            const rest = src.slice(from + 10);
+            const nexts = ["each(card, '[data-pd-", "on(card, '[data-pd-", 'function bind']
+                .map((m) => rest.indexOf(m)).filter((i) => i !== -1);
+            return rest.slice(0, Math.min.apply(null, nexts));
+        };
+
+        ['delperson', 'delph', 'delem', 'delbranch', 'delroute',
+         'deltype', 'delproduct', 'delsz', 'delorule', 'delnote'].forEach((b) => {
+            const fn = handlerFor(b);
+            expect(fn).toContain('askRemoval(');
+            expect(fn).not.toContain('.splice(');
+            // ...and does not ALSO write to the card. Asking plus saving is the old
+            // behaviour with a queue item bolted on: the thing still vanishes.
+            expect(fn).not.toContain('save(');
+        });
+    });
+
+    test('the card is not touched — only the queue is written to', () => {
+        const fn = sliceBetween('function askRemoval(what, value, at)', "each(card, '[data-pd-delperson]'");
+        expect(fn).toContain("postJson('/contacts/removal/ask'");
+        expect(fn).not.toContain('save(true');
+        expect(fn).toContain("if (S.busy['rm']) return;");     // one press is one request
+    });
+
+    test('the card says what is waiting, so a press never looks like nothing', () => {
+        // The same fault the "Add another…" dropdown had: pressing something and seeing
+        // no change reads as a broken button.
+        expect(src).toContain('+ removalsWaitingHtml(p)');
+        const fn = sliceBetween('function removalsWaitingHtml(p)', 'function removalLine');
+        expect(fn).toContain('waiting to be removed');
+        expect(fn).toContain('Nothing has come off this card yet');
+        expect(fn).toContain('Recent changes');
+    });
+
+    test('a removal in the queue offers Keep it as well as Yes, remove it', () => {
+        const fn = sliceBetween('function removalStrip(pi)', 'One address belongs to one company');
+        expect(fn).toContain('data-pd-rmkeep');
+        expect(fn).toContain('data-pd-rmok');
+        expect(fn).toContain('Keep it');
+        // and it says so when the card has gone, rather than failing silently
+        expect(fn).toContain('no longer in');
+    });
+
+    test('approving is one press, and never claims to have removed nothing', () => {
+        const fn = sliceBetween("each(app, '[data-pd-rmok]'", "each(app, '[data-pd-rmkeep]'");
+        expect(fn).toContain('if (S.busy[id]) return;');
+        expect(fn).toContain("(d && d.changed) ? 'Removed.'");
+        expect(fn).toContain('Nothing to remove');
+    });
+
+    test('"Keep it" discards the request and writes nothing to the card', () => {
+        const fn = sliceBetween("each(app, '[data-pd-rmkeep]'", "each(app, '[data-pd-approve]'");
+        expect(fn).toContain("postJson('/contacts/pending/discard'");
+        expect(fn).not.toContain('removal/apply');
+    });
+
+    test('a removal is routed to its own strip, not rendered as a firm', () => {
+        expect(src).toContain("if (pi.origin === 'removal') return removalStrip(pi);");
+    });
+});
