@@ -19,7 +19,7 @@ require('dotenv').config();
 
 const storage = require('./storage');
 const { createLineItemId, parseFlexibleNumber, calculateLineItem } = require('./utils/calculations');
-const { fillBlankKgPerMeter } = require('./utils/pipeWeights');
+const { applyPriceListWeights } = require('./utils/pipeWeights');
 const {
     ENTITY_QUOTATION,
     ENTITY_GMAIL_MSG_MARKER,
@@ -571,16 +571,22 @@ async function handleGenerateQuotation({ emailContent, fileContent, instructions
         // Calculate final rates and line totals if not provided
         quotationData.lineItems = quotationData.lineItems.map(item => calculateLineItem(item));
 
-        // Any kg/m the AI left blank now comes from the price list itself. Measured over 12 real
-        // enquiries the AI filled about 80% of them, and it misses by whole enquiries — one came
-        // back with 0 of 52. A blank weight drops that line's tonnage out of the freight enquiry
-        // without saying so. Reading the column is a lookup, so code does it: same answer every
-        // time, no tokens. Blanks only, and a size the sheet lacks stays blank rather than guessed.
+        // kg/m now comes from the price list wherever the price list has it, and from the AI only
+        // for sizes the sheets do not carry. Measured against published pipe tables, the sheet is
+        // right on 90% of lines and the AI on 67%, so leaving the AI's number in place whenever it
+        // supplied one was keeping a wrong weight on about one line in eight. Nothing here is
+        // computed from geometry: an unknown size keeps whatever the AI said, or stays blank.
+        // Safe to overwrite ONLY because this is generation time — nobody has hand-typed a weight
+        // yet. The Freight panel still fills blanks only, so it can never undo a hand correction.
         // Never let this break generation — a quote with some blank weights beats no quote.
-        let kgFill = { filled: 0, unknown: 0, alreadySet: 0 };
+        let kgFill = { filled: 0, corrected: 0, agreed: 0, keptFromAi: 0, unknown: 0, changes: [] };
         try {
             const weightMaps = await storage.loadPipeWeights();
-            kgFill = fillBlankKgPerMeter(weightMaps, quotationData.lineItems);
+            kgFill = applyPriceListWeights(weightMaps, quotationData.lineItems);
+            if (kgFill.corrected) {
+                console.log('kg/m: price list corrected ' + kgFill.corrected + ' AI weight(s): '
+                    + kgFill.changes.map(c => c.description + ' ' + c.from + '->' + c.to).join(', '));
+            }
         } catch (e) {
             console.warn('kg/m backfill skipped:', e.message);
         }

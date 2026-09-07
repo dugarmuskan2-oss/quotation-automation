@@ -351,31 +351,56 @@ describe('the AI\'s size format and the large-bore rows', () => {
         expect(kg('3XH')).toBeNull();          // real size, absent from THIS cut of the sheet
     });
 
-    describe('fillBlankKgPerMeter', () => {
-        test('fills blanks, leaves supplied weights alone, and counts what it did', () => {
+    describe('applyPriceListWeights', () => {
+        const empty = { filled: 0, corrected: 0, agreed: 0, keptFromAi: 0, unknown: 0, changes: [] };
+
+        test('fills a blank, and counts each of the five outcomes once', () => {
             const items = [
                 { originalDescription: '6XH', identifiedPipeType: 'ERW', kgPerMeter: '' },
-                { originalDescription: '8X6.35', identifiedPipeType: 'ERW', kgPerMeter: '' },
-                { originalDescription: '2XH', identifiedPipeType: 'ERW', kgPerMeter: '6.19' },
+                { originalDescription: '8X6.35', identifiedPipeType: 'ERW', kgPerMeter: '33.35' },
+                { originalDescription: '2XH', identifiedPipeType: 'ERW', kgPerMeter: '99' },
+                { originalDescription: '99XH', identifiedPipeType: 'ERW', kgPerMeter: '7.7' },
                 { originalDescription: '99XH', identifiedPipeType: 'ERW', kgPerMeter: '' },
             ];
-            expect(PW2.fillBlankKgPerMeter(maps, items)).toEqual({ filled: 2, unknown: 1, alreadySet: 1 });
+            const out = PW2.applyPriceListWeights(maps, items);
+            expect(out.filled).toBe(1);
+            expect(out.agreed).toBe(1);        // 33.35 vs 33.34 is the sheet's own rounding
+            expect(out.corrected).toBe(1);
+            expect(out.keptFromAi).toBe(1);    // sheet has no 99" row, so the AI's 7.7 stands
+            expect(out.unknown).toBe(1);
             expect(items[0].kgPerMeter).toBe('21.3');
-            expect(items[1].kgPerMeter).toBe('33.34');
-            expect(items[2].kgPerMeter).toBe('6.19');    // untouched
-            expect(items[3].kgPerMeter).toBe('');        // still blank, so the app shows it red
+            expect(items[3].kgPerMeter).toBe('7.7');
+            expect(items[4].kgPerMeter).toBe('');   // still blank, so the app shows it red
         });
 
-        test('a weight the AI already gave is never overwritten, even when the sheet disagrees', () => {
-            const items = [{ originalDescription: '6XH', identifiedPipeType: 'ERW', kgPerMeter: '99' }];
-            PW2.fillBlankKgPerMeter(maps, items);
-            expect(items[0].kgPerMeter).toBe('99');
+        // The whole point of the change. Filling only blanks left a wrong AI weight in place on
+        // about one line in eight — DSC-2501 took every weight from the row below the right one,
+        // and 41.8 (the 8mm row) sat on an 8" x 6.35mm line where 33.34 belonged.
+        test('a WRONG weight from the AI is replaced by the price list, and reported', () => {
+            const items = [{ originalDescription: '8X6.35', identifiedPipeType: 'ERW', kgPerMeter: '41.8' }];
+            const out = PW2.applyPriceListWeights(maps, items);
+            expect(items[0].kgPerMeter).toBe('33.34');
+            expect(out.corrected).toBe(1);
+            expect(out.changes).toEqual([{ description: '8X6.35', from: 41.8, to: 33.34 }]);
+        });
+
+        // No guessing: a size the sheets do not carry must never be computed from geometry, or
+        // the red "not counted" cell that makes somebody look would quietly disappear.
+        test('a size the sheet lacks is never invented — the AI keeps it, or it stays blank', () => {
+            const items = [
+                { originalDescription: '99XH', identifiedPipeType: 'ERW', kgPerMeter: '' },
+                { originalDescription: '2XZ', identifiedPipeType: 'ERW', kgPerMeter: '' },
+            ];
+            PW2.applyPriceListWeights(maps, items);
+            expect(items.map(i => i.kgPerMeter)).toEqual(['', '']);
         });
 
         test('no table, or no items, changes nothing and never throws', () => {
-            expect(PW2.fillBlankKgPerMeter(null, [{ kgPerMeter: '' }])).toEqual({ filled: 0, unknown: 0, alreadySet: 0 });
-            expect(PW2.fillBlankKgPerMeter({}, [{ kgPerMeter: '' }])).toEqual({ filled: 0, unknown: 0, alreadySet: 0 });
-            expect(PW2.fillBlankKgPerMeter(maps, null)).toEqual({ filled: 0, unknown: 0, alreadySet: 0 });
+            const untouched = [{ originalDescription: '6XH', identifiedPipeType: 'ERW', kgPerMeter: '5' }];
+            expect(PW2.applyPriceListWeights(null, untouched)).toEqual(empty);
+            expect(PW2.applyPriceListWeights({}, untouched)).toEqual(empty);
+            expect(PW2.applyPriceListWeights(maps, null)).toEqual(empty);
+            expect(untouched[0].kgPerMeter).toBe('5');
         });
     });
 });
