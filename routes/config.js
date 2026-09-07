@@ -19,6 +19,7 @@ const {
     CONFIG_KEY_FREIGHT_SUGGESTIONS,
     CONFIG_KEY_SUPPLIER_SUGGESTIONS,
     CONFIG_KEY_STAFF_LIST,
+    COMPANY_EMAIL,
 } = require('../utils/constants');
 
 function normalizeMarginValue(value) {
@@ -196,6 +197,13 @@ module.exports = function createConfigRouter({ storage }) {
             console.error('Error saving instructions:', error);
             res.status(500).json({ error: 'Failed to save instructions', details: error.message });
         }
+    });
+
+    // Which of the company's addresses THIS setup quotes from — info@ or m@. Deliberately a
+    // deployment setting and not a saved file: a blank file would silently fall back to info@
+    // and the second setup would print the wrong address on every PDF it sent.
+    router.get('/company', (req, res) => {
+        res.json({ email: COMPANY_EMAIL });
     });
 
     router.get('/get-instructions', async (req, res) => {

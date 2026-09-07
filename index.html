@@ -343,7 +343,7 @@
                             <h3>DSC PIPES AND TUBES PVT LTD</h3>
                             <p>REGD OFFICE: 7C, 7TH FLOOR, DOSHI TOWERS, NO:156</p>
                             <p>P.H ROAD, KILAPUK, CHENNAI - 600 010</p>
-                            <p>EMAIL ID: info@dscpipes.com</p>
+                            <p id="companyEmailLine">EMAIL ID: info@dscpipes.com</p>
                         </div>
                     </div>
                     <div class="quote-title">QUOTATION</div>
@@ -1833,6 +1833,21 @@
             } catch (error) {
                 console.error('Error loading default signature:', error);
                 if (el) el.innerHTML = defaultSignature;
+            }
+        }
+
+        // The letterhead address, from the server, because the two setups share this file.
+        // Updates the header on screen; the PDF reads `companyEmail` when it is drawn.
+        async function loadCompanyEmail() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/company`);
+                const result = await safeJsonParse(response);
+                if (!response.ok || !result || !result.email) return;
+                companyEmail = result.email;
+                const el = document.getElementById('companyEmailLine');
+                if (el) el.textContent = `EMAIL ID: ${companyEmail}`;
+            } catch (error) {
+                console.error('Error loading company email:', error);   // keeps the info@ default
             }
         }
 
@@ -11075,7 +11090,7 @@
             doc.setFontSize(9);
             doc.text('REGD OFFICE: 7C, 7TH FLOOR, DOSHI TOWERS, NO:156', margin + 70, cursorY + 30);
             doc.text('P.H ROAD, KILAPUK, CHENNAI - 600 010', margin + 70, cursorY + 42);
-            doc.text('EMAIL ID: info@dscpipes.com', margin + 70, cursorY + 54);
+            doc.text('EMAIL ID: ' + companyEmail, margin + 70, cursorY + 54);
             doc.setFont('helvetica', 'bold');
             setSoftText();
             doc.setFontSize(16);
@@ -11479,6 +11494,10 @@
         let defaultMarginsByPipeType = { erw: '', gi: '', seamless: '' };
         let defaultEmailMessage = 'Please find attached our quotation as requested. Do not hesitate to contact us for any queries.';
         let defaultSignature = 'Regards,<br>DSC Pipes';
+        // Which company address this setup quotes from. The second setup (m@dscpipes.com) shares
+        // this same file, so the address cannot be written into it. Falls back to info@, which is
+        // what the letterhead already says in the page source, so a failed fetch changes nothing.
+        let companyEmail = 'info@dscpipes.com';
 
         /*
             ============================================
@@ -11983,6 +12002,7 @@
             loadDefaultEmailMessage();
             loadRegretMessage_Settings();
             loadDefaultSignature();
+            loadCompanyEmail();
             loadStaffList();
 
             // Load and display uploaded files

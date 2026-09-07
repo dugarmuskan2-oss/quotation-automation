@@ -34,8 +34,17 @@ const GMAIL_SENT_LABELS = {
   regret: 'Quotation Automation/Regret',
 };
 
-/** Counter starts here so the first real quote number is QUOTE_COUNTER_START + 1. */
-const QUOTE_COUNTER_START = 107;
+/** Counter starts here so the first real quote number is QUOTE_COUNTER_START + 1.
+ *
+ *  Settable per deployment, because a SECOND setup on its own table starts its own counter —
+ *  and left at 107 its first quote would be DSC-108, a number already sent to a customer years
+ *  ago. The m@dscpipes.com setup starts far above the live run instead (QUOTE_COUNTER_START=10000
+ *  -> DSC-10001). Nothing here can renumber an existing setup: both callers use
+ *  `if_not_exists(#v, :start)`, so this value is read ONLY when the counter has never existed. */
+const QUOTE_COUNTER_START = (() => {
+    const n = Number(process.env.QUOTE_COUNTER_START);
+    return Number.isInteger(n) && n >= 0 ? n : 107;
+})();
 
 /** Name of the GSI that indexes quotations by updatedAt (fast list query). */
 const QUOTATIONS_GSI_INDEX = 'entity-updatedAt-index';
@@ -70,6 +79,30 @@ const CONFIG_KEY_CONTACTS_PENDING     = 'contacts-pending.json';
  *  reads this. */
 const CONFIG_KEY_GOOGLE_FIRMS         = 'google-firms.json';
 
+// ── A second setup for the same company ──────────────────────────────────────
+//
+// A second deployment (m@dscpipes.com) shares this bucket, and MOST of what is in it should
+// stay shared: the AI instructions, the terms, the margins, the partner directory, the
+// remembered transporters. Those are the company's, and splitting them would mean a trade rule
+// fixed here quietly staying broken over there — the exact drift that having one codebase is
+// meant to prevent.
+//
+// Only what belongs to the PERSON gets its own copy, since these two sign their own names:
+const PERSONAL_CONFIG_KEYS = new Set([
+    CONFIG_KEY_DEFAULT_SIGNATURE,
+    CONFIG_KEY_DEFAULT_EMAIL_MESSAGE,
+]);
+
+/** Where a config file actually lives for THIS deployment. Unset CONFIG_PREFIX (the live
+ *  info@ setup) returns the key untouched, so nothing moves and no file needs migrating. */
+function configKey(key) {
+    const prefix = String(process.env.CONFIG_PREFIX || '').trim();
+    return (prefix && PERSONAL_CONFIG_KEYS.has(key)) ? prefix + key : key;
+}
+
+/** The address printed on the letterhead, on screen and on the PDF. */
+const COMPANY_EMAIL = String(process.env.COMPANY_EMAIL || '').trim() || 'info@dscpipes.com';
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 module.exports = {
@@ -92,4 +125,7 @@ module.exports = {
     CONFIG_KEY_CONTACTS,
     CONFIG_KEY_CONTACTS_PENDING,
     CONFIG_KEY_GOOGLE_FIRMS,
+    PERSONAL_CONFIG_KEYS,
+    configKey,
+    COMPANY_EMAIL,
 };

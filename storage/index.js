@@ -23,6 +23,7 @@
 
 const fs   = require('fs');
 const path = require('path');
+const { configKey } = require('../utils/constants');
 
 // ─── Base directory ───────────────────────────────────────────────────────────
 // On Vercel only /tmp is writable; everywhere else use the project root.
@@ -243,7 +244,11 @@ async function read(filePath) {
  * Read a config/text file (instructions.txt, default-terms.txt, default-margins.json).
  * Returns the file content as a string, or null if it doesn't exist.
  */
-async function readText(key) {
+async function readText(rawKey) {
+    // configKey is applied HERE rather than at each of the ~20 call sites, so a second setup
+    // cannot end up reading a shared file it should have its own copy of because one route was
+    // missed. Only the person's own settings move; see PERSONAL_CONFIG_KEYS in utils/constants.
+    const key = configKey(rawKey);
     try {
         if (useGoogleCloud && bucket) {
             const buffer = await _gcsRead(key);
@@ -264,8 +269,10 @@ async function readText(key) {
     }
 }
 
-/** Save a config/text file. */
-async function saveText(key, content) {
+/** Save a config/text file. Same key mapping as readText, or a second setup would read its own
+ *  signature and write over the shared one. */
+async function saveText(rawKey, content) {
+    const key = configKey(rawKey);
     const buffer = Buffer.from(content, 'utf8');
     if (useGoogleCloud && bucket) return _gcsUpload(buffer, key, '');
     if (useAWS && s3Client)       return _s3Upload(buffer, key, '');
