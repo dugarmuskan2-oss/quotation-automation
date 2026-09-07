@@ -1836,19 +1836,30 @@
             }
         }
 
-        // The letterhead address, from the server, because the two setups share this file.
-        // Updates the header on screen; the PDF reads `companyEmail` when it is drawn.
-        async function loadCompanyEmail() {
-            try {
-                const response = await fetch(`${API_BASE_URL}/company`);
-                const result = await safeJsonParse(response);
-                if (!response.ok || !result || !result.email) return;
-                companyEmail = result.email;
-                const el = document.getElementById('companyEmailLine');
-                if (el) el.textContent = `EMAIL ID: ${companyEmail}`;
-            } catch (error) {
-                console.error('Error loading company email:', error);   // keeps the info@ default
+        // The letterhead address, from the server, because the two setups share this one file.
+        //
+        // Fetched through a promise that anything drawing the letterhead AWAITS, rather than by a
+        // call in the start-up list. A shared "?view=pdf" link never reaches that list — it takes
+        // over the page and returns early — and that page is precisely the one that renders a
+        // customer-facing PDF. Left as a start-up call, every quote the m@ setup shared by link
+        // printed the other mailbox's address, every time. Fetched once and remembered; a failure
+        // keeps the info@ default that the page source already shows.
+        let companyEmailReady = null;
+        function ensureCompanyEmail() {
+            if (!companyEmailReady) {
+                companyEmailReady = fetch(`${API_BASE_URL}/company`)
+                    .then(response => (response.ok ? response.json() : null))
+                    .then(result => { if (result && result.email) companyEmail = result.email; return companyEmail; })
+                    .catch(error => { console.error('Error loading company email:', error); return companyEmail; });
             }
+            return companyEmailReady;
+        }
+
+        // Start-up path: also paints the address into the header on screen.
+        async function loadCompanyEmail() {
+            await ensureCompanyEmail();
+            const el = document.getElementById('companyEmailLine');
+            if (el) el.textContent = `EMAIL ID: ${companyEmail}`;
         }
 
         function normalizeDefaultMarginInputValue(value) {
@@ -10974,6 +10985,10 @@
                 alert('Quotation not found');
                 return;
             }
+            // Every route into this function draws the letterhead, so the address is settled here
+            // rather than trusted to have been fetched earlier — a shared link never boots the app
+            // at all, and on the normal path the start-up fetch is not awaited.
+            await ensureCompanyEmail();
             // A shared "preview link" is a read-only view of an already-saved quote, so it
             // bypasses the unsaved-edits gate (there are no on-screen edits on a link page).
             const isPreview = !!(options && options.preview);
