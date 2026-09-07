@@ -172,3 +172,151 @@ describe('the card each firm becomes', () => {
         expect(previewFromListFirm(lean, 'x').people).toHaveLength(1);
     });
 });
+
+describe('one firm gathered from several lists', () => {
+    /**
+     * The owner's actual complaint: "maharashtra seamless has details of branches, whatsapp
+     * groups, transporters — none of this is reflected". It appears in the coating list with
+     * one man, in the purchase list with its branches, and elsewhere with the transporters
+     * it uses. Read list by list that is three thin cards; merged it is the card he wanted.
+     */
+    const { tidyName, dialKey, mergeListFirms } = require('../utils/contactLists');
+    const entry = (source, firm) => ({ source, firm: Object.assign({
+        company: '', trade: '', city: '', people: [], phones: [], emails: [], notes: [] }, firm) });
+
+    test('the same firm written three ways is tidied to one name', () => {
+        expect(tidyName('M/S MAHARASHTRA SEAMLESS LTD.')).toBe('maharashtra seamless');
+        expect(tidyName('Maharashtra Seamless Limited')).toBe('maharashtra seamless');
+        expect(tidyName('  maharashtra   seamless  ')).toBe('maharashtra seamless');
+    });
+
+    test('BUT two genuinely different firms stay apart', () => {
+        // Both are real pipe names in his book. Welding them together is the one mistake he
+        // could never spot, which is why the whole name must match, not part of it.
+        expect(tidyName('Jindal Pipe')).not.toBe(tidyName('Jindal Saw'));
+        const r = mergeListFirms([
+            entry('list A', { company: 'Jindal Pipe' }),
+            entry('list B', { company: 'Jindal Saw' }),
+        ]);
+        expect(r).toHaveLength(2);
+    });
+
+    test('and a longer name is not swallowed by a shorter one', () => {
+        const r = mergeListFirms([
+            entry('A', { company: 'Sri Steel' }),
+            entry('B', { company: 'Sri Steel Traders' }),
+        ]);
+        expect(r).toHaveLength(2);
+    });
+
+    test('a shared phone number merges them however the name is written', () => {
+        const r = mergeListFirms([
+            entry('coating', { company: 'MAHA SEAMLESS', phones: ['+91 98400 11111'] }),
+            entry('purchase', { company: 'Something Else Entirely', phones: ['09840011111'] }),
+        ]);
+        expect(r).toHaveLength(1);
+        expect(r[0].sources.sort()).toEqual(['coating', 'purchase']);
+    });
+
+    test('a number is the same number whatever the country code and spacing', () => {
+        expect(dialKey('+91 98400 11111')).toBe(dialKey('09840011111'));
+        expect(dialKey('98400-11111')).toBe('9840011111');
+        expect(dialKey('12345')).toBe('');            // too short to be a phone
+    });
+
+    test('the firm ends up with everything every list knew', () => {
+        const r = mergeListFirms([
+            entry('coating', { company: 'MAHARASHTRA SEAMLESS LTD',
+                people: [{ name: 'RAJESH KURANA', role: '', phones: ['98400 11111'], emails: [] }],
+                notes: ['does coating job work'] }),
+            entry('purchase', { company: 'Maharashtra Seamless Limited', city: 'Mumbai',
+                people: [{ name: 'Sunil', role: 'Sales', phones: ['98400 22222'], emails: ['sunil@mahaseam.com'] }],
+                notes: ['branch at Chennai'] }),
+            entry('transporters', { company: 'M/S MAHARASHTRA SEAMLESS',
+                notes: ['uses ABC Roadlines for Chennai'] }),
+        ]);
+
+        expect(r).toHaveLength(1);
+        const f = r[0];
+        expect(f.company).toBe('Maharashtra Seamless Limited');   // the fullest spelling
+        expect(f.city).toBe('Mumbai');
+        expect(f.people.map((p) => p.name).sort()).toEqual(['RAJESH KURANA', 'Sunil']);
+        expect(f.notes).toContain('does coating job work');
+        expect(f.notes).toContain('branch at Chennai');
+        expect(f.notes).toContain('uses ABC Roadlines for Chennai');
+        expect(f.sources.sort()).toEqual(['coating', 'purchase', 'transporters']);
+    });
+
+    test('joining is contagious — A to B by number, B to C by name, all one firm', () => {
+        const r = mergeListFirms([
+            entry('A', { company: 'Alpha', phones: ['98400 11111'] }),
+            entry('B', { company: 'Maharashtra Seamless', phones: ['98400 11111'] }),
+            entry('C', { company: 'M/S MAHARASHTRA SEAMLESS LTD' }),
+        ]);
+        expect(r).toHaveLength(1);
+        expect(r[0].sources.sort()).toEqual(['A', 'B', 'C']);
+    });
+
+    test('a firm that BRIDGES two groups folds them together', () => {
+        // The contagious case that matters: two firms form separate groups first, and a
+        // third entry sharing a number with each proves they were one firm all along. My
+        // first version of this test could not fail — the keys happened to chain anyway.
+        const r = mergeListFirms([
+            entry('A', { company: 'Alpha Traders', phones: ['98400 11111'] }),
+            entry('B', { company: 'Beta Steels', phones: ['98400 22222'] }),
+            entry('C', { company: 'Gamma', phones: ['98400 11111', '98400 22222'] }),
+        ]);
+        expect(r).toHaveLength(1);
+        expect(r[0].sources.sort()).toEqual(['A', 'B', 'C']);
+    });
+
+    test('the fullest name wins even when it comes FIRST', () => {
+        // Keeping whichever name arrived last would quietly shorten "Ravi Kumar" to "Ravi"
+        // depending only on which list was read first.
+        const r = mergeListFirms([
+            entry('A', { company: 'X', people: [{ name: 'Ravi Kumar', role: 'Owner', phones: ['98400 11111'], emails: [] }] }),
+            entry('B', { company: 'X', people: [{ name: 'Ravi', role: '', phones: ['98400 11111'], emails: [] }] }),
+        ]);
+        expect(r[0].people).toHaveLength(1);
+        expect(r[0].people[0].name).toBe('Ravi Kumar');
+        expect(r[0].people[0].role).toBe('Owner');
+    });
+
+    test('the same man in two lists is one person, matched on his mobile', () => {
+        const r = mergeListFirms([
+            entry('A', { company: 'X', people: [{ name: 'Ravi', role: '', phones: ['+91 98400 11111'], emails: [] }] }),
+            entry('B', { company: 'X', people: [{ name: 'Ravi Kumar', role: 'Owner', phones: ['09840011111'], emails: ['r@x.com'] }] }),
+        ]);
+        expect(r[0].people).toHaveLength(1);
+        expect(r[0].people[0].name).toBe('Ravi Kumar');       // the fuller name
+        expect(r[0].people[0].role).toBe('Owner');            // the role that was recorded
+        expect(r[0].people[0].emails).toEqual(['r@x.com']);
+    });
+
+    test('two different men at one firm stay two', () => {
+        const r = mergeListFirms([
+            entry('A', { company: 'X', people: [{ name: 'Ravi', phones: ['98400 11111'], emails: [] }] }),
+            entry('A', { company: 'X', people: [{ name: 'Kumar', phones: ['98400 22222'], emails: [] }] }),
+        ]);
+        expect(r[0].people).toHaveLength(2);
+    });
+
+    test('the same number typed twice is stored once', () => {
+        const r = mergeListFirms([
+            entry('A', { company: 'X', phones: ['+91 98400 11111', '098400 11111', '98400 11111'] }),
+        ]);
+        expect(r[0].phones).toHaveLength(1);
+    });
+
+    test('a firm in only one list comes through untouched', () => {
+        const r = mergeListFirms([entry('A', { company: 'Solo Traders', notes: ['a note'] })]);
+        expect(r).toHaveLength(1);
+        expect(r[0].company).toBe('Solo Traders');
+        expect(r[0].sources).toEqual(['A']);
+    });
+
+    test('nothing at all does not throw', () => {
+        expect(mergeListFirms([])).toEqual([]);
+        expect(mergeListFirms(null)).toEqual([]);
+    });
+});

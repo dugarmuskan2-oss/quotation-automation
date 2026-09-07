@@ -169,4 +169,148 @@ function previewFromListFirm(firm, sourceTitle) {
     };
 }
 
-module.exports = { listPrompt, parseFirms, previewFromListFirm, cleanFirm, MAX_TEXT };
+/**
+ * The same firm, written a dozen different ways.
+ *
+ * Maharashtra Seamless appears in the coating list with one man, in the purchase list with
+ * its branches, and somewhere else again with the transporters it uses. Read list by list
+ * that is three thin cards; merged it is the card the owner actually wanted. This is the
+ * half that answers his complaint.
+ *
+ * A firm is written as "M/S MAHARASHTRA SEAMLESS LTD.", "Maharashtra Seamless Limited" and
+ * "MAHA SEAMLESS" across three lists, so the name is tidied before comparing: the trade
+ * words that carry no meaning come off, punctuation goes, spacing collapses.
+ *
+ * Matched on the WHOLE tidied name, never on one containing another. "Jindal Pipe" and
+ * "Jindal Saw" are different firms and both are real; so are "Sri Steel" and "Sri Steel
+ * Traders". A duplicate card he can see and tidy. Two firms welded into one he cannot.
+ */
+const NOISE = /\b(m\/s|ms|the|pvt|private|ltd|limited|co|company|corporation|corp|inc|and|&)\b/g;
+
+function tidyName(name) {
+    return str(name).toLowerCase()
+        .replace(/[.,'"`()\[\]-]/g, ' ')
+        .replace(NOISE, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+/** The last ten digits — what actually dials, whatever the +91 and spacing look like. */
+function dialKey(phone) {
+    const digits = str(phone).replace(/\D/g, '');
+    return digits.length >= 10 ? digits.slice(-10) : '';
+}
+
+/** Everything that can identify one firm: its tidied name, its numbers, its addresses. */
+function firmKeys(firm) {
+    const keys = [];
+    const name = tidyName(firm.company);
+    if (name) keys.push('n:' + name);
+    allPhones(firm).forEach(p => { const d = dialKey(p); if (d) keys.push('p:' + d); });
+    allMails(firm).forEach(e => keys.push('e:' + e.toLowerCase()));
+    return keys;
+}
+
+function allPhones(firm) {
+    return (firm.phones || []).concat(
+        (firm.people || []).reduce((acc, c) => acc.concat(c.phones || []), []));
+}
+
+function allMails(firm) {
+    return (firm.emails || []).concat(
+        (firm.people || []).reduce((acc, c) => acc.concat(c.emails || []), []));
+}
+
+/**
+ * Fold the firms read out of every list into one card each.
+ *
+ * Two firms join when they share ANY key — the same tidied name, the same number, or the
+ * same address. Joining is contagious on purpose: if A shares a number with B and B shares a
+ * name with C, all three are one firm, which is exactly how these lists cross-reference.
+ */
+function mergeListFirms(found) {
+    const groups = [];
+    const byKey = new Map();
+
+    (found || []).forEach(entry => {
+        const keys = firmKeys(entry.firm);
+        const hit = [...new Set(keys.map(k => byKey.get(k)).filter(g => g !== undefined))];
+        let group;
+        if (!hit.length) {
+            group = { entries: [], keys: new Set() };
+            groups.push(group);
+        } else {
+            // Several groups turn out to be one firm: fold them together.
+            group = hit[0];
+            hit.slice(1).forEach(other => {
+                other.entries.forEach(e => group.entries.push(e));
+                other.keys.forEach(k => { group.keys.add(k); byKey.set(k, group); });
+                other.entries.length = 0;
+                other.dead = true;
+            });
+        }
+        group.entries.push(entry);
+        keys.forEach(k => { group.keys.add(k); byKey.set(k, group); });
+    });
+
+    return groups.filter(g => !g.dead && g.entries.length).map(joinEntries);
+}
+
+/** One firm, with everything every list knew about it. */
+function joinEntries(group) {
+    const firms = group.entries.map(e => e.firm);
+    const sources = [...new Set(group.entries.map(e => str(e.source)).filter(Boolean))];
+    return {
+        // The longest name, which is nearly always the fullest — "Maharashtra Seamless
+        // Limited" over "MAHA SEAMLESS".
+        company: firms.map(f => str(f.company)).filter(Boolean)
+            .sort((a, b) => b.length - a.length)[0] || '',
+        trade: firms.map(f => str(f.trade)).filter(Boolean)[0] || '',
+        city: firms.map(f => str(f.city)).filter(Boolean)[0] || '',
+        people: joinPeople(firms),
+        phones: uniqBy(firms.reduce((a, f) => a.concat(f.phones || []), []), dialKey),
+        emails: [...new Set(firms.reduce((a, f) => a.concat(f.emails || []), []).map(e => e.toLowerCase()))],
+        notes: [...new Set(firms.reduce((a, f) => a.concat(f.notes || []), []))],
+        sources,
+    };
+}
+
+/**
+ * The people, without the same man three times.
+ *
+ * Matched on his number first: the lists spell names every possible way, but the mobile is
+ * the mobile. Failing that, on the tidied name.
+ */
+function joinPeople(firms) {
+    const out = [];
+    firms.reduce((a, f) => a.concat(f.people || []), []).forEach(person => {
+        const dials = (person.phones || []).map(dialKey).filter(Boolean);
+        const mails = (person.emails || []).map(e => e.toLowerCase());
+        const at = out.findIndex(x =>
+            (dials.length && (x.phones || []).map(dialKey).some(d => d && dials.indexOf(d) !== -1))
+            || (mails.length && (x.emails || []).map(e => e.toLowerCase()).some(e => mails.indexOf(e) !== -1))
+            || (tidyName(person.name) && tidyName(x.name) === tidyName(person.name)));
+        if (at === -1) { out.push(JSON.parse(JSON.stringify(person))); return; }
+        const keep = out[at];
+        if (str(person.name).length > str(keep.name).length) keep.name = person.name;
+        if (!str(keep.role) && str(person.role)) keep.role = person.role;
+        keep.phones = uniqBy((keep.phones || []).concat(person.phones || []), dialKey);
+        keep.emails = [...new Set((keep.emails || []).concat(person.emails || []).map(e => e.toLowerCase()))];
+    });
+    return out.slice(0, 40);
+}
+
+function uniqBy(list, key) {
+    const seen = new Set();
+    return (list || []).filter(v => {
+        const k = key(v) || str(v).toLowerCase();
+        if (!k || seen.has(k)) return false;
+        seen.add(k);
+        return true;
+    });
+}
+
+module.exports = {
+    listPrompt, parseFirms, previewFromListFirm, cleanFirm, MAX_TEXT,
+    tidyName, dialKey, firmKeys, mergeListFirms, joinPeople,
+};
