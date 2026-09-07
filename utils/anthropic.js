@@ -74,6 +74,43 @@ function textOf(res) {
  * The caller turns that into a message the owner sees; a half-read must never come back
  * looking like a clean one (CLAUDE.md check #4).
  */
+/**
+ * A long answer, streamed, with room to finish it.
+ *
+ * The phone-book lists broke the ordinary call: one with 109 numbers in it came back cut off
+ * mid-word — "sales@ashoktubes. — and could not be parsed at all. Two things were wrong.
+ * Thinking counts against the same budget as the answer, and on a big extraction adaptive
+ * thinking ate most of it before the firms started. And a 30,000-token answer is long enough
+ * that a plain request risks timing out while it is written.
+ *
+ * So this one streams, asks for far more room, and thinks less — pulling names and numbers
+ * out of a list is copying, not reasoning, and low effort is both better and cheaper here.
+ *
+ * A reply that STILL runs out of room is reported as exactly that, never as "could not be
+ * read": the two need different answers from the owner, and one of them is not his fault.
+ */
+async function readLongWithClaude({ prompt, maxTokens, effort }) {
+    const c = client();
+    if (!c) throw new Error('the Claude key is missing from .env (ANTHROPIC_API_KEY)');
+
+    const stream = await c.messages.stream({
+        model: MODEL,
+        max_tokens: maxTokens || 32000,
+        thinking: { type: 'adaptive' },
+        output_config: { effort: effort || 'low' },
+        messages: [{ role: 'user', content: [{ type: 'text', text: prompt }] }],
+    });
+    const res = await stream.finalMessage();
+
+    if (res && res.stop_reason === 'refusal') throw new Error('Claude declined to read that');
+    if (res && res.stop_reason === 'max_tokens') {
+        const e = new Error('the list is too long to read in one go');
+        e.ranOutOfRoom = true;
+        throw e;
+    }
+    return textOf(res);
+}
+
 async function readWithClaude({ prompt, fileBase64, fileName }) {
     const c = client();
     if (!c) throw new Error('the Claude key is missing from .env (ANTHROPIC_API_KEY)');
@@ -102,6 +139,7 @@ async function readWithClaude({ prompt, fileBase64, fileName }) {
 }
 
 module.exports = {
+    readLongWithClaude,
     readWithClaude,
     isAvailable,
     MODEL,
