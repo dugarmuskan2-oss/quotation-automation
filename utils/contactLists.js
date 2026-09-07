@@ -58,7 +58,8 @@ function listPrompt(contactName, text) {
         '  "people": [{"name":"", "role":"", "phones":["",""], "emails":[""]}],',
         '  "phones": ["numbers that belong to the firm, not to a named person"],',
         '  "emails": ["addresses that belong to the firm"],',
-        '  "notes": ["any remark about them, copied as written"]',
+        '  "notes": ["any remark about them, copied as written"],',
+        '  "relations": [{"firm":"the other firm named", "how":"what they do for them"}]',
         '}]}',
         '',
         'RULES — these matter more than tidiness:',
@@ -80,6 +81,15 @@ function listPrompt(contactName, text) {
         '   firm. Leave it out of "firms".',
         '9. If the whole entry is really ONE firm with several branches or departments, return',
         '   one firm and put the branches in "notes" and the people in "people".',
+        '10. A firm named INSIDE another firm\'s entry is STILL A FIRM — return it separately,',
+        '    with whatever name, number or person is given for it. "Maharashtra Seamless uses',
+        '    ABC Roadlines for Chennai" is TWO firms: Maharashtra Seamless, and ABC Roadlines',
+        '    with a relation {"firm":"Maharashtra Seamless","how":"transporter for them"}.',
+        '    The same for a coater, a galvaniser, a testing lab or an agent working for them.',
+        '    This matters: a firm buried in somebody else\'s notes never gets a card, and a',
+        '    firm with no card is never sent an enquiry.',
+        '11. Put the relation on the firm that PROVIDES the service, naming who they do it',
+        '    for. Do not invent a relation where the text only mentions two firms nearby.',
     ].join('\n');
 }
 
@@ -113,6 +123,9 @@ function cleanFirm(f) {
         phones: strings(src.phones, 12),
         emails: strings(src.emails, 12).map(e => e.toLowerCase()).filter(e => e.indexOf('@') !== -1),
         notes: strings(src.notes, 12).map(n => n.slice(0, 400)),
+        relations: (Array.isArray(src.relations) ? src.relations : []).slice(0, 8)
+            .map(r => ({ firm: str(r && r.firm).slice(0, 200), how: str(r && r.how).slice(0, 120) }))
+            .filter(r => r.firm),
     };
 }
 
@@ -271,6 +284,8 @@ function joinEntries(group) {
         phones: uniqBy(firms.reduce((a, f) => a.concat(f.phones || []), []), dialKey),
         emails: [...new Set(firms.reduce((a, f) => a.concat(f.emails || []), []).map(e => e.toLowerCase()))],
         notes: [...new Set(firms.reduce((a, f) => a.concat(f.notes || []), []))],
+        relations: uniqBy(firms.reduce((a, f) => a.concat(f.relations || []), []),
+            r => tidyName(r.firm) + '|' + str(r.how).toLowerCase()),
         sources,
     };
 }
@@ -310,7 +325,51 @@ function uniqBy(list, key) {
     });
 }
 
+/**
+ * Write the relationship onto BOTH cards.
+ *
+ * "Maharashtra Seamless uses ABC Roadlines for Chennai" is two firms, and the owner needs
+ * both: ABC Roadlines has to have its own card or it is never ranked and never sent an
+ * enquiry. Burying it as a line on the MSL card loses a transporter entirely.
+ *
+ * So the transporter's card says who it hauls for, and the mill's card says who hauls for
+ * it. Whichever one he opens, the connection is on the page.
+ *
+ * The named firm may not be in these lists at all — plenty are mentioned only in passing.
+ * The note still goes on the card that IS here, because half a connection is worth keeping.
+ */
+function linkFirms(firms) {
+    const byName = new Map();
+    (firms || []).forEach(f => { const k = tidyName(f.company); if (k) byName.set(k, f); });
+
+    (firms || []).forEach(f => {
+        (f.relations || []).forEach(rel => {
+            const how = str(rel.how) || 'works with them';
+            // On the firm that does the work: "transporter for them → Maharashtra Seamless".
+            addNote(f, capital(how) + ' — ' + str(rel.firm));
+            // And on the firm it is done for, if that firm is here too.
+            const other = byName.get(tidyName(rel.firm));
+            if (other && other !== f) {
+                addNote(other, str(f.company) + ' — ' + how);
+            }
+        });
+    });
+    return firms || [];
+}
+
+function addNote(firm, text) {
+    const t = str(text);
+    if (!t) return;
+    firm.notes = firm.notes || [];
+    if (firm.notes.indexOf(t) === -1) firm.notes.push(t);
+}
+
+function capital(s) {
+    const t = str(s);
+    return t ? t.charAt(0).toUpperCase() + t.slice(1) : t;
+}
+
 module.exports = {
-    listPrompt, parseFirms, previewFromListFirm, cleanFirm, MAX_TEXT,
+    listPrompt, parseFirms, previewFromListFirm, cleanFirm, MAX_TEXT, linkFirms,
     tidyName, dialKey, firmKeys, mergeListFirms, joinPeople,
 };

@@ -320,3 +320,164 @@ describe('one firm gathered from several lists', () => {
         expect(mergeListFirms(null)).toEqual([]);
     });
 });
+
+describe('a firm named inside another firm gets its own card', () => {
+    /**
+     * The owner's correction, and he was right: "transporters under it must have its own
+     * card with a note saying they are for MSL, same with coating".
+     *
+     * "Maharashtra Seamless sends material through ABC Roadlines" is TWO firms. Kept as a
+     * line on the mill's card, ABC Roadlines has no card of its own — so it is never
+     * ranked, never suggested, and never sent a freight enquiry. A transporter with no card
+     * does not exist as far as this app is concerned.
+     */
+    const { mergeListFirms, linkFirms, listPrompt } = require('../utils/contactLists');
+    const firm = (over) => Object.assign({
+        company: '', trade: '', city: '', people: [], phones: [], emails: [], notes: [], relations: [],
+    }, over);
+
+    test('the instructions say so, in as many words', () => {
+        const p = listPrompt('t', 'x');
+        expect(p).toContain('STILL A FIRM');
+        expect(p).toContain('never gets a card');
+        expect(p).toContain('ABC Roadlines');
+    });
+
+    test('the transporter\'s own card says who it hauls for', () => {
+        const out = linkFirms([
+            firm({ company: 'Maharashtra Seamless Limited' }),
+            firm({ company: 'ABC Roadlines', trade: 'transporter',
+                   relations: [{ firm: 'Maharashtra Seamless Limited', how: 'transporter for them' }] }),
+        ]);
+        const abc = out.filter((f) => f.company === 'ABC Roadlines')[0];
+        expect(abc.notes.join(' ')).toContain('Transporter for them');
+        expect(abc.notes.join(' ')).toContain('Maharashtra Seamless Limited');
+    });
+
+    test('and the mill\'s card says who hauls for it', () => {
+        const out = linkFirms([
+            firm({ company: 'Maharashtra Seamless Limited' }),
+            firm({ company: 'ABC Roadlines',
+                   relations: [{ firm: 'Maharashtra Seamless Limited', how: 'transporter for them' }] }),
+        ]);
+        const msl = out.filter((f) => f.company === 'Maharashtra Seamless Limited')[0];
+        expect(msl.notes.join(' ')).toContain('ABC Roadlines');
+        expect(msl.notes.join(' ')).toContain('transporter for them');
+    });
+
+    test('coating is the same story', () => {
+        const out = linkFirms([
+            firm({ company: 'Maharashtra Seamless' }),
+            firm({ company: 'JAI SAI FABRICATORS', trade: 'coating',
+                   relations: [{ firm: 'Maharashtra Seamless', how: 'coating is done by them' }] }),
+        ]);
+        expect(out.filter((f) => f.company === 'JAI SAI FABRICATORS')[0].notes.join(' '))
+            .toContain('Maharashtra Seamless');
+        expect(out.filter((f) => f.company === 'Maharashtra Seamless')[0].notes.join(' '))
+            .toContain('JAI SAI FABRICATORS');
+    });
+
+    test('one transporter hauling for two mills says both', () => {
+        const out = linkFirms([
+            firm({ company: 'Maharashtra Seamless' }),
+            firm({ company: 'ISMT Limited' }),
+            firm({ company: 'ABC Roadlines', relations: [
+                { firm: 'Maharashtra Seamless', how: 'transporter for them' },
+                { firm: 'ISMT Limited', how: 'transporter for them' },
+            ] }),
+        ]);
+        const abc = out.filter((f) => f.company === 'ABC Roadlines')[0];
+        expect(abc.notes.join(' ')).toContain('Maharashtra Seamless');
+        expect(abc.notes.join(' ')).toContain('ISMT Limited');
+    });
+
+    test('the named firm not being in the lists loses nothing', () => {
+        // Plenty are mentioned only in passing. Half a connection is still worth keeping.
+        const out = linkFirms([
+            firm({ company: 'ABC Roadlines',
+                   relations: [{ firm: 'Some Mill Not In The Book', how: 'transporter for them' }] }),
+        ]);
+        expect(out[0].notes.join(' ')).toContain('Some Mill Not In The Book');
+    });
+
+    test('the name is matched the same tidy way, so LTD does not break the link', () => {
+        const out = linkFirms([
+            firm({ company: 'M/S MAHARASHTRA SEAMLESS LTD.' }),
+            firm({ company: 'ABC Roadlines',
+                   relations: [{ firm: 'Maharashtra Seamless Limited', how: 'transporter' }] }),
+        ]);
+        expect(out[0].notes.join(' ')).toContain('ABC Roadlines');
+    });
+
+    test('the same relation twice is written once', () => {
+        const out = linkFirms([
+            firm({ company: 'MSL' }),
+            firm({ company: 'ABC', relations: [
+                { firm: 'MSL', how: 'transporter' }, { firm: 'MSL', how: 'transporter' },
+            ] }),
+        ]);
+        expect(out.filter((f) => f.company === 'ABC')[0].notes).toHaveLength(1);
+    });
+
+    test('a relation survives the merging, so it is not lost on the way', () => {
+        const merged = mergeListFirms([
+            { source: 'A', firm: firm({ company: 'ABC Roadlines',
+                relations: [{ firm: 'MSL', how: 'transporter for them' }] }) },
+            { source: 'B', firm: firm({ company: 'ABC Roadlines',
+                relations: [{ firm: 'ISMT', how: 'transporter for them' }] }) },
+        ]);
+        expect(merged).toHaveLength(1);
+        expect(merged[0].relations.map((r) => r.firm).sort()).toEqual(['ISMT', 'MSL']);
+    });
+
+    test('a firm with no relations is left exactly as it was', () => {
+        const out = linkFirms([firm({ company: 'Solo', notes: ['a note'] })]);
+        expect(out[0].notes).toEqual(['a note']);
+    });
+
+    test('nothing at all does not throw', () => {
+        expect(linkFirms([])).toEqual([]);
+        expect(linkFirms(null)).toEqual([]);
+    });
+});
+
+describe('relations survive the whole journey, and do not fold back on themselves', () => {
+    const { parseFirms, linkFirms } = require('../utils/contactLists');
+
+    test('a relation read from Claude reaches the firm — cleaning must not drop it', () => {
+        // Every linking test above builds its firms by hand, so all of them passed while
+        // cleanFirm quietly threw relations away. This is the step in between.
+        const r = parseFirms(JSON.stringify({ firms: [{
+            company: 'ABC Roadlines',
+            relations: [{ firm: 'Maharashtra Seamless', how: 'transporter for them' }],
+        }] }));
+        expect(r.firms[0].relations).toHaveLength(1);
+        expect(r.firms[0].relations[0].firm).toBe('Maharashtra Seamless');
+        expect(r.firms[0].relations[0].how).toBe('transporter for them');
+    });
+
+    test('a relation with no firm named is dropped', () => {
+        const r = parseFirms(JSON.stringify({ firms: [{
+            company: 'X', relations: [{ firm: '', how: 'something' }, { firm: 'Y', how: '' }],
+        }] }));
+        expect(r.firms[0].relations).toHaveLength(1);
+        expect(r.firms[0].relations[0].firm).toBe('Y');
+    });
+
+    test('rubbish in relations does not crash the read', () => {
+        expect(parseFirms(JSON.stringify({ firms: [{ company: 'X', relations: 'nonsense' }] }))
+            .firms[0].relations).toEqual([]);
+    });
+
+    test('a firm naming ITSELF does not write a note about itself', () => {
+        // The lists repeat a firm's own name constantly. Linking it to itself would fill the
+        // card with "Maharashtra Seamless — supplies them", which says nothing.
+        const out = linkFirms([{
+            company: 'Maharashtra Seamless Limited', notes: [],
+            relations: [{ firm: 'M/S MAHARASHTRA SEAMLESS LTD', how: 'supplies them' }],
+        }]);
+        // The one note is the outgoing line; there must not be a second, reversed onto itself.
+        expect(out[0].notes).toHaveLength(1);
+        expect(out[0].notes[0]).toContain('Supplies them');
+    });
+});
