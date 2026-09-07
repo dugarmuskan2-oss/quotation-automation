@@ -81,16 +81,21 @@ const CONFIG_KEY_GOOGLE_FIRMS         = 'google-firms.json';
 
 // ── A second setup for the same company ──────────────────────────────────────
 //
-// A second deployment (m@dscpipes.com) shares this bucket, and MOST of what is in it should
-// stay shared: the AI instructions, the terms, the margins, the partner directory, the
-// remembered transporters. Those are the company's, and splitting them would mean a trade rule
-// fixed here quietly staying broken over there — the exact drift that having one codebase is
-// meant to prevent.
+// A second deployment (m@dscpipes.com) shares this bucket, and the company's own rules stay
+// shared: the AI instructions, the terms, the margins. Splitting those would mean a trade rule
+// fixed here quietly staying broken over there — the drift that one codebase is meant to prevent.
 //
-// Only what belongs to the PERSON gets its own copy, since these two sign their own names:
+// Everything below is that deployment's own. The signature and the email message because these
+// two sign their own names. The DIRECTORY because it is not one list the company keeps — it is
+// built from a mailbox: contacts-pending comes from emails labelled in that account, and
+// google-firms from that account's own Google Contacts. Pointing both setups at one file would
+// mean m@'s address book quietly overwriting info@'s the first time either was scanned.
 const PERSONAL_CONFIG_KEYS = new Set([
     CONFIG_KEY_DEFAULT_SIGNATURE,
     CONFIG_KEY_DEFAULT_EMAIL_MESSAGE,
+    CONFIG_KEY_CONTACTS,
+    CONFIG_KEY_CONTACTS_PENDING,
+    CONFIG_KEY_GOOGLE_FIRMS,
 ]);
 
 /** Where a config file actually lives for THIS deployment. Unset CONFIG_PREFIX (the live
