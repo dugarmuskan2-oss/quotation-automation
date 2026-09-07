@@ -83,8 +83,11 @@ function textOf(res) {
  * thinking ate most of it before the firms started. And a 30,000-token answer is long enough
  * that a plain request risks timing out while it is written.
  *
- * So this one streams, asks for far more room, and thinks less — pulling names and numbers
- * out of a list is copying, not reasoning, and low effort is both better and cheaper here.
+ * So this one streams and asks for far more room. The owner wants it thinking HARD: these
+ * notes are twenty years of shorthand, and a firm split in two or a number pinned on the
+ * wrong man is worse than a slower, dearer read. High effort spends thinking tokens out of
+ * the same budget as the answer, which is what cut the first big list off mid-word — so the
+ * room is doubled again to leave the answer somewhere to go.
  *
  * A reply that STILL runs out of room is reported as exactly that, never as "could not be
  * read": the two need different answers from the owner, and one of them is not his fault.
@@ -95,9 +98,9 @@ async function readLongWithClaude({ prompt, maxTokens, effort }) {
 
     const stream = await c.messages.stream({
         model: MODEL,
-        max_tokens: maxTokens || 32000,
+        max_tokens: maxTokens || 64000,
         thinking: { type: 'adaptive' },
-        output_config: { effort: effort || 'low' },
+        output_config: { effort: effort || 'high' },
         messages: [{ role: 'user', content: [{ type: 'text', text: prompt }] }],
     });
     const res = await stream.finalMessage();

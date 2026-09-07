@@ -8,11 +8,11 @@
  * numbers. Altogether 3,744 numbers live inside notes, more than are in a proper phone
  * field — and none of it can be grouped, only read.
  *
- * Measured on a median list it is eight seconds and under three cents — the whole book is
- * roughly forty minutes and eight dollars. A first guess of ninety seconds and nine cents
- * came from one BIG list read at full thinking effort, and said $28 and eight hours; that
- * is the sort of number an owner reasonably refuses. Even so it is far past what a web
- * request allows, which is why this runs here and the app only reads what it leaves behind.
+ * The owner wants it read at HIGH effort: these notes are twenty years of shorthand, and a
+ * firm split in two or a number pinned on the wrong man costs more than the reading does.
+ * Measured at that setting the whole book is roughly eighty minutes and twelve dollars.
+ * Either way it is far past what a web request allows, which is why this runs here and the
+ * app only ever reads what it leaves behind.
  *
  *   node tools/google-lists-read.js              # say what it would do, read nothing
  *   node tools/google-lists-read.js --go         # actually read them
@@ -108,17 +108,25 @@ function sizeOf(person) {
  */
 function estimate(people) {
     const PROMPT_TOKENS = 1200;              // the instructions, sent on every call
-    let inTokens = 0, outTokens = 0;
+    // Measured on two real lists at HIGH effort, a median one and a big one:
+    //     605 chars  ->  in 1421, out  842,  9s
+    //   7,090 chars  ->  in 3437, out 7451, 96s
+    // Output runs at roughly ONE TOKEN PER CHARACTER of notes, not the fifth of that the
+    // first version assumed — JSON is verbose, and at high effort the thinking is billed
+    // with it. Reading rate works out near 70 characters a second.
+    const OUT_PER_CHAR = 1.1;
+    const CHARS_PER_SECOND = 70;
+
+    let inTokens = 0, outTokens = 0, chars = 0;
     (people || []).forEach((p) => {
-        const notes = Math.ceil(notesOf(p).length / 4);
-        inTokens += PROMPT_TOKENS + notes;
-        // Extraction hands back roughly what it was given: the names, numbers and remarks,
-        // rewritten as JSON.
-        outTokens += Math.ceil(notes * 1.2) + 200;
+        const len = notesOf(p).length;
+        chars += len;
+        inTokens += PROMPT_TOKENS + Math.ceil(len / 4);
+        outTokens += Math.ceil(len * OUT_PER_CHAR) + 200;
     });
     return {
         dollars: (inTokens * 5 + outTokens * 25) / 1e6,
-        minutes: Math.max(1, Math.round((people || []).length * 9 / 60)),
+        minutes: Math.max(1, Math.round(chars / CHARS_PER_SECOND / 60)),
     };
 }
 
