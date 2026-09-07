@@ -8,9 +8,11 @@
  * numbers. Altogether 3,744 numbers live inside notes, more than are in a proper phone
  * field — and none of it can be grouped, only read.
  *
- * A list takes about ninety seconds, so the whole book is roughly four hours and fifteen
- * dollars of Opus. That is far past what a web request allows, which is why this runs here
- * and the app only ever reads what it leaves behind.
+ * Measured on a median list it is eight seconds and under three cents — the whole book is
+ * roughly forty minutes and eight dollars. A first guess of ninety seconds and nine cents
+ * came from one BIG list read at full thinking effort, and said $28 and eight hours; that
+ * is the sort of number an owner reasonably refuses. Even so it is far past what a web
+ * request allows, which is why this runs here and the app only reads what it leaves behind.
  *
  *   node tools/google-lists-read.js              # say what it would do, read nothing
  *   node tools/google-lists-read.js --go         # actually read them
@@ -90,6 +92,34 @@ function titleAsFirmName(title) {
 /** How many firms a list is likely to hold — the biggest are worth reading first. */
 function sizeOf(person) {
     return (notesOf(person).match(PHONES_IN_NOTES) || []).length;
+}
+
+/**
+ * What the reading will really cost, worked out from the size of the lists themselves.
+ *
+ * The first estimate was a flat ninety seconds and nine cents a list, taken from one BIG
+ * list read at full thinking effort — and it said $28 and eight hours. Measured properly on
+ * a median list it is eight seconds and under three cents, because most of these are short:
+ * the median holds 605 characters, not thousands. Guessing from the worst case turned a
+ * forty-minute job into one the owner would reasonably refuse, and he was right to ask.
+ *
+ * Opus 5 is $5 per million tokens in and $25 out. Four characters to a token is close enough
+ * for a number that has to be honest rather than exact.
+ */
+function estimate(people) {
+    const PROMPT_TOKENS = 1200;              // the instructions, sent on every call
+    let inTokens = 0, outTokens = 0;
+    (people || []).forEach((p) => {
+        const notes = Math.ceil(notesOf(p).length / 4);
+        inTokens += PROMPT_TOKENS + notes;
+        // Extraction hands back roughly what it was given: the names, numbers and remarks,
+        // rewritten as JSON.
+        outTokens += Math.ceil(notes * 1.2) + 200;
+    });
+    return {
+        dollars: (inTokens * 5 + outTokens * 25) / 1e6,
+        minutes: Math.max(1, Math.round((people || []).length * 9 / 60)),
+    };
 }
 
 function parseBlob(raw, fallback) {
@@ -172,9 +202,9 @@ async function main() {
         say('\nNothing left to read.');
     }
     if (!GO) {
-        const mins = Math.round((todo.length * 90) / 60);
-        say('\nReading them takes about ' + mins + ' minutes and costs roughly $'
-            + (todo.length * 0.09).toFixed(2) + ' in AI.');
+        const guess = estimate(todo);
+        say('\nReading them takes about ' + guess.minutes + ' minutes and costs roughly $'
+            + guess.dollars.toFixed(2) + ' in AI.');
         say('Nothing was read. Run it again with --go when you are ready.');
         return;
     }
