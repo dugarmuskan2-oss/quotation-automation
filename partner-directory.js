@@ -119,6 +119,10 @@
         return '';
     }
 
+    // How many Google firms one press brings in. Twenty-five is a sitting's worth: enough to
+    // be worth the press, few enough that the queue below is still readable afterwards.
+    var GOOGLE_BATCH = 25;
+
     var ROLE_LABEL = { dealer: 'Dealer', manufacturer: 'Manufacturer', transporter: 'Transporter', fabricator: 'Fabricator', other: 'Other' };
     var ROLE_ORDER = ['dealer', 'manufacturer', 'transporter', 'fabricator', 'other'];
     var PIPE_TYPES = ['GI', 'ERW', 'Seamless', 'SS', 'MS', 'Alloy'];
@@ -1567,7 +1571,7 @@
             + (g.waiting
                 ? '<div class="pd-row" style="margin-top:8px;">'
                     + '<button class="pd-prim" data-pd-gqueue="1"' + (g.busy ? ' disabled' : '') + '>'
-                    + (g.busy ? 'Bringing them in…' : 'Bring in the next ' + Math.min(50, g.waiting))
+                    + (g.busy ? 'Bringing them in…' : 'Bring in the next ' + Math.min(GOOGLE_BATCH, g.waiting))
                     + '</button></div>'
                 : '<p class="pd-tiny" style="margin-top:8px;">All of them have been brought in.</p>')
             + (g.note ? '<p class="pd-tiny" style="margin-top:7px;">' + esc(g.note)
@@ -1823,7 +1827,7 @@
         on(app, '[data-pd-gqueue]', function () {
             if (S.google.busy) return;              // one press is one batch, never two
             S.google.busy = true; render();
-            postJson('/contacts/google/queue', { size: 50 }, function (d) {
+            postJson('/contacts/google/queue', { size: GOOGLE_BATCH }, function (d) {
                 S.google.note = googleQueuedText(d);
                 S.google.waiting = (d && d.left) || 0;
                 S.google.brought += (d && d.queued) || 0;

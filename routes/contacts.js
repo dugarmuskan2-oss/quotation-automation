@@ -284,7 +284,7 @@ module.exports = function createContactsRouter({ storage, openai }) {
      */
     router.post('/contacts/google/queue', express.json(), async (req, res) => {
         try {
-            const size = Math.max(1, Math.min(100, Number((req.body || {}).size) || 50));
+            const size = Math.max(1, Math.min(100, Number((req.body || {}).size) || 25));
             const blob = await loadGoogleFirms();
             if (!blob) {
                 return res.status(400).json({
