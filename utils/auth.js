@@ -135,6 +135,10 @@ const PUBLIC_FILES = new Set([
 // (the list of all 2,541) must NOT be reachable just because "/api/quotations/123" is.
 const PUBLIC_API_EXACT = new Set([
     '/api/login', '/api/logout', '/api/me',
+    // Signing in with Google happens BEFORE there is a session, so both ends of that round trip
+    // have to be reachable without one. Neither hands anything over: the first only redirects to
+    // Google, and the second refuses any code that did not come from a request this app started.
+    '/api/auth/google', '/api/auth/google/callback',
     '/api/health',
     '/api/company',                 // the letterhead address on a shared quote's PDF
     '/api/ingest-from-gmail',       // Apps Script, checked against INGEST_SECRET

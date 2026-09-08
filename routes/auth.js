@@ -14,6 +14,7 @@ const express = require('express');
 const crypto = require('crypto');
 const { CONFIG_KEY_USERS } = require('../utils/constants');
 const auth = require('../utils/auth');
+const googleAuth = require('../utils/googleAuth');
 
 // Reading the people list from cloud storage on EVERY request would add a network round trip to
 // every page and every save. Held briefly instead; a minute-old list is fine for a list that
@@ -65,7 +66,13 @@ function forgetUsers() { cachedUsers = null; cachedAt = 0; }
  * times a year that is the right side of the trade.
  */
 function sessionSecret(users) {
-    const base = String(process.env.SESSION_SECRET || '').trim() || auth.sharedPassword() || '';
+    // GMAIL_CLIENT_SECRET is the last resort rather than a preference: it is already set on every
+    // deployment and is stable across restarts, so signing in works with no new setting at all.
+    // It is only ever an input to a hash here; nothing derived from it goes anywhere near Google.
+    const base = String(process.env.SESSION_SECRET || '').trim()
+        || auth.sharedPassword()
+        || String(process.env.GMAIL_CLIENT_SECRET || '').trim()
+        || '';
     const people = (Array.isArray(users) ? users : [])
         .map((u) => (u && u.hash) || '').filter(Boolean).sort().join('|');
     if (!base && !people) return null;
@@ -188,6 +195,52 @@ function createAuthRouter({ storage }) {
         res.json({ ok: true });
     });
 
+    // ── Sign in with Google ──────────────────────────────────────────────────
+    // Two halves of one round trip. Anything that goes wrong sends the person back to the login
+    // page with a plain-English reason rather than a bare error, because this is the front door.
+    const backToLogin = (res, message) => res.redirect(302, '/login.html?error=' + encodeURIComponent(message));
+
+    router.get('/auth/google', async (req, res) => {
+        if (!googleAuth.isConfigured()) return backToLogin(res, 'Google sign-in is not set up on this site.');
+        const { users } = await loadUsers(storage);
+        const secret = sessionSecret(users);
+        if (!secret) return backToLogin(res, 'Sign-in is not set up on this site.');
+        const url = googleAuth.authUrl(req, googleAuth.makeState(secret, auth.safeNextPath(req.query.next)));
+        if (!url) return backToLogin(res, 'Google sign-in is not set up on this site.');
+        return res.redirect(302, url);
+    });
+
+    router.get('/auth/google/callback', async (req, res) => {
+        const { users, ok } = await loadUsers(storage);
+        if (!ok) return backToLogin(res, 'Cannot check logins right now. Try again shortly.');
+        const secret = sessionSecret(users);
+
+        // The signed state proves this callback belongs to a sign-in THIS app started. Without
+        // it, anyone could hand the callback a code and be issued a session.
+        const state = secret && googleAuth.readState(req.query.state, secret);
+        if (!state) return backToLogin(res, 'That sign-in took too long. Please try again.');
+        if (req.query.error) return backToLogin(res, 'Google sign-in was cancelled.');
+
+        let identity = null;
+        try { identity = await googleAuth.identityFromCode(req, req.query.code); }
+        catch (e) { console.warn('Google sign-in failed:', e.message); }
+        if (!identity) return backToLogin(res, 'Google could not confirm who you are.');
+
+        const known = users.find((u) => String(u.email || '').toLowerCase() === identity.email);
+        if (!known && !googleAuth.allowedByDomain(identity.email)) {
+            // Deliberately names the address: the usual reason is signing in with a personal
+            // account by mistake, and "not allowed" alone leaves people stuck.
+            return backToLogin(res, identity.email + ' is not allowed to use this site.');
+        }
+
+        setSessionCookie(req, res, auth.signSession({
+            who: (known && known.name) || identity.name,
+            kind: 'google',
+            email: identity.email,
+        }, secret));
+        return res.redirect(302, auth.safeNextPath(state.n));
+    });
+
     // Lets the login page show who is signed in. Deliberately says nothing about WHY someone is
     // not: "configured" is reported only as a true/false the owner needs to see on their own
     // login screen, and it never becomes false because a storage read failed.
@@ -200,6 +253,7 @@ function createAuthRouter({ storage }) {
             signedIn: !!session,
             who: session ? session.who : null,
             people: Array.isArray(users) ? users.length : 0,
+            google: googleAuth.isConfigured(),      // whether to offer the Google button
         });
     });
 

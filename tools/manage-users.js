@@ -79,14 +79,28 @@ async function main() {
     if (command === 'add') {
         const name = String(arg1 || '').trim();
         const email = String(arg2 || '').trim().toLowerCase();
-        if (!name || !email) { console.error('Usage: node tools/manage-users.js add "Full Name" email@dscpipes.com'); process.exit(1); }
-        const password = await askHidden('Password for ' + name + ': ');
-        const again = await askHidden('Type it again: ');
-        if (!password || password.length < 8) { console.error('Too short — use at least 8 characters.'); process.exit(1); }
-        if (password !== again) { console.error('Those did not match. Nothing was changed.'); process.exit(1); }
+        const googleOnly = process.argv.indexOf('--google') >= 0;
+        if (!name || !email) {
+            console.error('Usage: node tools/manage-users.js add "Full Name" email@dscpipes.com [--google]');
+            console.error('       --google  they sign in with Google; no password is set at all');
+            process.exit(1);
+        }
 
         const existing = users.findIndex((u) => String(u.email || '').toLowerCase() === email);
-        const record = { name, email, hash: hashPassword(password) };
+        let record;
+        if (googleOnly) {
+            // No hash at all. authenticate() still runs a throwaway hash for anyone without one,
+            // so a password login for this person takes the same time as any other and fails —
+            // "has no password" is not something you can find out by watching the clock.
+            record = { name, email };
+            console.log(name + ' will sign in with Google. No password is stored for them.');
+        } else {
+            const password = await askHidden('Password for ' + name + ': ');
+            const again = await askHidden('Type it again: ');
+            if (!password || password.length < 8) { console.error('Too short — use at least 8 characters.'); process.exit(1); }
+            if (password !== again) { console.error('Those did not match. Nothing was changed.'); process.exit(1); }
+            record = { name, email, hash: hashPassword(password) };
+        }
         if (existing >= 0) { users[existing] = record; console.log('Updated ' + label(record)); }
         else { users.push(record); console.log('Added ' + label(record)); }
         await saveUsers(users);

@@ -14,30 +14,43 @@
         color: #2b2b2b;
     }
     .card {
-        width: 100%; max-width: 380px; background: #fff; border-radius: 10px; padding: 32px 28px;
+        width: 100%; max-width: 380px; background: #fff; border-radius: 10px; padding: 30px 28px 26px;
         box-shadow: 0 2px 14px rgba(0,0,0,.08); border: 1px solid #e7e5e0;
     }
-    .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
-    .brand img { width: 46px; height: auto; }
-    .brand h1 { font-size: 17px; margin: 0; letter-spacing: .01em; }
-    .sub { color: #8a8781; font-size: 13px; margin: 2px 0 22px 58px; }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand img { width: 44px; height: auto; }
+    .brand h1 { font-size: 16.5px; margin: 0; letter-spacing: .01em; }
+    .sub { color: #8a8781; font-size: 12.5px; margin: 3px 0 22px 56px; }
+
+    .gbtn {
+        width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px;
+        padding: 10px; font-size: 14.5px; font-weight: 500; color: #3c4043;
+        background: #fff; border: 1px solid #dadce0; border-radius: 6px; cursor: pointer;
+        text-decoration: none;
+    }
+    .gbtn:hover { background: #f8f9fa; border-color: #d2d5d9; }
+    .gbtn svg { width: 18px; height: 18px; flex: none; }
+
+    .or { display: flex; align-items: center; gap: 12px; margin: 20px 0 4px; color: #a9a69f; font-size: 11.5px; }
+    .or::before, .or::after { content: ""; flex: 1; height: 1px; background: #eae7e1; }
+
     label { display: block; font-size: 12px; color: #6f6c66; margin: 14px 0 5px; letter-spacing: .02em; }
     input {
         width: 100%; padding: 10px 12px; font-size: 15px; border: 1px solid #d8d5ce;
         border-radius: 6px; background: #fcfcfb;
     }
     input:focus { outline: none; border-color: #3f51b5; background: #fff; }
-    .hint { font-size: 11.5px; color: #9a978f; margin-top: 5px; }
-    button {
-        width: 100%; margin-top: 20px; padding: 11px; font-size: 15px; font-weight: 600;
+    button.primary {
+        width: 100%; margin-top: 18px; padding: 11px; font-size: 15px; font-weight: 600;
         color: #fff; background: #3f51b5; border: 0; border-radius: 6px; cursor: pointer;
     }
-    button:hover { background: #364495; }
-    button[disabled] { background: #a8afd8; cursor: default; }
+    button.primary:hover { background: #364495; }
+    button.primary[disabled] { background: #a8afd8; cursor: default; }
     .msg { margin-top: 14px; font-size: 13px; min-height: 18px; }
     .msg.bad { color: #A32D2D; }
     .msg.ok { color: #2E7D32; }
-    .note { margin-top: 18px; font-size: 11.5px; color: #9a978f; line-height: 1.5; }
+    .note { margin-top: 16px; font-size: 11.5px; color: #9a978f; line-height: 1.5; }
+    [hidden] { display: none !important; }
 </style>
 </head>
 <body>
@@ -48,15 +61,26 @@
     </div>
     <div class="sub">Quotation system</div>
 
+    <a class="gbtn" id="google" href="#" hidden>
+        <svg viewBox="0 0 48 48" aria-hidden="true">
+            <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.6 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.8 6.1C12.3 13.2 17.7 9.5 24 9.5z"/>
+            <path fill="#4285F4" d="M46.1 24.6c0-1.6-.1-3.1-.4-4.6H24v9.1h12.4c-.5 2.9-2.2 5.3-4.7 7l7.6 5.9c4.4-4.1 6.8-10.1 6.8-17.4z"/>
+            <path fill="#FBBC05" d="M10.4 28.7c-.5-1.4-.8-2.9-.8-4.7s.3-3.3.8-4.7l-7.8-6.1C.9 16.6 0 20.2 0 24s.9 7.4 2.6 10.8l7.8-6.1z"/>
+            <path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.6-5.9c-2.1 1.4-4.8 2.3-8.3 2.3-6.3 0-11.7-3.7-13.6-9.9l-7.8 6.1C6.5 42.6 14.6 48 24 48z"/>
+        </svg>
+        Sign in with Google
+    </a>
+
+    <div class="or" id="or" hidden>or</div>
+
     <form id="f" autocomplete="on">
-        <label for="name">Your name or email</label>
-        <input id="name" name="username" type="text" autocomplete="username" placeholder="Leave blank if you share one password">
-        <div class="hint">Only needed if you have your own login.</div>
+        <label for="email">Email</label>
+        <input id="email" name="username" type="email" autocomplete="username" placeholder="you@dscpipes.com" required>
 
         <label for="password">Password</label>
-        <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
 
-        <button id="go" type="submit">Sign in</button>
+        <button class="primary" id="go" type="submit">Sign in</button>
     </form>
 
     <div class="msg" id="msg"></div>
@@ -68,11 +92,10 @@
     var note = document.getElementById('note');
     var go = document.getElementById('go');
 
-    // Where to go afterwards: back where they were headed, but only ever a path on this site.
-    // Taking a whole URL from the query string is how an open redirect gets built by accident.
-    // A backslash counts as a slash to every browser's URL parser, so "/\evil.com" leaves the
-    // site while passing a first-character check — it has to be rejected explicitly, along with
-    // control characters. Kept identical to safeNextPath in utils/auth.js.
+    // Where to go afterwards: only ever a path on this site. Taking a whole URL from the query
+    // string is how an open redirect gets built by accident. A backslash counts as a slash to
+    // every browser's URL parser, so "/\evil.com" leaves the site while passing a first-character
+    // check — it has to be rejected explicitly. Kept identical to safeNextPath in utils/auth.js.
     function safeNext() {
         var raw = new URLSearchParams(location.search).get('next') || '/';
         if (raw.charAt(0) !== '/') return '/';
@@ -81,12 +104,20 @@
         return raw;
     }
 
+    // A reason sent back from the Google round trip (wrong account, expired, cancelled).
+    var handedBack = new URLSearchParams(location.search).get('error');
+    if (handedBack) { msg.className = 'msg bad'; msg.textContent = handedBack; }
+
     fetch('/api/me').then(function (r) { return r.json(); }).then(function (d) {
         if (d && d.signedIn) { location.replace(safeNext()); return; }
+        if (d && d.google) {
+            var g = document.getElementById('google');
+            g.href = '/api/auth/google?next=' + encodeURIComponent(safeNext());
+            g.hidden = false;
+            document.getElementById('or').hidden = false;
+        }
         if (d && !d.configured) {
-            note.textContent = 'No password has been set for this site yet, so it is currently open to anyone with the address.';
-        } else if (d && d.people === 0) {
-            note.textContent = 'This site uses one shared password.';
+            note.textContent = 'No login has been set up for this site yet, so it is currently open to anyone with the address.';
         }
     }).catch(function () {});
 
@@ -99,7 +130,7 @@
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                name: document.getElementById('name').value,
+                name: document.getElementById('email').value,
                 password: document.getElementById('password').value
             })
         }).then(function (r) {
