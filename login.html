@@ -68,11 +68,17 @@
     var note = document.getElementById('note');
     var go = document.getElementById('go');
 
-    // Where to go afterwards: back where they were headed, but only ever to a path on this site.
+    // Where to go afterwards: back where they were headed, but only ever a path on this site.
     // Taking a whole URL from the query string is how an open redirect gets built by accident.
+    // A backslash counts as a slash to every browser's URL parser, so "/\evil.com" leaves the
+    // site while passing a first-character check — it has to be rejected explicitly, along with
+    // control characters. Kept identical to safeNextPath in utils/auth.js.
     function safeNext() {
         var raw = new URLSearchParams(location.search).get('next') || '/';
-        return (raw.charAt(0) === '/' && raw.charAt(1) !== '/') ? raw : '/';
+        if (raw.charAt(0) !== '/') return '/';
+        if (/[\\\u0000-\u001F\u007F]/.test(raw)) return '/';
+        if (raw.charAt(1) === '/') return '/';
+        return raw;
     }
 
     fetch('/api/me').then(function (r) { return r.json(); }).then(function (d) {

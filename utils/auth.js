@@ -95,9 +95,27 @@ function readCookie(req, name) {
     for (const part of String(raw).split(';')) {
         const eq = part.indexOf('=');
         if (eq < 0) continue;
-        if (part.slice(0, eq).trim() === name) return decodeURIComponent(part.slice(eq + 1).trim());
+        if (part.slice(0, eq).trim() !== name) continue;
+        const value = part.slice(eq + 1).trim();
+        // decodeURIComponent throws on a stray percent sign, and this runs inside async
+        // middleware where a thrown error is an unhandled rejection — one request with
+        // `Cookie: dsc_session=%` would have taken the whole server down.
+        try { return decodeURIComponent(value); }
+        catch (e) { return value; }         // undecodable means it is not one of ours; it will fail the signature
     }
     return null;
+}
+
+/** Where a "come back here after signing in" value is allowed to point: a path on this site and
+ *  nothing else. Rejects "//evil.com", and "/\evil.com" too — every browser's URL parser treats a
+ *  backslash like a slash, so the obvious first-character check lets a whole-site redirect
+ *  through. Also rejects control characters, which can be used to smuggle past a naive check. */
+function safeNextPath(raw) {
+    const s = String(raw == null ? '' : raw);
+    if (!s || s[0] !== '/') return '/';
+    if (/[\\\u0000-\u001F\u007F]/.test(s)) return '/';
+    if (s[1] === '/') return '/';                      // "//evil.com" is another site
+    return s;
 }
 
 // ── What stays open ──────────────────────────────────────────────────────────────────────────
@@ -209,6 +227,7 @@ module.exports = {
     signSession,
     verifySession,
     readCookie,
+    safeNextPath,
     isPublicRequest,
     sharedPassword,
     authIsConfigured,
