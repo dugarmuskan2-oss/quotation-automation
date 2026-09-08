@@ -1,5 +1,9 @@
 node_modules/
-.env
+# Every .env variant, not just the plain one. tools/gmail-auth.js OVERWRITES the refresh token
+# in .env, so authorising a second mailbox means keeping a backup of the first beside it — and
+# a secrets file one careless `git add .` away from being published is not worth the risk.
+.env*
+.vercel/
 uploads/
 *.log
 .DS_Store
