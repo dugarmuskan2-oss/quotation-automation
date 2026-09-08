@@ -1,0 +1,24 @@
+# Keep these OFF the live site entirely.
+#
+# Vercel serves any deployed file straight from its CDN, before the app runs — so the file
+# allowlist in server.js, which works locally, does nothing in production. Checked, not assumed:
+# CLAUDE.md and SESSION-HANDOFF.md both came back in full from the live site.
+#
+# Nothing here is needed to answer a request, so leaving it out costs nothing and stops the
+# business notes, the workflow plans and the internal scripts being downloadable by anyone who
+# guesses a filename.
+#
+# The application source (server.js, routes/, utils/, storage/) still has to be deployed, so it
+# is still readable. That needs Vercel to stop treating the repo root as a static site, which is
+# a bigger change than this one.
+
+*.md
+tests/
+tools/
+prototypes/
+apps-script/
+lambda/
+.claude/
+NEW-FLOW-CHART.html
+jest.config.js
+.env*
