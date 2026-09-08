@@ -78,6 +78,8 @@ const CONFIG_KEY_CONTACTS_PENDING     = 'contacts-pending.json';
  *  site's 60-second limit — so the slow read happens once and the app only ever
  *  reads this. */
 const CONFIG_KEY_GOOGLE_FIRMS         = 'google-firms.json';
+/** People who can log in: [{ name, email, hash }]. Managed with tools/manage-users.js. */
+const CONFIG_KEY_USERS                = 'users.json';
 
 // ── A second setup for the same company ──────────────────────────────────────
 //
@@ -96,6 +98,9 @@ const PERSONAL_CONFIG_KEYS = new Set([
     CONFIG_KEY_CONTACTS,
     CONFIG_KEY_CONTACTS_PENDING,
     CONFIG_KEY_GOOGLE_FIRMS,
+    // Each site keeps its own people. Sharing one list would mean anyone who can log in to the
+    // m@ site can also open info@'s, which is the opposite of keeping the two sets of quotes apart.
+    CONFIG_KEY_USERS,
 ]);
 
 /** Where a config file actually lives for THIS deployment. Unset CONFIG_PREFIX (the live
@@ -130,6 +135,7 @@ module.exports = {
     CONFIG_KEY_CONTACTS,
     CONFIG_KEY_CONTACTS_PENDING,
     CONFIG_KEY_GOOGLE_FIRMS,
+    CONFIG_KEY_USERS,
     PERSONAL_CONFIG_KEYS,
     configKey,
     COMPANY_EMAIL,

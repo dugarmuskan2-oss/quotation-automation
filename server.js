@@ -82,8 +82,30 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '30mb' }));
+
+// ── The gate ─────────────────────────────────────────────────────────────────
+// Mounted before the static server and before every route, so anything added later is behind it
+// without anyone having to remember. What stays open is the short list in utils/auth.js — the
+// login page, a customer's quote link, and the Gmail ingest, which carries its own secret.
+const { createAuthRouter, createAuthGate } = require('./routes/auth');
+app.use('/api', createAuthRouter({ storage }));
+app.use(createAuthGate({ storage }));
+
 app.use(express.static('public')); // Serve static files if needed
-app.use(express.static(__dirname)); // Serve root files like index.html/logo.png
+
+// Root files, but ONLY the ones the browser actually asks for. `express.static(__dirname)` served
+// the whole project directory: server.js, storage/index.js, CLAUDE.md and SESSION-HANDOFF.md all
+// came back with a 200 to anyone who guessed the name. express.static has no allowlist of its
+// own, so the allowlist is this gate in front of it.
+const { PUBLIC_FILES } = require('./utils/auth');
+const SERVABLE_ROOT_FILES = new Set([...PUBLIC_FILES, '/index.html']);
+const serveRootFile = express.static(__dirname, { dotfiles: 'deny', index: false });
+app.use((req, res, next) => {
+    // The file server only ever RUNS for a name on the list. Anything else carries on to the
+    // routes and the SPA catch-all, and never gets near the file system.
+    if (SERVABLE_ROOT_FILES.has(req.path)) return serveRootFile(req, res, next);
+    return next();
+});
 
 // Pull dir paths from storage module (they're computed there)
 const { uploadsDir, ratesDir } = storage;
