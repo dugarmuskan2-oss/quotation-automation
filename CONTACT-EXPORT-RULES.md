@@ -154,6 +154,22 @@ raw text too, and dropping them would throw away the remark along with the dump.
 
 ---
 
+## 8a. The firm's name
+
+The contacts scan has only an address to go on, so it makes a name out of the domain —
+`md4.com` becomes "Md4", `abs.co.in` becomes "Abs". Useful as a placeholder, useless on a card:
+the owner cannot tell "Md4" from anything, and "Gamail" is not a firm at all — it is someone's
+typo of gmail.com.
+
+**A name read from the notes replaces a name guessed from a domain.** *Owner's decision.*
+Between two real names the fuller one wins — "BOMBAY HARDWARE PVT LTD" over "Bombayhardware" —
+because that is the name he would write on an enquiry.
+
+A name counts as guessed when it is exactly what `companyFromEmail` would produce from one of
+the card's own addresses.
+
+---
+
 ## 9. Merging into the waiting list
 
 A firm read from a notes box is usually one already on the list **with more detail**. It must

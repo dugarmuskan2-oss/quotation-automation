@@ -918,7 +918,10 @@ function mergePreviews(base, extra) {
     // first would drop a nameless office line before its number was ever looked at.
     out.people = foldPeople((Array.isArray(out.people) ? out.people : [])
         .concat(Array.isArray(from.people) ? from.people : []));
-    ['company', 'role', 'roleOther', 'city', 'address', 'vehicles', 'moq', 'partLoad'].forEach(f => {
+    // A name read from the notes beats one made up from an email domain, so "Md4" gives way
+    // to "MD4 STEELS". Every other box only fills a blank — a stored answer is never replaced.
+    out.company = betterCompanyName(out.company, from.company, out);
+    ['role', 'roleOther', 'city', 'address', 'vehicles', 'moq', 'partLoad'].forEach(f => {
         if (!saysSomething(out[f]) && saysSomething(from[f])) out[f] = from[f];
     });
     return out;
@@ -1086,6 +1089,41 @@ function splitBranchesOut(preview) {
         return cut.branch ? Object.assign({}, p, cut) : p;
     });
     return Object.assign({}, preview, { people });
+}
+
+/**
+ * Was this firm's name GUESSED from its email domain?
+ *
+ * The contacts scan has nothing but an address to go on, so it makes a name out of the domain
+ * — md4.com becomes "Md4", abs-engg.com becomes "Abs". Useful as a placeholder, useless on a
+ * card: the owner cannot tell "Md4" from anything, and "Gamail" is not a firm at all, it is
+ * someone's typo of gmail.com.
+ *
+ * The notes usually hold the real name — "MD4 STEELS", "ABS ENGINEERING SOLUTIONS". When they
+ * do, it replaces the guess.
+ */
+function nameWasGuessed(company, preview) {
+    const name = firmNameKey(company);
+    if (!name) return true;
+    return allEmails(preview || {}).some(e => firmNameKey(companyFromEmail(e)) === name);
+}
+
+/**
+ * The better of two names for one firm.
+ *
+ * A name read out of the notes beats one made up from a domain. Between two real names the
+ * fuller one wins — "BOMBAY HARDWARE PVT LTD" over "Bombayhardware" — because that is the name
+ * the owner would write on an enquiry.
+ */
+function betterCompanyName(existing, incoming, preview) {
+    const a = str(existing), b = str(incoming);
+    if (!b) return a;
+    if (!a) return b;
+    const aGuessed = nameWasGuessed(a, preview);
+    const bGuessed = nameWasGuessed(b, preview);
+    if (aGuessed && !bGuessed) return b;
+    if (bGuessed && !aGuessed) return a;
+    return b.length > a.length ? b : a;
 }
 
 /** Is there any way to actually contact this firm — an address or a number? */
@@ -1998,6 +2036,8 @@ module.exports = {
     // Shared with utils/googleContacts.js: one firm is one email domain, everywhere.
     firmKeyOf,
     cleanEmail,
+    betterCompanyName,
+    nameWasGuessed,
     branchFromRole,
     splitBranchesOut,
     looksLikeACustomer,
