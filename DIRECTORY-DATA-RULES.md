@@ -28,6 +28,16 @@ nine digits and stays nine digits. The one exception is unwrapping — `<>`, quo
 Where a correction is genuinely wanted, **the owner says so**. He decided 984093660 was a typo
 of 9840939660 and that it should go; nobody inferred that.
 
+---
+
+## 0b. Where a thing goes is a question, not a judgement call
+
+If it is unclear which field a piece of information belongs in, **ask him at the time** — not
+in a batch at the end, and never by picking the likelier option quietly. Record the answer in
+this file or in `CONTACT-EXPORT-RULES.md` so it is not asked twice.
+
+---
+
 ## 0c. A name is left exactly as he typed it
 
 Some rows are named after the mailbox rather than a person — "KRS Chennai - Madhavaram",
@@ -37,14 +47,6 @@ should be is the same silent editing as fixing a phone number.
 
 The one exception already agreed: a name GUESSED from an email domain gives way to a real name
 found in the notes — because the guess was never his writing in the first place.
-
----
-
-## 0b. Where a thing goes is a question, not a judgement call
-
-If it is unclear which field a piece of information belongs in, **ask him at the time** — not
-in a batch at the end, and never by picking the likelier option quietly. Record the answer in
-this file or in `CONTACT-EXPORT-RULES.md` so it is not asked twice.
 
 ---
 
@@ -117,22 +119,6 @@ There were two such lists and the short one had no ISPs on it. Two lists drift. 
 
 ---
 
-## 5. Deletions
-
-**Anything deleted from the DIRECTORY goes to Recent changes and needs approving.**
-*Owner's rule.* Removals are matched by value, never by index — a list that shifted under an
-index removal would delete the wrong thing.
-
-**On a card still WAITING for approval, ✕ just deletes.** There is nothing to request: the
-review copy is the only place that row exists, and the card is not in the directory yet. This
-was got wrong — ✕ asked the server to remove from the directory, the server answered "that card
-is no longer in the directory", and the row silently stayed put. Pressing it did nothing at all.
-
-The rule generalises: **a control that means two things on two screens must be told which
-screen it is on.**
-
----
-
 ## 4a. The heading of the page is the best thing on it
 
 His phone book is filed by trade — "P(13) PURCHASE DEP - ERW MFG (SCAFFOLDING TUBE)",
@@ -153,6 +139,22 @@ the same range is written in four different contacts and each reading split it d
 The label he typed in front of it ("PRODUCT RANGE :") is not part of the product, and a line
 wholly contained in another adds nothing. The **longest wording wins**, being the one that
 holds every part. A line with a different SPEC is a different product and is kept.
+
+---
+
+## 5. Deletions
+
+**Anything deleted from the DIRECTORY goes to Recent changes and needs approving.**
+*Owner's rule.* Removals are matched by value, never by index — a list that shifted under an
+index removal would delete the wrong thing.
+
+**On a card still WAITING for approval, ✕ just deletes.** There is nothing to request: the
+review copy is the only place that row exists, and the card is not in the directory yet. This
+was got wrong — ✕ asked the server to remove from the directory, the server answered "that card
+is no longer in the directory", and the row silently stayed put. Pressing it did nothing at all.
+
+The rule generalises: **a control that means two things on two screens must be told which
+screen it is on.**
 
 ---
 
