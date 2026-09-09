@@ -1602,7 +1602,10 @@
      * Tamilnadu", "Dealer — Tamilnadu & Chennai — SHANKARA", "CHENNAI DEALER — SANKARA" — so
      * the firm can be at either end. Whichever end names a firm the app knows is the firm.
      */
-    var REL_WORD = /\b(dealer|dealers|stockist|distributor|transporter|transport|roadline|carrier|cargo|coater|coating|galvanis|testing|agent|broker|supplier|works with|buy from)\b/i;
+    // Plurals matter. "One of 2 main distributorS of JSL brand colour coated sheets" did not
+    // match a list holding only "distributor", so Crayon and Saroj Steel fell out of "Who they
+    // work with" and sat in the notes as plain text instead.
+    var REL_WORD = /\b(dealers?|stockists?|distributors?|distributes?|transporters?|transport|roadlines?|carriers?|cargo|coaters?|coating|galvanis\w*|testing|agents?|brokers?|suppliers?|works with|buy from)\b/i;
 
     function splitRelationNote(text) {
         // "— no number given" is this app's own footnote, not part of anybody's name.
@@ -1619,7 +1622,15 @@
         var firstIsHow = REL_WORD.test(first), lastIsHow = REL_WORD.test(last);
         if (firstIsHow && !lastIsHow) return { firm: last, how: parts.slice(0, -1).join(' — ').trim() };
         if (lastIsHow && !firstIsHow) return { firm: first, how: parts.slice(1).join(' — ').trim() };
-        // Neither says, or both do: a side that already has a card is the firm.
+        // BOTH sides say it. A firm can be NAMED after its trade — "SAFE SPEED CARRIERS",
+        // "BALAJI ROADLINES" — and reading those as the relationship dropped them off the card
+        // altogether. A description is longer than a name, so the longer side is the "how".
+        if (firstIsHow && lastIsHow) {
+            return first.length >= last.length
+                ? { firm: last, how: parts.slice(0, -1).join(' — ').trim() }
+                : { firm: first, how: parts.slice(1).join(' — ').trim() };
+        }
+        // Neither says: a side that already has a card is the firm.
         if (findFirmCard(last) && !findFirmCard(first)) return { firm: last, how: parts.slice(0, -1).join(' — ').trim() };
         if (findFirmCard(first) && !findFirmCard(last)) return { firm: first, how: parts.slice(1).join(' — ').trim() };
         return null;                      // not a relationship — leave it as an ordinary note
@@ -1644,7 +1655,7 @@
      */
     /** What KIND of connection this is — the word that heads the group. */
     var REL_KINDS = [
-        [/dealer|stockist|distribut/i, 'Dealers'],
+        [/dealers?|stockists?|distribut/i, 'Dealers'],
         [/transport|lorry|roadline|carrier|cargo|freight/i, 'Transporters'],
         [/coat|galvanis|galvaniz/i, 'Coating'],
         [/test|inspect|lab\b/i, 'Testing'],
@@ -1659,7 +1670,7 @@
     /** WHERE — what is left of the wording once the kind and the filler come off. */
     function relPlace(how) {
         var t = str(how)
-            .replace(/\b(dealer|dealers|stockist|distributor|transporter|transport|coater|coating|galvaniser|agent|broker|supplier)\b/ig, ' ')
+            .replace(/\b(dealers?|stockists?|distributors?|main|one|sub|transporters?|transport|coaters?|coating|galvanisers?|agents?|brokers?|suppliers?)\b/ig, ' ')
             .replace(/\b(for|them|in|at|the|and|is|their|of|a|only|no|number|given)\b/ig, ' ')
             .replace(/[-—,]/g, ' ')
             .replace(/\s+/g, ' ')

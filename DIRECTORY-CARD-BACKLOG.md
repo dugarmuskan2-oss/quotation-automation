@@ -125,6 +125,19 @@ think longer and add".* Everything below was sitting in the notes when it had a 
 
     Before trusting ANY "invented" verdict, look the name up in the address book.
 
+19. **CORRECTION to #15 — Bharat Steel was NOT invented.** It is on his P(22) page as a JSW
+    supplier, with "MR. GAURAV - 9884809549 (OWNER)" — the SAME number as "MR. GAURABH -
+    9884809549" at Crayon on the colour-coated page. One man, two firms. The earlier reading
+    swapped one firm's name for the other because they share a phone number. *His decision:
+    the number goes on BOTH firms.* A shared number linking two FIRMS is a real pattern here,
+    and it must not rename either of them.
+20. **A firm named after its trade fell off the card.** "SAFE SPEED CARRIERS", "BALAJI
+    ROADLINES" — the code decides which half of a note is the relationship by looking for a
+    trade word, and their NAMES contain one. Both vanished from "Who they work with". Fixed:
+    when both halves name a trade, the LONGER half is the description.
+21. **Plurals.** "distributorS" did not match a list holding "distributor", so Crayon and
+    Saroj Steel never reached the block at all.
+
 The general lesson, and the one worth the most: **a card is built from ALL his pages about that
 firm, not one.** Jindal Saw has seven. A detail that looks orphaned on one page is usually
 explained on another.
