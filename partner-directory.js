@@ -565,7 +565,7 @@
     }
 
     // ── Data layer ────────────────────────────────────────────────────────────
-    var D = { contacts: [], changes: [], pending: [], duplicates: [], loaded: false,
+    var D = { contacts: [], changes: [], pending: [], duplicates: [], loaded: false, readonly: false,
               loadError: '', saveError: '', saveWhat: [], failedAction: '', usageError: '', goneNote: '' };
 
     var FIELD_LABEL = {
@@ -588,6 +588,7 @@
                 D.contacts = keepOpenEdits(D.contacts, d.contacts || []); D.changes = d.changes || [];
                 D.pending = keepOpenReview(D.pending, d.pending || []);
                 D.duplicates = d.duplicates || [];
+                D.readonly = !!d.readonly;
                 D.loaded = true; D.loadError = '';
             })
             .catch(function (e) {
@@ -928,9 +929,18 @@
         app.innerHTML = '<h1>📇 Partner Directory</h1>'
             + '<div class="pd-tabs">'
             + '<button class="pd-tab' + (S.tab === 'dir' ? ' on' : '') + '" data-pd-tab="dir">Directory</button>'
-            + '<button class="pd-tab' + (S.tab === 'add' ? ' on' : '') + '" data-pd-tab="add">Add</button>'
-            + '<button class="pd-tab' + (S.tab === 'changes' ? ' on' : '') + '" data-pd-tab="changes">Recent changes'
-            + (waiting ? ' <span class="pd-pill pd-pill-warn">' + waiting + '</span>' : '') + '</button></div>'
+            // Add and Recent changes both end in a write to the shared file, and there is
+            // nowhere for either to go on a read-only deployment — so they are not offered,
+            // rather than opening onto a dead end.
+            + (D.readonly ? '' : '<button class="pd-tab' + (S.tab === 'add' ? ' on' : '') + '" data-pd-tab="add">Add</button>')
+            + (D.readonly ? '' : '<button class="pd-tab' + (S.tab === 'changes' ? ' on' : '') + '" data-pd-tab="changes">Recent changes'
+            + (waiting ? ' <span class="pd-pill pd-pill-warn">' + waiting + '</span>' : '') + '</button>')
+            + '</div>'
+            + (D.readonly ? '<div class="pd-hint" style="padding:10px 14px;background:#f1efe8;'
+                + 'border-radius:6px;margin:0 0 14px;font-size:12.5px;color:#5f5e5a;">'
+                + 'You are viewing transporters and other partners here — the same list the main '
+                + 'site uses. Dealers and manufacturers are not shown. Only the main site '
+                + '(info@dscpipes.com) can add, edit, or remove anyone.</div>' : '')
             // Named and pinned to the top of the page. A bare "your last edit is NOT stored"
             // halfway up a long card said nothing about WHICH edit, and scrolled off screen.
             + (!D.saveError ? ''
@@ -947,7 +957,11 @@
                 + esc(D.usageError) + '). Nothing you typed is lost — but the enquiry counts on a few cards may be low.</div>' : '')
             + (D.loadError ? '<div class="pd-error">' + esc(D.loadError) + ' <button data-pd-reload="1">Try again</button></div>'
                 : !D.loaded ? '<p class="pd-muted" style="padding:20px;text-align:center;">Loading…</p>'
-                    : S.tab === 'dir' ? dirView() : S.tab === 'add' ? addView() : changesView())
+                    // Hiding the Add / Recent changes BUTTONS above does not stop other things
+                    // (a "find in directory" link, the Google-scan button) from setting S.tab to
+                    // one of them directly — so the actual view is pinned to Directory here too,
+                    // rather than trusting every place S.tab gets set to also check D.readonly.
+                    : (D.readonly || S.tab === 'dir') ? dirView() : S.tab === 'add' ? addView() : changesView())
             + deletePopupHtml() + leavePopupHtml() + askPopupHtml();
         bind(app);
         restoreFocus();

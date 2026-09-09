@@ -21,6 +21,7 @@ const {
     CONFIG_KEY_FREIGHT_SUGGESTIONS,
     CONFIG_KEY_SUPPLIER_SUGGESTIONS,
     CONFIG_KEY_GOOGLE_FIRMS,
+    DIRECTORY_READONLY,
 } = require('../utils/constants');
 
 const contactsLib = require('../utils/contacts');
@@ -122,22 +123,44 @@ module.exports = function createContactsRouter({ storage, openai }) {
         try {
             const dir = await loadDirectory();
             const pending = await loadPending();
+            // A read-only deployment sees only the shared roles (transporter, other) — dealers,
+            // manufacturers and fabricators belong to the main site alone. The change log is
+            // suppressed rather than filtered: an entry like "Deleted ABC Manufacturing" would
+            // name a firm the card itself is hidden for, which is the same leak by another door.
+            const contacts = DIRECTORY_READONLY ? contactsLib.visibleToReadonly(dir.contacts) : dir.contacts;
+            const changes = DIRECTORY_READONLY ? [] : dir.changes;
             res.json({
-                contacts: dir.contacts, changes: dir.changes, pending,
+                contacts, changes, pending,
+                readonly: DIRECTORY_READONLY,
                 // Should always be empty now the rule is enforced on write. Sent anyway so a
                 // duplicate that pre-dates it cannot sit there unnoticed, quietly splitting
                 // one firm's history across two cards.
-                duplicates: contactsLib.duplicateEmails(dir.contacts),
+                duplicates: contactsLib.duplicateEmails(contacts),
             });
         } catch (error) {
             res.status(500).json({ error: 'Could not load the directory: ' + error.message });
         }
     });
 
+    // The one thing standing between "only info@ can edit or delete" and it actually being
+    // true. Every handler below that writes to the shared directory calls this FIRST, before
+    // any read-modify-write — the same "check, then act" shape as the login gate, and for the
+    // same reason: a route added later that forgets to call it would otherwise write to the
+    // shared file from the wrong deployment with nothing to stop it.
+    function blockedByReadonly(res) {
+        if (!DIRECTORY_READONLY) return false;
+        res.status(403).json({
+            error: 'Only info@dscpipes.com can add, edit, or remove partners here. '
+                + 'Transporters and other partners are shared, but changes to them are made on the main site.',
+        });
+        return true;
+    }
+
     // Upsert ONE partner (merged into the stored list by id — no whole-list writes).
     // `fields` narrows the write to just what the user touched, so a second tab editing a
     // different part of the SAME partner does not have its work replaced by a stale copy.
     router.post('/contacts/save', express.json({ limit: '1mb' }), async (req, res) => {
+        if (blockedByReadonly(res)) return;
         try {
             const dir = await loadDirectory();
             const { partner, fields } = req.body || {};
@@ -157,6 +180,7 @@ module.exports = function createContactsRouter({ storage, openai }) {
     // the entry — so it shows up in Recent changes and Undo puts it back. It used to leave no
     // trace whatever, and a card with years of notes on it was one click from gone for good.
     router.post('/contacts/delete', express.json(), async (req, res) => {
+        if (blockedByReadonly(res)) return;
         try {
             const id = String((req.body && req.body.id) || '');
             const dir = await loadDirectory();
@@ -188,6 +212,7 @@ module.exports = function createContactsRouter({ storage, openai }) {
 
     /** Mark something for removal. Writes to the QUEUE only — the card is untouched. */
     router.post('/contacts/removal/ask', express.json(), async (req, res) => {
+        if (blockedByReadonly(res)) return;
         try {
             const { cardId, what, value, at } = req.body || {};
             const dir = await loadDirectory();
@@ -218,6 +243,7 @@ module.exports = function createContactsRouter({ storage, openai }) {
      * and if it has already gone, this says so rather than taking its neighbour.
      */
     router.post('/contacts/removal/apply', express.json(), async (req, res) => {
+        if (blockedByReadonly(res)) return;
         try {
             const id = String((req.body && req.body.id) || '');
             const items = await loadPending();
@@ -340,12 +366,18 @@ module.exports = function createContactsRouter({ storage, openai }) {
 
     // Bump asked/replied stats on firms we already hold. An address the directory has never
     // seen is QUEUED for approval, never turned into a card behind the owner's back.
+    // Not gated by blockedByReadonly like the others. This fires on its own every time a
+    // transporter is used on a quote — the person at the keyboard never asked for it — so a hard
+    // 403 here would surface as a mystery error on ordinary use, not on an edit anyone made on
+    // purpose. Instead: the stats bump to the SHARED file is skipped quietly on a read-only
+    // deployment (still an edit to the same file the rest of this route guards), while the
+    // proposal it queues still lands in THIS deployment's own pending list, unaffected either way.
     router.post('/contacts/usage', express.json(), async (req, res) => {
         try {
             const usage = req.body || {};
             const [dir, items] = await Promise.all([loadDirectory(), loadPending()]);
             const bumped = contactsLib.bumpUsage(dir.contacts, usage);
-            await saveDirectory({ contacts: bumped.contacts, changes: dir.changes });
+            if (!DIRECTORY_READONLY) await saveDirectory({ contacts: bumped.contacts, changes: dir.changes });
             const proposed = contactsLib.pendingFromUsage(dir.contacts, items, bumped.unknown, usage);
             const room = contactsLib.queueWithoutLosingAny(items, proposed, MAX_PENDING);
             if (room.queued) await savePending(room.items);
@@ -356,6 +388,7 @@ module.exports = function createContactsRouter({ storage, openai }) {
     });
 
     router.post('/contacts/change-undo', express.json(), async (req, res) => {
+        if (blockedByReadonly(res)) return;
         try {
             const id = String((req.body && req.body.id) || '');
             const dir = await loadDirectory();
@@ -420,6 +453,7 @@ module.exports = function createContactsRouter({ storage, openai }) {
     // Approve = the ONLY write path from the queue into the directory. The client sends the
     // reviewed partner (corrections included), so what was checked is what gets saved.
     router.post('/contacts/pending/approve', express.json({ limit: '1mb' }), async (req, res) => {
+        if (blockedByReadonly(res)) return;
         try {
             const { id, partner, source } = req.body || {};
             const items = await loadPending();
@@ -523,6 +557,7 @@ module.exports = function createContactsRouter({ storage, openai }) {
     // pressed Apply. Goes through mergePartner (one address, one company) and logs a change
     // entry so it can be undone from Recent changes.
     router.post('/contacts/add-apply', express.json({ limit: '1mb' }), async (req, res) => {
+        if (blockedByReadonly(res)) return;
         try {
             const { after, matchId, steps, source } = req.body || {};
             const dir = await loadDirectory();

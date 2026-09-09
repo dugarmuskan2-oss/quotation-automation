@@ -14,6 +14,18 @@
  */
 
 const ROLES = ['dealer', 'manufacturer', 'transporter', 'fabricator', 'other'];
+
+// The second setup (m@dscpipes.com) reads this SAME directory — one file, not a copy — but only
+// sees these two roles. Dealer, manufacturer and fabricator stay the main site's alone. Kept as
+// its own list rather than "everything except dealer/manufacturer" so a THIRD role added later
+// defaults to hidden, not shared — sharing has to be an explicit choice, never an accident of
+// what a new role happens to be called.
+const SHARED_ROLES = ['transporter', 'other'];
+
+/** The subset of the directory a read-only deployment may see. */
+function visibleToReadonly(contacts) {
+    return (Array.isArray(contacts) ? contacts : []).filter((p) => p && SHARED_ROLES.indexOf(p.role) !== -1);
+}
 const MAX_CONTACTS = 2000;
 const MAX_CHANGES = 200;
 // Room for a whole import to wait for approval at once — the old cap of 50 would have
@@ -1818,6 +1830,8 @@ function pushContactLines(list, label, value) {
 
 module.exports = {
     ROLES,
+    SHARED_ROLES,
+    visibleToReadonly,
     sanitizePartner,
     mergePartner,
     partnerIsEmpty,

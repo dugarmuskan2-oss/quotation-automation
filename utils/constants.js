@@ -88,20 +88,35 @@ const CONFIG_KEY_USERS                = 'users.json';
 // fixed here quietly staying broken over there — the drift that one codebase is meant to prevent.
 //
 // Everything below is that deployment's own. The signature and the email message because these
-// two sign their own names. The DIRECTORY because it is not one list the company keeps — it is
-// built from a mailbox: contacts-pending comes from emails labelled in that account, and
-// google-firms from that account's own Google Contacts. Pointing both setups at one file would
-// mean m@'s address book quietly overwriting info@'s the first time either was scanned.
+// two sign their own names. contacts-pending and google-firms because neither is one list the
+// company keeps — each is built from a MAILBOX: contacts-pending from emails labelled in that
+// account, google-firms from that account's own Google Contacts. Pointing both setups at one
+// file would mean m@'s address book quietly overwriting info@'s the first time either was
+// scanned.
+//
+// CONTACTS.JSON — the approved directory itself — is deliberately NOT here, even though it once
+// was. It is back to being one shared file, because part of it genuinely is the company's:
+// transporters and "other" partners are the same firms whoever is quoting, and read the same by
+// both deployments straight off this one file. Dealers, manufacturers and fabricators stay
+// exclusive to the main site all the same — not by having their own copy of the file, but by
+// role: DIRECTORY_READONLY below (routes/contacts.js) filters what a read-only deployment can
+// see out of this SAME file, and blocks it from writing to it at all. See utils/contacts.js's
+// SHARED_ROLES for which roles that is.
 const PERSONAL_CONFIG_KEYS = new Set([
     CONFIG_KEY_DEFAULT_SIGNATURE,
     CONFIG_KEY_DEFAULT_EMAIL_MESSAGE,
-    CONFIG_KEY_CONTACTS,
     CONFIG_KEY_CONTACTS_PENDING,
     CONFIG_KEY_GOOGLE_FIRMS,
     // Each site keeps its own people. Sharing one list would mean anyone who can log in to the
     // m@ site can also open info@'s, which is the opposite of keeping the two sets of quotes apart.
     CONFIG_KEY_USERS,
 ]);
+
+/** True on a deployment that may only VIEW the shared roles of the partner directory
+ *  (transporter, other) and may never add, edit, delete, or approve anything into it — only the
+ *  main site can. Read once at boot, like COMPANY_EMAIL: a deployment setting, not a saved file,
+ *  so it can never be silently switched off by anything the app itself writes. */
+const DIRECTORY_READONLY = /^(1|true)$/i.test(String(process.env.DIRECTORY_READONLY || '').trim());
 
 /** Where a config file actually lives for THIS deployment. Unset CONFIG_PREFIX (the live
  *  info@ setup) returns the key untouched, so nothing moves and no file needs migrating. */
@@ -139,4 +154,5 @@ module.exports = {
     PERSONAL_CONFIG_KEYS,
     configKey,
     COMPANY_EMAIL,
+    DIRECTORY_READONLY,
 };
