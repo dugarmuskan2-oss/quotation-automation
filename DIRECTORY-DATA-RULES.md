@@ -132,6 +132,29 @@ all, because that is how he wrote them and how he will look for them. A page hea
 
 ---
 
+## 4d. A note about ONE person belongs beside their name
+
+Apollo carried the same fact three times — "MET IN EXIBITION ON 7.6.2018 (Sadeep P B S)",
+"SANDEEP BPS MET IN CHENNAI EXIBITION", "SANDEEP BPS MET IN CHENNAI EXHIBITION" — three notes
+you had to read to learn one thing about one man.
+
+*Owner's decision:* it reads **"Sandeep (met in chennai exhibition 7.6.2018)"**, in brackets
+after his name. This is HIS edit of his own name, not the app tidying one — §0c still stands.
+
+Placement is his call each time: he chose the name here rather than the job box or a new
+field, and a note naming a person is not automatically moved.
+
+---
+
+## 4e. A card links only to cards that exist
+
+Apollo names 30 dealers; ONE is in the directory and 25 are still in the waiting list. *Owner's
+decision: leave them plain until they reach the queue through the normal button.* Clicking a
+name must never quietly pull a firm into his queue — what is in front of him to approve is his
+to decide.
+
+---
+
 ## 4c. What was written under a firm stays on that firm
 
 Apollo's page carries "TATA — SANTOSH STEEL is their dealer" and "SURYA — SANTOSH STEEL is
