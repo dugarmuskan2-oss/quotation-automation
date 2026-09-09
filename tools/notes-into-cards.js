@@ -86,16 +86,34 @@ function asLines(list, label) {
         : { label, v: str(x) }).filter(x => x.v);
 }
 
+/**
+ * "022-24902570 /72 /76 /78" becomes four numbers you can actually ring.
+ *
+ * The reading kept these exactly as written, which was right — an earlier pass invented the
+ * expansions with no rule behind them and had to be undone. With a rule that refuses when it
+ * is unsure, the board lines can be split out properly: 102 numbers were sitting inside 62
+ * entries like this, present but unsearchable and undialable.
+ */
+function splitTrunkLines(lines) {
+    const out = [];
+    (lines || []).forEach(l => {
+        const many = contacts.expandTrunkLine(l.v);
+        if (!many) { out.push(l); return; }
+        many.forEach(v => out.push({ label: l.label, v }));
+    });
+    return out;
+}
+
 function peopleOf(firm) {
     const people = (firm.people || []).map((p, i) => ({
         name: str(p.name),
         role: str(p.role) || (i === 0 ? 'Main contact' : ''),
-        phones: asLines(p.phones, 'Mobile'),
+        phones: splitTrunkLines(asLines(p.phones, 'Mobile')),
         emails: asLines(p.emails, 'Work'),
     }));
     // A number nobody was named for belongs to the FIRM — the godown line, the board line.
     // It keeps whatever the owner called it, because "Godown" is the useful part.
-    const firmLines = asLines(firm.phones, 'Office');
+    const firmLines = splitTrunkLines(asLines(firm.phones, 'Office'));
     const firmMails = asLines(firm.emails, 'Work');
     if (firmLines.length || firmMails.length) {
         people.push({

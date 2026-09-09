@@ -783,6 +783,51 @@ function unapprovedToPending(contacts, pending, cap) {
     };
 }
 
+/**
+ * "022-24902570 /72 /76 /78" is FOUR lines, not one.
+ *
+ * A board with several lines is written in the trade the short way: the full number once,
+ * then only the digits that change. Kept as one string it is honest but useless — you cannot
+ * ring "/72", and searching for 24902576 finds nothing. Expanded wrongly it is worse: an
+ * earlier pass invented 022-24902572/76/78 as separate numbers with no basis, and that had
+ * to be undone.
+ *
+ * So the rule is narrow and refuses when it is unsure. A tail expands only when it is plain
+ * digits, no longer than the base, and the base is a single clean number. Anything with an
+ * extension, a comma, or letters is left exactly as written — 62 entries hold this shorthand
+ * and being right about 50 beats guessing at all of them.
+ *
+ * Returns null when it will not expand, so the caller keeps the original untouched.
+ */
+function expandTrunkLine(value) {
+    const raw = str(value);
+    if (!raw.includes('/')) return null;
+    if (/[a-z,]/i.test(raw)) return null;                 // EXTN:429, or two numbers comma-joined
+    const parts = raw.split('/').map(p => p.trim()).filter(Boolean);
+    if (parts.length < 2) return null;
+
+    const base = parts[0].replace(/\s+/g, '');
+    // The STD code and the line itself: "044-49542545" is area 044, line 49542545. Lengths
+    // must be judged against the LINE, or a whole second Chennai number reads as a suffix.
+    const cut = base.match(/^(.*?)(\d+)$/);
+    if (!cut) return null;
+    const area = cut[1];                                  // "044-", "+91", or nothing
+    const line = cut[2];
+    if (line.length < 5) return null;                     // too short to have a stable stem
+
+    const out = [base];
+    for (let i = 1; i < parts.length; i++) {
+        const tail = parts[i].replace(/\s+/g, '');
+        if (!/^\d+$/.test(tail)) return null;             // not a number at all — do not guess
+        // "044-49542545 / 26544914" and "23427580/23420291" are whole numbers written
+        // together, not a stem and a tail. Splitting those needs no inference at all.
+        if (tail.length >= line.length) { out.push(area + tail); continue; }
+        if (tail.length > 4) return null;                 // too long for a suffix, too short for a number
+        out.push(area + line.slice(0, line.length - tail.length) + tail);
+    }
+    return out;
+}
+
 /** A phone reduced to the digits that identify it — last ten, so +91 and 0 prefixes agree. */
 function dialKey(v) {
     const digits = str(v).replace(/\D/g, '');
@@ -1816,6 +1861,7 @@ module.exports = {
     // Shared with utils/googleContacts.js: one firm is one email domain, everywhere.
     firmKeyOf,
     cleanEmail,
+    expandTrunkLine,
     mergePreviews,
     identitiesOf,
     dialKey,
