@@ -132,6 +132,18 @@ all, because that is how he wrote them and how he will look for them. A page hea
 
 ---
 
+## 4c. What was written under a firm stays on that firm
+
+Apollo's page carries "TATA — SANTOSH STEEL is their dealer" and "SURYA — SANTOSH STEEL is
+their dealer" — notes about a THIRD party's dealer, sitting on Apollo's card because that is
+the page he wrote them on. *Owner's decision: if it was under Apollo, let it stay.*
+
+The page a thing was written on is part of what it means. Moving a note to where the app
+thinks it belongs loses the reason it was written there, and he is the one who filed it.
+This is the same rule as §4a from the other side: the heading is information, so is the page.
+
+---
+
 ## 4b. One product range, not three copies of it
 
 APL Apollo's range came out three times — the whole thing and both of its halves — because
