@@ -108,6 +108,23 @@ think longer and add".* Everything below was sitting in the notes when it had a 
     records that Jindal Saw has factories at Kosi Kalan and Kutch.
     **Search every page's TEXT for the firm name, not just its title.**
 
+18. **THE NOTES ARE NOT THE ONLY SOURCE — AND FORGETTING THAT DELETES REAL PEOPLE.**
+    The rebuild was given the eleven phone-book PAGES and the card. It was not given the
+    ADDRESS BOOK — the 53 Google contacts carrying an @jindalsaw.com address, which is where
+    most of the staff on that card came from. So the checker found Akhilesh Jain, Uday Mehta,
+    Pravin Misra, Sharad Shardul and chemicallab nowhere in "the source", called them
+    fabricated, and the rebuild removed all five — along with five real addresses
+    (k.thyagarajan@, girish.nikam@, mangesh.lahamge@, chandra.damle@, psn.shreeram@).
+
+    Every one of them is real and in his Google Contacts. The result was NOT applied.
+
+    **A card has TWO sources: the notes pages, and the address book entries grouped by email
+    domain. Any check that sees only one will declare the other invented.** This is the exact
+    opposite failure to finding #15, and far more dangerous: #15 added one wrong name, this
+    deletes real ones, and it comes wearing the authority of a verification pass.
+
+    Before trusting ANY "invented" verdict, look the name up in the address book.
+
 The general lesson, and the one worth the most: **a card is built from ALL his pages about that
 firm, not one.** Jindal Saw has seven. A detail that looks orphaned on one page is usually
 explained on another.
