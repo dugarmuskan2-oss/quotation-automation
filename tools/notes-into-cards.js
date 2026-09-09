@@ -44,6 +44,10 @@ const RAW_DIR = (() => {
     const at = process.argv.indexOf('--raw');
     return at === -1 ? '' : process.argv[at + 1];
 })();
+const CUSTOMERS = (() => {
+    const at = process.argv.indexOf('--customers');
+    return at === -1 ? '' : process.argv[at + 1];
+})();
 const READ_DIR = (() => {
     const at = process.argv.indexOf('--from');
     return at === -1 ? path.join(__dirname, '..', '.notes-read') : process.argv[at + 1];
@@ -260,6 +264,31 @@ function dropRawDumps(notes, rawList, keepList) {
 
 function flat(t) { return str(t).replace(/\s+/g, ' ').toLowerCase(); }
 
+/**
+ * Who the owner SELLS to. They do not belong in a directory of who he buys from.
+ *
+ * Chemplast Sanmar is a customer, and the scan knew it — but it spots customers by email
+ * domain, and a firm read out of a notes box usually has no address at all, only a name and
+ * a number. So the test never fired and Chemplast got a card. A card like that is worse than
+ * missing: it would be ranked as a supplier and could be sent a freight enquiry.
+ *
+ * The names come from the company on all 1,986 saved quotations — the closest thing to a
+ * definitive list of who he has sold to — plus whatever the scan already held back.
+ */
+function customerList(blob, file) {
+    const names = [], domains = [];
+    const held = (blob && blob.heldBack) || {};
+    (held.quotedTo || []).forEach(n => names.push(String(n).replace(/\s*\(\d+\)\s*$/, '')));
+    if (file && fs.existsSync(file)) {
+        try {
+            const j = JSON.parse(fs.readFileSync(file, 'utf8'));
+            (j.names || []).forEach(n => names.push(n));
+            (j.domains || []).forEach(d => domains.push(d));
+        } catch (e) { /* no list is not a reason to stop; it just holds nothing back */ }
+    }
+    return { domains, nameKeys: new Set(names.map(contacts.firmNameKey).filter(Boolean)) };
+}
+
 function keyFor(preview) {
     const mail = contacts.allEmails(preview)[0];
     if (mail) return contacts.firmKeyOf(mail);
@@ -355,14 +384,32 @@ async function main() {
     const links = linkBothWays(cards);
     say('  connections written:    ' + links);
 
-    const batch = ONLY ? cards.slice(0, ONLY) : cards;
-    if (ONLY) say('  doing the first ' + batch.length + ' only');
-
     const raw = await storage.readText(CONFIG_KEY_GOOGLE_FIRMS);
     let blob;
     try { blob = JSON.parse(raw || '{}'); } catch (e) { blob = {}; }
     if (!blob || typeof blob !== 'object') blob = {};
     const before = (blob.firms || []).length;
+
+    // He buys pipe; he does not buy it from the people he sells it to. A customer on this
+    // list would be ranked as a supplier and could be sent a freight enquiry.
+    const buyers = customerList(blob, CUSTOMERS);
+    const held = cards.filter(c => contacts.looksLikeACustomer(c.preview, buyers));
+    const keep = cards.filter(c => !contacts.looksLikeACustomer(c.preview, buyers));
+    say('  held back, customers:   ' + held.length);
+    // WHY each one was held, because "441 held back" with no reason is impossible to check —
+    // and holding a supplier back by mistake is as bad as letting a customer through.
+    const buyerDomains = new Set(buyers.domains.map(d => String(d).toLowerCase()));
+    held.slice(0, 10).forEach(c => {
+        const byName = buyers.nameKeys.has(contacts.firmNameKey(c.preview.company));
+        const hit = contacts.allEmails(c.preview)
+            .find(e => buyerDomains.has(contacts.cleanEmail(e).split('@')[1] || ''));
+        say('     ' + str(c.preview.company).slice(0, 36).padEnd(38)
+            + (byName ? 'you have quoted this name' : 'you have quoted ' + (hit || '?')));
+    });
+    if (held.length > 10) say('     ...and ' + (held.length - 10) + ' more');
+
+    const batch = ONLY ? keep.slice(0, ONLY) : keep;
+    if (ONLY) say('  doing the first ' + batch.length + ' only');
 
     const merged = mergeIntoWaiting(blob.firms || [], batch);
     say('');

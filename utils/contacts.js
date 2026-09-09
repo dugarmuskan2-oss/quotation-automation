@@ -965,6 +965,30 @@ function betterName(candidate, current) {
     return a.length > b.length;
 }
 
+/**
+ * Is this firm someone the owner SELLS to?
+ *
+ * The directory is for people he buys from and ships with. A customer on it is worse than
+ * useless: it would be ranked as a supplier and could be sent a freight enquiry. The scan
+ * already held back the customers it could spot by email domain, but a firm read out of a
+ * notes box usually has no address at all — only a name and a number — so the domain test
+ * never fired and Chemplast Sanmar, a customer, got a card anyway.
+ *
+ * Both tests now. The names come from the company on every saved quotation, which is the
+ * closest thing to a definitive list of who he has sold to.
+ */
+function looksLikeACustomer(preview, customers) {
+    const c = customers || {};
+    const domains = new Set((c.domains || []).map(lower));
+    const names = c.nameKeys || new Set((c.names || []).map(firmNameKey));
+    const key = firmNameKey((preview || {}).company);
+    if (key && names.has && names.has(key)) return true;
+    return allEmails(preview || {}).some(e => {
+        const d = cleanEmail(e).split('@')[1] || '';
+        return d && domains.has(d);
+    });
+}
+
 /** Is there any way to actually contact this firm — an address or a number? */
 function canBeReached(preview) {
     if (allEmails(preview || {}).length) return true;
@@ -1875,6 +1899,8 @@ module.exports = {
     // Shared with utils/googleContacts.js: one firm is one email domain, everywhere.
     firmKeyOf,
     cleanEmail,
+    looksLikeACustomer,
+    firmNameKey,
     expandTrunkLine,
     mergePreviews,
     identitiesOf,
