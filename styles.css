@@ -1365,7 +1365,13 @@
 .pd-rank-n { width: 21px; height: 21px; border-radius: 50%; background: #20201d; color: #fff; font-size: 11px;
     display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; margin-top: 2px; }
 .pd-person, .pd-branch, .pd-pcard { border: 1px solid rgba(0,0,0,.1); border-radius: 8px; padding: 8px 10px; margin-bottom: 7px; background: #f6f5f1; }
-.pd-person-top { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; align-items: center; }
+.pd-person-top { display: grid; grid-template-columns: 1fr 1fr .8fr auto; gap: 6px; align-items: center; }
+/* The branch a group of people sit at. Jindal Saw has 53 people over seven places; without
+   a header between them there is no way to see who to ring in Nasik. */
+.pd-branch-head { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700;
+    letter-spacing: .04em; text-transform: uppercase; color: #6b6a63;
+    margin: 12px 0 6px; padding-bottom: 4px; border-bottom: 1px solid rgba(0,0,0,.1); }
+.pd-branch-head:first-child { margin-top: 2px; }
 .pd-person-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 6px; }
 .pd-cline { display: grid; grid-template-columns: 90px 1fr 26px; gap: 5px; align-items: center; margin-bottom: 4px; }
 .pd-branch-top { display: grid; grid-template-columns: 1fr 1.3fr 26px; gap: 6px; align-items: center; }
@@ -1404,6 +1410,7 @@
     .pd-grid2, .pd-grid3, .pd-person-cols { grid-template-columns: 1fr; }
     .pd-person-top { grid-template-columns: 1fr auto; }
     .pd-person-top > input:first-child { grid-column: 1 / -1; }
+    .pd-person-top > input:nth-child(3) { grid-column: 1 / -1; }
     .pd-szrow { grid-template-columns: 46px 60px 60px 1fr 22px; }
     .pd-modal { padding: 10px; align-items: flex-start; }
     .pd-modal-box { max-height: 90vh; }

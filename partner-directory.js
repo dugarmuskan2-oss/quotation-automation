@@ -1298,12 +1298,54 @@
     var PHONE_LABELS = ['Mobile', 'WhatsApp', 'Office', 'Direct', 'Home'];
     var EMAIL_LABELS = ['Work', 'Sales', 'Accounts', 'Personal'];
 
+    /**
+     * People, gathered under the branch they work at.
+     *
+     * Jindal Saw has 53 people across seven places. As one flat list there was no way to see
+     * who to ring in Nasik, and the reading had nowhere to put the branch so it wrote it into
+     * the job title — "HEAD - DOMESTIC SALES (SEAMLESS DIVISION), for CS pipe (Bombay office)".
+     *
+     * The order of the people themselves is NOT changed: the first person is where enquiries
+     * go, and quietly re-sorting the list would move that. Headers are drawn between them
+     * instead, in the order the branches first appear.
+     */
     function peopleBlock(p) {
+        var list = people(p);
+        var groups = groupByBranch(list);
         return '<div class="pd-sec">Contacts<span class="pd-sp"></span><span class="pd-tiny">'
-            + people(p).length + ' ' + (people(p).length === 1 ? 'person' : 'people') + '</span></div>'
-            + people(p).map(function (c, i) { return personCard(c, i); }).join('')
+            + list.length + ' ' + (list.length === 1 ? 'person' : 'people')
+            + (groups.length > 1 ? ' · ' + groups.length + ' branches' : '') + '</span></div>'
+            + branchDatalist(p)
+            + groups.map(function (g) {
+                return (groups.length > 1
+                    ? '<div class="pd-branch-head">' + esc(g.branch || 'No branch set') + '<span class="pd-sp"></span>'
+                        + '<span class="pd-tiny">' + g.rows.length + '</span></div>'
+                    : '')
+                    + g.rows.map(function (r) { return personCard(r.c, r.i); }).join('');
+            }).join('')
             + '<button class="pd-addline" data-pd-addperson="1">+ Add another person</button>'
             + '<p class="pd-tiny" style="margin-top:6px;">The first address on the first person is where enquiries go — but <b>every</b> address is matched against incoming email.</p>';
+    }
+
+    /** Branches in the order they first appear, with "no branch set" last. */
+    function groupByBranch(list) {
+        var order = [], by = {};
+        (list || []).forEach(function (c, i) {
+            var b = str(c.branch);
+            if (!by[b]) { by[b] = { branch: b, rows: [] }; order.push(b); }
+            by[b].rows.push({ c: c, i: i });
+        });
+        return order.sort(function (a, b) { return (a ? 0 : 1) - (b ? 0 : 1); })
+            .map(function (b) { return by[b]; });
+    }
+
+    /** The card's own branches, offered when setting a person's — typing a new one is fine. */
+    function branchDatalist(p) {
+        var names = (p.branches || []).map(function (b) { return str(b.city) || str(b.address); })
+            .filter(Boolean);
+        return '<datalist id="pdCardBranches">'
+            + names.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join('')
+            + '</datalist>';
     }
 
     /**
@@ -1333,6 +1375,7 @@
         return '<div class="pd-person"><div class="pd-person-top">'
             + '<input data-pd-pc="' + i + '" data-pd-k="name" value="' + esc(c.name) + '" placeholder="Name">'
             + '<input data-pd-pc="' + i + '" data-pd-k="role" value="' + esc(c.role || '') + '" placeholder="Their job — e.g. Owner, Sales">'
+            + '<input data-pd-pc="' + i + '" data-pd-k="branch" list="pdCardBranches" value="' + esc(c.branch || '') + '" placeholder="Which branch">'
             + (i === 0 ? '<span class="pd-pill">Main</span>' : '<button class="pd-del" data-pd-delperson="' + i + '">✕</button>') + '</div>'
             + '<div class="pd-person-cols"><div>' + lineRows('ph', PHONE_LABELS, c.phones) + '</div>'
             + '<div>' + lineRows('em', EMAIL_LABELS, c.emails) + '</div></div></div>';
@@ -2541,7 +2584,7 @@
                 save(false, ['people']);
             };
         });
-        on(card, '[data-pd-addperson]', function () { p.people.push({ name: '', role: '', phones: [{ label: 'Mobile', v: '' }], emails: [{ label: 'Work', v: '' }] }); save(true, ['people']); });
+        on(card, '[data-pd-addperson]', function () { p.people.push({ name: '', role: '', branch: '', phones: [{ label: 'Mobile', v: '' }], emails: [{ label: 'Work', v: '' }] }); save(true, ['people']); });
         /**
          * Pressing ✕ asks; it does not delete.
          *

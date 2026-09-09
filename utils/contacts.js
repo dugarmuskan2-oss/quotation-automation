@@ -107,6 +107,12 @@ function sanitizePerson(p) {
     return {
         name: str(p && p.name),
         role: str(p && p.role),
+        // Which branch this person sits at. Jindal Saw has 53 people across seven places —
+        // Chennai office, Bombay office, Delhi office, Nasik factory and three plants — and
+        // with one flat list there was nowhere to put that, so the reading stuffed it into
+        // the job title: "HEAD - DOMESTIC SALES (SEAMLESS DIVISION), for CS pipe (Bombay
+        // office)". A job, a product and a place in one box, and no way to ring the right one.
+        branch: str(p && p.branch),
         phones: sanitizeLines(p && p.phones),
         // Cleaned BEFORE it is stored, so the value on the card and the value every guard
         // compares are the same string. Anything still not an address is dropped, not kept
@@ -918,6 +924,30 @@ function mergePreviews(base, extra) {
     return out;
 }
 
+/**
+ * Two records for the same person, or two people who happen to share a line?
+ *
+ * An EMAIL is one person's — "Mahesh Pardeshi" and "MAHESH PERDESH" both hold
+ * mahesh.pardeshi@jindalsaw.com and are plainly one man spelled two ways, so a shared address
+ * merges them whatever the names look like.
+ *
+ * A PHONE is not. In the Nasik list Mahesh Perdesh and Mangesh Lahamge are both written
+ * against 8600107980; the owner confirmed they are two people and both keep the number.
+ * Merging on a shared number alone would have deleted one of them.
+ *
+ * A BRANCH separates too: the owner wants a man who covers Bombay and Nasik listed under
+ * each, so two records with the same name and different branches stay two records.
+ */
+function canBeSamePerson(a, b) {
+    const mails = new Set(((a.emails || []).map(e => cleanEmail(e.v))).filter(Boolean));
+    const sharesEmail = (b.emails || []).some(e => mails.has(cleanEmail(e.v)));
+    if (sharesEmail) return true;
+    const an = lower(str(a.name)), bn = str(b.name).toLowerCase();
+    if (an && bn && an !== bn && !looksLikeALabel(an) && !looksLikeALabel(bn)) return false;
+    const ab = lower(str(a.branch)), bb = lower(str(b.branch));
+    return !(ab && bb && ab !== bb);
+}
+
 /** One person, however many times they appear — matched on any shared number or address. */
 function foldPeople(people) {
     const kept = [];
@@ -925,7 +955,7 @@ function foldPeople(people) {
         const keys = new Set();
         (p.emails || []).forEach(e => { const v = cleanEmail(e.v); if (v) keys.add('e:' + v); });
         (p.phones || []).forEach(q => { const d = dialKey(q && q.v); if (d.length >= 10) keys.add('p:' + d); });
-        const match = kept.find(k => [...keys].some(x => k.keys.has(x)));
+        const match = kept.find(k => [...keys].some(x => k.keys.has(x)) && canBeSamePerson(k.p, p));
         if (!match) {
             kept.push({ p: Object.assign({}, p), keys });
             return;
@@ -937,6 +967,7 @@ function foldPeople(people) {
         (p.emails || []).forEach(e => { if (!mails.has(cleanEmail(e.v))) match.p.emails.push(e); });
         if (betterName(p.name, match.p.name)) match.p.name = str(p.name);
         if (!str(match.p.role) && str(p.role)) match.p.role = p.role;
+        if (!str(match.p.branch) && str(p.branch)) match.p.branch = p.branch;
     });
     // A person with no name, no number and no address is not a person. One is kept as the
     // empty "Main contact" slot every card needs; more than one is just noise.
@@ -987,6 +1018,74 @@ function looksLikeACustomer(preview, customers) {
         const d = cleanEmail(e).split('@')[1] || '';
         return d && domains.has(d);
     });
+}
+
+/**
+ * Pull the branch back out of a job title that swallowed it.
+ *
+ * Before people had a branch of their own, the reading had nowhere to put one, so it wrote
+ * the place into the role: "SR MANAGER -MARKETING, for SS pipe (Bombay office)". The job and
+ * the place are both worth keeping, but not in one box — you cannot group by it, sort by it,
+ * or tell at a glance who to ring in Nasik.
+ *
+ * Only branches the CARD already lists are recognised. Guessing a place from any capitalised
+ * word would put half these people at a branch that does not exist, and a wrong branch is
+ * worse than none: it is the number he would ring first.
+ *
+ * Returns { role, branch } — the role with the place taken out, and the place.
+ */
+function branchFromRole(role, branchNames) {
+    const text = str(role);
+    if (!text) return { role: '', branch: '' };
+    // Longest first, so "Nasik factory (PPC division)" wins over "Nasik factory".
+    const names = (branchNames || []).map(str).filter(Boolean)
+        .sort((a, b) => b.length - a.length);
+    for (const name of names) {
+        const at = text.toLowerCase().indexOf(name.toLowerCase());
+        if (at === -1) continue;
+        const left = text.slice(0, at);
+        const right = text.slice(at + name.length);
+        const rest = tidyLeftover(left + ' ' + right);
+        return { role: rest, branch: name };
+    }
+    return { role: text, branch: '' };
+}
+
+/**
+ * What is left of a job title once the branch has been cut out of the middle of it.
+ *
+ * Cutting "Bombay office" out of "for SS pipe (Bombay office / Nasik factory)" leaves an
+ * opening bracket with nothing to close it and a slash leading nowhere. A person whose job
+ * reads "for SS pipe ( / Nasik factory" looks like a bug, so the wreckage is cleared: empty
+ * brackets go, an unmatched bracket goes, and doubled-up commas and slashes collapse.
+ */
+function tidyLeftover(text) {
+    // Edges first. Stripping a trailing ")" afterwards would leave its "(" behind, which is
+    // exactly the wreckage this is here to clear.
+    let s = str(text)
+        .replace(/\(\s*\)/g, ' ')
+        .replace(/\s*[,/]\s*(?=[,/])/g, '')
+        .replace(/^[\s,/(-]+|[\s,/)-]+$/g, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+    const opens = (s.match(/\(/g) || []).length;
+    const closes = (s.match(/\)/g) || []).length;
+    if (opens > closes) s = s.replace(/\(/, ' ');
+    else if (closes > opens) s = s.replace(/\)/, ' ');
+    return s.replace(/\s{2,}/g, ' ').replace(/^[\s,/-]+|[\s,/-]+$/g, '').trim();
+}
+
+/** Every person on a card, with the branch lifted out of their job title. */
+function splitBranchesOut(preview) {
+    const names = ((preview || {}).branches || [])
+        .map(b => str(b && (b.city || b.address))).filter(Boolean);
+    if (!names.length) return preview;
+    const people = ((preview || {}).people || []).map(p => {
+        if (str(p.branch)) return p;
+        const cut = branchFromRole(p.role, names);
+        return cut.branch ? Object.assign({}, p, cut) : p;
+    });
+    return Object.assign({}, preview, { people });
 }
 
 /** Is there any way to actually contact this firm — an address or a number? */
@@ -1899,6 +1998,8 @@ module.exports = {
     // Shared with utils/googleContacts.js: one firm is one email domain, everywhere.
     firmKeyOf,
     cleanEmail,
+    branchFromRole,
+    splitBranchesOut,
     looksLikeACustomer,
     firmNameKey,
     expandTrunkLine,
