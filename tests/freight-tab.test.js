@@ -860,3 +860,53 @@ describe('one transporter never lands on two chips', () => {
         expect(src).toContain('if (v) addChip(list, v);');
     });
 });
+
+/**
+ * The freight enquiry table — enquiryDescriptionFor / freightItemsTableHtml.
+ *
+ * The standalone Enquiry Preparer and the quote's own supplier Enquiry tab both format a
+ * pipe's description before it goes to anyone outside the company; this box, sent to
+ * transporters, sent the AI's raw compact code instead ("8X6.35" rather than
+ * '8" NB X 6.35mm thk -- ERW'). _setDescriptionFormatter injects the real formatter
+ * (gmail-ingest/descriptionFormatter.js — the same one Gmail-ingested quotes use, now that it
+ * matches index.html) — there is no `window` in this @jest-environment node file.
+ */
+describe('freight enquiry table — descriptions read like the rest of the quote, not the raw code', () => {
+    const { enquiryDescriptionFor, freightItemsTableHtml, _setDescriptionFormatter } =
+        require('../freight-tab-weight-editor')._test;
+    const descFormatter = require('../gmail-ingest/descriptionFormatter');
+
+    afterEach(() => { _setDescriptionFormatter(null); });   // never leak the injected module into another test
+
+    test('with no formatter loaded, falls back to the raw stored description (never blank)', () => {
+        expect(enquiryDescriptionFor({ d: '8X6.35', type: 'ERW' })).toBe('8X6.35');
+    });
+
+    test('with the real formatter, a transporter sees a readable size, not the AI code', () => {
+        _setDescriptionFormatter(descFormatter);
+        expect(enquiryDescriptionFor({ d: '8X6.35', type: 'ERW' })).toBe('8" NB X 6.35mm thk -- ERW');
+        expect(enquiryDescriptionFor({ d: '6XH', type: 'ERW' })).toBe('6" NB X Heavy -- ERW');
+        expect(enquiryDescriptionFor({ d: '2XH', type: 'GI' })).toBe('2" NB X Heavy -- GI');
+        expect(enquiryDescriptionFor({ d: '8X40', type: 'Seamless' })).toBe('8" NB X Sch 40');
+    });
+
+    test('the row itself is never rewritten — r.d stays the raw code so it can still be hand-edited', () => {
+        _setDescriptionFormatter(descFormatter);
+        const row = { d: '6XH', type: 'ERW' };
+        enquiryDescriptionFor(row);
+        expect(row.d).toBe('6XH');
+    });
+
+    test('a size the formatter cannot parse falls back to the raw text, not empty', () => {
+        _setDescriptionFormatter(descFormatter);
+        expect(enquiryDescriptionFor({ d: 'STRUCTURAL_SUPPORT_KG', type: 'ERW' })).toBe('STRUCTURAL_SUPPORT_KG');
+    });
+
+    test('the rendered table cell shows the formatted text, escaped, not the raw code', () => {
+        _setDescriptionFormatter(descFormatter);
+        const st = { rows: [{ id: 'r1', d: '8X6.35', type: 'ERW', qty: 10, kgm: 33.34, sec: 1 }], enquiry: { weightOverride: null } };
+        const html = freightItemsTableHtml(st);
+        expect(html).toContain('8" NB X 6.35mm thk -- ERW');
+        expect(html).not.toContain('>8X6.35<');
+    });
+});

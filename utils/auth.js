@@ -125,7 +125,7 @@ function safeNextPath(raw) {
 // storage/index.js and CLAUDE.md were all being served to anyone who asked.
 const PUBLIC_FILES = new Set([
     '/logo.png', '/favicon.ico', '/styles.css', '/login.html',
-    '/utils/pipeWeights.js',
+    '/utils/pipeWeights.js', '/gmail-ingest/descriptionFormatter.js',
     '/weight-calculator.js', '/enquiry-preparer.js', '/freight-tab-weight-editor.js',
     '/quote-enquiry-tab.js', '/register.js', '/partner-directory.js',
 ]);

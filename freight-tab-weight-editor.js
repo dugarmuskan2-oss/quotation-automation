@@ -122,6 +122,12 @@
         if (_pwOverride) return _pwOverride;
         return (typeof window !== 'undefined' && window.pipeWeights) ? window.pipeWeights : null;
     }
+    // Same seam, for the SAME reason, for the description formatter used by enquiryDescriptionFor.
+    var _descFormatterOverride = null;             // tests inject the module here (no window in node)
+    function descriptionFormatterLib() {
+        if (_descFormatterOverride) return _descFormatterOverride;
+        return (typeof window !== 'undefined' && window.descriptionFormatter) ? window.descriptionFormatter : null;
+    }
     function sheetKgFor(row) {
         var lib = pipeWeightsLib();
         if (!_weightMaps || !lib) return null;
@@ -686,6 +692,19 @@
     // The consignment broken down by size, so a transporter can see WHAT they are carrying rather
     // than just a total weight. Substituted for [TABLE] at send time, so the user can still move
     // it around (or delete it) in the editable message.
+    // The row's description as the AI stored it ("8X6.35") is a compact code meant for THIS
+    // app's own matching, not for a transporter to read. Everywhere else a customer or supplier
+    // sees a quote, it goes through this same formatter first — the approval table, the PDF, a
+    // Gmail-ingested quote. This table was the one place that never did, so a freight enquiry
+    // went out reading "8X6.35" where every other document for the same line said
+    // '8" NB X 6.35mm thk -- ERW'. Never touches the stored row — r.d is left exactly as it
+    // is, so the editable field a user can hand-correct still shows and edits the real value.
+    function enquiryDescriptionFor(r) {
+        var lib = descriptionFormatterLib();
+        if (!lib) return r.d || '';
+        var formatted = lib.formatItemDescriptionByPipeType({ originalDescription: r.d, identifiedPipeType: r.type });
+        return formatted || r.d || '';
+    }
     function freightItemsTableHtml(st) {
         var rows = enqScopeRows(st);
         if (!rows.length) return '';
@@ -699,7 +718,7 @@
             var cell = 'border:1px solid #000;padding:6px 8px;background-color:' + bg + ';';
             var w = (r.qty != null && r.kgm) ? fmt(weightOf(r)) + ' kg' : '—';
             return '<tr>'
-                + '<td bgcolor="' + bg + '" style="' + cell + '">' + escTxt(r.d || '') + '</td>'
+                + '<td bgcolor="' + bg + '" style="' + cell + '">' + escTxt(enquiryDescriptionFor(r)) + '</td>'
                 + '<td bgcolor="' + bg + '" style="' + cell + 'text-align:right;">' + escTxt(r.qty != null ? r.qty : '') + '</td>'
                 + '<td bgcolor="' + bg + '" style="' + cell + 'text-align:right;">' + escTxt(r.kgm || '') + '</td>'
                 + '<td bgcolor="' + bg + '" style="' + cell + 'text-align:right;">' + w + '</td>'
@@ -1826,6 +1845,7 @@
             enqEffectiveWeight: enqEffectiveWeight,
             buildEnquiryDraft: buildEnquiryDraft,
             freightItemsTableHtml: freightItemsTableHtml,
+            enquiryDescriptionFor: enquiryDescriptionFor,
             enqTextToHtml: enqTextToHtml,
             checkFreightRepliesForQuote: checkFreightRepliesForQuote,
             fmtTonnes: fmtTonnes,
@@ -1834,6 +1854,7 @@
             // the full re-render (which used to eat the first click after any edit).
             fillBlankWeightsFromSheet: fillBlankWeightsFromSheet,
             _setWeightSource: function (maps, lib) { _weightMaps = maps; _pwOverride = lib; },
+            _setDescriptionFormatter: function (lib) { _descFormatterOverride = lib; },
             syncRowsWithQuote: syncRowsWithQuote,
             quoteRowId: quoteRowId,
             quoteRowKey: quoteRowKey,
