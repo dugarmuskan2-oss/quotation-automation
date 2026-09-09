@@ -1121,7 +1121,27 @@ function tidyLeftover(text) {
     return s.replace(/\s{2,}/g, ' ').replace(/^[\s,/-]+|[\s,/-]+$/g, '').trim();
 }
 
-/** Every person on a card, with the branch lifted out of their job title. */
+/**
+ * The branch named inside a person's own NAME.
+ *
+ * Mailboxes are saved under a label rather than a person — "KRS Chennai - Madhavaram",
+ * "Kerala Roadways (P) Ltd - Chennai Transhipment". The label says which office it is, and
+ * that row obviously belongs to that branch.
+ *
+ * The NAME IS NOT CHANGED. His decision is that a name stays exactly as he typed it; only the
+ * branch is filled in from what it says. As with the job title, only branches the card already
+ * lists are recognised, so nothing is invented.
+ */
+function branchFromName(name, branchNames) {
+    const text = str(name);
+    if (!text) return '';
+    const found = (branchNames || []).map(str).filter(Boolean)
+        .sort((a, b) => b.length - a.length)
+        .find(b => text.toLowerCase().indexOf(b.toLowerCase()) !== -1);
+    return found || '';
+}
+
+/** Every person on a card, with the branch lifted out of their job title or their name. */
 function splitBranchesOut(preview) {
     const names = ((preview || {}).branches || [])
         .map(b => str(b && (b.city || b.address))).filter(Boolean);
@@ -1129,7 +1149,9 @@ function splitBranchesOut(preview) {
     const people = ((preview || {}).people || []).map(p => {
         if (str(p.branch)) return p;
         const cut = branchFromRole(p.role, names);
-        return cut.branch ? Object.assign({}, p, cut) : p;
+        if (cut.branch) return Object.assign({}, p, cut);
+        const fromName = branchFromName(p.name, names);
+        return fromName ? Object.assign({}, p, { branch: fromName }) : p;
     });
     return Object.assign({}, preview, { people });
 }
@@ -2083,6 +2105,7 @@ module.exports = {
     betterCompanyName,
     nameWasGuessed,
     branchFromRole,
+    branchFromName,
     splitBranchesOut,
     looksLikeACustomer,
     firmNameKey,

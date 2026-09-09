@@ -1272,7 +1272,7 @@
             + '<div class="pd-grid2">' + fld(p, 'Company', 'company', p.company, 'e.g. Annai Steel Traders')
             + '<div class="pd-fld"><label>They are a…</label><select data-pd-k="role">' + roles + '</select></div></div>'
             + (p.role === 'other' ? fld(p, 'What are they?', 'roleOther', p.roleOther, 'e.g. galvaniser, testing lab') : '')
-            + peopleBlock(p) + placesBlock(p)
+            + peopleBlock(p)
             + (p.role === 'transporter' ? transporterBlock(p) : supplierBlock(p))
             + notesBlock(p) + autoBlock(p)
             // Only a card that really is IN the directory can be deleted from it. A card
@@ -1309,30 +1309,65 @@
      * go, and quietly re-sorting the list would move that. Headers are drawn between them
      * instead, in the order the branches first appear.
      */
+    /**
+     * ONE section: the branch, its address, and the people who sit at it, together.
+     *
+     * "Where they are" used to be its own block further down, so a branch's town and address
+     * lived at the other end of the card from the people who work there — and the branch name
+     * appeared twice, once as a heading and once as a field, with no sign they were the same
+     * thing. The owner asked for it in one place, and he is right: a branch IS its address
+     * plus its people.
+     */
     function peopleBlock(p) {
         var list = people(p);
         var groups = groupByBranch(list);
+        var known = Object.keys(COORD).sort();
         return '<div class="pd-sec">Contacts<span class="pd-sp"></span><span class="pd-tiny">'
             + list.length + ' ' + (list.length === 1 ? 'person' : 'people')
-            + (groups.length > 1 ? ' · ' + groups.length + ' branches' : '') + '</span></div>'
+            + (groups.length > 1 ? ' · ' + groups.length + ' branches' : '') + '</span>'
+            + '<span class="pd-sp"></span>'
+            + '<button class="pd-addline" data-pd-addbranch="1">+ Add a branch</button></div>'
             + branchDatalist(p)
-            + groups.map(function (g) {
-                return (groups.length > 1
-                    ? '<div class="pd-branch-head">'
-                        // Editable, so a branch typed three different ways can be put right
-                        // once instead of on every person under it. Renaming here renames it
-                        // on all of them, and in "Where they are" if it is listed there.
-                        + (g.branch
-                            ? '<input class="pd-branch-name" data-pd-renamebranch="' + esc(g.branch) + '"'
-                                + ' value="' + esc(g.branch) + '" aria-label="Branch name">'
-                            : '<span>No branch set</span>')
-                        + '<span class="pd-sp"></span>'
-                        + '<span class="pd-tiny">' + g.rows.length + '</span></div>'
-                    : '')
-                    + g.rows.map(function (r) { return personCard(r.c, r.i); }).join('');
-            }).join('')
+            + '<datalist id="pdKnownCities">'
+            + known.map(function (c) { return '<option value="' + esc(c) + '"></option>'; }).join('') + '</datalist>'
+            + '<div class="pd-grid2">' + fld(p, 'City (head office)', 'city', p.city)
+            + fld(p, 'Head office address', 'address', p.address, 'Street, area, pin') + '</div>'
+            // Its own box, not a remark, so it can be searched and copied onto paperwork.
+            + '<div class="pd-grid2">' + fld(p, 'GST number', 'gst', p.gst, '33AAACK1383P1ZE') + '</div>'
+            + groups.map(function (g) { return branchGroup(p, g, groups.length > 1); }).join('')
             + '<button class="pd-addline" data-pd-addperson="1">+ Add another person</button>'
-            + '<p class="pd-tiny" style="margin-top:6px;">The first address on the first person is where enquiries go — but <b>every</b> address is matched against incoming email.</p>';
+            + '<p class="pd-tiny" style="margin-top:6px;">The first address on the first person is where enquiries go — but <b>every</b> address is matched against incoming email. '
+            + 'The nearest branch to a delivery point is what the ranking measures; distance is only worked out for the '
+            + known.length + ' towns the app knows, and a town outside them is not scored.</p>';
+    }
+
+    /** One branch: its name, where it is, and everyone who sits there. */
+    function branchGroup(p, g, showHead) {
+        if (!showHead) return g.rows.map(function (r) { return personCard(r.c, r.i); }).join('');
+        // The branch as recorded in "where they are", if it is recorded at all. A branch can
+        // exist only on the people, having come out of a heading in the notes, and it still
+        // gets a full block — otherwise the address has nowhere to be typed.
+        var at = -1;
+        (p.branches || []).forEach(function (b, i) { if (str(b.city) === g.branch) at = i; });
+        var b = at === -1 ? { city: g.branch, area: '', address: '' } : p.branches[at];
+        return '<div class="pd-branchgrp">'
+            + '<div class="pd-branch-head">'
+            + (g.branch
+                ? '<input class="pd-branch-name" data-pd-renamebranch="' + esc(g.branch) + '"'
+                    + ' value="' + esc(g.branch) + '" aria-label="Branch name">'
+                : '<span>No branch set</span>')
+            + '<span class="pd-sp"></span><span class="pd-tiny">' + g.rows.length + '</span>'
+            + (at !== -1 ? '<button class="pd-del" data-pd-delbranch="' + at + '">✕</button>' : '')
+            + '</div>'
+            + (g.branch
+                ? '<div class="pd-branch-where">'
+                    + '<input data-pd-br="' + at + '" data-pd-k="area" value="' + esc(b.area || '') + '" placeholder="Town or area — e.g. Ambattur"' + (at === -1 ? ' disabled' : '') + '>'
+                    + '<input data-pd-br="' + at + '" data-pd-k="address" value="' + esc(b.address || '') + '" placeholder="Full address (optional)"' + (at === -1 ? ' disabled' : '') + '>'
+                    + (at === -1 ? '<button class="pd-addline" data-pd-listbranch="' + esc(g.branch) + '">Add its address</button>' : '')
+                    + '</div>'
+                : '')
+            + g.rows.map(function (r) { return personCard(r.c, r.i); }).join('')
+            + '</div>';
     }
 
     /** Branches in the order they first appear, with "no branch set" last. */
@@ -1387,30 +1422,6 @@
             + (i === 0 ? '<span class="pd-pill">Main</span>' : '<button class="pd-del" data-pd-delperson="' + i + '">✕</button>') + '</div>'
             + '<div class="pd-person-cols"><div>' + lineRows('ph', PHONE_LABELS, c.phones) + '</div>'
             + '<div>' + lineRows('em', EMAIL_LABELS, c.emails) + '</div></div></div>';
-    }
-
-    function placesBlock(p) {
-        var known = Object.keys(COORD).sort();
-        // Typed OR picked. It used to be a fixed dropdown of 24 towns, so a godown in Erode,
-        // Tirupur or Pondicherry simply could not be recorded.
-        var cityList = '<datalist id="pdKnownCities">'
-            + known.map(function (c) { return '<option value="' + esc(c) + '"></option>'; }).join('') + '</datalist>';
-        return '<div class="pd-sec">Where they are<span class="pd-sp"></span>'
-            + '<button class="pd-addline" data-pd-addbranch="1">+ Add a branch</button></div>'
-            + cityList
-            + '<div class="pd-grid2">' + fld(p, 'City (head office)', 'city', p.city)
-            + fld(p, 'Head office address', 'address', p.address, 'Street, area, pin') + '</div>'
-            // Its own box, not a remark, so it can be searched and copied onto paperwork.
-            + '<div class="pd-grid2">' + fld(p, 'GST number', 'gst', p.gst, '33AAACK1383P1ZE') + '</div>'
-            + (p.branches || []).map(function (b, i) {
-                return '<div class="pd-branch"><div class="pd-branch-top">'
-                    + '<input data-pd-br="' + i + '" data-pd-k="city" list="pdKnownCities" value="' + esc(b.city || '') + '" placeholder="City — pick one or type it">'
-                    + '<input data-pd-br="' + i + '" data-pd-k="area" value="' + esc(b.area || '') + '" placeholder="Town or area — e.g. Ambattur">'
-                    + '<button class="pd-del" data-pd-delbranch="' + i + '">✕</button></div>'
-                    + '<input data-pd-br="' + i + '" data-pd-k="address" value="' + esc(b.address || '') + '" placeholder="Full address (optional)" style="margin-top:6px;"></div>';
-            }).join('')
-            + '<p class="pd-tiny">The nearest branch to a delivery point is what the ranking measures — the town and address are for you and the lorry. '
-            + 'Any town can be typed; distance is only worked out for the ' + known.length + ' the app knows, and a town outside them simply is not scored.</p>';
     }
 
     /**
@@ -2592,6 +2603,18 @@
                     if (!acceptEmail(el, c, Number(el.getAttribute('data-pd-em')), k)) return;
                 } else c[k] = el.value;
                 save(false, ['people']);
+            };
+        });
+        // A branch that came out of a heading in the notes exists on the PEOPLE but is not
+        // in the branch list, so there is nowhere to type its address. This puts it there.
+        each(card, '[data-pd-listbranch]', function (el) {
+            el.onclick = function () {
+                var name = el.getAttribute('data-pd-listbranch');
+                p.branches = p.branches || [];
+                if (!p.branches.some(function (b) { return str(b.city) === name; })) {
+                    p.branches.push({ city: name, area: '', address: '' });
+                }
+                save(true, ['branches']);
             };
         });
         on(card, '[data-pd-addperson]', function () { p.people.push({ name: '', role: '', branch: '', phones: [{ label: 'Mobile', v: '' }], emails: [{ label: 'Work', v: '' }] }); save(true, ['people']); });
