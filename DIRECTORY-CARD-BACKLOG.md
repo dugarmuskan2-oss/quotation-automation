@@ -91,6 +91,23 @@ think longer and add".* Everything below was sitting in the notes when it had a 
 14. **Product specifications as notes** — "PPGL (PREPAINTED GALVALUME)", "AZ 150 MPA 550 (ALSO
     COMES IN AZ 70 & MPA 250)" belong in products.
 
+15. **A FIRM NAME THAT IS NOT IN THE SOURCE.** The card said the two main distributors of JSL
+    colour-coated sheet were BHARAT STEEL CHENNAI PVT LTD and SAROJ STEEL. The page says
+    **CRAYON ROOTING & STRUCTURE** and Saroj Steel. "Bharat Steel" appears nowhere on it.
+    **Every firm name on a card must be findable in the source text.** This is the only
+    invention found so far and it survived a checking pass, so check it deliberately.
+16. **A page can be read and still lose everybody on it.** The same colour-coated page names
+    Gaurabh 9884809549, Yogesh Sharma, C. Hari 9444929292 / 25354333, Taha 9952954110, Satish
+    8056106044, and the Tata PPGL dealers Vijay Kumar 9655928636 and Vasanth 9585527041 —
+    every one of them dropped, while the firm names were kept. **Count the people on the page
+    against the people on the card.**
+17. **SOURCE PAGES WERE CHOSEN TOO NARROWLY.** Pages were gathered by the card's recorded
+    headings plus a title match, which misses any page that names the firm in its BODY. Jindal
+    Saw is named on **eleven** pages; seven were found. The four missed included two of the
+    biggest — P(22) STEEL ITEMS (6,390 chars) and P(8) LARGER DIA (5,314), which is where he
+    records that Jindal Saw has factories at Kosi Kalan and Kutch.
+    **Search every page's TEXT for the firm name, not just its title.**
+
 The general lesson, and the one worth the most: **a card is built from ALL his pages about that
 firm, not one.** Jindal Saw has seven. A detail that looks orphaned on one page is usually
 explained on another.
