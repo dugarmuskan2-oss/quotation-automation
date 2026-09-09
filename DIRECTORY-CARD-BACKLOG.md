@@ -9,6 +9,22 @@ This is the list. Nothing here is a rule — the rules are in `DIRECTORY-DATA-RU
 
 ---
 
+## How this file is kept
+
+**Every correction made to any card gets written here, at the time, with what it means for the
+others.** *His instruction.* Not at the end of the card, not from memory later — as it happens.
+
+Three questions for each fix:
+1. Was it a CODE bug? Then it is fixed everywhere already — put it in the automatic table.
+2. Was it done BY HAND? Then it will recur — put it in the by-hand list with the shape to look
+   for, so the next card is quicker.
+3. How MANY other cards look like this? Count them. A number makes it a job; a hunch does not.
+
+Remember rule §0! in DIRECTORY-DATA-RULES.md: writing it down here is the ONLY thing that
+happens to the other cards. Nothing is applied to them until he asks.
+
+---
+
 ## Already automatic — nothing to repeat
 
 These were bugs, and fixing them fixed every card at once:
@@ -51,6 +67,33 @@ These were bugs, and fixing them fixed every card at once:
 7. **"MR. MUDI" twice, folded.**
 8. **Three exhibition notes moved into his name** as
    `SADEEP P B S (met in chennai exhibition 7.6.2018)`. *Placement is his call each time.*
+
+---
+
+## Found on JINDAL SAW — to transfer
+
+His complaint: *"you need to be smarter about placing things — not just adding to notes —
+think longer and add".* Everything below was sitting in the notes when it had a proper home.
+
+9.  **A bare number left as a note.** "9176660264" alone. It is D. Vijaya's mobile at the
+    Chennai office — and the ONLY way to know that is to read his OTHER pages: one lists her
+    under 🏢CHENNAI OFFICE🏢, one calls her "MADAM VIZI", one is a contact just for her.
+    **A loose number must be chased across every page before it is written off as a note.**
+10. **One person under several names across pages** — "D. VIJAYA", "MADAM VIZI", "VIGI", all
+    on 9176660264. The automatic merge cannot see it: different names, and each row has a
+    number so neither is bare.
+11. **A branch in brackets after a name, and it can be WRONG on the card.** "S Karthick
+    (Nashik)" was filed under CHENNAI OFFICE. Check the bracket against the branch.
+12. **A branch board number as a note** — "NASIK FACTORY (PPC DIVISION) BOARD NO: 02551-227333/
+    32/34" belongs on that branch as a firm line.
+13. **A postal address as a note** — "NO 3G, CENTURY PLAZA, 560 ANNASALAI TEYNAMPET CHENNAI-18"
+    is the Chennai branch's address.
+14. **Product specifications as notes** — "PPGL (PREPAINTED GALVALUME)", "AZ 150 MPA 550 (ALSO
+    COMES IN AZ 70 & MPA 250)" belong in products.
+
+The general lesson, and the one worth the most: **a card is built from ALL his pages about that
+firm, not one.** Jindal Saw has seven. A detail that looks orphaned on one page is usually
+explained on another.
 
 ---
 

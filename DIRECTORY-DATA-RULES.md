@@ -32,6 +32,22 @@ less than that.
 
 ---
 
+## 0!! Write down what transfers, every time
+
+**Every correction made to any card is written into `DIRECTORY-CARD-BACKLOG.md` at the time,
+with what it means for the other cards.** *His instruction.* Not at the end, not from memory
+later — as it happens.
+
+It is the other half of §0!. Only one card may be CHANGED, so the note in the backlog is the
+only thing the rest of them get. Skip it and the work is genuinely lost: the next card starts
+from nothing and the same fault is found twice.
+
+For each fix, answer three things: was it a code bug (fixed everywhere already), was it done by
+hand (it will recur — record the shape to look for), and how many other cards look like this
+(count them; a number makes it a job, a hunch does not).
+
+---
+
 ## 0. Nothing is ever excluded
 
 **Every piece of information that arrives ends up somewhere on a card.** No threshold, no "not
