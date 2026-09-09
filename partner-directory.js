@@ -1713,6 +1713,27 @@
      * "<FIRM> (ALL DETAILS)" gives no category, so its note is the only record of where the
      * card came from and it stays.
      */
+    /**
+     * A note reads as a name with the remark in brackets after it.
+     *
+     * "RAKESH TUBE SYNDICATE — RAJ KUMAR CHANDAK is MANISH GUPTA's classmate (MR:RAJ KUMAR
+     * CHANDAK) — no number given" is one firm and one thing worth knowing about it, joined by
+     * dashes and finished with the app's own footnote. It reads as
+     * "Rakesh Tube Syndicate (Raj Kumar Chandak is Manish Gupta's classmate)".
+     *
+     * Only the wrapper changes — every word he wrote is still there, in the order he wrote it.
+     */
+    function tidyNoteText(text) {
+        var t = str(text).replace(/\s*—\s*no number given\s*$/i, '');
+        var parts = t.split(' — ');
+        if (parts.length !== 2) return t;
+        var who = parts[0].trim(), what = parts[1].trim();
+        if (!who || !what) return t;
+        // Already bracketed, or the remark is the shorter half — leave it alone.
+        if (/\)\s*$/.test(what) && /^\(/.test(what)) return t;
+        return who + ' (' + what + ')';
+    }
+
     function isHeadingNote(n, p) {
         var m = str(n && n.t).match(/^From your phone book, under "(.+)"$/);
         if (!m) return false;
@@ -1727,7 +1748,7 @@
             + ((p.notes || []).length ? p.notes.map(function (n, i) {
                 // Already listed under "Who they work with" — shown there, not twice.
                 if (isRelationNote(n) || isHeadingNote(n, p)) return '';
-                return '<div class="pd-note"><p>' + esc(n.t) + '</p><span class="pd-tiny">' + ago(n.d)
+                return '<div class="pd-note"><p>' + esc(tidyNoteText(n.t)) + '</p><span class="pd-tiny">' + ago(n.d)
                     + (n.src ? ' · ' + esc(n.src) : '') + ' · <span class="pd-x" data-pd-delnote="' + i + '">remove</span></span></div>';
             }).join('') : '<p class="pd-tiny">No notes yet. Every note is dated, so you can see when one has gone old.</p>')
             + ((p.images || []).length ? '<div class="pd-tiny pd-head-line" style="margin-top:10px;">Files read into this card</div>'

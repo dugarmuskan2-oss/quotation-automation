@@ -90,6 +90,23 @@ These need his eye, one card at a time:
 
 ---
 
+## Agreed but NOT YET DONE — he said wait
+
+**Every phone-book page becomes a category, including the 276 headed "(ALL DETAILS)".**
+*His words: "all - dont make changes to them yet".* Currently only pages WITHOUT "ALL DETAILS"
+give a category, which is his earlier answer and is now superseded.
+
+This reverses the rule in CONTACT-EXPORT-RULES.md §5-and-6 and DIRECTORY-DATA-RULES.md §4a. It
+affects 276 pages: 28 that carry a filing code ("SNO 12 APL APOLLO/SG PREMIUM (ALL DETAILS)",
+"PD (2) PIPE DEALER (STOCKIST)- KOLKATTA (ALL DETAILS)") and 248 that are just a firm name.
+
+One of those 28 is a plain bug either way: "PD (2) PIPE DEALER (STOCKIST)- KOLKATTA" is a
+trade page and was excluded only because it also says ALL DETAILS.
+
+**DO NOT APPLY until he says so.**
+
+---
+
 ## Still open from earlier, on Apollo
 
 - **"Tamilnadu & Chennai" and "Chennai" are separate groups**, so Sankara and Trichy AMK appear
