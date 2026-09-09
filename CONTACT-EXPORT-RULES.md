@@ -77,6 +77,29 @@ simply sitting alone on its line.
 
 The bracket goes **next to their name**, never left inside the notes text.
 
+### An address or a number written beside a name belongs to that person
+
+`(C) MADHAVARAM : 9840872540 / priya mam- 044- 25531472 / EMAIL ID: mdsmv@krs.in / ASHOK` —
+`mdsmv@krs.in` is **Ashok's**, not the branch's. *Owner's decision.* Putting it on the firm left
+Ashok as a name with no way to reach him, which reads as data having been skipped.
+
+The test is proximity on the line, not the field label in front of it.
+
+### One firm can be spread across several contacts
+
+Kerala Roadways appears in **three** separate contacts, each holding different pieces — one has
+the branches and people, one has the postal address and the fax, one has a fuller spelling of a
+name. They are one card, and each contact contributes.
+
+This means a firm's detail is never complete from one entry, and a re-read of a single contact
+must **merge** with what the others gave, not replace it.
+
+### What one contact calls a fax, all of them do
+
+`25297907` is listed as an ordinary phone in one contact and as `FAX NO : 25297907` in another.
+*Owner's decision: label it Fax.* One contact saying explicitly what a number is settles it for
+the whole card — the others simply did not say.
+
 ### Numbering means nothing
 
 These lists restart, repeat and skip. Use the numbers only to see where one entry ends and the

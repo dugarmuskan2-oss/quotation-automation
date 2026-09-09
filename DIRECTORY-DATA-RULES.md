@@ -118,9 +118,38 @@ There were two such lists and the short one had no ISPs on it. Two lists drift. 
 
 ## 5. Deletions
 
-**Anything deleted goes to Recent changes and needs approving.** *Owner's rule.* Removals are
-matched by value, never by index — a list that shifted under an index removal would delete the
-wrong thing.
+**Anything deleted from the DIRECTORY goes to Recent changes and needs approving.**
+*Owner's rule.* Removals are matched by value, never by index — a list that shifted under an
+index removal would delete the wrong thing.
+
+**On a card still WAITING for approval, ✕ just deletes.** There is nothing to request: the
+review copy is the only place that row exists, and the card is not in the directory yet. This
+was got wrong — ✕ asked the server to remove from the directory, the server answered "that card
+is no longer in the directory", and the row silently stayed put. Pressing it did nothing at all.
+
+The rule generalises: **a control that means two things on two screens must be told which
+screen it is on.**
+
+---
+
+## 5a. A field the owner cannot see is a field he does not have
+
+The branch name was an editable input the whole time, styled to read as a heading until
+hovered. He reported it as not editable twice, and he was right to: if it does not look like a
+field, it is not one. It now carries a visible border.
+
+**Judge an interface by what it looks like it does, not by what the code allows.**
+
+---
+
+## 5b. Things that belong together go together
+
+A branch's town and address lived in a "Where they are" section at one end of the card while
+the people who work there sat at the other, and the branch name appeared in both with nothing
+to say they were the same thing. *Owner's instruction:* one block per branch — its name, its
+address, its people.
+
+A field that exists in two places on one card is a field the owner has to reconcile by hand.
 
 ---
 
@@ -133,6 +162,30 @@ away.
 
 This applies to the live site too. **Push before using a new field**, or every save silently
 drops it.
+
+---
+
+## 6a. Check the measurement before reporting it
+
+A count is a claim and it can be wrong. Reported "1,108 phone numbers missing" — the matcher
+was reading across newlines and gluing the next list number onto the phone above it, so
+`8446241136)\n6` came out as one eleven-digit number. Reported "64 mangled numbers" — 63 were
+ordinary Chennai landlines with an STD code, and exactly one was mangled. Reported "441
+customers held back" — `gmail.com` had got into the customer list, so every supplier with a
+Gmail address was being excluded.
+
+**Before quoting a number, look at a handful of the rows behind it.** Each of those three would
+have caused real damage if acted on unchecked.
+
+---
+
+## 6b. Fix one card properly before touching fifty
+
+Taking Kerala Roadways end to end found five bugs that affected all forty-seven: the 8-digit
+landline that counted as no match key, people with no number never merging, ✕ doing nothing,
+the branch field that did not look like one, and the address split from its people. None of
+them were visible from a survey of the whole set — they only appeared when one card had to be
+actually correct.
 
 ---
 
