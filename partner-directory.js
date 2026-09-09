@@ -1706,6 +1706,19 @@
     /** A note already shown under "Who they work with" is not repeated below. */
     function isRelationNote(n) { return splitRelationNote(n && n.t) !== null; }
 
+    /**
+     * "From your phone book, under X" is already shown under "Filed under".
+     *
+     * Only hidden when that heading really IS one of the categories. A page headed
+     * "<FIRM> (ALL DETAILS)" gives no category, so its note is the only record of where the
+     * card came from and it stays.
+     */
+    function isHeadingNote(n, p) {
+        var m = str(n && n.t).match(/^From your phone book, under "(.+)"$/);
+        if (!m) return false;
+        return (p.categories || []).some(function (c) { return lower(c) === lower(m[1]); });
+    }
+
     function notesBlock(p) {
         return '<div class="pd-sec">Notes</div>'
             + '<div class="pd-row" style="margin-bottom:9px;">'
@@ -1713,7 +1726,7 @@
             + '<button class="pd-prim" data-pd-addnote="1">Add note</button></div>'
             + ((p.notes || []).length ? p.notes.map(function (n, i) {
                 // Already listed under "Who they work with" — shown there, not twice.
-                if (isRelationNote(n)) return '';
+                if (isRelationNote(n) || isHeadingNote(n, p)) return '';
                 return '<div class="pd-note"><p>' + esc(n.t) + '</p><span class="pd-tiny">' + ago(n.d)
                     + (n.src ? ' · ' + esc(n.src) : '') + ' · <span class="pd-x" data-pd-delnote="' + i + '">remove</span></span></div>';
             }).join('') : '<p class="pd-tiny">No notes yet. Every note is dated, so you can see when one has gone old.</p>')
