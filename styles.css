@@ -1381,6 +1381,16 @@
 .pd-branch-name:focus { border-color: #b48a3c; background: #fff; outline: none; }
 /* A branch is its address AND its people, so they sit in one block. "Where they are" used to
    be a separate section at the other end of the card. */
+/* Who a firm works with, gathered by what the connection is and then by where.
+   APL Apollo carried 63 of these as separate notes, the same fact up to four ways. */
+.pd-rel { margin: 0 0 12px; }
+.pd-rel-how { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+    color: #6b6a63; margin: 0 0 4px; }
+.pd-rel-place { display: grid; grid-template-columns: 190px 1fr; gap: 8px; align-items: baseline;
+    padding: 4px 0; border-top: 1px solid rgba(0,0,0,.06); }
+.pd-rel-city { font-size: 12.5px; font-weight: 600; color: #20201d; }
+.pd-rel-firms { font-size: 13px; line-height: 1.8; }
+@media (max-width: 640px) { .pd-rel-place { grid-template-columns: 1fr; } }
 .pd-branchgrp { border-left: 3px solid rgba(180,138,60,.35); padding-left: 10px; margin: 14px 0 8px; }
 .pd-branch-where { display: grid; grid-template-columns: 1fr 1.6fr auto; gap: 6px; margin: 0 0 8px; }
 @media (max-width: 640px) { .pd-branch-where { grid-template-columns: 1fr; } }

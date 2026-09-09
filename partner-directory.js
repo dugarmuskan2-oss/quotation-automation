@@ -1275,7 +1275,7 @@
             + categoriesBlock(p)
             + peopleBlock(p)
             + (p.role === 'transporter' ? transporterBlock(p) : supplierBlock(p))
-            + notesBlock(p) + autoBlock(p)
+            + relationsBlock(p) + notesBlock(p) + autoBlock(p)
             // Only a card that really is IN the directory can be deleted from it. A card
             // waiting for approval has a 'p_new_…' id the directory has never seen, so the
             // button deleted nothing and threw away the corrections being typed on the way
@@ -1557,12 +1557,156 @@
             + otherRulesBlock(p);
     }
 
+    // ── who this firm is connected to ────────────────────────────────────────
+
+    var NAME_TAIL = /\b(private|pvt|limited|ltd|llp|inc|corporation|corp|company|co|group|india|the)\b/g;
+    function nameKey(s) {
+        return lower(str(s)).replace(/[^a-z0-9 ]/g, ' ').replace(NAME_TAIL, ' ').replace(/\s+/g, '');
+    }
+
+    /** The card for a firm named in a note — in the directory, or still waiting. */
+    function findFirmCard(name) {
+        var k = nameKey(name);
+        if (!k) return null;
+        var hit = D.contacts.find(function (c) { return nameKey(c.company) === k; });
+        if (hit) return { open: hit.id, where: 'directory' };
+        var q = (D.pending || []).find(function (i) { return nameKey((i.preview || {}).company) === k; });
+        return q ? { open: q.id, where: 'waiting', pending: true } : null;
+    }
+
+    /**
+     * A firm named in a note, as a link to its own card when it has one.
+     *
+     * Apollo names twenty-odd dealers. Reading one and then hunting for it in the directory by
+     * hand is the difference between a note and a working index.
+     */
+    function firmLink(name) {
+        var card = findFirmCard(name);
+        if (!card) return '<b>' + esc(name) + '</b>';
+        var attr = card.pending ? 'data-pd-pending' : 'data-pd-open';
+        return '<button class="pd-linkish" ' + attr + '="' + esc(card.open) + '">' + esc(name) + '</button>'
+            + (card.where === 'waiting' ? '<span class="pd-tiny"> (waiting)</span>' : '');
+    }
+
+    /**
+     * A relation note pulled apart into WHO and HOW.
+     *
+     * They were written from both directions over time — "SHANKARA — Dealer for them in
+     * Tamilnadu", "Dealer — Tamilnadu & Chennai — SHANKARA", "CHENNAI DEALER — SANKARA" — so
+     * the firm can be at either end. Whichever end names a firm the app knows is the firm.
+     */
+    var REL_WORD = /\b(dealer|dealers|stockist|distributor|transporter|transport|roadline|carrier|cargo|coater|coating|galvanis|testing|agent|broker|supplier|works with|buy from)\b/i;
+
+    function splitRelationNote(text) {
+        // "— no number given" is this app's own footnote, not part of anybody's name.
+        var t = str(text).replace(/\s*—\s*no number given\s*$/i, '');
+        var parts = t.split(' — ');
+        if (parts.length < 2) return null;
+        var first = parts[0].trim();
+        var last = parts[parts.length - 1].trim();
+        if (!first || !last) return null;
+        // The side that names the RELATIONSHIP is the "how"; the other side is the firm. These
+        // notes were written from both directions over the years — "SHANKARA — Dealer for them
+        // in Tamilnadu" and "CHENNAI DEALER — SANKARA" — and reading them the wrong way round
+        // turned a firm name into a heading and the heading into a firm.
+        var firstIsHow = REL_WORD.test(first), lastIsHow = REL_WORD.test(last);
+        if (firstIsHow && !lastIsHow) return { firm: last, how: parts.slice(0, -1).join(' — ').trim() };
+        if (lastIsHow && !firstIsHow) return { firm: first, how: parts.slice(1).join(' — ').trim() };
+        // Neither says, or both do: a side that already has a card is the firm.
+        if (findFirmCard(last) && !findFirmCard(first)) return { firm: last, how: parts.slice(0, -1).join(' — ').trim() };
+        if (findFirmCard(first) && !findFirmCard(last)) return { firm: first, how: parts.slice(1).join(' — ').trim() };
+        return null;                      // not a relationship — leave it as an ordinary note
+    }
+
+    /** Two ways of writing the same relationship, reduced to the same key. */
+    function howKey(how) {
+        return lower(str(how)).replace(/[^a-z0-9 ]/g, ' ')
+            .replace(/\b(for|them|in|at|the|and|a|of|is|their|from)\b/g, ' ')
+            .split(/\s+/).filter(Boolean).sort().join(' ');
+    }
+
+    /**
+     * Every firm connected to this one, gathered by WHAT the connection is.
+     *
+     * Apollo carried sixty-three of these notes, the same fact written up to four ways because
+     * they were recorded from both ends and from several contacts. One line per kind of
+     * connection, with the firms listed under it, says the same thing in six.
+     *
+     * The notes themselves are NOT deleted — nothing is ever excluded — they are just shown
+     * here instead of one by one below.
+     */
+    /** What KIND of connection this is — the word that heads the group. */
+    var REL_KINDS = [
+        [/dealer|stockist|distribut/i, 'Dealers'],
+        [/transport|lorry|roadline|carrier|cargo|freight/i, 'Transporters'],
+        [/coat|galvanis|galvaniz/i, 'Coating'],
+        [/test|inspect|lab\b/i, 'Testing'],
+        [/agent|broker/i, 'Agents'],
+        [/suppl|buy from|source/i, 'They buy from'],
+    ];
+    function relKind(how) {
+        var hit = REL_KINDS.find(function (k) { return k[0].test(str(how)); });
+        return hit ? hit[1] : cap(str(how));
+    }
+
+    /** WHERE — what is left of the wording once the kind and the filler come off. */
+    function relPlace(how) {
+        var t = str(how)
+            .replace(/\b(dealer|dealers|stockist|distributor|transporter|transport|coater|coating|galvaniser|agent|broker|supplier)\b/ig, ' ')
+            .replace(/\b(for|them|in|at|the|and|is|their|of|a|only|no|number|given)\b/ig, ' ')
+            .replace(/[-—,]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+        return t;
+    }
+
+    function relationsBlock(p) {
+        var kinds = [], byKind = {};
+        (p.notes || []).forEach(function (n) {
+            var rel = splitRelationNote(n.t);
+            if (!rel || !rel.firm || !rel.how) return;
+            var k = relKind(rel.how);
+            if (!byKind[k]) { byKind[k] = { kind: k, places: [], byPlace: {} }; kinds.push(byKind[k]); }
+            var g = byKind[k];
+            var placeName = relPlace(rel.how) || 'Not said where';
+            var pk = lower(placeName).replace(/[^a-z0-9]/g, '');
+            if (!g.byPlace[pk]) { g.byPlace[pk] = { place: placeName, firms: [], keys: {} }; g.places.push(g.byPlace[pk]); }
+            var slot = g.byPlace[pk];
+            var fk = nameKey(rel.firm);
+            if (fk && !slot.keys[fk]) { slot.keys[fk] = 1; slot.firms.push(rel.firm); }
+        });
+        if (!kinds.length) return '';
+        var total = kinds.reduce(function (a, g) {
+            return a + g.places.reduce(function (b, s) { return b + s.firms.length; }, 0);
+        }, 0);
+        kinds.forEach(function (g) { g.places.sort(function (a, b) { return b.firms.length - a.firms.length; }); });
+        kinds.sort(function (a, b) { return b.places.length - a.places.length; });
+        return '<div class="pd-sec">Who they work with<span class="pd-sp"></span>'
+            + '<span class="pd-tiny">' + total + ' firms</span></div>'
+            + kinds.map(function (g) {
+                return '<div class="pd-rel"><p class="pd-rel-how">' + esc(g.kind) + '</p>'
+                    + g.places.map(function (s) {
+                        return '<div class="pd-rel-place"><span class="pd-rel-city">' + esc(s.place) + '</span>'
+                            + '<span class="pd-rel-firms">'
+                            + s.firms.map(firmLink).join('<span class="pd-tiny"> · </span>') + '</span></div>';
+                    }).join('') + '</div>';
+            }).join('')
+            + '<p class="pd-tiny">Taken from your notes. A name in bold has no card of its own yet — click any other to open it.</p>';
+    }
+
+    function cap(s) { var t = str(s); return t ? t.charAt(0).toUpperCase() + t.slice(1) : t; }
+
+    /** A note already shown under "Who they work with" is not repeated below. */
+    function isRelationNote(n) { return splitRelationNote(n && n.t) !== null; }
+
     function notesBlock(p) {
         return '<div class="pd-sec">Notes</div>'
             + '<div class="pd-row" style="margin-bottom:9px;">'
             + '<input id="pdNoteIn" placeholder="What did they tell you? e.g. lead time is 10 days, not 5" style="flex:1;">'
             + '<button class="pd-prim" data-pd-addnote="1">Add note</button></div>'
             + ((p.notes || []).length ? p.notes.map(function (n, i) {
+                // Already listed under "Who they work with" — shown there, not twice.
+                if (isRelationNote(n)) return '';
                 return '<div class="pd-note"><p>' + esc(n.t) + '</p><span class="pd-tiny">' + ago(n.d)
                     + (n.src ? ' · ' + esc(n.src) : '') + ' · <span class="pd-x" data-pd-delnote="' + i + '">remove</span></span></div>';
             }).join('') : '<p class="pd-tiny">No notes yet. Every note is dated, so you can see when one has gone old.</p>')
