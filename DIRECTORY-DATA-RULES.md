@@ -28,6 +28,18 @@ nine digits and stays nine digits. The one exception is unwrapping — `<>`, quo
 Where a correction is genuinely wanted, **the owner says so**. He decided 984093660 was a typo
 of 9840939660 and that it should go; nobody inferred that.
 
+## 0c. A name is left exactly as he typed it
+
+Some rows are named after the mailbox rather than a person — "KRS Chennai - Madhavaram",
+"Kerala Roadways (P) Ltd - Chennai Transhipment". That is how he saved them in Google, and
+*his decision is to leave them exactly as written.* Tidying a name into what the app thinks it
+should be is the same silent editing as fixing a phone number.
+
+The one exception already agreed: a name GUESSED from an email domain gives way to a real name
+found in the notes — because the guess was never his writing in the first place.
+
+---
+
 ## 0b. Where a thing goes is a question, not a judgement call
 
 If it is unclear which field a piece of information belongs in, **ask him at the time** — not

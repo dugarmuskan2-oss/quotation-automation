@@ -2623,7 +2623,20 @@
          * The card is not touched here. What is marked is shown greyed out, read back from
          * the queue, so it survives a reload and shows on his phone too.
          */
+        /**
+         * ✕ means two different things on the two screens, and treating them the same broke it.
+         *
+         * On a card IN THE DIRECTORY it is a request: the owner's rule is that anything deleted
+         * goes to Recent changes and is approved. On a card still WAITING for approval there is
+         * nothing to request — it is not in the directory yet, so the server looked it up, found
+         * nothing, and answered 404 "That card is no longer in the directory". The row stayed
+         * put and the message, if it showed at all, said the opposite of what was wrong.
+         *
+         * On a waiting card, ✕ now just takes the row off the review copy, which is the only
+         * place it exists.
+         */
         function askRemoval(what, value, at) {
+            if (!isInDirectory(p)) { removeFromReview(what, value, at); return; }
             if (S.busy['rm']) return;                 // one press is one request
             S.busy['rm'] = true; render();
             postJson('/contacts/removal/ask',
@@ -2636,6 +2649,16 @@
                 },
                 function () { delete S.busy['rm']; },
                 'Marking that for removal');
+        }
+
+        /** Take a row straight off a card that has not been approved yet. */
+        function removeFromReview(what, value, at) {
+            var who = at && at.person;
+            if (what === 'person') p.people = (p.people || []).filter(function (c) { return c !== value; });
+            else if (what === 'phone' && who) who.phones = (who.phones || []).filter(function (q) { return q !== value; });
+            else if (what === 'email' && who) who.emails = (who.emails || []).filter(function (e) { return e !== value; });
+            else return;
+            save(true, ['people']);
         }
 
         each(card, '[data-pd-delperson]', function (el) {
