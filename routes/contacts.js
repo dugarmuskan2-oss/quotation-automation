@@ -53,7 +53,7 @@ function str(v) { return String(v == null ? '' : v).trim(); }
  * count silently rolled back. `checked` is stamped by mergePartner on every scoped write,
  * which is right: reading a fresh brochure into a card IS checking it.
  */
-const REVIEWED_FIELDS = ['company', 'gst', 'role', 'roleOther', 'city', 'address', 'branches', 'types',
+const REVIEWED_FIELDS = ['company', 'gst', 'categories', 'role', 'roleOther', 'city', 'address', 'branches', 'types',
     'moq', 'products', 'rules', 'routes', 'vehicles', 'partLoad', 'notes', 'people', 'images'];
 
 /**

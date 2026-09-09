@@ -225,6 +225,12 @@ function sanitizePartner(input) {
         // copied onto paperwork. Owner's decision. Stored as written and never validated —
         // a number he has to correct is better than one silently rejected.
         gst: str(src.gst).toUpperCase().slice(0, 20),
+        // Which pages of his phone book this firm is filed under. The heading is the most
+        // useful thing on the page — "P(13) PURCHASE DEP - ERW MFG (SCAFFOLDING TUBE)" says
+        // what the firm does far better than anything in the entry itself — and every firm
+        // under that heading shares it. One firm can be filed under several: APL Apollo is
+        // under ERW MFG and under SQUARE PIPE.
+        categories: sanitizeStrings(src.categories, 12),
         people: sanitizePeople(src.people),
         city: str(src.city),
         address: str(src.address),
@@ -721,6 +727,7 @@ const LIST_KEY = {
     rules: r => lower(str(r)),
     routes: r => lower(str(r && r.from) + '|' + str(r && r.to)),
     types: t => lower(str(t)),
+    categories: c => lower(str(c)).replace(/[^a-z0-9]/g, ''),
     images: i => lower(str(i && i.n)),
 };
 
@@ -1189,6 +1196,78 @@ function betterCompanyName(existing, incoming, preview) {
     if (aGuessed && !bGuessed) return b;
     if (bGuessed && !aGuessed) return a;
     return b.length > a.length ? b : a;
+}
+
+/**
+ * One product range, not three copies of it.
+ *
+ * APL Apollo's range came out as "15X15 TO 400 X 200 /THICKNESS : 1.1 TO 12MM", then
+ * "PRODUCT RANGE : 15X15 TO 400 X 200", then "THICKNESS : 1.1 TO 12MM" — the whole thing and
+ * both of its halves, because the same range is written in four different contacts and each
+ * reading split it a different way.
+ *
+ * The label the owner typed in front of it ("PRODUCT RANGE :") is not part of the product, and
+ * a line that is wholly contained in another line adds nothing. The LONGEST wording wins,
+ * because it is the one holding every part.
+ */
+function tidyProducts(list) {
+    const seen = [];
+    (Array.isArray(list) ? list : []).forEach(p => {
+        const text = str(p && p.p).replace(/^\s*(product\s*range|range|size|sizes)\s*[:\-]\s*/i, '').trim();
+        if (!text) return;
+        seen.push(Object.assign({}, p, { p: text }));
+    });
+    // Longest first, so a shorter line is measured against the fuller one that may contain it.
+    seen.sort((a, b) => b.p.length - a.p.length);
+    const kept = [];
+    seen.forEach(p => {
+        const mine = squash(p.p);
+        const inside = kept.some(k => squash(k.p).indexOf(mine) !== -1
+            && str(k.spec).toLowerCase() === str(p.spec).toLowerCase());
+        if (!inside) kept.push(p);
+    });
+    return kept;
+}
+
+function squash(s) { return str(s).toLowerCase().replace(/[^a-z0-9]/g, ''); }
+
+/**
+ * Is this phone-book heading a TRADE, or just one firm's own page?
+ *
+ * "P(13) PURCHASE DEP - ERW MFG (SCAFFOLDING TUBE)" is a trade, and every firm underneath it
+ * shares it. "APPOLO PIPES (ALL DETAILS)" is a page about one firm and says nothing about what
+ * anybody does. *Owner's decision: no category from those.*
+ */
+function headingIsATrade(title) {
+    const t = str(title);
+    if (!t) return false;
+    return !/ALL\s*DETAIL/i.test(t);
+}
+
+/**
+ * The categories a card earns from the pages it was found on.
+ *
+ * Kept WORD FOR WORD, filing code and city and all — *owner's decision.* "PD (1) PIPE DEALER
+ * (STOCKIST)-BOMBAY (MUMBAI)" stays exactly that, because Bombay stockists and Chennai
+ * stockists are separate pages in his book and he wants them separate here.
+ */
+function categoriesFromHeadings(titles) {
+    const out = [];
+    (titles || []).forEach(t => {
+        const title = str(t);
+        if (!headingIsATrade(title)) return;
+        if (out.some(x => squash(x) === squash(title))) return;
+        out.push(title);
+    });
+    return out;
+}
+
+/** The phone-book headings a card records, read back off its own notes. */
+function headingsOnCard(preview) {
+    return ((preview || {}).notes || []).map(n => {
+        const m = str(n && n.t).match(/^From your phone book, under "(.+)"$/);
+        return m ? m[1] : '';
+    }).filter(Boolean);
 }
 
 /** Is there any way to actually contact this firm — an address or a number? */
@@ -2101,6 +2180,9 @@ module.exports = {
     // Shared with utils/googleContacts.js: one firm is one email domain, everywhere.
     firmKeyOf,
     cleanEmail,
+    categoriesFromHeadings,
+    headingsOnCard,
+    tidyProducts,
     suggestRole,
     betterCompanyName,
     nameWasGuessed,

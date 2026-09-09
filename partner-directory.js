@@ -1272,6 +1272,7 @@
             + '<div class="pd-grid2">' + fld(p, 'Company', 'company', p.company, 'e.g. Annai Steel Traders')
             + '<div class="pd-fld"><label>They are a…</label><select data-pd-k="role">' + roles + '</select></div></div>'
             + (p.role === 'other' ? fld(p, 'What are they?', 'roleOther', p.roleOther, 'e.g. galvaniser, testing lab') : '')
+            + categoriesBlock(p)
             + peopleBlock(p)
             + (p.role === 'transporter' ? transporterBlock(p) : supplierBlock(p))
             + notesBlock(p) + autoBlock(p)
@@ -1318,6 +1319,47 @@
      * thing. The owner asked for it in one place, and he is right: a branch IS its address
      * plus its people.
      */
+    /**
+     * Which pages of the phone book this firm is filed under.
+     *
+     * The heading is the most useful thing on the page — "P(13) PURCHASE DEP - ERW MFG
+     * (SCAFFOLDING TUBE)" says what a firm does better than anything in its own entry — and
+     * every firm underneath it shares it. One firm can be filed under several: APL Apollo is
+     * under ERW MFG and under SQUARE PIPE.
+     *
+     * Kept WORD FOR WORD, filing code and city and all, because that is how he wrote them and
+     * how he will look for them.
+     */
+    function categoriesBlock(p) {
+        var list = p.categories || [];
+        return '<div class="pd-sec">Filed under<span class="pd-sp"></span>'
+            + '<button class="pd-addline" data-pd-addcat="1">+ Add</button></div>'
+            + '<datalist id="pdKnownCats">'
+            + knownCategories().map(function (c) { return '<option value="' + esc(c) + '"></option>'; }).join('')
+            + '</datalist>'
+            + (list.length
+                ? list.map(function (c, i) {
+                    return '<div class="pd-cline"><span class="pd-tiny">' + (i + 1) + '</span>'
+                        + '<input data-pd-cat="' + i + '" list="pdKnownCats" value="' + esc(c) + '" placeholder="e.g. P(13) PURCHASE DEP - ERW MFG (SCAFFOLDING TUBE)">'
+                        + '<button class="pd-del" data-pd-delcat="' + i + '">✕</button></div>';
+                }).join('')
+                : '<p class="pd-muted pd-empty">Not filed under anything yet.</p>')
+            + '<p class="pd-tiny">The heading of the page they came from in your phone book. '
+            + 'Everyone on that page shares it, and a firm can be on several.</p>';
+    }
+
+    /** Every category used on any card, so the same page is not typed two ways. */
+    function knownCategories() {
+        var out = [];
+        D.contacts.concat((D.pending || []).map(function (i) { return i.preview || {}; }))
+            .forEach(function (c) {
+                (c.categories || []).forEach(function (t) {
+                    if (str(t) && !out.some(function (k) { return lower(k) === lower(t); })) out.push(str(t));
+                });
+            });
+        return out.sort();
+    }
+
     function peopleBlock(p) {
         var list = people(p);
         var groups = groupByBranch(list);
@@ -2709,6 +2751,16 @@
     // together meant adding a branch wrote back this tab's hours-old copy of the routes,
     // silently wiping a lorry route a colleague had added on the other machine.
     function bindPlaces(card, p, save) {
+        each(card, '[data-pd-cat]', function (el) {
+            el.onchange = function () { p.categories[Number(el.getAttribute('data-pd-cat'))] = el.value; save(false, ['categories']); };
+        });
+        on(card, '[data-pd-addcat]', function () { (p.categories = p.categories || []).push(''); save(true, ['categories']); });
+        each(card, '[data-pd-delcat]', function (el) {
+            el.onclick = function () {
+                p.categories.splice(Number(el.getAttribute('data-pd-delcat')), 1);
+                save(true, ['categories']);
+            };
+        });
         on(card, '[data-pd-addbranch]', function () { (p.branches = p.branches || []).push({ city: '', area: '', address: '' }); save(true, ['branches']); });
         each(card, '[data-pd-br]', function (el) {
             el.onchange = function () { p.branches[Number(el.getAttribute('data-pd-br'))][el.getAttribute('data-pd-k')] = el.value; save(false, ['branches']); };

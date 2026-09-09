@@ -63,6 +63,7 @@ this file or in `CONTACT-EXPORT-RULES.md` so it is not asked twice.
 | `partLoad` | **Three states.** `true` / `false` / `null`. `null` is "not answered" and must never be shown as "no". |
 | `role` (trade) | Blank means nobody has chosen. `'other'` is a real choice and is not the same thing. |
 | `notes[]` | `{t, d}` — the last resort, and the only place free text lives. |
+| `categories[]` | The phone-book headings the firm is filed under, WORD FOR WORD. |
 
 ---
 
@@ -129,6 +130,29 @@ is no longer in the directory", and the row silently stayed put. Pressing it did
 
 The rule generalises: **a control that means two things on two screens must be told which
 screen it is on.**
+
+---
+
+## 4a. The heading of the page is the best thing on it
+
+His phone book is filed by trade — "P(13) PURCHASE DEP - ERW MFG (SCAFFOLDING TUBE)",
+"P(20) PURCHASE DEP. ( SQUAR PIPE)", "PD (1) PIPE DEALER (STOCKIST)-BOMBAY (MUMBAI)". That
+heading says what a firm does better than anything in its own entry, and **every firm on that
+page shares it**. One firm can be on several: APL Apollo is under ERW MFG and under SQUARE PIPE.
+
+*Owner's decisions:* the category is the heading **word for word** — filing code and city and
+all, because that is how he wrote them and how he will look for them. A page headed
+"<FIRM> (ALL DETAILS)" is about one firm rather than a trade and gives **no** category.
+
+---
+
+## 4b. One product range, not three copies of it
+
+APL Apollo's range came out three times — the whole thing and both of its halves — because
+the same range is written in four different contacts and each reading split it differently.
+The label he typed in front of it ("PRODUCT RANGE :") is not part of the product, and a line
+wholly contained in another adds nothing. The **longest wording wins**, being the one that
+holds every part. A line with a different SPEC is a different product and is kept.
 
 ---
 
