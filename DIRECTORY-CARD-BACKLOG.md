@@ -9,6 +9,44 @@ This is the list. Nothing here is a rule — the rules are in `DIRECTORY-DATA-RU
 
 ---
 
+## How HE checks a card — the method, not the fixes
+
+He works one card at a time and finds mistakes on it. The point is not the mistakes. It is
+that **he knows what the data should say and the app does not**, so each thing he catches is a
+CLASS of fault, not an instance. Run these on every card before showing it to him.
+
+**1. Is this in the right field?**
+A bare "9176660264" sat in notes. It is D. Vijaya's mobile at the Chennai office. Notes are
+where things go when nobody worked out where they belong. Ask of every note: is this a person,
+a number, a place, a product, or a firm? Only what is none of those is a note.
+
+**2. Is this ALL of it?**
+"I also dont see this data." "did you take info from here also." He looks at a card and asks
+what is missing, because he remembers what he wrote. Jindal Saw is on ELEVEN pages; seven were
+found. A colour-coated page was read for firm names and lost all seven of its people.
+
+**3. Is this one thing or two?**
+Three ASHOK rows. Two SANDEEPs spelled differently. D. Vijaya / Madam Vizi / Vigi. Two Jindal
+Saw cards, one with 12 people and one with 53. And the reverse — two men on one number who are
+genuinely two men.
+
+**4. Where did this come from?**
+"colour coating has its own page?" The structure of his phone book IS the structure of the
+data. A page heading is a category. A heading inside a page is a branch. A firm on a trade page
+belongs to that trade. Losing the page loses the meaning.
+
+**5. Who is this?**
+"who are these people" — every name on a card should resolve to a real person at a real firm.
+A name with no number and no home is a question, not a record.
+
+**6. Does it match what he already knows?**
+He caught Bharat Steel standing where his page says Crayon. He caught a branch header that was
+not editable. He caught 25 dealers that were not clickable. **The card is checked against his
+memory, which is the only complete copy of this data that exists.** Anything the app cannot
+show him, he cannot check — so a thing hidden is worse than a thing wrong.
+
+---
+
 ## How this file is kept
 
 **Every correction made to any card gets written here, at the time, with what it means for the
