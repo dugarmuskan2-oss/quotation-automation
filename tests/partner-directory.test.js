@@ -3317,11 +3317,28 @@ describe('source guard — pressing ✕ asks, it does not delete', () => {
         });
     });
 
-    test('the card is not touched — only the queue is written to', () => {
-        const fn = sliceBetween('function askRemoval(what, value, at)', "each(card, '[data-pd-delperson]'");
+    test('a card IN THE DIRECTORY is not touched — only the queue is written to', () => {
+        // The slice must stop at removeFromReview. It used to run to the next handler, which
+        // swallowed that function whole and read its save() as this one's.
+        const fn = sliceBetween('function askRemoval(what, value, at)', 'function removeFromReview');
         expect(fn).toContain("postJson('/contacts/removal/ask'");
         expect(fn).not.toContain('save(true');
         expect(fn).toContain("if (S.busy['rm']) return;");     // one press is one request
+        // ...and the asking path is only taken for a card that IS in the directory.
+        expect(fn).toContain('if (!isInDirectory(p))');
+    });
+
+    /**
+     * ✕ means two different things on the two screens, and treating them the same broke it:
+     * on a card still waiting the server was asked to remove from the DIRECTORY, answered
+     * "that card is no longer in the directory", and the row silently stayed put.
+     */
+    test('a card still WAITING is deleted on the spot — there is nothing to request', () => {
+        const fn = sliceBetween('function removeFromReview(what, value, at)', "each(card, '[data-pd-delperson]'");
+        expect(fn).toContain("save(true, ['people'])");
+        expect(fn).not.toContain('postJson');
+        // every kind of row the ✕ can sit on
+        ['person', 'phone', 'email'].forEach((what) => expect(fn).toContain("'" + what + "'"));
     });
 
     test('the card says what is waiting, so a press never looks like nothing', () => {
