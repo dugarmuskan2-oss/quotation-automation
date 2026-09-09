@@ -87,9 +87,15 @@ app.use(express.json({ limit: '30mb' }));
 // Mounted before the static server and before every route, so anything added later is behind it
 // without anyone having to remember. What stays open is the short list in utils/auth.js — the
 // login page, a customer's quote link, and the Gmail ingest, which carries its own secret.
-const { createAuthRouter, createAuthGate } = require('./routes/auth');
+const { createAuthRouter, createAuthGate, createPeopleRouter } = require('./routes/auth');
 app.use('/api', createAuthRouter({ storage }));
 app.use(createAuthGate({ storage }));
+// Managing who can sign in is mounted AFTER the gate, deliberately — createAuthRouter above runs
+// BEFORE the gate so signing in works before there is a session, but the people list must never
+// run unprotected. This way it inherits ordinary protection: open only in the same "nothing is
+// configured yet" window everything else is, which is what lets the first person add themselves
+// at all, and closed the moment they do.
+app.use('/api', createPeopleRouter({ storage }));
 
 app.use(express.static('public')); // Serve static files if needed
 
@@ -97,8 +103,13 @@ app.use(express.static('public')); // Serve static files if needed
 // the whole project directory: server.js, storage/index.js, CLAUDE.md and SESSION-HANDOFF.md all
 // came back with a 200 to anyone who guessed the name. express.static has no allowlist of its
 // own, so the allowlist is this gate in front of it.
+//
+// people.html sits alongside index.html here rather than in PUBLIC_FILES: PUBLIC_FILES is also
+// what the gate treats as needing no session (isPublicRequest), and this page must have one.
+// Being servable and being public are two different questions — index.html already had to answer
+// them separately (it is gated except for the one "?view=pdf" case), so people.html follows it.
 const { PUBLIC_FILES } = require('./utils/auth');
-const SERVABLE_ROOT_FILES = new Set([...PUBLIC_FILES, '/index.html']);
+const SERVABLE_ROOT_FILES = new Set([...PUBLIC_FILES, '/index.html', '/people.html']);
 const serveRootFile = express.static(__dirname, { dotfiles: 'deny', index: false });
 app.use((req, res, next) => {
     // The file server only ever RUNS for a name on the list. Anything else carries on to the

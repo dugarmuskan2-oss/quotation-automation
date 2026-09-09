@@ -190,12 +190,15 @@ function authenticate(name, password, users) {
         // same time and cannot be told apart from outside.
         const stored = (person && person.hash) || hashPassword('not-a-real-password');
         if (person && verifyPassword(password, stored)) {
-            return { who: person.name || person.email, kind: 'person' };
+            return { who: person.name || person.email, kind: 'person', email: person.email };
         }
         if (person) return null;      // named someone real and got it wrong: do not fall through
     }
     const shared = sharedPassword();
-    if (shared && timingSafeEqualStr(password, shared)) return { who: 'shared', kind: 'shared' };
+    // No email on a shared-password session — it identifies no one in particular, which is the
+    // whole difference between this and a named login. Callers that need to tell "me" from
+    // "someone else" (removing a person from the list) must treat a null email as "not them".
+    if (shared && timingSafeEqualStr(password, shared)) return { who: 'shared', kind: 'shared', email: null };
     return null;
 }
 

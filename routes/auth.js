@@ -150,7 +150,7 @@ function createAuthGate({ storage }) {
             const secret = sessionSecret(users);
             const session = secret && auth.verifySession(auth.readCookie(req, auth.SESSION_COOKIE), secret);
             if (session) {
-                req.user = { who: session.who, kind: session.kind };
+                req.user = { who: session.who, kind: session.kind, email: session.email || null };
                 return next();
             }
             return refuse(req, res);
@@ -186,7 +186,7 @@ function createAuthRouter({ storage }) {
         const secret = sessionSecret(users);
         if (!secret) return res.status(500).json({ error: 'Sessions are not configured.' });
         auth.clearAttempts(key);
-        setSessionCookie(req, res, auth.signSession({ who: who.who, kind: who.kind }, secret));
+        setSessionCookie(req, res, auth.signSession({ who: who.who, kind: who.kind, email: who.email }, secret));
         res.json({ ok: true, who: who.who });
     });
 
@@ -252,6 +252,7 @@ function createAuthRouter({ storage }) {
             configured: auth.authIsConfigured(users) || !ok,
             signedIn: !!session,
             who: session ? session.who : null,
+            email: session ? (session.email || null) : null,
             people: Array.isArray(users) ? users.length : 0,
             google: googleAuth.isConfigured(),      // whether to offer the Google button
         });
@@ -260,4 +261,122 @@ function createAuthRouter({ storage }) {
     return router;
 }
 
-module.exports = { createAuthRouter, createAuthGate, _test: { sessionSecret, forgetUsers, loadUsers, hasIngestSecret } };
+/**
+ * The people-management routes: list, add, remove. Deliberately a SEPARATE router from
+ * createAuthRouter, and mounted AFTER the gate in server.js rather than before it.
+ *
+ * createAuthRouter is mounted before the gate on purpose — signing in has to work before there
+ * is a session to check. Managing the list of who can sign in is the opposite: it must never run
+ * before the gate, or it would manage itself unprotected regardless of configuration. Mounting it
+ * after the gate means req.user is already set, and the normal "not configured yet" bootstrap
+ * (the site is open until the first person is added) is what makes the very first person addable
+ * at all — closing over itself the moment they are.
+ */
+function createPeopleRouter({ storage }) {
+    const router = express.Router();
+    const EMAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    // A GET while the site is unconfigured is a fair question (has the login already been set
+    // up?), and returning it plainly here is what lets the login page and this page agree.
+    router.get('/people', async (req, res) => {
+        const { users, ok } = await loadUsers(storage);
+        if (!ok) return res.status(503).json({ error: 'Cannot read the people list right now. Try again shortly.' });
+        res.json({
+            you: (req.user && req.user.email) || null,
+            people: users.map((u) => ({
+                name: u.name || u.email,
+                email: u.email,
+                // Computed from what is stored, not stored itself: a person added with --google
+                // (or through this page's Google option) has no hash at all, which is the only
+                // signal there is — and the only one that needs to be, since nothing else reads it.
+                kind: u.hash ? 'password' : 'google',
+            })),
+        });
+    });
+
+    router.post('/people', express.json(), async (req, res) => {
+        const { users, ok } = await loadUsers(storage);
+        if (!ok) return res.status(503).json({ error: 'Cannot read the people list right now. Try again shortly.' });
+
+        const name = String((req.body && req.body.name) || '').trim();
+        const email = String((req.body && req.body.email) || '').trim().toLowerCase();
+        const method = (req.body && req.body.method) === 'password' ? 'password' : 'google';
+        if (!name) return res.status(400).json({ error: 'Enter a name.' });
+        if (!EMAIL_RX.test(email)) return res.status(400).json({ error: 'Enter a valid email address.' });
+
+        let record;
+        if (method === 'password') {
+            const password = String((req.body && req.body.password) || '');
+            const confirm = String((req.body && req.body.confirmPassword) || '');
+            if (password.length < 8) return res.status(400).json({ error: 'Use a password of at least 8 characters.' });
+            if (password !== confirm) return res.status(400).json({ error: 'Those passwords did not match.' });
+            record = { name, email, hash: auth.hashPassword(password) };
+        } else {
+            // No hash at all — matches tools/manage-users.js --google. authenticate() still runs
+            // a throwaway hash for anyone without one, so trying a password against this person
+            // takes the same time as any other attempt and fails; "has no password" cannot be
+            // discovered by timing it.
+            record = { name, email };
+        }
+
+        const next = users.filter((u) => String(u.email || '').toLowerCase() !== email);
+        next.push(record);
+        try { await storage.saveText(CONFIG_KEY_USERS, JSON.stringify(next, null, 2)); }
+        catch (e) { return res.status(503).json({ error: 'Could not save. Try again shortly.' }); }
+        forgetUsers();
+
+        // Adding a password-based person changes every hash mixed into the signing key, which
+        // would otherwise sign the person doing the adding straight out mid-task. Reissuing under
+        // the new key, for the same identity, keeps them signed in through their own change.
+        reissueIfPossible(req, res, next);
+        res.json({ ok: true });
+    });
+
+    router.post('/people/remove', express.json(), async (req, res) => {
+        const email = String((req.body && req.body.email) || '').trim().toLowerCase();
+        if (!email) return res.status(400).json({ error: 'No email given.' });
+
+        // NEVER LOCK THE OWNER OUT applies here too. This is the one rule the UI cannot be
+        // trusted to enforce on its own — a stale page, a replayed request, a second tab — so it
+        // is checked again on the server, against who the session actually says you are.
+        const you = (req.user && req.user.email) || null;
+        if (you && you.toLowerCase() === email) {
+            return res.status(400).json({ error: 'You cannot remove yourself. Ask someone else to.' });
+        }
+
+        const { users, ok } = await loadUsers(storage);
+        if (!ok) return res.status(503).json({ error: 'Cannot read the people list right now. Try again shortly.' });
+        const next = users.filter((u) => String(u.email || '').toLowerCase() !== email);
+        if (next.length === users.length) return res.status(404).json({ error: 'No one there with that email.' });
+
+        try { await storage.saveText(CONFIG_KEY_USERS, JSON.stringify(next, null, 2)); }
+        catch (e) { return res.status(503).json({ error: 'Could not save. Try again shortly.' }); }
+        forgetUsers();
+
+        reissueIfPossible(req, res, next);
+        res.json({ ok: true });
+    });
+
+    // Re-signs the acting person's own cookie under the secret the NEW list produces, so changing
+    // the people list does not also sign out whoever just changed it. Silently does nothing for a
+    // shared-password session (no identity to reissue) or if signing somehow fails — worst case
+    // that visitor is asked to sign in again, which is safe, never a way through.
+    function reissueIfPossible(req, res, newUsers) {
+        if (!req.user || !req.user.kind) return;
+        try {
+            const secret = sessionSecret(newUsers);
+            if (!secret) return;
+            setSessionCookie(req, res, auth.signSession(
+                { who: req.user.who, kind: req.user.kind, email: req.user.email }, secret));
+        } catch (e) { /* they will simply be asked to sign in again — never a way through */ }
+    }
+
+    return router;
+}
+
+module.exports = {
+    createAuthRouter,
+    createAuthGate,
+    createPeopleRouter,
+    _test: { sessionSecret, forgetUsers, loadUsers, hasIngestSecret },
+};
