@@ -1318,7 +1318,15 @@
             + branchDatalist(p)
             + groups.map(function (g) {
                 return (groups.length > 1
-                    ? '<div class="pd-branch-head">' + esc(g.branch || 'No branch set') + '<span class="pd-sp"></span>'
+                    ? '<div class="pd-branch-head">'
+                        // Editable, so a branch typed three different ways can be put right
+                        // once instead of on every person under it. Renaming here renames it
+                        // on all of them, and in "Where they are" if it is listed there.
+                        + (g.branch
+                            ? '<input class="pd-branch-name" data-pd-renamebranch="' + esc(g.branch) + '"'
+                                + ' value="' + esc(g.branch) + '" aria-label="Branch name">'
+                            : '<span>No branch set</span>')
+                        + '<span class="pd-sp"></span>'
                         + '<span class="pd-tiny">' + g.rows.length + '</span></div>'
                     : '')
                     + g.rows.map(function (r) { return personCard(r.c, r.i); }).join('');
@@ -1392,6 +1400,8 @@
             + cityList
             + '<div class="pd-grid2">' + fld(p, 'City (head office)', 'city', p.city)
             + fld(p, 'Head office address', 'address', p.address, 'Street, area, pin') + '</div>'
+            // Its own box, not a remark, so it can be searched and copied onto paperwork.
+            + '<div class="pd-grid2">' + fld(p, 'GST number', 'gst', p.gst, '33AAACK1383P1ZE') + '</div>'
             + (p.branches || []).map(function (b, i) {
                 return '<div class="pd-branch"><div class="pd-branch-top">'
                     + '<input data-pd-br="' + i + '" data-pd-k="city" list="pdKnownCities" value="' + esc(b.city || '') + '" placeholder="City — pick one or type it">'
@@ -2585,6 +2595,24 @@
             };
         });
         on(card, '[data-pd-addperson]', function () { p.people.push({ name: '', role: '', branch: '', phones: [{ label: 'Mobile', v: '' }], emails: [{ label: 'Work', v: '' }] }); save(true, ['people']); });
+        /**
+         * Renaming a branch header renames it everywhere on the card.
+         *
+         * The same place is written three ways across twenty years — "NASIK FACTORY",
+         * "Nashik", "nasik plant" — and fixing that person by person is thirteen edits for
+         * one correction. Both lists are updated: the people who sit there, and "Where they
+         * are" if it is listed there too, or the header would rename itself back on reload.
+         */
+        each(card, '[data-pd-renamebranch]', function (el) {
+            el.onchange = function () {
+                var was = el.getAttribute('data-pd-renamebranch');
+                var now = str(el.value);
+                if (now === was) return;
+                (p.people || []).forEach(function (c) { if (str(c.branch) === was) c.branch = now; });
+                (p.branches || []).forEach(function (b) { if (str(b.city) === was) b.city = now; });
+                save(true, ['people', 'branches']);
+            };
+        });
         /**
          * Pressing ✕ asks; it does not delete.
          *

@@ -1372,6 +1372,13 @@
     letter-spacing: .04em; text-transform: uppercase; color: #6b6a63;
     margin: 12px 0 6px; padding-bottom: 4px; border-bottom: 1px solid rgba(0,0,0,.1); }
 .pd-branch-head:first-child { margin-top: 2px; }
+/* The header is an input so a branch written three ways over twenty years can be put right
+   once, not on every person under it. It should still READ as a heading, not a form field. */
+.pd-branch-name { border: 1px solid transparent; background: transparent; padding: 1px 4px;
+    margin: -1px -4px; font: inherit; color: inherit; letter-spacing: inherit;
+    text-transform: inherit; border-radius: 4px; min-width: 12ch; max-width: 34ch; }
+.pd-branch-name:hover { border-color: rgba(0,0,0,.16); background: #fff; }
+.pd-branch-name:focus { border-color: #b48a3c; background: #fff; outline: none; }
 .pd-person-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 6px; }
 .pd-cline { display: grid; grid-template-columns: 90px 1fr 26px; gap: 5px; align-items: center; margin-bottom: 4px; }
 .pd-branch-top { display: grid; grid-template-columns: 1fr 1.3fr 26px; gap: 6px; align-items: center; }

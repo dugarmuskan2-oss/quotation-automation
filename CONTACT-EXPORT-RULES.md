@@ -4,8 +4,31 @@ Everything learned about reading DSC's Google Contacts into the Partner Director
 down because these rules were paid for — most of them came from something going wrong on real
 data, and the cost of relearning them is another wrong card in front of the owner.
 
-**The owner's standing instruction: DO NOT SKIP ANY DATA. If there is any doubt about where a
-piece of information goes, ASK — do not choose quietly.**
+## RULE ZERO — nothing is excluded. This is strict.
+
+**Every single thing in a notes box ends up somewhere on a card.** Stated by the owner three
+times, the last time as "I SAID Dont exclude any data — this is strict".
+
+There is no threshold, no "not worth keeping", no tidying away. A number, a name, a spelling
+that looks wrong, a remark that seems trivial, a firm with nothing but a name — all of it is
+carried across. When something genuinely fits nowhere, it goes in `notes` **word for word**;
+it does not get dropped.
+
+Three specific things this forbids, each of which has already happened:
+
+- **Do not drop what cannot be validated.** A malformed address, a nine-digit mobile, a number
+  with letters in it — keep it, marked as needing his eye. Silently discarding it destroys the
+  only record of what he wrote.
+- **Do not drop what has no home yet.** If a field for it does not exist, the answer is a note,
+  or a new field — never a discard.
+- **Do not drop a duplicate that might not be one.** Two people against one number are two
+  people until he says otherwise.
+
+**If there is any doubt about WHERE a piece of information goes, ASK — do not choose quietly.**
+Placement is the thing to ask about; exclusion is never on the table.
+
+Ask as the work happens, not in one batch at the end — the owner's instruction is "ask
+questions whenever, as and when you are working and have doubts about something".
 
 ---
 

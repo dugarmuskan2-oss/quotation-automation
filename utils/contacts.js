@@ -221,6 +221,10 @@ function sanitizePartner(input) {
         role: normalizeRole(src.role),
         roleOther: str(src.roleOther),
         company: str(src.company),
+        // The firm's GST number, its own box rather than a remark, so it can be searched and
+        // copied onto paperwork. Owner's decision. Stored as written and never validated —
+        // a number he has to correct is better than one silently rejected.
+        gst: str(src.gst).toUpperCase().slice(0, 20),
         people: sanitizePeople(src.people),
         city: str(src.city),
         address: str(src.address),
@@ -969,14 +973,35 @@ function canBeSamePerson(a, b) {
     return !(ab && bb && ab !== bb);
 }
 
+/** Is there anything on this person you could ring or write to? */
+function personIsBare(p) {
+    return !((p.phones || []).length || (p.emails || []).length);
+}
+
 /** One person, however many times they appear — matched on any shared number or address. */
 function foldPeople(people) {
     const kept = [];
     (people || []).forEach(p => {
         const keys = new Set();
         (p.emails || []).forEach(e => { const v = cleanEmail(e.v); if (v) keys.add('e:' + v); });
-        (p.phones || []).forEach(q => { const d = dialKey(q && q.v); if (d.length >= 10) keys.add('p:' + d); });
-        const match = kept.find(k => [...keys].some(x => k.keys.has(x)) && canBeSamePerson(k.p, p));
+        // SIX digits is enough here, where ten is the rule for telling firms apart. Two rows
+        // on the SAME card sharing a landline are the same desk; two firms sharing one are a
+        // coincidence worth being careful about. Kerala Roadways' office line, 25291620, is
+        // eight digits — under the ten-digit rule it counted as no key at all, so the nameless
+        // office row never matched itself and every re-run added another copy of it.
+        (p.phones || []).forEach(q => { const d = dialKey(q && q.v); if (d.length >= 6) keys.add('p:' + d); });
+        // ASHOK appeared three times on one card, every row empty, because a person with no
+        // number and no address has nothing to match on. The NAME matches them — but only
+        // when one side is bare. Two men called Kumar who each have their own number are two
+        // men, and merging them on the name alone would delete one.
+        const nameKey = 'n:' + lower(str(p.name)).replace(/[^a-z0-9]/g, '');
+        const match = kept.find(k => {
+            const shared = [...keys].some(x => k.keys.has(x));
+            const byName = nameKey !== 'n:' && k.keys.has(nameKey)
+                && (personIsBare(k.p) || personIsBare(p));
+            return (shared || byName) && canBeSamePerson(k.p, p);
+        });
+        if (nameKey !== 'n:') keys.add(nameKey);
         if (!match) {
             kept.push({ p: Object.assign({}, p), keys });
             return;
