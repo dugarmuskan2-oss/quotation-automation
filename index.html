@@ -86,7 +86,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quotation Generator</title>
     
-    <link rel="stylesheet" href="styles.css?v=20260909-2">
+    <link rel="stylesheet" href="styles.css?v=20260909-3">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
@@ -3439,12 +3439,26 @@
         }
 
         // NB (nominal bore, mm) → inch string, per IS/ASME standard pipe sizing.
-        // Used to convert rate-file size codes like "25XHY" → "1" NB X Heavy -- GI".
-        // Fraction values use the dashed form (1-1/4, 2-1/2) to match the
-        // output of normalizeFractionText, so a size renders identically
-        // whether the input arrived as an mm NB code or an inch-fraction code.
+        // Used to convert a genuine mm-NB code — customers often write "125 NB", "65 NB" — into
+        // inches, e.g. "25XHY" → "1" NB X Heavy -- GI". Fraction values use the dashed form
+        // (1-1/4, 2-1/2) to match the output of normalizeFractionText, so a size renders
+        // identically whether the input arrived as an mm NB code or an inch-fraction code.
+        //
+        // 6, 8 and 10 are deliberately NOT in this table. Those numbers are ALSO completely
+        // ordinary bare-inch sizes — this business quotes 6", 8" and 10" pipe constantly, and
+        // this table used to convert them down to 1/8", 1/4" and 3/8" on every quote, unnoticed,
+        // because nobody reviewing a quote would think to check a pipe's size against a table
+        // this deep in the code. Real quote data confirms which reading is right: 6XH/6XM appear
+        // across the quote history with their stored kg/m always matching the 6" weight, never
+        // 1/8"'s (DSC-1789's 6XH carries kgPerMeter 21.30, the known 6" ERW Heavy weight used as
+        // a control value elsewhere in this repo's own pipe-weight tests) — and
+        // utils/pipeWeights.js, the size matcher already proven against the real price lists,
+        // treats these numbers as inches too, with no mm conversion for any of them. The larger
+        // entries (25 and up) stay: nobody writes "25XH" meaning a 25-inch Light/Medium/Heavy
+        // pipe — that size does not exist in this system — so there is no such ambiguity there.
+        // See tests/description-format.test.js, "REGRESSION: 6/8/10 must read as inches".
         const NB_MM_TO_INCH = {
-            '6':'1/8','8':'1/4','10':'3/8','15':'1/2','20':'3/4',
+            '15':'1/2','20':'3/4',
             '25':'1','32':'1-1/4','40':'1-1/2','50':'2','65':'2-1/2',
             '80':'3','90':'3-1/2','100':'4','125':'5','150':'6',
             '200':'8','250':'10','300':'12','350':'14','400':'16',
@@ -12041,10 +12055,14 @@
     <!-- The same kg/m lookup the server uses, so the Freight panel can fill blanks on quotes
          generated before the backfill existed. One copy of the matching rules, not two. -->
     <script src="utils/pipeWeights.js?v=20260902-1"></script>
+    <!-- The same description formatter Gmail-ingested quotes use server-side, so the Freight
+         tab's own enquiry table can show a transporter "8" NB X 6.35mm thk -- ERW" instead of
+         the AI's raw code "8X6.35". One copy of the formatting rules, not a third one. -->
+    <script src="gmail-ingest/descriptionFormatter.js?v=20260909-1"></script>
     <script src="freight-tab-weight-editor.js?v=20260903-1"></script>
     <script src="quote-enquiry-tab.js?v=20260903-1"></script>
     <script src="register.js?v=20260722-5"></script>
-    <script src="partner-directory.js?v=20260909-2"></script>
+    <script src="partner-directory.js?v=20260909-3"></script>
 </body>
 </html>
 

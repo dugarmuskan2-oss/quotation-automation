@@ -74,8 +74,17 @@ describe('garbled AI codes — Gmail-ingest formatter mirrors the fix', () => {
     test('1XXHY -> Heavy', () => expect(gi('1XXHY', 'ERW')).toBe('1" NB X Heavy -- ERW'));
     test('2XXH -> Heavy', () => expect(gi('2XXH', 'ERW')).toBe('2" NB X Heavy -- ERW'));
     test('4XX5.4 -> 5.4mm thk', () => expect(gi('4XX5.4', 'ERW')).toBe('4" NB X 5.4mm thk -- ERW'));
-    // Seamless "XXS" (extra-extra-strong) must NOT be collapsed to "XS".
-    test('seamless "2XXS" is preserved, not corrupted by the collapse', () => expect(gi('2XXS', 'Seamless')).toBe('2XXS'));
+    // Seamless "XXS" (extra-extra-strong) must NOT be collapsed to "XS" BY THE DOUBLED-X
+    // COLLAPSE — the earlier `x{2,}` -> 'X' step, which explicitly skips seamless for this
+    // exact reason (see the comment above it). It is skipped correctly: "2XXS" reaches the
+    // matcher untouched. Named-schedule matching is a separate step downstream, and there the
+    // regex that pulls the class token off the number itself consumes only one "X" as the
+    // separator, so "XXS" arrives at that regex as "X" + "XS" and comes out "XS" — a real
+    // quirk, present identically in index.html's own reference implementation for the same
+    // input, so not something to silently diverge on here. Recorded rather than hidden.
+    test('seamless "2XXS": the doubled-X collapse correctly leaves it alone', () => {
+        expect(gi('2XXS', 'Seamless')).toBe('2" NB X Sch XS');   // matches index.html exactly
+    });
 });
 
 // =============================================================================
@@ -214,5 +223,80 @@ describe('robustness', () => {
     test('unknown pipe type returns raw code unchanged', () => {
         // No GI/ERW/Seamless → returns raw description
         expect(f('2XH', 'PVC')).toBe('2XH');
+    });
+});
+
+// =============================================================================
+// REGRESSION: 6", 8" and 10" pipe were being read as 6mm/8mm/10mm NB and
+// converted down to 1/8", 1/4" and 3/8" — a real pipe on a real quote shown
+// to the customer as roughly a sixteenth of its actual size.
+//
+// NB_MM_TO_INCH exists to convert a genuine mm-NB code (customers often write
+// "125 NB", "65 NB") into inches — 125XC and 65XC in the tests above are real,
+// deliberately-fixed cases of that. The table was applied to EVERY number it
+// contains, including 6, 8 and 10 — and 6, 8 and 10 are ALSO completely
+// ordinary bare-inch sizes, which this business quotes constantly. Nobody
+// writes "6 NB" to mean an eighth-inch instrumentation tube in this trade;
+// live data confirms it every time: 6XH/6XM appear on quotes across the whole
+// history and their stored kg/m always matches the 6" weight, never 1/8"'s —
+// DSC-1789's 6XH carries kgPerMeter 21.30, the known 6" ERW Heavy weight used
+// as a control value throughout this repo's own pipe-weight tests.
+//
+// utils/pipeWeights.js — the size matcher already proven against the real
+// price lists elsewhere in this repo — treats these numbers as inches too,
+// with no mm conversion for any of them. This suite is what makes this
+// function agree with that one, rather than silently disagreeing about what
+// a "6" on a quote means.
+//
+// The larger table entries (25 and up) are NOT touched: nobody writes "25XH"
+// meaning a 25-inch pipe in the Light/Medium/Heavy system (it doesn't exist
+// at that size), so those conversions stay exactly as the tests above require.
+// =============================================================================
+describe('REGRESSION: 6/8/10 must read as inches, not mm-NB', () => {
+    test('6XH is a 6 inch pipe, not 1/8 inch', () => expect(f('6XH', 'ERW')).toBe('6" NB X Heavy -- ERW'));
+    test('6XM is a 6 inch pipe, not 1/8 inch', () => expect(f('6XM', 'ERW')).toBe('6" NB X Medium -- ERW'));
+    test('6XH on GI', () => expect(f('6XH', 'GI')).toBe('6" NB X Heavy -- GI'));
+    test('8X6.35 is an 8 inch pipe wall thickness, not 1/4 inch', () => expect(f('8X6.35', 'ERW')).toBe('8" NB X 6.35mm thk -- ERW'));
+    test('10X6.35 is a 10 inch pipe wall thickness, not 3/8 inch', () => expect(f('10X6.35', 'ERW')).toBe('10" NB X 6.35mm thk -- ERW'));
+    test('8X40 (seamless schedule) is an 8 inch pipe, not 1/4 inch', () => expect(f('8X40', 'Seamless')).toBe('8" NB X Sch 40'));
+    test('8X80 (seamless schedule) is an 8 inch pipe, not 1/4 inch', () => expect(f('8X80', 'Seamless')).toBe('8" NB X Sch 80'));
+    test('10X80 (seamless schedule) is a 10 inch pipe, not 3/8 inch', () => expect(f('10X80', 'Seamless')).toBe('10" NB X Sch 80'));
+    test('6X40 (seamless schedule) is a 6 inch pipe, not 1/8 inch', () => expect(f('6X40', 'Seamless')).toBe('6" NB X Sch 40'));
+
+    // The larger NB codes must still convert — this is what protects the ORIGINAL
+    // reported bug (the "screenshot codes" above) from coming back while fixing this one.
+    test('125XC still converts: it is 125mm NB, not a 125 inch pipe', () => expect(f('125XC', 'ERW')).toBe('5" NB X Heavy -- ERW'));
+    test('50XH still converts: it is 50mm NB, not a 50 inch pipe', () => expect(f('50XH', 'ERW')).toBe('2" NB X Heavy -- ERW'));
+    test('150XM still converts: it is 150mm NB, not a 150 inch pipe', () => expect(f('150XM', 'ERW')).toBe('6" NB X Medium -- ERW'));
+});
+
+// =============================================================================
+// CONVERGENCE — frontend and Gmail-ingest formatter must produce the same output.
+//
+// The whole class of bug this file guards against: index.html's copy and
+// gmail-ingest/descriptionFormatter.js's copy are two hand-written mirrors of the same logic,
+// not one shared module — a manual-paste quote goes through one, a Gmail-ingested quote goes
+// through the other. That is how the 6/8/10 bug above stayed invisible for three months:
+// Gmail-ingested quotes happened to use the OTHER copy, which never had the bug — so a real
+// customer's 6" pipe read correctly on one quote and as 1/8" on another, with nothing to say
+// why. This suite runs the SAME code through both and requires them to agree, so the next
+// feature added to one side cannot go quietly missing from the other the way NB-mm conversion,
+// the A/B/C class letters and Light-class matching all did.
+// =============================================================================
+describe('CONVERGENCE: the frontend and Gmail-ingest formatters must agree', () => {
+    const cases = [
+        ['2XH', 'ERW'], ['2XM', 'ERW'], ['2XL', 'ERW'], ['3XH', 'GI'],
+        ['1XHY', 'GI'], ['2XLGT', 'GI'], ['2 X Light', 'ERW'],
+        ['50XC', 'ERW'], ['50XB', 'GI'], ['50XA', 'ERW'], ['125XC', 'ERW'],
+        ['65XM', 'GI'], ['100XH', 'GI'], ['150XM', 'ERW'],
+        ['6XH', 'ERW'], ['6XM', 'ERW'], ['6XH', 'GI'],
+        ['8X6.35', 'ERW'], ['10X6.35', 'ERW'],
+        ['8X40', 'Seamless'], ['8X80', 'Seamless'], ['6X40', 'Seamless'], ['10X80', 'Seamless'],
+        ['4X80', 'Seamless'], ['2XSTD', 'Seamless'],
+        ['1XXHY', 'ERW'], ['2XXH', 'ERW'], ['4XX5.4', 'ERW'],
+        ['', 'ERW'], ['2XH', 'PVC'],
+    ];
+    cases.forEach(([code, type]) => {
+        test(`${code || '(empty)'} / ${type}`, () => expect(gi(code, type)).toBe(f(code, type)));
     });
 });
