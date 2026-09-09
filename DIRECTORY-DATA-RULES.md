@@ -9,6 +9,29 @@ Every rule here exists because it was broken on real data and cost something.
 
 ---
 
+## 0! ONE CARD AT A TIME. NEVER TOUCH ANOTHER CARD.
+
+**Only the card being worked on may be changed.** His words, in capitals:
+"DONT CHANGE ANY OTHER CARD OTHER THAN THE CARD WE ARE WORKING ON!"
+
+This is absolute and it overrides convenience. It forbids, unless he asks for it by name:
+
+- **Backfills across the queue.** Filing 31 cards under a category, giving 13 cards branches,
+  suggesting a trade on 11, re-folding people on all 46 — every one of those was run without
+  being asked for. Each was defensible on its own and together they changed forty-five cards
+  he had not looked at.
+- **Re-running an import tool** over the whole waiting list to pick up a fix.
+- **"While I am here" tidying** of a card that merely resembles the one in hand.
+
+A CODE fix is different and is expected to help every card — that is what fixing a bug means.
+What must not happen is code reaching in and REWRITING STORED CARDS he has not reviewed.
+
+**Why it matters:** he is approving these one at a time and has to be able to trust that a
+card he has not opened is exactly as he last saw it. A hundred silent improvements are worth
+less than that.
+
+---
+
 ## 0. Nothing is ever excluded
 
 **Every piece of information that arrives ends up somewhere on a card.** No threshold, no "not
