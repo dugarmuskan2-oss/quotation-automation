@@ -143,9 +143,13 @@ and they are **not stored as addresses**, or something will try to email them.
 ## 5d. The trade is suggested, never assumed
 
 Every card needs a trade — dealer, manufacturer, transporter, fabricator. The reading proposes
-one from the notes ("PIPE DEALER (STOCKIST)" → dealer, "ROADLINES" → transporter) and the card
-shows it pre-filled. *Owner's decision: suggest it, he confirms.* Only 341 of 2,088 cards had a
-trade, and picking 1,750 by hand is not work worth giving him.
+one **only when the notes actually say it** ("PIPE DEALER (STOCKIST)" → dealer, "ROADLINES" →
+transporter) and the card shows it pre-filled. *Owner's decisions: suggest it, he confirms; the
+card is **approvable as it stands** — a guessed trade does not block Approve; and where the
+notes say nothing, **leave it blank** rather than guessing from the firm's name.* A name is
+weaker evidence than a remark, and a wrong trade decides who gets sent a freight enquiry.
+
+On the first 48 cards this guessed 13 and left 35 blank.
 
 ---
 

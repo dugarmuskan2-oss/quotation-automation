@@ -109,18 +109,26 @@ function splitTrunkLines(lines) {
 }
 
 function peopleOf(firm) {
-    const people = (firm.people || []).map((p, i) => ({
-        name: str(p.name),
-        role: str(p.role) || (i === 0 ? 'Main contact' : ''),
-        // Which office or factory they sit at. The heading above them in the notes decides it.
-        branch: str(p.branch),
-        phones: splitTrunkLines(asLines(p.phones, 'Mobile')),
-        emails: asLines(p.emails, 'Work'),
-    }));
+    const broken = [];
+    const people = (firm.people || []).map((p, i) => {
+        const mails = splitBrokenAddresses(asLines(p.emails, 'Work'));
+        mails.broken.forEach(b => broken.push(str(p.name) + ': ' + b.v));
+        return {
+            name: str(p.name),
+            role: str(p.role) || (i === 0 ? 'Main contact' : ''),
+            // Which office or factory they sit at. The heading above them decides it.
+            branch: str(p.branch),
+            phones: splitTrunkLines(asLines(p.phones, 'Mobile')),
+            emails: mails.good,
+        };
+    });
+    firm._broken = broken;
     // A number nobody was named for belongs to the FIRM — the godown line, the board line.
     // It keeps whatever the owner called it, because "Godown" is the useful part.
     const firmLines = splitTrunkLines(asLines(firm.phones, 'Office'));
-    const firmMails = asLines(firm.emails, 'Work');
+    const firmSplit = splitBrokenAddresses(asLines(firm.emails, 'Work'));
+    const firmMails = firmSplit.good;
+    firmSplit.broken.forEach(b => broken.push(b.v));
     if (firmLines.length || firmMails.length) {
         people.push({
             name: '',
@@ -133,17 +141,67 @@ function peopleOf(firm) {
     return people.length ? people : [{ name: '', role: 'Main contact', branch: '', phones: [], emails: [] }];
 }
 
+/**
+ * A firm with no name is called after the person who IS named. Owner's decision: "RAVI --
+ * 9840012345" with no company beside it becomes a card called Ravi, with a note saying so.
+ * The number is worth keeping and he needs something to find it by.
+ */
+/** Is there anything on this firm you could actually ring or write to? */
+function hasContactDetail(firm) {
+    if ((firm.phones || []).length || (firm.emails || []).length) return true;
+    return (firm.people || []).some(p => (p.phones || []).length || (p.emails || []).length);
+}
+
+/** How a firm with no number of its own is written down on the card that named it. */
+function mentionNote(firm) {
+    const name = str(firm.company) || (firm.people || []).map(p => str(p.name)).find(Boolean);
+    const how = (firm.relations || []).map(r => str(r.how)).filter(Boolean)[0];
+    const who = (firm.people || []).map(p => str(p.name)).filter(Boolean).join(', ');
+    return [name, how ? '— ' + how : '', who ? '(' + who + ')' : '', '— no number given']
+        .filter(Boolean).join(' ');
+}
+
+function nameFor(firm) {
+    const given = str(firm.company);
+    if (given) return given;
+    const person = (firm.people || []).map(p => str(p.name)).find(Boolean);
+    return person || '';
+}
+
+/**
+ * An address that is not an address stays a REMARK. Owner's decision.
+ *
+ * "info@southindiatubes@gmail.com" has two @ signs, "bluebox_ajit@yahoo.co" is cut short,
+ * "EVEREST TRADING CO@YAHOO.COM" has spaces in it. None are repaired — that is a guess — and
+ * none are stored where something will try to email them. Dropping them silently would lose
+ * the only record of the address he meant.
+ */
+function splitBrokenAddresses(lines) {
+    const good = [], broken = [];
+    (lines || []).forEach(l => (contacts.isEmail(l.v) ? good : broken).push(l));
+    return { good, broken };
+}
+
 function previewOf(firm, sourceTitle) {
     const d = today();
     const notes = (firm.notes || []).map(t => ({ t: str(t), d })).filter(n => n.t);
+    const people = peopleOf(firm);
+    (firm._broken || []).forEach(b => notes.push({
+        t: 'Address written as "' + b + '" — not a working address, left here rather than guessed.', d,
+    }));
+    if (!str(firm.company) && nameFor(firm)) {
+        notes.push({ t: 'No firm name was given — this card is named after the person.', d });
+    }
     notes.push({ t: 'From your phone book, under "' + str(sourceTitle) + '"', d });
     return {
-        role: '',                                  // his to choose, never guessed
+        // Suggested from what the notes call them, and shown pre-filled for him to change.
+        // Approve is NOT blocked on it — owner's decision.
+        role: contacts.suggestRole(str(sourceTitle) + ' ' + (firm.notes || []).join(' ') + ' ' + str(firm.trade)),
         roleOther: '',
-        company: str(firm.company),
+        company: nameFor(firm),
         city: str(firm.city),
         address: str(firm.address),
-        people: peopleOf(firm),
+        people,
         branches: (firm.branches || []).map(b => (b && typeof b === 'object')
             ? { city: str(b.city), address: str(b.address) }
             : { city: str(b), address: '' }).filter(b => b.city || b.address),
@@ -405,10 +463,28 @@ async function main() {
 
     const flat = [];
     const rawBy = rawNotesById(RAW_DIR);
-    rows.forEach(c => (c.firms || []).forEach(firm => flat.push({
-        firm, source: c.title, raw: rawBy[c.id] || '',
-    })));
-    say('  firms mentioned:        ' + flat.length);
+    let keptAsNote = 0;
+    rows.forEach(c => {
+        const firms = c.firms || [];
+        // A firm named in passing with no number and no address of its own does NOT get a
+        // card — owner's decision. It stays where it was: a note on whoever mentioned it. A
+        // card he cannot ring is one he cannot use, and there are hundreds of them.
+        const self = firms.find(f => f.isThisContact !== false) || firms[0] || null;
+        const carded = [];
+        firms.forEach(firm => {
+            if (firm !== self && firm.isThisContact === false && !hasContactDetail(firm)) {
+                if (self) {
+                    self.notes = (self.notes || []).concat([mentionNote(firm)]);
+                    keptAsNote++;
+                    return;
+                }
+            }
+            carded.push(firm);
+        });
+        carded.forEach(firm => flat.push({ firm, source: c.title, raw: rawBy[c.id] || '' }));
+    });
+    say('  firms mentioned:        ' + (flat.length + keptAsNote));
+    say('  kept as a note only:    ' + keptAsNote + '   (no number, no address of their own)');
 
     const cards = foldFirms(flat);
     say('  after folding repeats:  ' + cards.length);

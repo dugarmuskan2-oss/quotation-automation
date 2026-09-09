@@ -36,6 +36,24 @@ function str(v) { return String(v == null ? '' : v).trim(); }
 function lower(v) { return str(v).toLowerCase(); }
 function num(v, fallback) { const n = Number(v); return Number.isFinite(n) ? n : fallback; }
 
+/**
+ * The trade a piece of text points at, or BLANK when it points at nothing.
+ *
+ * normalizeRole below answers 'other' when it cannot tell, which is a real choice the owner
+ * might make and so cannot be told apart from nobody having chosen. For a suggestion that
+ * distinction is the whole point: the card shows a guess he can accept or change, and a guess
+ * of "other" on 1,700 cards is worse than leaving them blank.
+ */
+function suggestRole(text) {
+    const s = lower(text);
+    if (!s) return '';
+    if (/transport|lorry|truck|freight|logistic|cargo|roadline|carrier|hauli/.test(s)) return 'transporter';
+    if (/fabricat/.test(s)) return 'fabricator';
+    if (/manufact|\bmill\b|\bplant\b|factory|works\b/.test(s)) return 'manufacturer';
+    if (/dealer|stockist|trader|supplier|distribut|agenc/.test(s)) return 'dealer';
+    return '';
+}
+
 function normalizeRole(v) {
     const s = lower(v);
     if (ROLES.indexOf(s) !== -1) return s;
@@ -2036,6 +2054,7 @@ module.exports = {
     // Shared with utils/googleContacts.js: one firm is one email domain, everywhere.
     firmKeyOf,
     cleanEmail,
+    suggestRole,
     betterCompanyName,
     nameWasGuessed,
     branchFromRole,
