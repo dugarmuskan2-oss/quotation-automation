@@ -1912,13 +1912,28 @@
             + 'those arrive the next time the Gmail Report runs. '
             + 'One card per firm, so everyone at the same firm stays together. '
             + '<b>Nothing is added to your directory until you approve it.</b></p></div>'
-            + (D.pending.length ? D.pending.map(pendingStrip).join('')
+            + (D.pending.length ? pendingInOrder(D.pending).map(pendingStrip).join('')
                 : '<p class="pd-muted pd-empty">Nothing waiting.</p>')
             + '<div class="pd-sec" style="margin-top:18px;">Already applied</div>'
             + (D.changes.length
                 ? '<p class="pd-muted" style="margin-bottom:8px;">Everything the app changed on its own. Click one to see what moved; undo anything wrong.</p>'
                     + D.changes.map(changeCard).join('')
                 : '<p class="pd-muted pd-empty">Nothing applied yet.</p>');
+    }
+
+    /**
+     * Cards rebuilt from a notes box come first, newest reading first.
+     *
+     * He asked to be shown which ones changed. A card that gained six people and a second
+     * firm looks exactly like one that gained nothing, so the only way to tell is to put
+     * them in front and mark them. The rest keep the order they arrived in.
+     */
+    function pendingInOrder(list) {
+        return (list || []).slice().sort(function (a, b) {
+            var af = str(a && a.freshened), bf = str(b && b.freshened);
+            if (af && bf && af !== bf) return af < bf ? 1 : -1;
+            return (bf ? 1 : 0) - (af ? 1 : 0);
+        });
     }
 
     function pendingStrip(pi) {
@@ -1934,6 +1949,9 @@
             + '<b>' + esc(str(pi.preview && pi.preview.company)
                 || (match ? match.company : (imported ? pi.subject : (companyGuess(pi) || pi.from)))) + '</b>'
             + (match ? '<span class="pd-pill">Updates someone you have</span>' : '<span class="pd-pill pd-pill-warn">New</span>')
+            // Which cards were rebuilt from a notes box. Without this the work is invisible:
+            // the card simply has more on it than it did, and no way to tell why.
+            + (pi.freshened ? '<span class="pd-pill">Read from your notes</span>' : '')
             + '<span class="pd-sp"></span><span class="pd-tiny">' + ago(pi.receivedAt) + '</span></div>'
             + '<p class="pd-tiny" style="margin-left:20px;">' + (imported ? importedStripLine(pi)
                 : 'From <b>' + esc(pi.from) + '</b> · “' + esc(pi.subject) + '”'

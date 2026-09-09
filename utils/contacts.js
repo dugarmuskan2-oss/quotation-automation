@@ -920,7 +920,11 @@ function nextGoogleBatch(firms, pending, contacts, size) {
     const onlyQueued = (f) => canBeReached((f && f.preview) || {})
         && firmIsSpokenFor(f, inQueue) && !firmIsSpokenFor(f, addressesSpokenFor([], contacts));
 
-    const waiting = (firms || []).filter(isNew);
+    // A card just rebuilt from a notes box goes to the FRONT. The owner asked to see the ones
+    // that changed, and burying them behind five hundred untouched cards is the same as not
+    // having done the work.
+    const waiting = (firms || []).filter(isNew)
+        .sort((a, b) => (b.freshened ? 1 : 0) - (a.freshened ? 1 : 0));
     const take = waiting.slice(0, Math.max(0, size || 0));
 
     const enrich = [];
@@ -996,6 +1000,9 @@ function googlePendingItem(firm) {
             kind: 'field', key: 'email', label: 'From your Google Contacts', value: email,
         })),
         receivedAt: new Date().toISOString(),
+        // Carried through so the Add tab can say which cards were rebuilt from a notes box,
+        // rather than the owner having to work it out by reading them.
+        freshened: str(firm.freshened),
         preview,
     };
 }
@@ -1294,6 +1301,10 @@ function sanitizePendingItem(input) {
         // screen cannot tell them apart from the count alone — one means the email had nothing
         // in it, the other means nobody has read it yet. Kept on the item so a reload keeps it.
         readFailed: src.readFailed === true,
+        // The day this card was rebuilt from a notes box, if it was. Kept on the item so the
+        // Add tab can mark it and put it first — the whole point of doing the reading is that
+        // the owner can see which cards it changed.
+        freshened: str(src.freshened),
         receivedAt: str(src.receivedAt) || new Date().toISOString(),
     };
 }

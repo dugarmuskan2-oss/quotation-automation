@@ -231,13 +231,16 @@ function mergeIntoWaiting(existing, cards) {
             if (byIdentity.has(k)) { at = byIdentity.get(k); break; }
         }
         if (at === -1) {
-            list.push({ key: keyFor(c.preview), preview: c.preview });
+            list.push({ key: keyFor(c.preview), preview: c.preview, freshened: today() });
             contacts.identitiesOf(c.preview).forEach(k => byIdentity.set(k, list.length - 1));
             added++;
             return;
         }
+        // Marked, so the Add tab can put the cards that actually changed in front of him
+        // instead of leaving him to find them among five hundred.
         list[at] = {
             key: list[at].key,
+            freshened: today(),
             preview: contacts.mergePreviews(list[at].preview, c.preview),
         };
         contacts.identitiesOf(list[at].preview).forEach(k => byIdentity.set(k, at));
