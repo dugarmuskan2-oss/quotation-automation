@@ -1271,6 +1271,8 @@
             + removalsWaitingHtml(p)
             + '<div class="pd-grid2">' + fld(p, 'Company', 'company', p.company, 'e.g. Annai Steel Traders')
             + '<div class="pd-fld"><label>They are a…</label><select data-pd-k="role">' + roles + '</select></div></div>'
+            // With the company, where he would look for it — not down among the addresses.
+            + '<div class="pd-grid2">' + fld(p, 'GST number', 'gst', p.gst, '33AAACK1383P1ZE') + '</div>'
             + (p.role === 'other' ? fld(p, 'What are they?', 'roleOther', p.roleOther, 'e.g. galvaniser, testing lab') : '')
             + categoriesBlock(p)
             + peopleBlock(p)
@@ -1372,10 +1374,15 @@
             + branchDatalist(p)
             + '<datalist id="pdKnownCities">'
             + known.map(function (c) { return '<option value="' + esc(c) + '"></option>'; }).join('') + '</datalist>'
-            + '<div class="pd-grid2">' + fld(p, 'City (head office)', 'city', p.city)
-            + fld(p, 'Head office address', 'address', p.address, 'Street, area, pin') + '</div>'
-            // Its own box, not a remark, so it can be searched and copied onto paperwork.
-            + '<div class="pd-grid2">' + fld(p, 'GST number', 'gst', p.gst, '33AAACK1383P1ZE') + '</div>'
+            // The head office is a place like any other, so it looks like one — the town with
+            // "(head office)" after it, not two labelled boxes in a section of their own.
+            + '<div class="pd-branchgrp">'
+            + '<div class="pd-branch-head">'
+            + '<input class="pd-branch-name" data-pd-k="city" list="pdKnownCities" value="' + esc(p.city || '') + '" placeholder="Town" aria-label="Head office town">'
+            + '<span class="pd-tiny">(head office)</span></div>'
+            + '<div class="pd-branch-where">'
+            + '<input data-pd-k="address" value="' + esc(p.address || '') + '" placeholder="Full address (optional)" style="grid-column:1/-1;">'
+            + '</div></div>'
             + groups.map(function (g) { return branchGroup(p, g, groups.length > 1); }).join('')
             + '<button class="pd-addline" data-pd-addperson="1">+ Add another person</button>'
             + '<p class="pd-tiny" style="margin-top:6px;">The first address on the first person is where enquiries go — but <b>every</b> address is matched against incoming email. '
