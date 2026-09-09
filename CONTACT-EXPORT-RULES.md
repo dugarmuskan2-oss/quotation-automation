@@ -112,6 +112,43 @@ connection beats none.
 
 ---
 
+## 5a. A firm with no way to contact it stays a note
+
+**A firm named in passing, with no phone and no email of its own, does NOT get a card.**
+*Owner's decision.* It stays where it was — as a note on the card of whoever mentioned it. A
+card you cannot ring is a card you cannot use, and 605 of them would bury the firms he can.
+
+This narrows §5: a firm named inside another firm's entry gets its own card **when it carries a
+number or an address**. When it carries only a name, the mention itself is the record.
+
+---
+
+## 5b. A firm with no name is named after the person
+
+`RAVI -- 9840012345` with no company beside it becomes a card called **Ravi**, with a note
+saying no firm name was given. *Owner's decision.* The number is worth keeping and he needs
+something to find it by.
+
+---
+
+## 5c. Broken addresses go in the notes, not the address box
+
+`info@southindiatubes@gmail.com` (two @ signs), `bluebox_ajit@yahoo.co` (cut short),
+`EVEREST TRADING CO@YAHOO.COM` (spaces in it). These are **not repaired** — that is a guess —
+and they are **not stored as addresses**, or something will try to email them.
+*Owner's decision:* keep the text as a remark, so he can move it up when he knows the right one.
+
+---
+
+## 5d. The trade is suggested, never assumed
+
+Every card needs a trade — dealer, manufacturer, transporter, fabricator. The reading proposes
+one from the notes ("PIPE DEALER (STOCKIST)" → dealer, "ROADLINES" → transporter) and the card
+shows it pre-filled. *Owner's decision: suggest it, he confirms.* Only 341 of 2,088 cards had a
+trade, and picking 1,750 by hand is not work worth giving him.
+
+---
+
 ## 6. What must NOT become a card
 
 - **Customers.** The directory is who he buys from and ships with. A customer on it gets ranked
