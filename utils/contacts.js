@@ -669,7 +669,12 @@ function queueWithoutLosingAny(existing, incoming, cap) {
  * the stored card has is already present in the one being approved.
  */
 const LIST_KEY = {
-    people: c => lower(str(((c.emails || [])[0] || {}).v) || str(c.name)),
+    // A godown or board line is a person with NO name and NO address, and keying on those
+    // two alone made every such line collapse to the empty string — so a second one was
+    // dropped as a duplicate and its numbers went with it. The number identifies it.
+    people: c => lower(str(((c.emails || [])[0] || {}).v)
+        || str(((c.phones || [])[0] || {}).v).replace(/\D/g, '')
+        || str(c.name)),
     notes: n => lower(str(n && n.t)),
     branches: b => lower(str(b && b.city) + '|' + str(b && b.address)),
     products: p => lower(str(p && p.p) + '|' + str(p && p.spec)),
@@ -839,14 +844,17 @@ function mergePreviews(base, extra) {
     const out = Object.assign({}, base || {});
     const from = extra || {};
     Object.keys(LIST_KEY).forEach(f => {
+        if (f === 'people') return;          // people are folded below, on their real identity
         const key = LIST_KEY[f];
         const mine = Array.isArray(out[f]) ? out[f] : [];
         const theirs = Array.isArray(from[f]) ? from[f] : [];
         const have = new Set(mine.map(key));
         out[f] = mine.concat(theirs.filter(x => !have.has(key(x))));
     });
-    // A person carried on both cards keeps the fuller name and every number and address.
-    out.people = foldPeople(out.people);
+    // Every person from both cards, then folded on shared numbers and addresses. Filtering
+    // first would drop a nameless office line before its number was ever looked at.
+    out.people = foldPeople((Array.isArray(out.people) ? out.people : [])
+        .concat(Array.isArray(from.people) ? from.people : []));
     ['company', 'role', 'roleOther', 'city', 'address', 'vehicles', 'moq', 'partLoad'].forEach(f => {
         if (!saysSomething(out[f]) && saysSomething(from[f])) out[f] = from[f];
     });
@@ -870,10 +878,34 @@ function foldPeople(people) {
         (p.phones || []).forEach(q => { if (!seen.has(dialKey(q && q.v))) match.p.phones.push(q); });
         const mails = new Set((match.p.emails || []).map(e => cleanEmail(e.v)));
         (p.emails || []).forEach(e => { if (!mails.has(cleanEmail(e.v))) match.p.emails.push(e); });
-        if (str(p.name).length > str(match.p.name).length) match.p.name = p.name;
+        if (betterName(p.name, match.p.name)) match.p.name = str(p.name);
         if (!str(match.p.role) && str(p.role)) match.p.role = p.role;
     });
-    return kept.map(k => k.p);
+    // A person with no name, no number and no address is not a person. One is kept as the
+    // empty "Main contact" slot every card needs; more than one is just noise.
+    const real = kept.map(k => k.p).filter(p => str(p.name) || (p.phones || []).length || (p.emails || []).length);
+    return real.length ? real : [{ name: '', role: 'Main contact', phones: [], emails: [] }];
+}
+
+/**
+ * Is this the better name for a person carried on two cards?
+ *
+ * Google's display name for a mailbox is often a label, not a man — "Purchase | Fire Trix",
+ * or the firm's own name spelled out. The phone book gives the actual person, "S.VENI". The
+ * longer string is the wrong test on its own, so a label loses to a plain name and only then
+ * does length decide.
+ */
+function looksLikeALabel(name) {
+    return /[|@]|\b(pvt|ltd|limited|llp|corp|inc)\b/i.test(str(name));
+}
+
+function betterName(candidate, current) {
+    const a = str(candidate), b = str(current);
+    if (!a) return false;
+    if (!b) return true;
+    if (looksLikeALabel(b) && !looksLikeALabel(a)) return true;
+    if (looksLikeALabel(a) && !looksLikeALabel(b)) return false;
+    return a.length > b.length;
 }
 
 /** Is there any way to actually contact this firm — an address or a number? */

@@ -40,6 +40,10 @@ const ONLY = (() => {
     const at = process.argv.indexOf('--only');
     return at === -1 ? 0 : Math.max(0, parseInt(process.argv[at + 1], 10) || 0);
 })();
+const RAW_DIR = (() => {
+    const at = process.argv.indexOf('--raw');
+    return at === -1 ? '' : process.argv[at + 1];
+})();
 const READ_DIR = (() => {
     const at = process.argv.indexOf('--from');
     return at === -1 ? path.join(__dirname, '..', '.notes-read') : process.argv[at + 1];
@@ -145,18 +149,19 @@ function foldFirms(rows) {
     const cards = [];
     const byIdentity = new Map();
 
-    rows.forEach(({ firm, source }) => {
+    rows.forEach(({ firm, source, raw }) => {
         if (!str(firm.company) && !(firm.people || []).length) return;
         const preview = previewOf(firm, source);
         const keys = contacts.identitiesOf(preview);
         let hit = null;
         for (const k of keys) { if (byIdentity.has(k)) { hit = byIdentity.get(k); break; } }
         if (!hit) {
-            hit = { preview, relations: [] };
+            hit = { preview, relations: [], rawNotes: [] };
             cards.push(hit);
         } else {
             hit.preview = contacts.mergePreviews(hit.preview, preview);
         }
+        if (raw && hit.rawNotes.indexOf(raw) === -1) hit.rawNotes.push(raw);
         (firm.relations || []).forEach(r => {
             if (str(r && r.firm)) hit.relations.push({ firm: str(r.firm), how: str(r.how) });
         });
@@ -205,6 +210,38 @@ function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 
 // ── into the waiting list, beside what is already there ──────────────────────
 
+/**
+ * Throw away the raw notes-box dump once its contents are on the card properly.
+ *
+ * This is the whole point of the exercise. Until now the card carried the notes box word for
+ * word — "(1).M.D.KESAVARAJ- 9500050209 (2). JEYAKUMAR(MANAGER PROJECTS)..." — and leaving
+ * that sitting there beside the two people now extracted from it would mean the owner reads
+ * everything twice and still cannot tell which is authoritative.
+ *
+ * Only the verbatim dump goes. A note is dropped when the raw text CONTAINS it, which is
+ * true of the dump and of any chunk of it, and never of a remark written somewhere else. The
+ * reader's own kept remarks are re-added after this, so nothing it judged worth keeping is
+ * lost — what goes is the copy nobody had read.
+ */
+function dropRawDumps(notes, rawList, keepList) {
+    const raws = (rawList || []).map(flat).filter(t => t.length > 40);
+    if (!raws.length) return notes || [];
+    // The reader's OWN remarks are substrings of the raw text too — that is where it found
+    // them. Dropping those would throw away "HIS OFFICE IS IN A RENTED APARTMENT" along with
+    // the dump it came from, which is the opposite of the point. They are named and spared.
+    const keep = new Set((keepList || []).map(flat));
+    return (notes || []).filter(n => {
+        const t = flat(n && n.t);
+        if (keep.has(t)) return true;
+        // Short notes are kept regardless: "(PAVI)" or "TATA DEALER" cost nothing and a
+        // careless substring match would eat them.
+        if (t.length < 25) return true;
+        return !raws.some(raw => raw.indexOf(t) !== -1);
+    });
+}
+
+function flat(t) { return str(t).replace(/\s+/g, ' ').toLowerCase(); }
+
 function keyFor(preview) {
     const mail = contacts.allEmails(preview)[0];
     if (mail) return contacts.firmKeyOf(mail);
@@ -238,15 +275,30 @@ function mergeIntoWaiting(existing, cards) {
         }
         // Marked, so the Add tab can put the cards that actually changed in front of him
         // instead of leaving him to find them among five hundred.
+        const grown = contacts.mergePreviews(list[at].preview, c.preview);
         list[at] = {
             key: list[at].key,
             freshened: today(),
-            preview: contacts.mergePreviews(list[at].preview, c.preview),
+            preview: Object.assign(grown, {
+                notes: dropRawDumps(grown.notes, c.rawNotes, (c.preview.notes || []).map(n => n.t)),
+            }),
         };
         contacts.identitiesOf(list[at].preview).forEach(k => byIdentity.set(k, at));
         improved++;
     });
     return { list, improved, added };
+}
+
+/** The text each contact STARTED with, so the unread copy can be taken off the card. */
+function rawNotesById(dir) {
+    const out = {};
+    if (!dir || !fs.existsSync(dir)) return out;
+    fs.readdirSync(dir).filter(f => /.json$/.test(f)).forEach(f => {
+        let rows;
+        try { rows = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); } catch (e) { return; }
+        (Array.isArray(rows) ? rows : []).forEach(r => { if (r && r.id) out[r.id] = str(r.notes); });
+    });
+    return out;
 }
 
 function show(card, n) {
@@ -274,7 +326,10 @@ async function main() {
     say('Read ' + rows.length + ' contacts from ' + READ_DIR);
 
     const flat = [];
-    rows.forEach(c => (c.firms || []).forEach(firm => flat.push({ firm, source: c.title })));
+    const rawBy = rawNotesById(RAW_DIR);
+    rows.forEach(c => (c.firms || []).forEach(firm => flat.push({
+        firm, source: c.title, raw: rawBy[c.id] || '',
+    })));
     say('  firms mentioned:        ' + flat.length);
 
     const cards = foldFirms(flat);
