@@ -33,7 +33,7 @@ const fs = require('fs');
 const path = require('path');
 const storage = require('../storage');
 const contacts = require('../utils/contacts');
-const { CONFIG_KEY_GOOGLE_FIRMS } = require('../utils/constants');
+const { CONFIG_KEY_GOOGLE_FIRMS, CONFIG_KEY_CONTACTS_PENDING } = require('../utils/constants');
 
 const GO = process.argv.includes('--go');
 const ONLY = (() => {
@@ -112,6 +112,8 @@ function peopleOf(firm) {
     const people = (firm.people || []).map((p, i) => ({
         name: str(p.name),
         role: str(p.role) || (i === 0 ? 'Main contact' : ''),
+        // Which office or factory they sit at. The heading above them in the notes decides it.
+        branch: str(p.branch),
         phones: splitTrunkLines(asLines(p.phones, 'Mobile')),
         emails: asLines(p.emails, 'Work'),
     }));
@@ -123,11 +125,12 @@ function peopleOf(firm) {
         people.push({
             name: '',
             role: people.length ? 'Office' : 'Main contact',
+            branch: '',
             phones: firmLines,
             emails: firmMails,
         });
     }
-    return people.length ? people : [{ name: '', role: 'Main contact', phones: [], emails: [] }];
+    return people.length ? people : [{ name: '', role: 'Main contact', branch: '', phones: [], emails: [] }];
 }
 
 function previewOf(firm, sourceTitle) {
@@ -289,6 +292,34 @@ function customerList(blob, file) {
     return { domains, nameKeys: new Set(names.map(contacts.firmNameKey).filter(Boolean)) };
 }
 
+/**
+ * A card the owner is ALREADY looking at is improved where it sits.
+ *
+ * Otherwise a better reading means throwing away the twenty-five in front of him and bringing
+ * them in again — losing his place, and any he had already worked through. He asked for the
+ * opposite: fix them where they are.
+ *
+ * Only items still WAITING are touched. Anything he has approved is his, and a re-read has no
+ * business rewriting it.
+ */
+function refreshWaitingItems(items, cards) {
+    const byIdentity = new Map();
+    cards.forEach(c => contacts.identitiesOf(c.preview).forEach(k => byIdentity.set(k, c)));
+
+    let improved = 0;
+    const out = (items || []).map(it => {
+        const mine = contacts.identitiesOf((it && it.preview) || {});
+        let hit = null;
+        for (const k of mine) { if (byIdentity.has(k)) { hit = byIdentity.get(k); break; } }
+        if (!hit) return it;
+        const grown = contacts.mergePreviews(it.preview, hit.preview);
+        grown.notes = dropRawDumps(grown.notes, hit.rawNotes, (hit.preview.notes || []).map(n => n.t));
+        improved++;
+        return Object.assign({}, it, { preview: grown, freshened: today() });
+    });
+    return { items: out, improved };
+}
+
 function keyFor(preview) {
     const mail = contacts.allEmails(preview)[0];
     if (mail) return contacts.firmKeyOf(mail);
@@ -427,6 +458,14 @@ async function main() {
         say('Nothing was changed. Run it again with --go when you are happy.');
         return;
     }
+
+    // The queue he is looking at is fixed where it stands, not emptied and refilled.
+    const pendRaw = await storage.readText(CONFIG_KEY_CONTACTS_PENDING);
+    let pend; try { pend = JSON.parse(pendRaw || '{}'); } catch (e) { pend = {}; }
+    const waiting = Array.isArray(pend.items) ? pend.items : [];
+    const fixed = refreshWaitingItems(waiting, batch);
+    if (fixed.improved) await storage.saveText(CONFIG_KEY_CONTACTS_PENDING, JSON.stringify({ items: fixed.items }));
+    say('  cards fixed in Recent changes: ' + fixed.improved);
 
     blob.firms = merged.list;
     blob.counts = Object.assign({}, blob.counts, {
