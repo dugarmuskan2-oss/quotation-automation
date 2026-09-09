@@ -34,7 +34,40 @@ function normalizeRole(v) {
     return 'other';
 }
 
-function isEmail(v) { return /^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(str(v)); }
+/**
+ * An address as it should be STORED and COMPARED — one spelling, always.
+ *
+ * Two cards for Bombay Hardware sat in the queue looking identical, and the only difference
+ * was a ">" on the end of one address: "bhplsales@bombayhardware.com>", left behind when a
+ * "Name <addr>" header was pulled apart. Nothing cleaned it and nothing rejected it, so it
+ * became its own firm — "d:bombayhardware.com>" — and every duplicate guard in the app
+ * compares strings, so every one of them missed it.
+ *
+ * Six addresses are stored dirty today: a stray ">", quoted local parts from ISMT
+ * ("rmache"@ismt.co.in), a typed label ("e-mail: info@mantoengg.com"), and a comma where a
+ * dot belongs (rohit,jaiswal@stecol.co.in). The comma is NOT repaired — that is a guess about
+ * what he meant, and a wrong address is worse than a rejected one. Only wrappers come off.
+ */
+function cleanEmail(v) {
+    let s = str(v).trim();
+    // "Firm Name <sales@x.com>" — keep what is inside the brackets, drop the rest.
+    const inBrackets = s.match(/<([^<>]+)>/);
+    if (inBrackets) s = inBrackets[1];
+    return s
+        .replace(/^(?:e-?mail|mail|id)\s*[:\-]\s*/i, '')   // "e-mail: info@x.com"
+        .replace(/^mailto:/i, '')
+        .replace(/[<>\s]/g, '')                            // a lone bracket, any space
+        .replace(/^["'`]+|["'`]+$/g, '')                    // "ajay.maske"@ismt.co.in
+        .replace(/["'`]/g, '')
+        .replace(/[.,;:]+$/, '')                            // trailing punctuation
+        .toLowerCase();
+}
+
+/**
+ * The domain half must end in a real top-level domain, so "com>" is not an address.
+ * The old test allowed any trailing character, which is exactly how the ">" got in.
+ */
+function isEmail(v) { return /^[a-z0-9._%+\-&']+@[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9-]+)*\.[a-z]{2,}$/.test(cleanEmail(v)); }
 
 /**
  * The app's own spelling for a pipe type.
@@ -63,7 +96,12 @@ function sanitizePerson(p) {
         name: str(p && p.name),
         role: str(p && p.role),
         phones: sanitizeLines(p && p.phones),
-        emails: sanitizeLines(p && p.emails).filter(e => isEmail(e.v)),
+        // Cleaned BEFORE it is stored, so the value on the card and the value every guard
+        // compares are the same string. Anything still not an address is dropped, not kept
+        // in a shape that quietly defeats the duplicate checks.
+        emails: sanitizeLines(p && p.emails)
+            .map(e => ({ label: e.label, v: cleanEmail(e.v) }))
+            .filter(e => isEmail(e.v)),
     };
 }
 
@@ -76,7 +114,13 @@ function sanitizePeople(list) {
 /** Every email a firm holds, whichever person holds it — matching must look at all. */
 function allEmails(partner) {
     const out = [];
-    (partner.people || []).forEach(p => (p.emails || []).forEach(e => { if (e.v) out.push(lower(e.v)); }));
+    // Cleaned on READ as well as on write: six addresses were stored before there was a
+    // cleaner, and they must still collapse onto their clean twins rather than sit beside
+    // them as a second firm forever.
+    (partner.people || []).forEach(p => (p.emails || []).forEach(e => {
+        const v = cleanEmail(e.v);
+        if (v) out.push(v);
+    }));
     return out;
 }
 
@@ -264,7 +308,26 @@ function findByEmail(list, email) {
 // ── the automatic side: usage stats and stubs ────────────────────────────────
 
 /** `sales@kalpatarusteel.com` → "Kalpataru Steel" — a guess to be confirmed, never a fact. */
-const FREE_MAIL = /^(gmail|yahoo|ymail|hotmail|outlook|live|rediffmail|icloud|proton|protonmail|aol)$/;
+/**
+ * Domains that say NOTHING about which firm someone works for.
+ *
+ * The ordinary free-mail names, and — the ones that actually bite here — India's old ISP
+ * domains. Twenty years of contacts were made when vsnl.net and bsnl.in were how a business
+ * had email at all. Treating one as a firm welded 47 unrelated people onto a single card,
+ * and "Vsnl" is sitting in the directory today as a transporter.
+ *
+ * Matched on the WHOLE domain, not its first label, so bsnl.co.in is caught as well as
+ * bsnl.in. This is the only such list — the Google-contacts scan imports it rather than
+ * keeping a second one that can drift.
+ */
+const FREE_MAIL_NAMES = [
+    'gmail', 'yahoo', 'ymail', 'hotmail', 'outlook', 'live', 'icloud', 'proton', 'protonmail',
+    'aol', 'rediffmail', 'rediff', 'zoho',
+    // Indian ISPs — a mailbox here is a person's, never a firm's.
+    'vsnl', 'bsnl', 'mtnl', 'sify', 'airtelmail', 'airtel', 'dataone', 'satyam', 'eth',
+    'touchtelindia', 'vsnl-net',
+];
+const FREE_MAIL = new RegExp('^(' + FREE_MAIL_NAMES.join('|') + ')\\.');
 const TRADE_WORDS = ['corporation', 'engineering', 'international', 'enterprises', 'enterprise',
     'industries', 'roadlines', 'logistics', 'syndicate', 'overseas', 'agencies', 'carriers',
     'trading', 'traders', 'exports', 'industry', 'movers', 'impex', 'metals', 'steels', 'stores',
@@ -280,8 +343,11 @@ function splitTradeWord(s) {
 }
 
 function companyFromEmail(email) {
-    const label = (lower(email).split('@')[1] || '').split('.')[0] || '';
-    if (!label || FREE_MAIL.test(label)) return '';
+    // FREE_MAIL is asked about the WHOLE domain (so bsnl.co.in is caught as well as
+    // bsnl.in); the NAME is still guessed from its first label.
+    const domain = cleanEmail(email).split('@')[1] || '';
+    const label = domain.split('.')[0] || '';
+    if (!label || FREE_MAIL.test(domain)) return '';
     const out = [];
     label.split(/[-_.]+/).filter(Boolean).forEach(part => { out.push.apply(out, splitTradeWord(part)); });
     return out.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
@@ -505,9 +571,9 @@ function seedFromSuggestionFiles(freight, supplier) {
  * proves it, and guessing would merge two unrelated people into one supplier.
  */
 function firmKeyOf(email) {
-    const domain = lower(email).split('@')[1] || '';
-    const label = domain.split('.')[0] || '';
-    return (label && !FREE_MAIL.test(label)) ? 'd:' + domain : 'e:' + lower(email);
+    const clean = cleanEmail(email);
+    const domain = clean.split('@')[1] || '';
+    return (domain && !FREE_MAIL.test(domain)) ? 'd:' + domain : 'e:' + clean;
 }
 
 function groupSeedsIntoFirms(seed) {
@@ -625,18 +691,42 @@ const LIST_KEY = {
  * It errs towards keeping. A contact deleted on the review screen comes back, which is visible
  * and can be deleted again; a contact deleted behind the owner's back is not.
  */
+/**
+ * Is this incoming value a real answer, or just an empty box?
+ *
+ * The review card is FROZEN when the item is queued. A firm queued on Monday, given a city
+ * and an address on Tuesday, then approved on Wednesday was having Tuesday's typing wiped by
+ * Monday's blanks — the guard below only ever protected the list fields, so every plain box
+ * (company, city, address, MOQ, vehicles) was written straight over.
+ *
+ * Blank never wins. Only a value that actually says something replaces what is stored.
+ */
+function saysSomething(v) {
+    if (v == null) return false;                 // partLoad's "not answered"
+    if (typeof v === 'number') return v !== 0;   // MOQ 0 is "not set", not "zero tonnes"
+    if (typeof v === 'boolean') return true;
+    return str(v) !== '';
+}
+
 function keepWhatWasAddedSince(before, incoming, fields) {
     if (!before || !incoming) return { partner: incoming, kept: [] };
     const out = Object.assign({}, incoming);
     const kept = [];
     (fields || []).forEach(f => {
         const key = LIST_KEY[f];
-        if (!key || !Array.isArray(before[f])) return;
-        const have = new Set((out[f] || []).map(key));
-        const missing = before[f].filter(x => !have.has(key(x)));
-        if (!missing.length) return;
-        out[f] = (out[f] || []).concat(missing);
-        kept.push(missing.length + ' ' + f);
+        if (key && Array.isArray(before[f])) {
+            const have = new Set((out[f] || []).map(key));
+            const missing = before[f].filter(x => !have.has(key(x)));
+            if (!missing.length) return;
+            out[f] = (out[f] || []).concat(missing);
+            kept.push(missing.length + ' ' + f);
+            return;
+        }
+        // Everything that is not a list: a stored answer is never replaced by a blank one.
+        if (!saysSomething(out[f]) && saysSomething(before[f])) {
+            out[f] = before[f];
+            kept.push(f);
+        }
     });
     return { partner: out, kept };
 }
@@ -688,27 +778,121 @@ function unapprovedToPending(contacts, pending, cap) {
     };
 }
 
+/** A phone reduced to the digits that identify it — last ten, so +91 and 0 prefixes agree. */
+function dialKey(v) {
+    const digits = str(v).replace(/\D/g, '');
+    return digits.length >= 10 ? digits.slice(-10) : digits;
+}
+
 /**
- * Every address already spoken for — on a card, or already waiting in the queue.
+ * Everything that IDENTIFIES a firm on a card or a queue item: its firms, and failing that
+ * its name and phone numbers.
  *
- * Bringing in a batch must not offer a firm the owner has already dealt with. He works
- * through these fifty at a time over days; without this, batch two would re-offer half of
- * batch one, and approving both would put the same mill in twice.
+ * This used to collect bare email addresses, and that was the leak. Bombay Hardware sat in
+ * the queue under bhplsales@ while its Google card carried accounts@ — different strings, so
+ * nothing matched, and the same firm was offered again as new. Worse, a card holding eight
+ * colleagues was skipped entirely because ONE of its eight addresses was already known.
+ * Matching on the firm — the email DOMAIN — settles both: same firm, one card.
+ *
+ * Names and phones are collected too, because a phone-book firm often has no email at all
+ * (3,744 numbers live in these notes and many entries carry nothing else). Without them
+ * those firms could never be matched, so they were never offered.
  */
+function identitiesOf(partner) {
+    const out = new Set();
+    allEmails(partner || {}).forEach(e => out.add(firmKeyOf(e)));
+    const name = lower(str((partner || {}).company)).replace(/[^a-z0-9]/g, '');
+    if (name) out.add('n:' + name);
+    ((partner || {}).people || []).forEach(p => (p.phones || []).forEach(q => {
+        const d = dialKey(q && q.v);
+        if (d.length >= 10) out.add('p:' + d);
+    }));
+    return out;
+}
+
 function addressesSpokenFor(pending, contacts) {
     const taken = new Set();
-    (contacts || []).forEach(p => allEmails(p).forEach(e => taken.add(lower(e))));
+    const add = (p) => identitiesOf(p).forEach(k => taken.add(k));
+    (contacts || []).forEach(add);
     (pending || []).forEach(it => {
-        allEmails((it && it.preview) || {}).forEach(e => taken.add(lower(e)));
-        if (it && it.from) taken.add(lower(it.from));
+        add((it && it.preview) || {});
+        if (it && it.from && isEmail(it.from)) taken.add(firmKeyOf(it.from));
     });
     return taken;
+}
+
+/**
+ * Two review cards for one firm, folded into one — keeping everything on both.
+ *
+ * Bombay Hardware showed why this is needed. A card built from a remembered address held one
+ * line: bhplsales@, no name, no notes. The card built from Google Contacts held EIGHT
+ * colleagues and both notes boxes — Sampath's two numbers, the godown line, Arumugam, and
+ * Chetna Steel. Because the thin one reached the queue first, the rich one was skipped as a
+ * firm already dealt with, and the owner was shown the worse of the two and told nothing.
+ *
+ * Skipping is right for a firm he has already APPROVED. For one still waiting it is wrong:
+ * nothing has been decided yet, so the two should simply become the better card.
+ *
+ * Additive only. A blank never replaces a value, and nothing on either card is dropped.
+ */
+function mergePreviews(base, extra) {
+    const out = Object.assign({}, base || {});
+    const from = extra || {};
+    Object.keys(LIST_KEY).forEach(f => {
+        const key = LIST_KEY[f];
+        const mine = Array.isArray(out[f]) ? out[f] : [];
+        const theirs = Array.isArray(from[f]) ? from[f] : [];
+        const have = new Set(mine.map(key));
+        out[f] = mine.concat(theirs.filter(x => !have.has(key(x))));
+    });
+    // A person carried on both cards keeps the fuller name and every number and address.
+    out.people = foldPeople(out.people);
+    ['company', 'role', 'roleOther', 'city', 'address', 'vehicles', 'moq', 'partLoad'].forEach(f => {
+        if (!saysSomething(out[f]) && saysSomething(from[f])) out[f] = from[f];
+    });
+    return out;
+}
+
+/** One person, however many times they appear — matched on any shared number or address. */
+function foldPeople(people) {
+    const kept = [];
+    (people || []).forEach(p => {
+        const keys = new Set();
+        (p.emails || []).forEach(e => { const v = cleanEmail(e.v); if (v) keys.add('e:' + v); });
+        (p.phones || []).forEach(q => { const d = dialKey(q && q.v); if (d.length >= 10) keys.add('p:' + d); });
+        const match = kept.find(k => [...keys].some(x => k.keys.has(x)));
+        if (!match) {
+            kept.push({ p: Object.assign({}, p), keys });
+            return;
+        }
+        keys.forEach(x => match.keys.add(x));
+        const seen = new Set((match.p.phones || []).map(q => dialKey(q && q.v)));
+        (p.phones || []).forEach(q => { if (!seen.has(dialKey(q && q.v))) match.p.phones.push(q); });
+        const mails = new Set((match.p.emails || []).map(e => cleanEmail(e.v)));
+        (p.emails || []).forEach(e => { if (!mails.has(cleanEmail(e.v))) match.p.emails.push(e); });
+        if (str(p.name).length > str(match.p.name).length) match.p.name = p.name;
+        if (!str(match.p.role) && str(p.role)) match.p.role = p.role;
+    });
+    return kept.map(k => k.p);
+}
+
+/** Is there any way to actually contact this firm — an address or a number? */
+function canBeReached(preview) {
+    if (allEmails(preview || {}).length) return true;
+    return ((preview || {}).people || []).some(p => (p.phones || []).some(q => dialKey(q && q.v).length >= 10));
+}
+
+/** Does the queue or the directory already hold this firm, under any of its names? */
+function firmIsSpokenFor(firm, taken) {
+    const mine = identitiesOf((firm && firm.preview) || {});
+    for (const k of mine) if (taken.has(k)) return true;
+    return false;
 }
 
 /** How many of the Google firms have already been brought in or approved. */
 function googleAlreadyHandled(pending, firms) {
     const taken = addressesSpokenFor(pending, []);
-    return (firms || []).filter(f => allEmails((f && f.preview) || {}).some(e => taken.has(lower(e)))).length;
+    return (firms || []).filter(f => firmIsSpokenFor(f, taken)).length;
 }
 
 /**
@@ -720,16 +904,40 @@ function googleAlreadyHandled(pending, firms) {
  */
 function nextGoogleBatch(firms, pending, contacts, size) {
     const taken = addressesSpokenFor(pending, contacts);
-    const isNew = (f) => {
-        const mails = allEmails((f && f.preview) || {});
-        return mails.length ? !mails.some(e => taken.has(lower(e))) : false;
-    };
+    // Two different questions, and running them together was the bug. A NAME is enough to
+    // recognise a firm the owner already has; it is not enough to offer him a new one, because
+    // a card with no phone and no address can never be sent an enquiry. So: reachable enough
+    // to be worth offering, then matched on everything including the name.
+    //
+    // Previously a firm was offered only if it had an EMAIL, which stranded the phone-only
+    // firms — and most of the phone book is exactly that, 3,744 numbers typed into notes.
+    // Worse, they were counted as already handled, so the count never moved and nothing said why.
+    const isNew = (f) => canBeReached((f && f.preview) || {}) && !firmIsSpokenFor(f, taken);
+
+    // A firm already APPROVED is settled — leave it alone. One still WAITING is not, so a
+    // richer card for it improves the card he has yet to look at rather than being dropped.
+    const inQueue = addressesSpokenFor(pending, []);
+    const onlyQueued = (f) => canBeReached((f && f.preview) || {})
+        && firmIsSpokenFor(f, inQueue) && !firmIsSpokenFor(f, addressesSpokenFor([], contacts));
+
     const waiting = (firms || []).filter(isNew);
     const take = waiting.slice(0, Math.max(0, size || 0));
 
+    const enrich = [];
+    (firms || []).filter(onlyQueued).forEach(f => {
+        const mine = identitiesOf(f.preview || {});
+        const item = (pending || []).find(it => {
+            const theirs = identitiesOf((it && it.preview) || {});
+            for (const k of mine) if (theirs.has(k)) return true;
+            return false;
+        });
+        if (item) enrich.push({ id: item.id, preview: mergePreviews(item.preview, f.preview) });
+    });
+
     return {
         items: take.map(f => googlePendingItem(f)),
-        alreadyThere: (firms || []).length - waiting.length,
+        enrich,
+        alreadyThere: (firms || []).length - waiting.length - enrich.length,
         left: waiting.length,
     };
 }
@@ -1564,6 +1772,12 @@ module.exports = {
     addDraftMode,
     // Shared with utils/googleContacts.js: one firm is one email domain, everywhere.
     firmKeyOf,
+    cleanEmail,
+    mergePreviews,
+    identitiesOf,
+    dialKey,
+    isEmail,
+    FREE_MAIL_NAMES,
     addAfterCard,
     _test: { normalizeRole, sanitizePerson, sanitizePeople, splitTradeWord, isEmail,
         canonicalPipeType, firstReach,

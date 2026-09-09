@@ -293,11 +293,19 @@ module.exports = function createContactsRouter({ storage, openai }) {
             }
             const [dir, items] = await Promise.all([loadDirectory(), loadPending()]);
             const next = contactsLib.nextGoogleBatch(blob.firms, items, dir.contacts, size);
-            const room = contactsLib.queueWithoutLosingAny(items, next.items, MAX_PENDING);
-            if (room.queued) await savePending(room.items);
+            // Fuller cards for firms already WAITING are folded into the item he has yet to
+            // look at, rather than dropped. One firm had eight colleagues and two notes boxes
+            // sitting in the Google list while the queue showed a single bare address.
+            const better = new Map(next.enrich.map(e => [e.id, e.preview]));
+            const grown = items.map(it => (better.has(it.id)
+                ? Object.assign({}, it, { preview: better.get(it.id) })
+                : it));
+            const room = contactsLib.queueWithoutLosingAny(grown, next.items, MAX_PENDING);
+            if (room.queued || better.size) await savePending(room.items);
             res.json({
                 ok: true,
                 queued: room.queued,
+                enriched: better.size,
                 noRoom: room.noRoom,
                 alreadyThere: next.alreadyThere,
                 left: next.left - room.queued,

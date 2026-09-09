@@ -18,7 +18,7 @@
  * they are their own phase.
  */
 
-const { firmKeyOf, companyFromEmail } = require('./contacts');
+const { firmKeyOf, companyFromEmail, FREE_MAIL_NAMES } = require('./contacts');
 
 const str = (v) => String(v == null ? '' : v).trim();
 const lower = (v) => str(v).toLowerCase();
@@ -30,11 +30,13 @@ const lower = (v) => str(v).toLowerCase();
  * first: vsnl.net alone put 47 unrelated people onto a single card called "Vsnl", and
  * eth.net and airtelmail.in did the same. They are the old dial-up and broadband providers,
  * so the oldest and most valuable entries in the book are exactly the ones affected.
+ *
+ * The names come from utils/contacts.js, not from a copy kept here. There WERE two lists,
+ * and the shorter one — the one every other path used — had none of the ISPs in it, which
+ * is how "Vsnl" reached the directory as a transporter while this file was busy excluding
+ * it. One list, or they drift apart again.
  */
-const FREE_MAIL = new RegExp('^(' + [
-    'gmail', 'yahoo', 'hotmail', 'outlook', 'live', 'icloud', 'aol', 'ymail', 'proton',
-    'rediffmail', 'vsnl', 'eth', 'airtelmail', 'sify', 'bsnl', 'dataone', 'mtnl', 'satyam',
-].join('|') + ')\\.');
+const FREE_MAIL = new RegExp('^(' + FREE_MAIL_NAMES.join('|') + ')\\.');
 
 function domainOf(email) {
     return lower(email).split('@')[1] || '';
