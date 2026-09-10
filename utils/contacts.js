@@ -2243,6 +2243,7 @@ module.exports = {
     splitBranchesOut,
     looksLikeACustomer,
     firmNameKey,
+    sameFirmName,
     expandTrunkLine,
     mergePreviews,
     identitiesOf,

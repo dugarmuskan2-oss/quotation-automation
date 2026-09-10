@@ -42,15 +42,26 @@ const BUYS_FROM_THEM = /\b(?:purchas\w*|pure?lasing|buy|buys|buying|bought)\b[^�
 /** A line about money owed or allowed is a price rule, not a remark. */
 const IS_RULE = /\bcredit\b|\bpdc\b|\blc only\b|\bwork with lc\b|\badvance\b|\bpayment terms\b|\bup to [\d,]+\b|\bupto [\d,]+\b/i;
 
+/**
+ * Read exactly the way the card reads it — and it was not.
+ *
+ * "Dealer — Tamilnadu & Chennai — SANKARA" is three parts: the relationship, the place, and
+ * the firm. Joining everything after the first made the firm "Tamilnadu & Chennai — SANKARA",
+ * and the tool then asked thirty times whether that was one firm or two.
+ */
 function splitRelation(text) {
     const parts = str(text).replace(/\s*—\s*no number given\s*$/i, '').split(' — ');
     if (parts.length < 2) return null;
-    const first = parts[0].trim(), last = parts.slice(1).join(' — ').trim();
+    const first = parts[0].trim(), last = parts[parts.length - 1].trim();
     if (!first || !last) return null;
     const f = REL_WORD.test(first), l = REL_WORD.test(last);
-    if (f && !l) return { firm: last, how: first };
-    if (l && !f) return { firm: first, how: last };
-    if (f && l) return first.length >= last.length ? { firm: last, how: first } : { firm: first, how: last };
+    if (f && !l) return { firm: last, how: parts.slice(0, -1).join(' — ').trim() };
+    if (l && !f) return { firm: first, how: parts.slice(1).join(' — ').trim() };
+    if (f && l) {
+        return first.length >= last.length
+            ? { firm: last, how: parts.slice(0, -1).join(' — ').trim() }
+            : { firm: first, how: parts.slice(1).join(' — ').trim() };
+    }
     return null;
 }
 /** "JAFEE ALI (98401-06593)" is a firm with his number written after it. */
@@ -90,6 +101,41 @@ function namesItself(text, company) {
 const FILING = /\bALL\s*D(?:E|)T(?:E|)AILS?\b|\bALL\s*DETIALS?\b|\bINFO\b|^\s*SNO\s*\d+|\bSNO\s*\d+\s*$|^\s*P\s*\(\s*\d+\s*\)|^\s*PD\s*\(\s*\d+\s*\)|^\s*TR\s*\(\s*\d+\s*\)/gi;
 function pageFirmKey(title) {
     return contacts.firmNameKey(str(title).replace(/\(.*?\)/g, ' ').replace(FILING, ' '));
+}
+
+/**
+ * Is this page the card's OWN page?
+ *
+ * He heads a page with more than one name where one firm sells two things — "SNO 12 APL
+ * APOLLO/SG PREMIUM (ALL DETAILS) SNO 12" is Apollo's own page, and matching the whole heading
+ * made it somebody else's, so the tool offered to move Apollo's own factory list away from it.
+ */
+function isOwnPage(title, company) {
+    const clean = str(title).replace(/\(.*?\)/g, ' ').replace(FILING, ' ');
+    return clean.split(/[\/,]/).some(part => contacts.sameFirmName(part, company));
+}
+
+/** A "firm" that is only relationship words is not a firm — "Who is Dealer?" is not a question. */
+function looksLikeAFirm(name) {
+    const left = str(name).toLowerCase().replace(/[^a-z0-9 ]+/g, ' ')
+        .split(/\s+/).filter(w => w && !PLAIN.test(w)).join('');
+    return left.length > 2;
+}
+
+/**
+ * What a relation note says BEYOND the relationship itself.
+ *
+ * "SWASTIK — dealer" says nothing that the heading and the firm's own name do not already say,
+ * so there is nothing to move and nothing to ask. "THEY ARE PURCHASING FROM BOMBAY H/W BY
+ * GIVING PDC UPTO 15 LAC" carries a payment term, and losing that would be a real loss.
+ */
+const PLAIN = /^(they|he|she|we|is|are|was|were|it|this|that|the|an?|and|to|of|in|at|on|for|from|them|him|her|his|its|our|their|with|by|as|be|been|do|does|doing|regular|regularly|purchases?|purchased|purchasing|purelasing|buys?|buying|bought|takes?|taking|took|dealers?|stockists?|distributors?|transport|transporters?|suppliers?|supply|materials?|pipes?|working|works|work|main|one|sub|only|no|number|given|manufactur\w*|factory)$/i;
+function relDetail(rel, card) {
+    const drop = new Set();
+    (str(rel.firm) + ' ' + str(card && card.company)).toLowerCase()
+        .replace(/[^a-z0-9]+/g, ' ').split(' ').forEach(w => { if (w) drop.add(w); });
+    return str(rel.how).toLowerCase().replace(/[^a-z0-9\/". ]+/g, ' ').split(/\s+/)
+        .filter(w => w && !drop.has(w) && !PLAIN.test(w)).join(' ').trim();
 }
 
 function whosePage(text, world) {
@@ -190,7 +236,7 @@ function prepare(card, world) {
         // whose page it is written on. "DOING BUSINESS 4 YEARS ON ADVANCE PAYMENT" names
         // nobody, and is on JP ENERGY's page under "HE IS PURCHASING FROM (A). SREEVATSA".
         const page = whosePage(t, world);
-        const mine = page && pageFirmKey(page) === selfKey;
+        const mine = page && (pageFirmKey(page) === selfKey || isOwnPage(page, card.company));
         if ((page && !mine) || (!page && namesItself(t, card.company))) {
             kept.push(n);
             asks.push({ key: 'theirs:' + norm(t).slice(0, 24),
@@ -218,7 +264,15 @@ function prepare(card, world) {
         if (!other) {
             const rec = reading(firm);
             if (!rec || !canBeACard(rec)) {
-                asks.push({ key: 'who:' + contacts.firmNameKey(firm), q: 'Who is "' + firm + '"?', why: 'Named on this card, but nothing in your phone book has a number for them, so there is no card to move the detail onto. It stays here for now.' });
+                // Only worth asking when something would otherwise be LOST. Apollo names two
+                // dozen dealers as bare "X — dealer" lines: there is no detail to move, so
+                // there is nothing to ask, and asking anyway produced forty questions with
+                // Swastik in it three times.
+                if (relDetail(rel, card) && looksLikeAFirm(firm)) {
+                    asks.push({ key: 'who:' + contacts.firmNameKey(firm),
+                        q: 'Who is "' + firm + '"?',
+                        why: 'Your note says "' + str(rel.how).slice(0, 60) + '" — but nothing in your phone book has a number for them, so there is no card to move that onto. It stays here for now.' });
+                }
                 return n;
             }
             other = cardFromReading(rec, firm);
@@ -253,7 +307,7 @@ function prepare(card, world) {
         const page = whosePage(t, world);
         if (!page) return true;
         const pageKey = pageFirmKey(page);
-        if (!pageKey || pageKey === selfKey) return true;
+        if (!pageKey || pageKey === selfKey || isOwnPage(page, card.company)) return true;
         const other = world.all.find(c => contacts.firmNameKey(c.company) === pageKey);
         if (!other) {
             asks.push({ key: 'theirs:' + norm(t).slice(0, 24),
@@ -301,6 +355,7 @@ function prepare(card, world) {
         if (!rel) return;
         const firm = bareName(rel.firm);
         if (findCard(firm) || reading(firm)) return;
+        if (!looksLikeAFirm(firm)) return;
         if (asks.some(a => a.q.indexOf('"' + firm + '"') !== -1)) return;
         asks.push({ key: 'split:' + contacts.firmNameKey(firm), q: 'Is "' + firm + '" one firm, or two run together?', why: 'That name is nowhere in your phone book. "MOKSHI MOTHILA" turned out to be Mokshi and Motilal with the comma lost.' });
     });
@@ -309,8 +364,16 @@ function prepare(card, world) {
     // A question he has already answered is not asked again. He told me POLYFIT was a customer
     // and the next run asked who POLYFIT was — a tool that nags is worse than no tool.
     const settled = new Set(world.settled || []);
-    return { card: contacts.sanitizePartner(card), did, made,
-        asks: asks.filter(a => !settled.has(str(a.key))) };
+    // One question per thing. The same firm named on three notes is one question about that
+    // firm, not three identical ones — Apollo produced forty, with Swastik in it three times.
+    const asked = new Set();
+    const list = asks.filter((a) => {
+        const k = str(a.key);
+        if (settled.has(k) || asked.has(k)) return false;
+        asked.add(k);
+        return true;
+    });
+    return { card: contacts.sanitizePartner(card), did, made, asks: list };
 }
 
 // ── running it ────────────────────────────────────────────────────────────────────────────
