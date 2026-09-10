@@ -223,6 +223,31 @@ think longer and add".* Everything below was sitting in the notes when it had a 
     **A field nobody filled in is not an invitation to fill it.** Check every card for a head
     office the pages never named — the scan set one on all of them.
 
+32. **THE BIGGEST GAP OF ALL: the people he actually EMAILS were never read.** Google keeps
+    two lists — contacts he SAVED, and "other contacts", everyone he has written to. The scan
+    read the second list and kept **only the domain**, on the reasoning that the addresses
+    were none of the directory's business. That rule threw away the men he corresponds with:
+    41 people at jindalsaw.com, of whom 36 were on no card — Mayank Singh Thakur, Megha
+    Vatsayan, Umesh Barhate, Deepak Sharma, Thejas Raghav T, and the department mailboxes
+    logistics@, quality.nsk@, accounts@, marketing@, payment.advice@.
+
+     in utils/googlePeople.js now reads names and addresses, narrowed to one
+    domain so it can be used while working a single card. **Every card in the queue is missing
+    these people.**
+33. **A phone from his pages and an address from his email are the same man, spelled twice.**
+    Rajat Chabra / Rajat Chhabra. Swadeep Koche / Swadeep Khoche. S Karthick / Karthik /
+    Karthi. Shreeram / Sreeram. Nothing automatic joins them: one row has a number and no
+    address, the other an address and no number, and the spellings differ. *Show him the pairs
+    and let him say.* He merged four and refused three — Rakesh, Ramesh and Magesh look
+    similar but have different numbers and are different men.
+34. **A system login is not a person's address.** sapadmin@jindalsaw.com came through as
+    "Swadeep Khoche," — it is the SAP account he logs in with, not his mailbox.
+35. **The page decides the FIELD, not just the label.** A line written under his PRODUCT
+    heading is a product; one under his DEALER heading is a relation. "( a ). PPGL (
+    PREPAINTED GALVALUME) MAKE: JSL /TATA BSL" and its specification were sitting as notes
+    when the page plainly files them as products. *His instruction: place the note where it
+    belongs, do not just record where it came from.*
+
 The general lesson, and the one worth the most: **a card is built from ALL his pages about that
 firm, not one.** Jindal Saw has seven. A detail that looks orphaned on one page is usually
 explained on another.

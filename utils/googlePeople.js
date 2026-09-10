@@ -59,11 +59,48 @@ async function savedContacts(onPage) {
 }
 
 /**
+ * The PEOPLE he has exchanged mail with — names and addresses, not just their domains.
+ *
+ * Google keeps two lists: contacts he SAVED, and "other contacts", everyone he has written
+ * to. emailedDomains below reads the second list and keeps only the domain, on the reasoning
+ * that the addresses were none of the directory's business. That was wrong, and it cost real
+ * people: Mayank Singh Thakur is in this list, so "jindalsaw.com" was kept and
+ * mayank.thakur@jindalsaw.com was thrown away. The men he actually corresponds with are
+ * exactly the ones that rule excluded.
+ *
+ * `onlyDomain` narrows it to one firm, which is how this is used while working a single card.
+ */
+async function emailedPeople(onlyDomain, onPage) {
+    const api = peopleApi();
+    if (!api) return [];
+    const want = String(onlyDomain || '').toLowerCase();
+    const out = [];
+    let token = null, pages = 0, seen = 0;
+    do {
+        const r = await api.otherContacts.list({
+            pageSize: PAGE, pageToken: token, readMask: 'names,emailAddresses',
+        });
+        (r.data.otherContacts || []).forEach((p) => {
+            seen++;
+            const name = String((((p.names || [])[0]) || {}).displayName || '').trim();
+            (p.emailAddresses || []).forEach((e) => {
+                const v = String((e && e.value) || '').trim().toLowerCase();
+                if (!v) return;
+                if (want && (v.split('@')[1] || '') !== want) return;
+                out.push({ name, email: v });
+            });
+        });
+        token = r.data.nextPageToken;
+        if (onPage) onPage(seen, out.length);
+    } while (token && ++pages < MAX_PAGES);
+    return out;
+}
+
+/**
  * The domains of everyone the owner has ever exchanged mail with.
  *
  * This is what "Contacted" means on a card: a firm he has actually dealt with, as against
- * one that has sat in his phone untouched for years. Domains only — the addresses
- * themselves are none of the directory's business.
+ * one that has sat in his phone untouched for years.
  */
 async function emailedDomains(onPage) {
     const api = peopleApi();
@@ -84,4 +121,4 @@ async function emailedDomains(onPage) {
     return out;
 }
 
-module.exports = { isAvailable, savedContacts, emailedDomains, PERSON_FIELDS };
+module.exports = { isAvailable, savedContacts, emailedDomains, emailedPeople, PERSON_FIELDS };
