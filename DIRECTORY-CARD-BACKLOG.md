@@ -363,6 +363,33 @@ trade page and was excluded only because it also says ALL DETAILS.
 
 ---
 
+**A save from a stale browser copy silently guts a card. The guard is agreed, deferred.**
+*His words: "BUILD IT WHEN IT COMES TO IT".*
+
+`POST /contacts/pending/preview` (routes/contacts.js) does
+`item.preview = sanitizePartner(req.body.preview)` — a **whole-object overwrite**. Any edit in
+the browser sends the entire card back, so whatever that tab is holding wins, even when it is
+older than what is stored and even when the server it is talking to is running yesterday's
+code.
+
+**It has now cost data three times:** `branch` on one card, `gst` on Kerala Roadways, and on
+Bombay Hardware **60 headings cut to 12 and both price rules wiped**. All three were put back
+by hand, and only because they happened to be looked at.
+
+The approve route is already protected — routes/contacts.js:473 runs
+`keepWhatWasAddedSince(before, partner, REVIEWED_FIELDS)`. The preview route is not.
+
+**The fix when it comes to it:** stamp each queue item with a `rev`, have the browser send the
+`rev` it loaded, and refuse a save whose `rev` does not match with a 409 that tells the browser
+to reload. `keepWhatWasAddedSince` is the wrong tool *here* — restoring anything missing would
+break the ✕ buttons that delete a heading or a note on purpose. A threshold ("refuse a save
+that drops more than half") has no honest cut-off. Versioning has no false positives.
+
+**Until then:** do not leave a waiting card open in a second tab, and restart the dev server
+after any change to `utils/contacts.js` before touching a card in the browser.
+
+---
+
 ## Still open from earlier, on Apollo
 
 - **"Tamilnadu & Chennai" and "Chennai" are separate groups**, so Sankara and Trichy AMK appear
@@ -458,7 +485,38 @@ says what it really is: *From your phone book · filed under 60 headings · 26 p
 `044-2522 3308 / 49138888` is one group; the second line shares the 044 he wrote once.
 `expandTrunkLine` in utils/contacts.js is the rule — use it, never hand-type the code.
 
-### 12. What was NOT wrong
+### 12. A note about ANOTHER firm belongs on that firm's card
+
+*His words, on "TOOK REFERNCE FROM MR: SAMPATH– BOMBAY H/W": "it shouldnt appear here but in
+Maniams card".* That sentence is on his **Maniam Steels** page and is a fact about Maniam —
+it reached Bombay Hardware only because "BOMBAY H/W" appears in it.
+
+*And what it means: "it mean bombay hardware also supplies to Manian".* A reference from
+Sampath is not just an introduction — **the firm he referred is one Bombay Hardware supplies.**
+
+**The line to draw:**
+
+| Kind of note | Whose card |
+|---|---|
+| *"X buys from them"* — a relationship between the two firms | **Both** — it groups under "Who they work with" |
+| *"we took the reference for X from Sampath"* — how he came to know X | **X's card only** |
+
+**Never delete it from one card until you have checked it is on the other.** Maniam Steels
+carried it three times, so removing it here lost nothing. Where the other firm has no card
+yet, the note stays put — losing it is worse than it sitting in the wrong place.
+
+**Parked for that reason:** "HYD FACTORY" (belongs with the *PIPE DEALER (STOCKIST) - JINDAL
+STAR ALL INDIA* page; there is no Jindal Star card), "ACCORDING TO MR SAMPATH (BOMBAY H/W) GOOD
+PARTY. (about ENGINEERING TOOLS SUPPLY)", and "SIR SPOKE TO BOMBAY HW SAMPATH (21.2.2025)"
+(from the Coimbatore Industrial Product page). None of those three firms has a card yet.
+
+### 13. A fact should not be a note AND a rule
+
+"They give METAL up to 5,00,000" and "work with LC only" were sitting in both places. They are
+**price rules**, and the rule now carries his sentence word for word so the note copy could go.
+Notes 51 → 49.
+
+### 14. What was NOT wrong
 
 **Not one digit was mistyped**, across nine numbers. `7708106940` (Sampath) and `7708106949`
 (the godown) were correctly kept apart. Say this when it is true — the fault is almost always
