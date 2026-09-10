@@ -271,20 +271,39 @@ describe('product sizes — the point of the products list', () => {
 describe('storage caps — the directory is a single JSON blob, so every list is capped', () => {
     function repeat(n, make) { const out = []; for (let i = 0; i < n; i++) out.push(make(i)); return out; }
 
-    test('a card holds at most 12 people, 20 branches, 40 products, 60 sizes, 40 routes', () => {
+    /**
+     * The caps exist because the directory is ONE json blob, but they were set at the size of
+     * a small firm and silently threw away a real one. Approving Jindal Saw — 83 people over
+     * seven offices and two factories — wrote 12 and deleted 71 at the moment of saving, with
+     * nothing said. They are a runaway-data backstop now, not a limit on a firm.
+     */
+    test('a real firm is never trimmed — 83 people, 9 branches all survive', () => {
         const p = sanitizePartner({
-            people: repeat(20, i => person('P' + i, ['p' + i + '@x.in'])),
-            branches: repeat(30, i => ({ city: 'C' + i })),
+            people: repeat(83, i => person('P' + i, ['p' + i + '@x.in'])),
+            branches: repeat(9, i => ({ city: 'C' + i })),
             products: repeat(50, i => ({ p: 'Prod ' + i })),
             routes: repeat(50, i => ({ from: 'F' + i, to: 'T' + i })),
         });
-        expect(p.people).toHaveLength(12);
-        expect(p.branches).toHaveLength(20);
-        expect(p.products).toHaveLength(40);
-        expect(p.routes).toHaveLength(40);
+        expect(p.people).toHaveLength(83);
+        expect(p.branches).toHaveLength(9);
+        expect(p.products).toHaveLength(50);
+        expect(p.routes).toHaveLength(50);
+    });
 
-        const sized = sanitizePartner({ products: [{ p: 'GI', sizes: repeat(70, i => ({ nb: String(i) })) }] });
-        expect(sized.products[0].sizes).toHaveLength(60);
+    test('the backstop is far past any real firm', () => {
+        const p = sanitizePartner({
+            people: repeat(2100, i => person('P' + i, ['p' + i + '@x.in'])),
+            branches: repeat(250, i => ({ city: 'C' + i })),
+            products: repeat(450, i => ({ p: 'Prod ' + i })),
+            routes: repeat(450, i => ({ from: 'F' + i, to: 'T' + i })),
+        });
+        expect(p.people).toHaveLength(2000);
+        expect(p.branches).toHaveLength(200);
+        expect(p.products).toHaveLength(400);
+        expect(p.routes).toHaveLength(400);
+
+        const sized = sanitizePartner({ products: [{ p: 'GI', sizes: repeat(520, i => ({ nb: String(i) })) }] });
+        expect(sized.products[0].sizes).toHaveLength(500);
     });
 
     test('a person holds at most 6 phones and 6 emails', () => {
@@ -297,14 +316,15 @@ describe('storage caps — the directory is a single JSON blob, so every list is
         expect(p.emails).toHaveLength(6);
     });
 
-    test('notes are capped at 100, and one note at 2000 characters', () => {
+    test('notes back off at 1000, and one note at 4000 characters', () => {
         const p = sanitizePartner({
             notes: repeat(150, i => ({ d: '2026-08-01', t: 'note ' + i })).concat([
                 { d: '2026-08-01', t: 'x'.repeat(5000) },
             ]),
         });
-        expect(p.notes).toHaveLength(100);
-        expect(sanitizePartner({ notes: [{ t: 'x'.repeat(5000) }] }).notes[0].t).toHaveLength(2000);
+        expect(p.notes).toHaveLength(151);          // a real card is nowhere near the backstop
+        expect(sanitizePartner({ notes: repeat(1100, i => ({ t: 'n' + i })) }).notes).toHaveLength(1000);
+        expect(sanitizePartner({ notes: [{ t: 'x'.repeat(5000) }] }).notes[0].t).toHaveLength(4000);
     });
 
     test('pipe types are capped at 10 and free-text rules at 20', () => {

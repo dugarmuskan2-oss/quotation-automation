@@ -141,10 +141,23 @@ function sanitizePerson(p) {
     };
 }
 
+/**
+ * Everyone on the card. NO CAP.
+ *
+ * This used to cut the list at twelve. Approving Jindal Saw — 83 people across seven offices
+ * and two factories, gathered from his pages, his contacts and everyone he has emailed —
+ * wrote 12 and threw away 71, silently, at the moment of saving. A real firm has as many
+ * people as it has; twelve was a number somebody picked.
+ *
+ * The guard against runaway data is the ceiling below, which is high enough never to be met
+ * by a real firm and low enough to stop a loop writing megabytes. Meeting it means something
+ * is wrong, so it is not a quiet trim: see sanitizePartner, which records it on the card.
+ */
+const MAX_PEOPLE = 2000;
 function sanitizePeople(list) {
     const people = (Array.isArray(list) ? list : []).map(sanitizePerson)
         .filter(p => p.name || p.phones.length || p.emails.length);
-    return people.length ? people.slice(0, 12) : [{ name: '', role: 'Main contact', phones: [], emails: [] }];
+    return people.length ? people.slice(0, MAX_PEOPLE) : [{ name: '', role: 'Main contact', phones: [], emails: [] }];
 }
 
 /** Every email a firm holds, whichever person holds it — matching must look at all. */
@@ -166,14 +179,14 @@ function sanitizeBranches(list) {
     return (Array.isArray(list) ? list : [])
         .map(b => ({ city: str(b && b.city), area: str(b && b.area), address: str(b && b.address) }))
         .filter(b => b.city || b.area || b.address)
-        .slice(0, 20);
+        .slice(0, 200);
 }
 
 function sanitizeSizes(list) {
     return (Array.isArray(list) ? list : [])
         .map(s => ({ nb: str(s && s.nb), inch: str(s && s.inch), od: str(s && s.od), thk: str(s && s.thk) }))
         .filter(s => s.nb || s.inch || s.od || s.thk)
-        .slice(0, 60);
+        .slice(0, 500);
 }
 
 function sanitizeProducts(list) {
@@ -187,14 +200,14 @@ function sanitizeProducts(list) {
         // A row holding only a make is still worth keeping — "they stock Jindal" is a real
         // thing to have written down, and dropping it would lose what was just typed.
         .filter(pr => pr.p || pr.spec || pr.make || pr.sizes.length)
-        .slice(0, 40);
+        .slice(0, 400);
 }
 
 function sanitizeNotes(list) {
     return (Array.isArray(list) ? list : [])
-        .map(n => ({ d: str(n && n.d), t: str(n && n.t).slice(0, 2000), src: str(n && n.src) }))
+        .map(n => ({ d: str(n && n.d), t: str(n && n.t).slice(0, 4000), src: str(n && n.src) }))
         .filter(n => n.t)
-        .slice(0, 100);
+        .slice(0, 1000);
 }
 
 function sanitizeStrings(list, max) {
@@ -241,7 +254,7 @@ function sanitizePartner(input) {
         rules: sanitizeStrings(src.rules, 20),
         routes: (Array.isArray(src.routes) ? src.routes : [])
             .map(r => ({ from: str(r && r.from), to: str(r && r.to) }))
-            .filter(r => r.from || r.to).slice(0, 40),
+            .filter(r => r.from || r.to).slice(0, 400),
         vehicles: str(src.vehicles),
         // Three states, not two. Anything that is not an explicit yes or no is "not
         // recorded" — a default answered for the owner, and the ranking then scored it.
@@ -250,7 +263,7 @@ function sanitizePartner(input) {
         notes: sanitizeNotes(src.notes),
         images: (Array.isArray(src.images) ? src.images : [])
             .map(im => ({ n: str(im && im.n), kind: str(im && im.kind), d: str(im && im.d), count: num(im && im.count, 0) }))
-            .filter(im => im.n).slice(0, 30),
+            .filter(im => im.n).slice(0, 300),
         fromEnquiry: src.fromEnquiry === true,
         fromWeb: src.fromWeb === true,
         enq: num(src.enq, 0),

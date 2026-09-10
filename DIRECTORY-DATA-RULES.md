@@ -89,6 +89,23 @@ found in the notes — because the guess was never his writing in the first plac
 
 ---
 
+## 0d. A CAP IS NOT A LIMIT ON A FIRM
+
+The directory is one JSON blob, so its lists are capped. The caps were set at the size of a
+small firm and **silently deleted a real one**: approving Jindal Saw — 83 people over seven
+offices and two factories, gathered from his pages, his contacts and everyone he has emailed —
+wrote **12** and threw away **71**, at the moment of saving, with nothing said.
+
+People were capped at 12, branches at 20, products and routes at 40, sizes at 60, notes at 100.
+Every one of those is reachable by a real firm. They are backstops now — 2000 people, 200
+branches, 400 products and routes, 500 sizes, 1000 notes — far past anything real, there only
+to stop a loop writing megabytes.
+
+**A number somebody picked must never quietly decide what he keeps.** Where a limit is
+genuinely needed, it must SAY when it bites; silence is what made this cost seventy-one people.
+
+---
+
 ## 1. The card
 
 | Field | Rules |
