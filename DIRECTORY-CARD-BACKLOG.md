@@ -637,3 +637,47 @@ line and will want the same treatment when their turn comes.
 
 **Also from this page:** it names `BOMBAY H/W VIREN BHAI (9840333333)` at line 41 as well, so
 the owner added to the card is confirmed twice in his own book.
+
+---
+
+## A relation sentence cannot be reused from the other side unchanged
+
+*His corrections: "they sell to", "also under , they sell to", "what is to heavy metal?",
+"all these also under respective clients : Buy from bombay hardware".*
+
+**1. The headings now say it his way.** "Firms that buy from them" → **They sell to**. "Firms
+they buy from" → **They buy from**. Two lines, opposite directions, no thinking required.
+
+**2. The direction words flip meaning when the note moves.** This was a fault I introduced.
+Moving "THEY ARE PURCHASING FROM BOMBAY H/W BY GIVING PDC UPTO 15 LAC" onto Sree Mazhi's card
+as `BOMBAY HARDWARE — <that sentence>` made it read **They sell to: Bombay Hardware** — saying
+the customer sells to Bombay Hardware. Backwards, on 31 cards.
+
+The words "from them", "from Bombay H/W" are written from ONE side. On the other card they must
+be replaced, not carried:
+
+| On Bombay Hardware's card | On the customer's card |
+|---|---|
+| `SEVEN STAR AIRCON — they buy from them` | `BOMBAY HARDWARE — supplier to them` |
+| reads **They sell to** | reads **They buy from** |
+
+**His own sentence still goes on the customer's card — as an ordinary note, not as the link.**
+Put inside the link it drags its direction words along and overrides the grouping, because
+"purchasing from" is tested before "supplier".
+
+**What must NOT be flipped:** a transporter who carries for them, and a supplier like Chetna
+Steel. Rewriting those as "supplier to them" would say Bombay Hardware supplies its own
+suppliers. Only a note the buying test matches is a customer note.
+
+**3. A product is not a place.** "supplier to them for HEAVY METAL" left "HEAVY METAL" as the
+row heading, which reads as a town. A leftover that matches one of the card's own products is
+never a place.
+
+**Where it ended:** Bombay Hardware reads **Transporters 4 · They sell to 35 · They buy from 5**,
+and its notes box is **9**, from 111 at the start. Four more cards were built for customers with
+no reading at all — National Fire Armour, Sree Mazhi, Savoy Engineers, Kumar Agro — from the raw
+page, so his sentence has somewhere to live.
+
+**Watch for a stale page.** Two of his corrections were of labels the code had already changed;
+his browser was running an older copy of `partner-directory.js`. Bump the `?v=` on every change
+to it, and say so.

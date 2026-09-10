@@ -1722,7 +1722,7 @@
     // "They purchase from them" is the opposite direction to "supplier to them", and reading
     // the two the same way put a firm's own customers under the heading of its suppliers.
     var BUYS_FROM_THEM = /\b(?:purchas\w*|pure?lasing|buy|buys|buying|bought)\b[^—]{0,60}?\bf(?:ro|or)m\s*(?:them|him|bombay|b\s*["'’]?\s*bay|b\/?w|h\/?w)|\bregular purchase\b/i;
-    var BUYERS = 'Firms that buy from them';
+    var BUYERS = 'They sell to';
     var REL_KINDS = [
         [BUYS_FROM_THEM, BUYERS],
         [/dealers?|stockists?|distribut/i, 'Dealers'],
@@ -1730,7 +1730,7 @@
         [/coat|galvanis|galvaniz/i, 'Coating'],
         [/test|inspect|lab\b/i, 'Testing'],
         [/agent|broker/i, 'Agents'],
-        [/suppl|buy from|source/i, 'Firms they buy from'],
+        [/suppl|buy from|source/i, 'They buy from'],
     ];
     function relKind(how) {
         var hit = REL_KINDS.find(function (k) { return k[0].test(str(how)); });
@@ -1745,7 +1745,7 @@
      * dealing, not a place, and heading a row with it gave thirty-three rows of one firm each.
      * Those facts are not lost: relExtra below keeps them showing as notes.
      */
-    function relPlace(how) {
+    function relPlace(how, p) {
         var t = str(how)
             .replace(/\b(dealers?|stockists?|distributors?|main|one|sub|transporters?|transport|coaters?|coating|galvanisers?|agents?|brokers?|suppliers?|purchas\w*|pure?lasing|buys?|buying|bought)\b/ig, ' ')
             .replace(/\b(for|them|in|at|on|by|to|with|the|an?|and|is|are|was|were|their|of|only|no|number|given|he|she|they|we|it|his|her|regular|regularly|materials?|pipes?|working|works|work|doing)\b/ig, ' ')
@@ -1753,7 +1753,14 @@
             .replace(/\s+/g, ' ')
             .trim();
         // A place name is short, has no digits, and is a word — not "he working ( )".
-        return (t.length > 24 || /\d/.test(t) || !/[A-Za-z]{3}/.test(t)) ? '' : t;
+        if (t.length > 24 || /\d/.test(t) || !/[A-Za-z]{3}/.test(t)) return '';
+        // "supplier to them for HEAVY METAL" left "HEAVY METAL", which is not a place — it is
+        // the thing they supply, and it is on this card's own product list. A row headed with
+        // a product reads as a town and is not one.
+        var prods = (p && p.products) || [];
+        var k = lower(t).replace(/[^a-z0-9]/g, '');
+        if (k && prods.some(function (x) { return lower(str(x && x.p)).replace(/[^a-z0-9]/g, '') === k; })) return '';
+        return t;
     }
 
     /** Wording that carries no fact of its own — the plain way of saying a relationship. */
@@ -1784,7 +1791,7 @@
             if (!byKind[k]) { byKind[k] = { kind: k, places: [], byPlace: {} }; kinds.push(byKind[k]); }
             var g = byKind[k];
             // A customer is not "in" anywhere — the wording is about the buying, not a town.
-            var placeName = (k === BUYERS ? '' : relPlace(rel.how)) || 'Not said where';
+            var placeName = (k === BUYERS ? '' : relPlace(rel.how, p)) || 'Not said where';
             var pk = lower(placeName).replace(/[^a-z0-9]/g, '');
             if (!g.byPlace[pk]) { g.byPlace[pk] = { place: placeName, firms: [], keys: {} }; g.places.push(g.byPlace[pk]); }
             var slot = g.byPlace[pk];
