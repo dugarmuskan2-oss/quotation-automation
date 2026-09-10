@@ -327,13 +327,27 @@ describe('storage caps — the directory is a single JSON blob, so every list is
         expect(sanitizePartner({ notes: [{ t: 'x'.repeat(5000) }] }).notes[0].t).toHaveLength(4000);
     });
 
-    test('pipe types are capped at 10 and free-text rules at 20', () => {
+    // The old caps of 10 / 20 / 12 were low enough to cut a real firm. Bombay Hardware is
+    // filed under 61 headings of his phone book; a cap of 12 threw 49 of them away on the
+    // next save. These are backstops against a runaway file, not a limit on one firm.
+    test('pipe types, rules and headings are held far above any real firm', () => {
         const p = sanitizePartner({
-            types: repeat(30, i => 'T' + i),
-            rules: repeat(30, i => 'Rule ' + i),
+            types: repeat(130, i => 'T' + i),
+            rules: repeat(230, i => 'Rule ' + i),
+            categories: repeat(430, i => 'Heading ' + i),
         });
-        expect(p.types).toHaveLength(10);
-        expect(p.rules).toHaveLength(20);
+        expect(p.types).toHaveLength(100);
+        expect(p.rules).toHaveLength(200);
+        expect(p.categories).toHaveLength(400);
+
+        const real = sanitizePartner({
+            types: repeat(6, i => 'T' + i),
+            rules: repeat(9, i => 'Rule ' + i),
+            categories: repeat(61, i => 'Heading ' + i),
+        });
+        expect(real.types).toHaveLength(6);
+        expect(real.rules).toHaveLength(9);
+        expect(real.categories).toHaveLength(61);   // every heading he filed the firm under
     });
 
     test('the directory itself never exceeds 2000 cards — approve is now the only door', () => {
@@ -1993,6 +2007,48 @@ describe('mergePartner — one address belongs to one company', () => {
     });
 
     // ── finding the duplicates that pre-date the rule ────────────────────────
+
+    describe('duplicateFirms — one firm, two cards, found by its name', () => {
+        const { duplicateFirms } = contactsLib;
+        const card = (id, company) => sanitizePartner({ id, company });
+
+        test('the two spellings that made two Maharashtra Seamless cards are one firm', () => {
+            // The real pair: added 5 Sept as "Maharashtra Seamless Limited" and 7 Sept as
+            // "MAHARASHTRA SEAMLESS LTD", from two different addresses, so nothing on the way
+            // in could see them. They sat side by side holding the same 187 people.
+            const list = [card('p_a', 'Maharashtra Seamless Limited'),
+                card('p_b', 'MAHARASHTRA SEAMLESS LTD')];
+
+            expect(duplicateFirms(list)).toEqual([{
+                name: 'Maharashtra Seamless Limited',
+                cards: [{ id: 'p_a', company: 'Maharashtra Seamless Limited' },
+                    { id: 'p_b', company: 'MAHARASHTRA SEAMLESS LTD' }],
+            }]);
+        });
+
+        test('two firms that merely start with the same word are left alone', () => {
+            // sameFirmName treats a prefix as a match on purpose; this must not. Jindal Saw
+            // and Jindal Pipe are two real firms, and a banner that cries wolf gets ignored.
+            expect(duplicateFirms([card('p_a', 'Jindal Saw Limited'),
+                card('p_b', 'Jindal Pipe Industries')])).toEqual([]);
+        });
+
+        test('cards with no name are not all the same firm', () => {
+            expect(duplicateFirms([card('p_a', ''), card('p_b', ''), card('p_c', '')])).toEqual([]);
+        });
+
+        test('a healthy directory reports nothing', () => {
+            expect(duplicateFirms(twoFirms())).toEqual([]);
+            expect(duplicateFirms([])).toEqual([]);
+        });
+
+        test('three cards for one firm list all three', () => {
+            const found = duplicateFirms([card('p_a', 'Arc'), card('p_b', 'ARC Limited'),
+                card('p_c', 'Arc Pvt Ltd'), card('p_d', 'Balaji Roadlines')]);
+            expect(found).toHaveLength(1);
+            expect(found[0].cards.map(c => c.id)).toEqual(['p_a', 'p_b', 'p_c']);
+        });
+    });
 
     describe('duplicateEmails', () => {
         test('finds an address held twice and names BOTH cards', () => {

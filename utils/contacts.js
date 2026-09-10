@@ -243,15 +243,15 @@ function sanitizePartner(input) {
         // what the firm does far better than anything in the entry itself — and every firm
         // under that heading shares it. One firm can be filed under several: APL Apollo is
         // under ERW MFG and under SQUARE PIPE.
-        categories: sanitizeStrings(src.categories, 12),
+        categories: sanitizeStrings(src.categories, 400),
         people: sanitizePeople(src.people),
         city: str(src.city),
         address: str(src.address),
         branches: sanitizeBranches(src.branches),
-        types: sanitizeStrings(src.types, 10),
+        types: sanitizeStrings(src.types, 100),
         moq: num(src.moq, 0),
         products: sanitizeProducts(src.products),
-        rules: sanitizeStrings(src.rules, 20),
+        rules: sanitizeStrings(src.rules, 200),
         routes: (Array.isArray(src.routes) ? src.routes : [])
             .map(r => ({ from: str(r && r.from), to: str(r && r.to) }))
             .filter(r => r.from || r.to).slice(0, 400),
@@ -348,6 +348,32 @@ function duplicateEmails(contacts) {
 }
 
 function cardRef(p) { return { id: p.id, company: p.company }; }
+
+/**
+ * Two cards for ONE firm, found by its NAME rather than its address.
+ *
+ * duplicateEmails above can only see a firm that wrote from the same mailbox twice. It could
+ * never have seen Maharashtra Seamless: the card added on 5 September was called
+ * "Maharashtra Seamless Limited" and the one added on 7 September "MAHARASHTRA SEAMLESS LTD",
+ * they came in from two different addresses, and for three days they sat side by side
+ * splitting one firm.
+ *
+ * The test is EXACT equality of firmNameKey, never the prefix rule sameFirmName uses. A
+ * banner that cries wolf gets ignored, and losing the real pairs costs more than missing a
+ * near-name one.
+ */
+function duplicateFirms(contacts) {
+    const by = {};
+    (Array.isArray(contacts) ? contacts : []).forEach((p) => {
+        if (!p) return;
+        const key = firmNameKey(p.company);
+        if (!key) return;                       // an unnamed card matches nothing, not everything
+        (by[key] = by[key] || []).push(cardRef(p));
+    });
+    return Object.keys(by).filter(k => by[k].length > 1)
+        .map(k => ({ name: by[k][0].company, cards: by[k] }));
+}
+
 
 /** No firm name and nobody you could reach — there is nothing here to keep. */
 function partnerIsEmpty(p) {
@@ -2165,6 +2191,7 @@ module.exports = {
     mergePartner,
     partnerIsEmpty,
     duplicateEmails,
+    duplicateFirms,
     findByEmail,
     allEmails,
     bumpUsage,

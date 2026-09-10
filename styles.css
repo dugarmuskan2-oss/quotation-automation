@@ -1330,6 +1330,9 @@
 .pd-close-head { cursor: pointer; margin-bottom: 10px; }
 .pd-empty { padding: 14px; text-align: center; border: 1px dashed rgba(0,0,0,.2); border-radius: 10px; }
 .pd-error { background: #FBE9E9; color: #8C2F2F; border-radius: 8px; padding: 8px 11px; font-size: 12.5px; margin-bottom: 10px; }
+/* Softer than pd-error: a thing to look at, not a thing that is wrong. Two cards can
+   share a name and still be two real firms in two towns. */
+.pd-warn { background: #FFF6E5; color: #8A5A00; border-radius: 8px; padding: 8px 11px; font-size: 12.5px; margin-bottom: 10px; }
 .pd-linkish { border: none; background: none; padding: 0; cursor: pointer; color: #8C2F2F; font: inherit; text-decoration: underline; }
 /* An address that cannot be stored stays on screen and says so, the same red the weight
    calculator uses for a missing kg/m — it is never dropped in silence. */

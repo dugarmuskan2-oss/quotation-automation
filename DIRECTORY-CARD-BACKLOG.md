@@ -369,3 +369,130 @@ trade page and was excluded only because it also says ALL DETAILS.
   under both. Left as written rather than merged.
 - **25 of Apollo's 30 dealers are in the waiting list**, so their names are plain rather than
   links. They become links as they are brought into the queue — *his decision.*
+
+---
+
+## What BOMBAY HARDWARE taught — to transfer
+
+The card had **17 people and 111 notes**; his saved contacts alone held 37 people for it. Both
+numbers were a symptom: things that belong in a field were sitting in notes, and the people who
+were missing outnumbered the people who were duplicated.
+
+### 1. The head office is NOT where the phone numbers are
+
+The card said Bangalore. Every landline on it was **044 — Chennai**. The inference was that
+Chennai must be home, and it was **wrong**: *his words, "headoffice is bangalore / numbers are
+from the chennai branch".*
+
+**Transfers:** never read a head office off an area code. A firm's main office can be in a town
+that appears nowhere on the page you are reading. **Ask, or leave it blank.** This is the same
+lesson as Jindal Saw, arrived at from the opposite direction — there the answer was "leave it
+blank", here the answer was a town the numbers never mention.
+
+A number written under a CITY heading belongs to **that city's branch**, whatever the head
+office is.
+
+### 2. A firm's own address can belong to a different firm
+
+The card carried `NO.15,VAANIYAMALLI VILLAGE... GUMMIDIPOONDI` — which is on the **Chetna
+Steel** page, not theirs. It got there because one man, Rishab Mehta, is on both firms.
+
+**Transfers:** when one person is shared between two firms, check every field on the card
+against the page it really came from. A shared contact drags his other firm's address, branch
+and people across with him.
+
+### 3. A branch is not a firm
+
+`CHETNA FACTORY` was filed as a branch of Bombay Hardware. Chetna Steel has its own full page
+with its own people (Hanuman, Ashish Vikram, its T.C. man, its transport man Sai Ganesh).
+*His decision: its own card, linked both ways.*
+
+**Transfers:** if the "branch" has people of its own on a page of its own, it is a firm.
+
+### 4. Provenance notes are not notes
+
+**61 of the 111 notes** said only *From your phone book, under "X"* — which the Filed-under list
+already says. Deleting them lost nothing, once every heading they named was in `categories`.
+**Do the union first, then delete.**
+
+### 5. The relation notes were pointing the wrong way
+
+**43 notes** said some other firm *buys from* Bombay Hardware. The app only understood
+"dealer / transporter / supplier", so each of the 43 became its own heading. Now grouped under
+**"Firms that buy from them"**, and its opposite is **"Firms they buy from"**.
+
+**Transfers:** a stockist's card is mostly about who buys FROM them. Expect this on every
+dealer card. His spelling wanders — `PURELASING`, `PURCHASE FORM` — and both are matched now.
+
+### 6. A note that says more than the relationship stays visible
+
+"THEY ARE PURCHASING FROM BOMBAY H/W **BY GIVING PDC UPTO 15 LAC**" carries a payment term.
+"used to purchase from them **but now stopped**" carries the ending. Those stay as notes; the
+bare ones ("They purchase from them — X") are hidden because the group already says it.
+
+### 7. Branches with nobody in them were invisible
+
+Delhi, Trichy, Coimbatore and Vellore were on the card and not on the screen, because the
+screen built its branch list from the PEOPLE. His own written list of their offices was being
+thrown away in the display. Every branch on the card now gets a block.
+
+### 8. The head office town appeared twice
+
+Bangalore was the head office AND a branch, so it rendered as two blocks with Pankaj in the
+lower one. People filed at the head-office town now sit in the head-office block.
+
+### 9. Caps again — categories at 12, rules at 20, types at 10
+
+Bombay Hardware is filed under **60 headings**. The next save would have thrown 48 away.
+Raised to 400 / 200 / 100. *Same lesson as the cap of twelve: a cap is a stop against a
+runaway file, never a limit on one firm.*
+
+### 10. "From <email> · read into 1 field" was wrong twice
+
+The strip above the card named `kavitha@chetnasteel.com` as the sender of a card that came out
+of his phone book, and said one field for twenty-six people. A card read from his notes now
+says what it really is: *From your phone book · filed under 60 headings · 26 people.*
+
+### 11. A trunk group keeps its area code
+
+`044-2522 3308 / 49138888` is one group; the second line shares the 044 he wrote once.
+`expandTrunkLine` in utils/contacts.js is the rule — use it, never hand-type the code.
+
+### 12. What was NOT wrong
+
+**Not one digit was mistyped**, across nine numbers. `7708106940` (Sampath) and `7708106949`
+(the godown) were correctly kept apart. Say this when it is true — the fault is almost always
+placement, not transcription.
+
+---
+
+## One firm, two cards — why it happens and what now catches it
+
+**Maharashtra Seamless had two cards.** Added 5 Sept as "Maharashtra Seamless Limited" and
+7 Sept as "MAHARASHTRA SEAMLESS LTD", from two different addresses. They were **identical in
+every field** except one carried his three enquiries. The empty copy was removed; the removal
+is undoable from Recent changes.
+
+**The cause, confirmed in the code:** the app decides "new card" versus "add to the one you
+have" on the **card id** alone (`mergePartner`, utils/contacts.js). That id comes from the
+browser, which fills it only when `knownEmail(pi.from)` finds a card holding that **exact
+address**. A firm writing from a second address matches nothing, is posted with a blank id, is
+given a fresh one, and lands beside its twin. **No code on that path ever compares firm names.**
+
+**What now catches it — both are warnings, neither blocks:**
+
+- `duplicateFirms` (utils/contacts.js) groups the directory by `firmNameKey` and the list shows
+  an amber band: *"1 firm looks like it has two cards."* This is the only check that can see
+  two **free-mail** firms — it found Airta Logistics, which no address rule ever could.
+- `sameNameNoteHtml` (partner-directory.js) warns on the approve row *before* the second card
+  is made. It caught NAVISH LOGISTICS and ARC, both already in the directory under a slightly
+  different name, sitting in the queue ready to duplicate.
+
+**The rule:** match on the name to WARN, never to merge. `firmNameKey` is loose on purpose
+(`sameFirmName` treats a prefix as a match), and two real firms share a name in two towns often
+enough in this trade. Exact key equality for the warning; the prefix rule stays out of it. A
+silent refusal is the same failure as a silent duplicate.
+
+**Still open:** Airta Logistics is two cards — `airtalogistics@gmail.com` (Coimbatore) and
+`airtalogistics.rkl@gmail.com` (no town). Both free mail, so nothing can tell them apart.
+*Asked; not yet answered.*

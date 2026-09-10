@@ -565,7 +565,7 @@
     }
 
     // ── Data layer ────────────────────────────────────────────────────────────
-    var D = { contacts: [], changes: [], pending: [], duplicates: [], loaded: false, readonly: false,
+    var D = { contacts: [], changes: [], pending: [], duplicates: [], sameName: [], loaded: false, readonly: false,
               loadError: '', saveError: '', saveWhat: [], failedAction: '', usageError: '', goneNote: '' };
 
     var FIELD_LABEL = {
@@ -588,6 +588,7 @@
                 D.contacts = keepOpenEdits(D.contacts, d.contacts || []); D.changes = d.changes || [];
                 D.pending = keepOpenReview(D.pending, d.pending || []);
                 D.duplicates = d.duplicates || [];
+                D.sameName = d.sameName || [];
                 D.readonly = !!d.readonly;
                 D.loaded = true; D.loadError = '';
             })
@@ -1061,16 +1062,48 @@
     // An address on two cards splits one firm's history in two and gets them asked twice.
     // New ones are refused on save; anything older is shown here with a way straight to it.
     function duplicateWarningHtml() {
+        return sameAddressWarningHtml() + sameNameWarningHtml();
+    }
+
+    function sameAddressWarningHtml() {
         if (!D.duplicates.length) return '';
         return '<div class="pd-error"><b>The same address is on more than one card.</b>'
             + ' One address belongs to one company — open each and remove it from the wrong one.'
             + D.duplicates.slice(0, 10).map(function (d) {
                 return '<p class="pd-tiny" style="margin-top:6px;"><b>' + esc(d.email) + '</b> — '
-                    + d.cards.map(function (c) {
-                        return '<button data-pd-open="' + esc(c.id) + '" class="pd-linkish">'
-                            + esc(c.company || '(no name)') + '</button>';
-                    }).join(' · ') + '</p>';
+                    + cardButtons(d.cards) + '</p>';
             }).join('') + '</div>';
+    }
+
+    /**
+     * Two cards whose names read as one firm.
+     *
+     * Nothing on the way in compares firm names — a card is matched to an existing one by the
+     * exact sender address and by nothing else — so "Maharashtra Seamless Limited" and
+     * "MAHARASHTRA SEAMLESS LTD" became two cards two days apart and split one firm's people,
+     * notes and enquiry history until it was noticed by eye. This is the only place that looks.
+     *
+     * A softer warning than the address one, because two firms really can share a name in
+     * different towns. It says "may be", it names both, and it never touches either.
+     */
+    function sameNameWarningHtml() {
+        var list = D.sameName || [];
+        if (!list.length) return '';
+        return '<div class="pd-warn"><b>' + list.length
+            + (list.length === 1 ? ' firm looks like it has' : ' firms look like they have')
+            + ' two cards.</b>'
+            + ' Open both — if they are the same firm, keep the one with the history on it and'
+            + ' remove the other. If they really are two different firms, leave them.'
+            + list.slice(0, 10).map(function (d) {
+                return '<p class="pd-tiny" style="margin-top:6px;">' + cardButtons(d.cards) + '</p>';
+            }).join('') + '</div>';
+    }
+
+    function cardButtons(cards) {
+        return (cards || []).map(function (c) {
+            return '<button data-pd-open="' + esc(c.id) + '" class="pd-linkish">'
+                + esc(c.company || '(no name)') + '</button>';
+        }).join(' · ');
     }
 
     function listHtml() {
@@ -1366,9 +1399,30 @@
         var list = people(p);
         var groups = groupByBranch(list);
         var known = Object.keys(COORD).sort();
+        // Bombay Hardware's head office is Bangalore AND Bangalore is one of the branches he
+        // wrote down, so the town appeared twice — once at the top, once as a branch below it
+        // with Pankaj in it. The head office is a branch; the men filed there belong in it.
+        var headKey = placeKey(p.city);
+        var headRows = [], rest = [];
+        groups.forEach(function (g) {
+            if (headKey && placeKey(g.branch) === headKey) headRows = headRows.concat(g.rows);
+            else rest.push(g);
+        });
+        // A branch with nobody in it yet — DELHI, TRICHY, COIMBATORE, VELLORE — used to vanish
+        // off the card altogether, taking his own written list of their offices with it.
+        var shown = {};
+        rest.forEach(function (g) { shown[placeKey(g.branch)] = 1; });
+        (p.branches || []).forEach(function (b) {
+            var k = placeKey(b.city);
+            if (!k || k === headKey || shown[k]) return;
+            shown[k] = 1;
+            rest.push({ branch: str(b.city), rows: [] });
+        });
+        rest.sort(function (a, b) { return (a.branch ? 0 : 1) - (b.branch ? 0 : 1); });
+        var count = rest.length + 1;
         return '<div class="pd-sec">Contacts<span class="pd-sp"></span><span class="pd-tiny">'
             + list.length + ' ' + (list.length === 1 ? 'person' : 'people')
-            + (groups.length > 1 ? ' · ' + groups.length + ' branches' : '') + '</span>'
+            + (count > 1 ? ' · ' + count + ' branches' : '') + '</span>'
             + '<span class="pd-sp"></span>'
             + '<button class="pd-addline" data-pd-addbranch="1">+ Add a branch</button></div>'
             + branchDatalist(p)
@@ -1379,16 +1433,23 @@
             + '<div class="pd-branchgrp">'
             + '<div class="pd-branch-head">'
             + '<input class="pd-branch-name" data-pd-k="city" list="pdKnownCities" value="' + esc(p.city || '') + '" placeholder="Town" aria-label="Head office town">'
-            + '<span class="pd-tiny">(head office)</span></div>'
+            + '<span class="pd-tiny">(head office)</span>'
+            + (headRows.length ? '<span class="pd-sp"></span><span class="pd-tiny">' + headRows.length + '</span>' : '')
+            + '</div>'
             + '<div class="pd-branch-where">'
             + '<input data-pd-k="address" value="' + esc(p.address || '') + '" placeholder="Full address (optional)" style="grid-column:1/-1;">'
-            + '</div></div>'
-            + groups.map(function (g) { return branchGroup(p, g, groups.length > 1); }).join('')
+            + '</div>'
+            + headRows.map(function (r) { return personCard(r.c, r.i); }).join('')
+            + '</div>'
+            + rest.map(function (g) { return branchGroup(p, g, true); }).join('')
             + '<button class="pd-addline" data-pd-addperson="1">+ Add another person</button>'
             + '<p class="pd-tiny" style="margin-top:6px;">The first address on the first person is where enquiries go — but <b>every</b> address is matched against incoming email. '
             + 'The nearest branch to a delivery point is what the ranking measures; distance is only worked out for the '
             + known.length + ' towns the app knows, and a town outside them is not scored.</p>';
     }
+
+    /** Two ways of writing the same town reduced to one key — "Jyoti Nagar" and "JYOTI NAGAR". */
+    function placeKey(s) { return lower(str(s)).replace(/[^a-z0-9]/g, ''); }
 
     /** One branch: its name, where it is, and everyone who sits there. */
     function branchGroup(p, g, showHead) {
@@ -1605,7 +1666,11 @@
     // Plurals matter. "One of 2 main distributorS of JSL brand colour coated sheets" did not
     // match a list holding only "distributor", so Crayon and Saroj Steel fell out of "Who they
     // work with" and sat in the notes as plain text instead.
-    var REL_WORD = /\b(dealers?|stockists?|distributors?|distributes?|transporters?|transport|roadlines?|carriers?|cargo|coaters?|coating|galvanis\w*|testing|agents?|brokers?|suppliers?|works with|buy from)\b/i;
+    // Buying is a relationship too. Bombay Hardware carried 33 notes saying some other firm
+    // purchases from them, and not one of them matched, so each became its own heading and the
+    // card read as a wall of one-line groups. His spelling wanders — PURELASING, "PURCHASE
+    // FORM" — so the misspellings are matched on purpose rather than lost.
+    var REL_WORD = /\b(dealers?|stockists?|distributors?|distributes?|transporters?|transport|roadlines?|carriers?|cargo|coaters?|coating|galvanis\w*|testing|agents?|brokers?|suppliers?|works with|buy from|purchas\w*|pure?lasing|buys\w*|buying|bought|f(?:ro|or)m them)\b/i;
 
     function splitRelationNote(text) {
         // "— no number given" is this app's own footnote, not part of anybody's name.
@@ -1654,28 +1719,60 @@
      * here instead of one by one below.
      */
     /** What KIND of connection this is — the word that heads the group. */
+    // "They purchase from them" is the opposite direction to "supplier to them", and reading
+    // the two the same way put a firm's own customers under the heading of its suppliers.
+    var BUYS_FROM_THEM = /\b(?:purchas\w*|pure?lasing|buy|buys|buying|bought)\b[^—]{0,60}?\bf(?:ro|or)m\s*(?:them|him|bombay|b\s*["'’]?\s*bay|b\/?w|h\/?w)|\bregular purchase\b/i;
+    var BUYERS = 'Firms that buy from them';
     var REL_KINDS = [
+        [BUYS_FROM_THEM, BUYERS],
         [/dealers?|stockists?|distribut/i, 'Dealers'],
         [/transport|lorry|roadline|carrier|cargo|freight/i, 'Transporters'],
         [/coat|galvanis|galvaniz/i, 'Coating'],
         [/test|inspect|lab\b/i, 'Testing'],
         [/agent|broker/i, 'Agents'],
-        [/suppl|buy from|source/i, 'They buy from'],
+        [/suppl|buy from|source/i, 'Firms they buy from'],
     ];
     function relKind(how) {
         var hit = REL_KINDS.find(function (k) { return k[0].test(str(how)); });
         return hit ? hit[1] : cap(str(how));
     }
 
-    /** WHERE — what is left of the wording once the kind and the filler come off. */
+    /**
+     * WHERE — what is left of the wording once the kind and the filler come off.
+     *
+     * A place name is short and has no digits in it. When what is left is a sentence —
+     * "MR. RISHAB OF CHETNA STEEL SEND 11/4 X HEAVY THRU THIS" — it is a fact about the
+     * dealing, not a place, and heading a row with it gave thirty-three rows of one firm each.
+     * Those facts are not lost: relExtra below keeps them showing as notes.
+     */
     function relPlace(how) {
         var t = str(how)
-            .replace(/\b(dealers?|stockists?|distributors?|main|one|sub|transporters?|transport|coaters?|coating|galvanisers?|agents?|brokers?|suppliers?)\b/ig, ' ')
-            .replace(/\b(for|them|in|at|the|and|is|their|of|a|only|no|number|given)\b/ig, ' ')
-            .replace(/[-—,]/g, ' ')
+            .replace(/\b(dealers?|stockists?|distributors?|main|one|sub|transporters?|transport|coaters?|coating|galvanisers?|agents?|brokers?|suppliers?|purchas\w*|pure?lasing|buys?|buying|bought)\b/ig, ' ')
+            .replace(/\b(for|them|in|at|on|by|to|with|the|an?|and|is|are|was|were|their|of|only|no|number|given|he|she|they|we|it|his|her|regular|regularly|materials?|pipes?|working|works|work|doing)\b/ig, ' ')
+            .replace(/[^A-Za-z0-9& ]/g, ' ')
             .replace(/\s+/g, ' ')
             .trim();
-        return t;
+        // A place name is short, has no digits, and is a word — not "he working ( )".
+        return (t.length > 24 || /\d/.test(t) || !/[A-Za-z]{3}/.test(t)) ? '' : t;
+    }
+
+    /** Wording that carries no fact of its own — the plain way of saying a relationship. */
+    var REL_PLAIN = /^(?:they|he|she|we|is|are|was|were|it|this|that|the|an?|and|to|of|in|at|on|for|from|them|him|her|his|its|our|their|with|by|as|be|been|do|does|doing|regular|regularly|purchases?|purchased|purchasing|purelasing|buys?|buying|bought|dealers?|stockists?|distributors?|transport|transporters?|suppliers?|supply|materials?|pipes?|working|works|work|entry|contact|listed|named|inside|one|main|sub|h|w|b)$/i;
+
+    /**
+     * What a relation note says BEYOND the relationship itself.
+     *
+     * "They purchase from them — SURYA PIPE TRADERS" says nothing the heading and the firm's
+     * own name do not already say, so repeating it below as a note is noise. But "PURCHASING
+     * ... BY GIVING PDC UPTO 15 LAC" carries a payment term, and "used to purchase from them
+     * but now stopped" carries the fact that it ended. Those have to stay on the card.
+     */
+    function relExtra(rel, p) {
+        var drop = {};
+        (lower(str(rel && rel.firm)) + ' ' + lower(str(p && p.company)))
+            .replace(/[^a-z0-9]+/g, ' ').split(' ').forEach(function (w) { if (w) drop[w] = 1; });
+        return lower(str(rel && rel.how)).replace(/[^a-z0-9\/". ]+/g, ' ').split(/\s+/)
+            .filter(function (w) { return w && !drop[w] && !REL_PLAIN.test(w); }).join(' ').trim();
     }
 
     function relationsBlock(p) {
@@ -1686,7 +1783,8 @@
             var k = relKind(rel.how);
             if (!byKind[k]) { byKind[k] = { kind: k, places: [], byPlace: {} }; kinds.push(byKind[k]); }
             var g = byKind[k];
-            var placeName = relPlace(rel.how) || 'Not said where';
+            // A customer is not "in" anywhere — the wording is about the buying, not a town.
+            var placeName = (k === BUYERS ? '' : relPlace(rel.how)) || 'Not said where';
             var pk = lower(placeName).replace(/[^a-z0-9]/g, '');
             if (!g.byPlace[pk]) { g.byPlace[pk] = { place: placeName, firms: [], keys: {} }; g.places.push(g.byPlace[pk]); }
             var slot = g.byPlace[pk];
@@ -1714,8 +1812,14 @@
 
     function cap(s) { var t = str(s); return t ? t.charAt(0).toUpperCase() + t.slice(1) : t; }
 
-    /** A note already shown under "Who they work with" is not repeated below. */
-    function isRelationNote(n) { return splitRelationNote(n && n.t) !== null; }
+    /**
+     * A note already shown under "Who they work with" is not repeated below — unless it says
+     * something the group heading cannot, in which case it belongs in both places.
+     */
+    function isRelationNote(n, p) {
+        var rel = splitRelationNote(n && n.t);
+        return rel !== null && !relExtra(rel, p);
+    }
 
     /**
      * "From your phone book, under X" is already shown under "Filed under".
@@ -1758,7 +1862,7 @@
             + '<button class="pd-prim" data-pd-addnote="1">Add note</button></div>'
             + ((p.notes || []).length ? p.notes.map(function (n, i) {
                 // Already listed under "Who they work with" — shown there, not twice.
-                if (isRelationNote(n) || isHeadingNote(n, p)) return '';
+                if (isRelationNote(n, p) || isHeadingNote(n, p)) return '';
                 return '<div class="pd-note"><p>' + esc(tidyNoteText(n.t)) + '</p><span class="pd-tiny">' + ago(n.d)
                     + (n.src ? ' · ' + esc(n.src) : '') + ' · <span class="pd-x" data-pd-delnote="' + i + '">remove</span></span></div>';
             }).join('') : '<p class="pd-tiny">No notes yet. Every note is dated, so you can see when one has gone old.</p>')
@@ -2270,7 +2374,8 @@
             + (pi.freshened ? '<span class="pd-pill">Read from your notes</span>' : '')
             + '<span class="pd-sp"></span><span class="pd-tiny">' + ago(pi.receivedAt) + '</span></div>'
             + '<p class="pd-tiny" style="margin-left:20px;">' + (imported ? importedStripLine(pi)
-                : 'From <b>' + esc(pi.from) + '</b> · “' + esc(pi.subject) + '”'
+                : notesCardLine(pi)
+                || 'From <b>' + esc(pi.from) + '</b> · “' + esc(pi.subject) + '”'
                     + (pi.file ? ' · 📎 ' + esc(pi.file) : '')
                     // "Read into 0 fields" meant both "there was nothing in it" and "the
                     // reading failed", and they need opposite actions from the owner.
@@ -2278,8 +2383,22 @@
                         : 'read into ' + pi.finds.length + ' field' + (pi.finds.length === 1 ? '' : 's'))) + '</p>'
             + '</div>'
             + (open ? sourceEmailHtml(pi) + editCard(pendingPreview(pi, match)) : '')
-            + clashNoteHtml(pi, match) + sameFirmNoteHtml(pi, match)
+            + clashNoteHtml(pi, match) + sameFirmNoteHtml(pi, match) + sameNameNoteHtml(pi, match)
             + approveRowHtml(pi, match, busy);
+    }
+
+    /**
+     * A card built out of his phone book has no sender, and saying "From
+     * kavitha@chetnasteel.com · read into 1 field" above Bombay Hardware's twenty-six people
+     * was wrong twice over — that was never who it came from, and it was read into far more
+     * than one field. Where it really came from is the pages it is filed under.
+     */
+    function notesCardLine(pi) {
+        var cats = ((pi.preview || {}).categories || []).length;
+        if (!pi.freshened || !cats) return '';
+        var ppl = ((pi.preview || {}).people || []).length;
+        return 'From your phone book · filed under <b>' + cats + '</b> heading'
+            + (cats === 1 ? '' : 's') + ' · ' + ppl + ' ' + (ppl === 1 ? 'person' : 'people');
     }
 
     /**
@@ -2394,6 +2513,34 @@
             + esc(kin.company || '(no name)') + '</button>, who you already have. '
             + 'If it is the same firm, add this person to that card instead — two cards for one firm '
             + 'means they get the same enquiry twice, on two separate emails.</p></div>';
+    }
+
+    /**
+     * A card already in the directory with this firm's NAME.
+     *
+     * sameFirmNoteHtml above can only speak when the item has a sender address AND that
+     * address is at a company domain. Neither was true of Maharashtra Seamless: it came in
+     * under two subjects two days apart, matched nothing, was labelled "New" both times, and
+     * became two cards holding the same 187 people. A card read out of his phone book often
+     * has no sender at all, so the name is the only thing left to compare.
+     *
+     * It never blocks. Two firms can share a name in two towns, and refusing the second is
+     * the same failure as duplicating it, only quieter.
+     */
+    function sameNameNoteHtml(pi, match) {
+        if (match) return '';
+        var name = str((pi.preview || {}).company) || str(pi.subject);
+        var k = nameKey(name);
+        if (!k) return '';
+        var kin = D.contacts.filter(function (c) { return nameKey(c.company) === k; })[0];
+        if (!kin) return '';
+        return '<div class="pd-warn" style="margin:0 0 8px;"><p class="pd-tiny">'
+            + 'You already have a card called '
+            + '<button data-pd-open="' + esc(kin.id) + '" class="pd-linkish">'
+            + esc(kin.company || '(no name)') + '</button>. '
+            + 'If this is the same firm, open that card and add these details to it — approving here '
+            + 'makes a second card, and the firm\'s people, notes and enquiries end up split across '
+            + 'the two. If they really are two different firms, go ahead.</p></div>';
     }
 
     function clashNoteHtml(pi, match) {

@@ -136,6 +136,10 @@ module.exports = function createContactsRouter({ storage, openai }) {
                 // duplicate that pre-dates it cannot sit there unnoticed, quietly splitting
                 // one firm's history across two cards.
                 duplicates: contactsLib.duplicateEmails(contacts),
+                // The same firm under two spellings. Nothing on the write path compares names,
+                // so this is the only thing that can see it — and it is how two Maharashtra
+                // Seamless cards sat side by side for three days without a word.
+                sameName: contactsLib.duplicateFirms(contacts),
             });
         } catch (error) {
             res.status(500).json({ error: 'Could not load the directory: ' + error.message });
