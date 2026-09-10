@@ -789,3 +789,36 @@ to answer the same question for the notes list.
 Because everything is now shown up there, a relation note is no longer repeated below.
 **Bombay Hardware's Notes box is ONE line** — the 21.2.2025 record of speaking to Sampath,
 which is genuinely about them. It began at 111.
+
+---
+
+## Open: is "MOKSHI MOTHILA" one firm or two?
+
+His heavy-metal line reads:
+
+> `BOMBAY H/W - HEAVY METAL , PURCHASE TO SREE VASTA , MOKSHI MOTHILA , TUBES INDIA .`
+
+**No firm called "Mokshi Mothila" exists anywhere in his book.** But the COIMBATORE INDUSTRIAL
+PRODUCT page lists, under Mumbai:
+
+```
+🏢MUMBAI🏢 (ADVANCE PAYMENT)
+1. TUBES INDIA
+2. MOTILAL LAXMICHAND
+```
+
+Tubes India and **Motilal** Laxmichand, side by side — the same pair that ends his heavy-metal
+line. So "MOKSHI MOTHILA" may be **Mokshi and Motilal run together**, making that line four
+suppliers rather than three.
+
+*Asked. His answer: "unsure about makshi motilal".* **Left exactly as he wrote it.** Splitting a
+name on a guess invents a firm, and joining two invents a merger; neither is recoverable once
+the cards are approved.
+
+The same doubt blocks two other moves — his "SREE VASTA" against the existing cards **Sreevatsa
+Venkateswara** and **Sreevatsa Tube**, and "MOKSHI" against **Mokshiind**. Until he says which,
+those notes stay on Bombay Hardware.
+
+**What transfers:** a name that matches nothing in 1,912 pages is usually **two names with the
+comma lost**, not a firm you have never met. Look for the pair somewhere else in his book before
+proposing anything — and propose, never decide.
