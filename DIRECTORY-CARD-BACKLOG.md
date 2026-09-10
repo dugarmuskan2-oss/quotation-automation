@@ -606,3 +606,34 @@ card is dropped. It knows nothing about the counters, and those are the only rea
 The merge refuses to write unless every address, number, note and route from both cards is
 still reachable afterwards. The card that goes is an ordinary undoable removal in Recent
 changes.
+
+---
+
+## "HYD FACTORY" — a sub-heading the reader had nowhere to put
+
+It sat on Bombay Hardware as a two-word note and read as junk. It is not junk and it is not
+another firm's remark: on the page **"PIPE DEALER ( STOCKIST ) - JINDAL STAR ALL INDIA"** it
+heads five entries —
+
+```
+HYD FACTORY
+1. ASHOKA TUBE  SAMARTH BANSAL: 9820073606
+2. KARAN - 9950000665
+3. BHUSHAN TUBES BOMBAY  MR: VARUN MITTAL - 9869345494
+4. BOMBAY H/W  VIREN BHAI -
+5. MARUTI COMMER...
+```
+
+— and the reading put the words `"HYD FACTORY"` into the **notes of all five firms**, because
+there was no field for a heading below the page heading.
+
+**It belongs in Filed under, refining its parent:**
+`PIPE DEALER ( STOCKIST ) - JINDAL STAR ALL INDIA — HYD FACTORY`
+
+**What transfers:** a note that is two or three words in capitals, carried identically by
+several firms, is almost always a **sub-heading**, not a remark. Check the page before deleting
+it — the same words on five cards is the tell. Four other firms on this page carry the same
+line and will want the same treatment when their turn comes.
+
+**Also from this page:** it names `BOMBAY H/W VIREN BHAI (9840333333)` at line 41 as well, so
+the owner added to the card is confirmed twice in his own book.
