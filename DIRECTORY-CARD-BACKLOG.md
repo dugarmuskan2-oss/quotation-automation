@@ -108,6 +108,44 @@ These were bugs, and fixing them fixed every card at once:
 
 ---
 
+## What Jindal Saw taught, in five groups
+
+Twenty-seven faults on ONE card. Grouped, because the groups are what transfer — the
+individual faults are listed underneath.
+
+### 1. Whole sources were missing
+- **The people he EMAILS were never read.** Google keeps saved contacts and "other contacts";
+  the code kept only the domain from the second. 36 people missing from Jindal Saw alone.
+- **Only 7 of his 11 pages were used** — chosen by title, missing any page naming the firm in
+  its body.
+- **The address book was ignored while checking**, so a verify pass deleted five real people.
+
+### 2. Things reached the card as a NAME and nothing else
+- All 8 transporters and 4 dealers lost their people, numbers and emails.
+- A page could be read for firm names and still lose all seven people on it.
+
+### 3. Things sat in notes that had a proper home
+- A bare number that was D. Vijaya's mobile; a branch board number; a postal address; product
+  specifications.
+- *His rule: the page decides the FIELD, not just the label.*
+
+### 4. Things were quietly wrong
+- **The head office was invented** — nothing in his pages names any office as head.
+- Sanjiv Dheer held five branch board numbers as personal phones.
+- Bharat Steel stood where the page says Crayon, because they share a number.
+- A misspelt firm name; a row named after an email address; a branch with nobody in it.
+
+### 5. One man, several spellings — and the reverse
+- D. Vijaya / Madam Vizi / Vigi. Rajat Chabra / Chhabra. Swadeep Koche / Khoche.
+  K.Thyagarajan / Thayagarajan. "Mr. Madan" / "MR.MADAN".
+- But Rakesh, Ramesh and Magesh are three men, and two people can share one number.
+
+**The one above the others: a card is built from ALL his sources — saved contacts, emailed
+contacts, and every page whose TEXT names the firm. Nearly half these findings trace back to
+reading only part of it.**
+
+---
+
 ## Found on JINDAL SAW — to transfer
 
 His complaint: *"you need to be smarter about placing things — not just adding to notes —
