@@ -1721,10 +1721,27 @@
     /** What KIND of connection this is — the word that heads the group. */
     // "They purchase from them" is the opposite direction to "supplier to them", and reading
     // the two the same way put a firm's own customers under the heading of its suppliers.
-    var BUYS_FROM_THEM = /\b(?:purchas\w*|pure?lasing|buy|buys|buying|bought)\b[^—]{0,60}?\bf(?:ro|or)m\s*(?:them|him|bombay|b\s*["'’]?\s*bay|b\/?w|h\/?w)|\bregular purchase\b/i;
+    // "purchases from THEM" — but he as often writes the firm's name instead of "them", and
+    // this list held "bombay" hardcoded, so it worked on exactly one card. "Enexio purchase
+    // from Sreevatsa, 30 days open credit" fell through and became a heading of its own, with
+    // one firm under it. Whose card it is has to be part of the test.
+    var TAKES = '(?:purchas\\w*|pure?lasing|buy|buys|buying|bought|takes?|taking|took|lift\\w*|source[ds]?)';
+    function buysFromThem(how, p) {
+        var t = str(how);
+        if (/\bregular purchase\b/i.test(t)) return true;
+        var whom = ['them', 'him', 'us'].concat(firmWords(p && p.company));
+        return new RegExp('\\b' + TAKES + '\\b[^—]{0,60}?\\bf(?:ro|or)m\\s*(?:'
+            + whom.join('|') + ')\\b', 'i').test(t);
+    }
+    /** The distinctive words of a firm's name — trade words are too common to identify it. */
+    var TRADE_WORD = /^(pipe|pipes|steel|steels|tube|tubes|metal|metals|trading|traders?|industries|industry|enterprises?|corporation|agencies|agency|engineering|engineers?|systems?|solutions?|india|indian|pvt|private|ltd|limited|co|company|and|the|of)$/i;
+    function firmWords(name) {
+        return str(name).split(/[^A-Za-z0-9]+/)
+            .filter(function (w) { return w.length > 3 && !TRADE_WORD.test(w); })
+            .map(function (w) { return w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); });
+    }
     var BUYERS = 'They sell to';
     var REL_KINDS = [
-        [BUYS_FROM_THEM, BUYERS],
         [/dealers?|stockists?|distribut/i, 'Dealers'],
         [/transport|lorry|roadline|carrier|cargo|freight/i, 'Transporters'],
         [/coat|galvanis|galvaniz/i, 'Coating'],
@@ -1736,7 +1753,8 @@
         [/factory|manufactur/i, 'Their factory'],
         [/suppl|buy from|source/i, 'They buy from'],
     ];
-    function relKind(how) {
+    function relKind(how, p) {
+        if (buysFromThem(how, p)) return BUYERS;
         var hit = REL_KINDS.find(function (k) { return k[0].test(str(how)); });
         return hit ? hit[1] : cap(str(how));
     }
@@ -1791,7 +1809,7 @@
         (p.notes || []).forEach(function (n) {
             var rel = splitRelationNote(n.t);
             if (!rel || !rel.firm || !rel.how) return;
-            var k = relKind(rel.how);
+            var k = relKind(rel.how, p);
             if (!byKind[k]) { byKind[k] = { kind: k, places: [], byPlace: {} }; kinds.push(byKind[k]); }
             var g = byKind[k];
             // A customer is not "in" anywhere — the wording is about the buying, not a town.

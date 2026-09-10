@@ -56,6 +56,49 @@ function splitRelation(text) {
 /** "JAFEE ALI (98401-06593)" is a firm with his number written after it. */
 const bareName = (s) => str(s).replace(/\s*\(([^)]*\d[^)]*)\)\s*$/, '');
 
+/**
+ * Does this line name the very firm whose card it is on?
+ *
+ * A page about a firm does not keep saying the firm's name — the page heading has already said
+ * it. When a sentence names them, the sentence was written somewhere else, about dealing with
+ * them. Matched on the distinctive words of the name, so "Sreevatsa Venkateswara" is found by
+ * "SREEVATSA": trade words like PIPE or STEEL are too common to prove anything.
+ */
+const COMMON = /^(pipe|pipes|steel|steels|tube|tubes|metal|metals|trading|traders|trader|industries|industry|enterprises|enterprise|corporation|agencies|agency|engineering|engineers|systems|solutions|india|indian|and|the|of)$/i;
+function namesItself(text, company) {
+    const words = str(company).split(/[^A-Za-z0-9]+/).filter(w => w.length > 3 && !COMMON.test(w));
+    if (!words.length) return false;
+    const hay = norm(text);
+    return words.some(w => hay.indexOf(norm(w)) !== -1);
+}
+
+/**
+ * Which page of his phone book a sentence is written on.
+ *
+ * The surest test of whose fact something is — better than guessing from the wording. The note
+ * may have been tidied since, spacing changed or a bracket added, so it is matched on a long
+ * run of its letters; the words are his and those do not move.
+ */
+/**
+ * A page heading turned into the firm it is about.
+ *
+ * He heads a firm's page with its name and a note to himself — "ARVOS ENERGY INDIA PVT LTD ALL
+ * DETAILS", "SNO 20 CHETNA STEEL ( ALL DETAILS ) SNO 20", "shree venus (ALL DETAILS)". Those
+ * trimmings are his filing, not part of anybody's name, and leaving them on meant a page could
+ * not be matched to the card it belongs to.
+ */
+const FILING = /\bALL\s*D(?:E|)T(?:E|)AILS?\b|\bALL\s*DETIALS?\b|\bINFO\b|^\s*SNO\s*\d+|\bSNO\s*\d+\s*$|^\s*P\s*\(\s*\d+\s*\)|^\s*PD\s*\(\s*\d+\s*\)|^\s*TR\s*\(\s*\d+\s*\)/gi;
+function pageFirmKey(title) {
+    return contacts.firmNameKey(str(title).replace(/\(.*?\)/g, ' ').replace(FILING, ' '));
+}
+
+function whosePage(text, world) {
+    const key = norm(text).slice(0, 40);
+    if (key.length < 20) return '';          // too short to be sure it is the same sentence
+    const hit = (world.pages || []).find(pg => norm(str(pg.title) + ' ' + str(pg.body)).indexOf(key) !== -1);
+    return hit ? str(hit.title) : '';
+}
+
 // ── the card the note is really about ─────────────────────────────────────────────────────
 function cardFromReading(rec, name) {
     const f = (rec && rec.firm) || {};
@@ -139,6 +182,24 @@ function prepare(card, world) {
         // — UNIMECH SYSTEM INDIA PVT LTD" lifted into Price rules because it says "credit".
         // It is Unimech's dealing, not a rule of Sreevatsa's. A rule he wrote is a plain line.
         if (t.indexOf(' — ') !== -1 || !IS_RULE.test(t)) { kept.push(n); return; }
+        // A line that NAMES this firm came off somebody else's page. A firm's own page does not
+        // say "SREEVATSA ON 12 LAKS ORDERS LAST WEEK OPEN CREDIT 30 DAYS" — Enexio's page does,
+        // about buying from Sreevatsa. *His words: "these seem like something written for
+        // srivatsas client".* It is the client's terms, not a rule of this firm's own.
+        // Better than guessing from the name: look the sentence up in his phone book and see
+        // whose page it is written on. "DOING BUSINESS 4 YEARS ON ADVANCE PAYMENT" names
+        // nobody, and is on JP ENERGY's page under "HE IS PURCHASING FROM (A). SREEVATSA".
+        const page = whosePage(t, world);
+        const mine = page && pageFirmKey(page) === selfKey;
+        if ((page && !mine) || (!page && namesItself(t, card.company))) {
+            kept.push(n);
+            asks.push({ key: 'theirs:' + norm(t).slice(0, 24),
+                q: 'Whose terms are these — "' + t.slice(0, 66) + (t.length > 66 ? '…' : '') + '"?',
+                why: page
+                    ? 'It is written on your "' + page + '" page, not on ' + str(card.company) + '\'s, so it is that firm\'s dealing with them rather than a rule of their own.'
+                    : 'It names ' + str(card.company) + ' in the third person, so it was written on somebody else\'s page about dealing with them.' });
+            return;
+        }
         if (!rules.some(r => norm(r) === norm(t))) rules.push(t);
     });
     if (rules.length !== (card.rules || []).length) {
@@ -180,6 +241,33 @@ function prepare(card, world) {
     });
     if (moved) did.push(moved + ' relations carried onto the other firm\'s card, the right way round');
     if (made.length) did.push(made.length + ' firms had no card at all — built from their own page');
+
+    // 4a. A plain note written on somebody ELSE's page is that firm's, not this one's.
+    //     *His words: "these notes also seem to be for clients".* "FROM LAST 2 YEARS THEY ARE
+    //     NOT HAVING BUSINESS WITH THEM" is on the page of the firm that stopped, and reads as
+    //     nonsense here because "them" is this card. The page it is written on decides.
+    let sent = 0;
+    card.notes = (card.notes || []).filter((n) => {
+        const t = str(n.t);
+        if (splitRelation(t)) return true;              // a relation is shown, not moved
+        const page = whosePage(t, world);
+        if (!page) return true;
+        const pageKey = pageFirmKey(page);
+        if (!pageKey || pageKey === selfKey) return true;
+        const other = world.all.find(c => contacts.firmNameKey(c.company) === pageKey);
+        if (!other) {
+            asks.push({ key: 'theirs:' + norm(t).slice(0, 24),
+                q: 'This is written on your "' + page + '" page — should it be on their card?',
+                why: '"' + t.slice(0, 70) + (t.length > 70 ? '…' : '') + '" — but that firm has no card yet, so it stays here for now.' });
+            return true;
+        }
+        if (!(other.notes || []).some(x => norm(x.t) === norm(t))) other.notes = (other.notes || []).concat([{ t, d: today() }]);
+        // Never leave here until it is standing there.
+        if (!(other.notes || []).some(x => norm(x.t) === norm(t))) return true;
+        sent++;
+        return false;
+    });
+    if (sent) did.push(sent + ' notes written on another firm\'s page moved onto that firm\'s card');
 
     // 5. One man, several spellings.
     const wasPeople = (card.people || []).length;
@@ -258,7 +346,8 @@ async function main() {
         page.slice(at, page.indexOf('};', at)).replace(/'([^']+)'\s*:/g, (m, t) => { towns.add(norm(t)); return m; });
     } catch (e) { /* no towns known — then no town is questioned */ }
 
-    const world = { book, towns, settled: (item && item.settled) || (approved && approved.settled) || [],
+    const world = { book, towns, pages: blob.pages || [],
+        settled: (item && item.settled) || (approved && approved.settled) || [],
         all: items.map(i => i.preview || {}).concat(dir) };
     const out = prepare(JSON.parse(JSON.stringify(source)), world);
 
