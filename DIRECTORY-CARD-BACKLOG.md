@@ -192,6 +192,24 @@ think longer and add".* Everything below was sitting in the notes when it had a 
     is empty — because SUNIL TILE: 2551227327, the one person under that heading, was dropped.
     An empty branch means somebody was lost.
 
+26. **A branch board number ends up as one man's personal phone.** Sanjiv Dheer carried SEVEN
+    numbers; two are his, and five were the Chennai, Bombay, Delhi and Nasik-PPC BOARD lines
+    listed above him on the page. A number under a "(1) BOARD NO:-" line belongs to the
+    BRANCH, never to the next person named.
+27. **A row named after an email address.** "sanjay.naik@jindalsaw.com" was a person, while
+    the real Sanjay Naik sat elsewhere on the card. Same for a nameless row holding
+    psn.shreeram@. *His decision: merge them into the real person.*
+28. **The address book and the pages spell one man two ways.** "K.THYAGARAJAN" (contacts) and
+    "THAYAGARAJAN" (Chennai page) are one man. *His decision: merge.*
+29. **A man can belong to TWO branches, and the page shows it.** Chandra Damle is item (8) on
+    the Nasik list and saved in contacts as "(Mumbai-MKT)". Vinay Tavare is on that same Nasik
+    list AND under Bombay Office — so the Nasik list does include Bombay men. *His decision:
+    list Chandra Damle under both.* **Where a page and a name disagree, show him the two lines
+    and let him decide — do not pick.**
+30. **No evidence means no branch.** Pravin Misra, Uday Mehta and Karthikeyan are in his
+    contacts and on none of his eleven pages. *His decision: leave them unfiled* rather than
+    assume the head office. An empty branch box is honest; a guessed one is not.
+
 The general lesson, and the one worth the most: **a card is built from ALL his pages about that
 firm, not one.** Jindal Saw has seven. A detail that looks orphaned on one page is usually
 explained on another.
