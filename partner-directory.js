@@ -1670,7 +1670,7 @@
     // purchases from them, and not one of them matched, so each became its own heading and the
     // card read as a wall of one-line groups. His spelling wanders — PURELASING, "PURCHASE
     // FORM" — so the misspellings are matched on purpose rather than lost.
-    var REL_WORD = /\b(dealers?|stockists?|distributors?|distributes?|transporters?|transport|roadlines?|carriers?|cargo|coaters?|coating|galvanis\w*|testing|agents?|brokers?|suppliers?|works with|buy from|purchas\w*|pure?lasing|buys\w*|buying|bought|f(?:ro|or)m them)\b/i;
+    var REL_WORD = /\b(dealers?|stockists?|distributors?|distributes?|transporters?|transport|roadlines?|carriers?|cargo|coaters?|coating|galvanis\w*|testing|agents?|brokers?|suppliers?|works with|buy from|purchas\w*|pure?lasing|buys\w*|buying|bought|f(?:ro|or)m them|manufactur\w*|factory)\b/i;
 
     function splitRelationNote(text) {
         // "— no number given" is this app's own footnote, not part of anybody's name.
@@ -1730,6 +1730,10 @@
         [/coat|galvanis|galvaniz/i, 'Coating'],
         [/test|inspect|lab\b/i, 'Testing'],
         [/agent|broker/i, 'Agents'],
+        // Chetna Steel is not a supplier they shop at — it is their own works, and putting it
+        // in the same list as a firm they buy from reads wrong. His words: "Chetna steel is
+        // their manufacturing facility -- It can have its own header".
+        [/factory|manufactur/i, 'Their factory'],
         [/suppl|buy from|source/i, 'They buy from'],
     ];
     function relKind(how) {
