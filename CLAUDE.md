@@ -94,12 +94,12 @@ The owner is importing 5,507 Google Contacts into the Partner Directory, **one c
 time**, finding faults on each. Twenty-seven were found on Jindal Saw alone. Everything
 learned is written down; read it rather than rediscovering it:
 
-- **** — the work list. What was fixed by hand and will recur, what
+- **`DIRECTORY-CARD-BACKLOG.md`** — the work list. What was fixed by hand and will recur, what
   is measured and outstanding, and **how HE checks a card** (six questions worth running on
   every card before showing it to him).
-- **** — strict rules for the data. Rule zero: nothing is ever
+- **`DIRECTORY-DATA-RULES.md`** — strict rules for the data. Rule zero: nothing is ever
   excluded, nothing is ever silently changed.
-- **** — rules for reading his address book.
+- **`CONTACT-EXPORT-RULES.md`** — rules for reading his address book.
 
 Four that override convenience:
 
@@ -109,8 +109,8 @@ Four that override convenience:
 2. **Every correction gets written into the backlog AT THE TIME**, with what it means for the
    other cards. Since only one card may be changed, that note is the only thing the rest get.
 3. **A card has THREE sources**: his saved contacts, his "other contacts" (everyone he has
-   emailed — ), and every phone-book page whose TEXT names the firm, not just
-   its title. Nearly half the Jindal Saw findings trace to reading only part of it. A check
+   emailed — `emailedPeople()` in `utils/googlePeople.js`), and every phone-book page whose
+   TEXT names the firm, not just its title. Nearly half the Jindal Saw findings trace to reading only part of it. A check
    given one source will declare the others invented — that deleted five real people once.
 4. **Ask him about every doubt, as the work happens.** Placement is a question; exclusion is
    never on the table. Answers marked *"Owner's decision"* in those files are settled — do not
