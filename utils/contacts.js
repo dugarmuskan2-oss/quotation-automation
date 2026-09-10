@@ -974,10 +974,21 @@ function canBeSamePerson(a, b) {
     const mails = new Set(((a.emails || []).map(e => cleanEmail(e.v))).filter(Boolean));
     const sharesEmail = (b.emails || []).some(e => mails.has(cleanEmail(e.v)));
     if (sharesEmail) return true;
-    const an = lower(str(a.name)), bn = str(b.name).toLowerCase();
-    if (an && bn && an !== bn && !looksLikeALabel(an) && !looksLikeALabel(bn)) return false;
+    // Compared with the punctuation and spacing taken out, or "Mr. Madan" and "MR.MADAN" are
+    // two men — even when they share a phone number, which is how CCI and Balaji Roadlines
+    // each ended up with the same person listed twice.
+    const an = personNameKey(a.name), bn = personNameKey(b.name);
+    if (an && bn && an !== bn && !looksLikeALabel(a.name) && !looksLikeALabel(b.name)) return false;
     const ab = lower(str(a.branch)), bb = lower(str(b.branch));
     return !(ab && bb && ab !== bb);
+}
+
+/**
+ * A person's name with the punctuation taken out — "Mr. Madan" and "MR.MADAN" are one man.
+ * The honorific goes too: he writes "MR." on some lines and not on others.
+ */
+function personNameKey(name) {
+    return lower(name).replace(/(mr|mrs|ms|miss|shri|sri|smt)/g, ' ').replace(/[^a-z0-9]/g, '');
 }
 
 /** Is there anything on this person you could ring or write to? */
@@ -1001,7 +1012,7 @@ function foldPeople(people) {
         // number and no address has nothing to match on. The NAME matches them — but only
         // when one side is bare. Two men called Kumar who each have their own number are two
         // men, and merging them on the name alone would delete one.
-        const nameKey = 'n:' + lower(str(p.name)).replace(/[^a-z0-9]/g, '');
+        const nameKey = 'n:' + personNameKey(p.name);
         const match = kept.find(k => {
             const shared = [...keys].some(x => k.keys.has(x));
             const byName = nameKey !== 'n:' && k.keys.has(nameKey)

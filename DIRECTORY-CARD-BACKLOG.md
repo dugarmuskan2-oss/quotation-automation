@@ -176,6 +176,22 @@ think longer and add".* Everything below was sitting in the notes when it had a 
 21. **Plurals.** "distributorS" did not match a list holding "distributor", so Crayon and
     Saroj Steel never reached the block at all.
 
+22. **THE BIG ONE: every firm named in a page was reduced to its NAME.** All eight Nasik
+    transporters, all four colour-coated dealers and Jindal Quality Tubular reached the card
+    as a one-line note and nothing else — every owner, staff name, phone, email and remark
+    under them was dropped. Dev Sharma 8983458235, Rajesh Varma who speaks Tamil, Ramesh who
+    has worked there 7 years, Tanuj on 9940433346 with two plant locations. **A firm named in
+    a page brings its PEOPLE with it, or it is not worth naming.**
+23. **A name compared as raw text splits one man in two.** "Mr. Madan" and "MR.MADAN" both
+    carrying 9371007041 stayed two rows, because the comparison kept the space and the full
+    stop. Same for "Mr. Rajesh Varma" / "MR.RAJESH VARMA". Fixed in code: names are compared
+    with punctuation and honorifics removed, so two REAL Kumars with different numbers still
+    stay two.
+24. **A misspelt firm name.** The card said NAVISH LOGISTIK; his page says NAVISH LOGISTICS.
+25. **A branch with nobody in it is a signal.** STAINLESS SHEET FACTORY exists as a branch and
+    is empty — because SUNIL TILE: 2551227327, the one person under that heading, was dropped.
+    An empty branch means somebody was lost.
+
 The general lesson, and the one worth the most: **a card is built from ALL his pages about that
 firm, not one.** Jindal Saw has seven. A detail that looks orphaned on one page is usually
 explained on another.
