@@ -1874,3 +1874,76 @@ describe('editing the message cannot bring a spent Send back', () => {
         expect(src).toContain('if (email && addChip(list, email)) recipientsChanged(st, kind);');
     });
 });
+
+/**
+ * REGRESSION: the SIZE column showed the AI's raw compact code ("1XHY", "8X6.35"), not a
+ * readable size, on EVERY quote-sourced enquiry — both here and on the standalone Enquiry
+ * Preparer's own "Load From Quotation" button, since both build their rows through this same
+ * normalizeQuotation -> buildEnquiryRowModel chain.
+ *
+ * Root cause: extractSizeFromDescription is built to pull a size out of PROSE a customer
+ * actually typed ("8" X 6.35 MM ERW pipe...") — which is genuinely what the existing fixture
+ * above uses, and is exactly why this gap was never caught: nothing in this file, or in
+ * tests/enquiry-weight.test.js's own extractSizeFromDescription suite, had ever exercised the
+ * AI's real compact output. Fed one, neither of extractSizeFromDescription's two patterns
+ * matches (both require an explicit "mm" token), so it silently echoes the whole string back —
+ * and a raw "1XHY" reaching a dealer looks like a typo, not a size.
+ */
+describe('REGRESSION: a quote-sourced SIZE reads like a pipe size, not the AI\'s raw code', () => {
+    const descFormatter = require('../gmail-ingest/descriptionFormatter.js');
+    afterEach(() => { preparer._setDescriptionFormatter(null); });   // never leak into another test
+
+    test('without the formatter loaded, the OLD (honest) fallback is unchanged', () => {
+        preparer._setDescriptionFormatter(null);
+        // requiring the module above set window.descriptionFormatter as a side effect (it is
+        // loaded as a browser <script> in production, and this file's window is shared process-
+        // wide) — clear that too, or this "no formatter" case is not actually testing one.
+        const had = global.window.descriptionFormatter;
+        delete global.window.descriptionFormatter;
+        try {
+            const n = preparer.normalizeQuotation({ lineItems: [{ originalDescription: '1XHY', identifiedPipeType: 'ERW', quantity: '10' }] });
+            expect(preparer.buildEnquiryRowModel(n.lineItems[0]).size).toBe('1XHY');
+        } finally {
+            global.window.descriptionFormatter = had;
+        }
+    });
+
+    test('with it, a real quote\'s compact code reads as an actual size', () => {
+        preparer._setDescriptionFormatter(descFormatter);
+        const cases = [
+            ['1XHY', 'ERW', '1" NB X Heavy -- ERW'],
+            ['8X6.35', 'ERW', '8" NB X 6.35mm thk -- ERW'],
+            ['6XH', 'GI', '6" NB X Heavy -- GI'],
+            ['8X40', 'Seamless', '8" NB X Sch 40'],
+        ];
+        cases.forEach(([desc, type, want]) => {
+            const n = preparer.normalizeQuotation({ lineItems: [{ originalDescription: desc, identifiedPipeType: type, quantity: '10' }] });
+            expect(preparer.buildEnquiryRowModel(n.lineItems[0]).size).toBe(want);
+        });
+    });
+
+    test('a genuinely prose description is untouched — extraction already succeeded, so the formatter is never consulted', () => {
+        preparer._setDescriptionFormatter(descFormatter);
+        const desc = '8" X 6.35 MM ERW BLACK PIPE IS 3589 GR. 410';
+        const n = preparer.normalizeQuotation({ lineItems: [{ originalDescription: desc, identifiedPipeType: 'ERW', quantity: '10' }] });
+        expect(preparer.buildEnquiryRowModel(n.lineItems[0]).size).toBe('8" X 6.35 MM');
+    });
+
+    test('a description the formatter also cannot parse (no pipe size at all) keeps the raw text — nothing invented', () => {
+        preparer._setDescriptionFormatter(descFormatter);
+        const n = preparer.normalizeQuotation({ lineItems: [{ originalDescription: 'STRUCTURAL_SUPPORT_KG', identifiedPipeType: 'ERW', quantity: '10' }] });
+        expect(preparer.buildEnquiryRowModel(n.lineItems[0]).size).toBe('STRUCTURAL_SUPPORT_KG');
+    });
+
+    test('with no identifiedPipeType at all (a manually-typed row), behaves exactly as before', () => {
+        preparer._setDescriptionFormatter(descFormatter);
+        const n = preparer.normalizeQuotation({ lineItems: [{ originalDescription: '1XHY', quantity: '10' }] });
+        expect(preparer.buildEnquiryRowModel(n.lineItems[0]).size).toBe('1XHY');
+    });
+
+    test('the fix reaches the quote card\'s Enquiry tab too — same chain, same result', () => {
+        preparer._setDescriptionFormatter(descFormatter);
+        const quote = { lineItems: [{ originalDescription: '1XHY', identifiedPipeType: 'ERW', quantity: '10' }] };
+        expect(buildRowsFromQuote(quote)[0].size).toBe('1" NB X Heavy -- ERW');
+    });
+});

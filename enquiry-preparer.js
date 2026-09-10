@@ -10,6 +10,15 @@
         return Number.isFinite(n) ? n : NaN;
     }
 
+    // The same description formatter the approval table, the PDF and the Freight enquiry table
+    // use (gmail-ingest/descriptionFormatter.js, loaded in the browser as window.descriptionFormatter).
+    // See sizeFromCompactCode below for why this file needs it too.
+    var _descFormatterOverride = null;             // tests inject the module here (no window in node)
+    function descriptionFormatterLib() {
+        if (_descFormatterOverride) return _descFormatterOverride;
+        return (typeof window !== 'undefined' && window.descriptionFormatter) ? window.descriptionFormatter : null;
+    }
+
     function getDefaults() {
         return {
             uom: '',
@@ -58,6 +67,11 @@
                     // AI-extracted productSpec takes priority; fall back to identifiedPipeType for quotation-sourced items
                     productSpec: String(item.productSpec || item.identifiedPipeType || '').trim(),
                     size: String(item.size || '').trim(),
+                    // Carried through so buildEnquiryRowModel can recognise a QUOTE-sourced item —
+                    // one with its own compact size code ("1XHY", "8X6.35") — and format it properly
+                    // instead of parsing it as prose. Never part of the row buildEnquiryRowModel
+                    // returns; only read internally. See sizeFromCompactCode.
+                    identifiedPipeType: String(item.identifiedPipeType || '').trim(),
                     quantity: Number.isFinite(qty) ? String(qty) : String(item.quantity || item.qty || '').trim(),
                     // Blank when the quote does not say. This used to default to 'Nos', which was a
                     // guess printed as fact on an enquiry going out to a supplier — pipe is ordered
@@ -218,12 +232,40 @@
         return tokens.join(' ');
     }
 
+    // extractSizeFromDescription is built to pull a size out of PROSE — an enquiry email a
+    // customer actually wrote ("8" X 6.35 MM ERW pipe IS 3589..."). It silently echoes the whole
+    // string back when nothing matches, which is exactly what happens for the AI's own compact
+    // quote codes ("8X6.35", "1XHY") — neither of its two patterns expects one. That silent
+    // echo is how a real quote's size ended up on a supplier enquiry as literal text "1XHY":
+    // both the standalone Enquiry Preparer's "Load From Quotation" and the quote card's own
+    // Enquiry tab funnel every quote-sourced item through this same function, so both showed it.
+    //
+    // Recovers ONLY that specific failure — extraction returning the input completely unchanged
+    // — using the same formatter the approval table, the PDF and the Freight enquiry table
+    // already use for exactly this kind of code. A description that genuinely is not a pipe size
+    // (freight, a valve, anything the formatter cannot make sense of either) still falls through
+    // with nothing invented: formatItemDescriptionByPipeType returns its own input unchanged in
+    // that case too, so the guard below finds no improvement and the raw text is kept, exactly
+    // as before this existed.
+    function sizeFromCompactCode(desc, pipeType) {
+        const lib = descriptionFormatterLib();
+        if (!lib || !pipeType) return '';
+        const formatted = lib.formatItemDescriptionByPipeType({ originalDescription: desc, identifiedPipeType: pipeType });
+        if (!formatted || formatted === desc) return '';
+        return formatted;
+    }
+
     function buildEnquiryRowModel(fromLineItem) {
         const d = getDefaults();
         const desc = (fromLineItem && fromLineItem.description) || '';
         const qty = (fromLineItem && fromLineItem.quantity) || '';
+        const pipeType = (fromLineItem && fromLineItem.identifiedPipeType) || '';
         // Use AI-extracted size if available, otherwise fall back to parsing the description
-        const size = String((fromLineItem && fromLineItem.size) || '').trim() || extractSizeFromDescription(desc);
+        let size = String((fromLineItem && fromLineItem.size) || '').trim() || extractSizeFromDescription(desc);
+        if (size === desc.trim() && pipeType) {
+            const formatted = sizeFromCompactCode(desc, pipeType);
+            if (formatted) size = formatted;
+        }
         const inferredSpec = inferProductSpecFromText(desc, size);
         const productSpec = String((fromLineItem && fromLineItem.productSpec) || '').trim() || inferredSpec || desc;
 
@@ -936,6 +978,8 @@
                 extractGradeTokens,
                 extractStandardTokens,
                 buildEnquiryRowModel,
+                sizeFromCompactCode,
+                _setDescriptionFormatter: function (lib) { _descFormatterOverride = lib; },
             }
         };
     }
