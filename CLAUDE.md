@@ -88,38 +88,6 @@ Two supporting rules:
 - **Prove browser-visible changes before reporting them done** — use the `check-it` skill
   (`.claude/skills/check-it/`) and show the user what happened, rather than asserting it works.
 
-## Partner Directory — read the three rule files BEFORE touching a card
-
-The owner is importing 5,507 Google Contacts into the Partner Directory, **one card at a
-time**, finding faults on each. Twenty-seven were found on Jindal Saw alone. Everything
-learned is written down; read it rather than rediscovering it:
-
-- **`DIRECTORY-CARD-BACKLOG.md`** — the work list. What was fixed by hand and will recur, what
-  is measured and outstanding, and **how HE checks a card** (six questions worth running on
-  every card before showing it to him).
-- **`DIRECTORY-DATA-RULES.md`** — strict rules for the data. Rule zero: nothing is ever
-  excluded, nothing is ever silently changed.
-- **`CONTACT-EXPORT-RULES.md`** — rules for reading his address book.
-
-Four that override convenience:
-
-1. **ONE CARD AT A TIME. Never change a card he has not opened.** No backfills across the
-   queue, no re-running an import over the whole list. A CODE fix helps every card and is
-   fine; a script rewriting stored cards he has not reviewed is not.
-2. **Every correction gets written into the backlog AT THE TIME**, with what it means for the
-   other cards. Since only one card may be changed, that note is the only thing the rest get.
-3. **A card has THREE sources**: his saved contacts, his "other contacts" (everyone he has
-   emailed — `emailedPeople()` in `utils/googlePeople.js`), and every phone-book page whose
-   TEXT names the firm, not just its title. Nearly half the Jindal Saw findings trace to reading only part of it. A check
-   given one source will declare the others invented — that deleted five real people once.
-4. **Ask him about every doubt, as the work happens.** Placement is a question; exclusion is
-   never on the table. Answers marked *"Owner's decision"* in those files are settled — do not
-   re-decide them.
-
-Checking one card should be CHEAP. An audit fanned out to 117 agents, each re-reading
-everything to answer one question, cost 8M tokens for one card. His whole source is ~6k tokens.
-One agent, one pass.
-
 ## Active project — unified per-quote flow (read `SESSION-HANDOFF.md` first)
 
 A large in-progress rebuild unifies the three tools (Weight Calculator, Enquiry Preparer, Quotation approval) into one status-driven per-quote flow. **Before touching the approval list, the quote card/tabs, the Freight tab, revisions, the conversation panel, needs-attention status, or Gmail send/read, read `SESSION-HANDOFF.md` and `UNIFIED-QUOTE-FLOW-PLAN.md` first** — they hold live state the code alone won't tell you.
