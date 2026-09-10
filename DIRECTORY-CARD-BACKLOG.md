@@ -681,3 +681,37 @@ page, so his sentence has somewhere to live.
 **Watch for a stale page.** Two of his corrections were of labels the code had already changed;
 his browser was running an older copy of `partner-directory.js`. Bump the `?v=` on every change
 to it, and say so.
+
+---
+
+## The bracket: his own words, whole
+
+*His words: "in brackets can add (under xxx says --- purchases from --- ) for context -- exact
+words of the notes", and the shape he wrote out:*
+
+```
+   on Bombay Hardware's card   SEVEN STAR AIRCON (BOMBAY HARDWARE HE PURCHASE MATERIAL ON CREDIT BASIS)
+   on Seven Star's own card    THEY PURCHASE : 1. MST 2. SICAGEN 3. BOMBAY HARDWARE
+                               HE PURCHASE MATERIAL ON CREDIT BASIS
+```
+
+So the firm is followed by **his own words**, and nothing of the app's in between. The bare
+"they buy from them" was filler added to make the line group; his wording already says the
+buying in 32 of 36 cases, and the filler is kept only where dropping it would move the firm
+out of the list.
+
+**Cutting his sentence at the point Bombay Hardware is named was tried and abandoned.** It
+works for Seven Star, where the name begins a clause. It fails on a list: Crescon's line reads
+*"REGULAR PURCHASES THE MATERIAL TO VARDHAMAN AGENCY, SUMIT INDUSTRIES, MST, BOMBAY HARDWARE,
+SPARSH PIPES, CALCUTTA TUBE"* — cut at the name and the bracket becomes *"BOMBAY HARDWARE,
+SPARSH PIPES, CALCUTTA TUBE"*, which reads as though Bombay Hardware sells to Sparsh Pipes.
+**A quotation is whole or it is not a quotation.**
+
+**Where the two cards differ:** the customer's own card keeps the **whole page sentence**,
+because it is theirs; Bombay Hardware's card carries the shorter note that names it.
+
+**Watch the bracket does not change the heading.** The wording is tested before it is written:
+"Pipe supplier to them" alone reads as *They buy from*, so Chakara keeps the filler. Three
+others keep it because their wording names no relationship at all.
+
+Bombay Hardware ends at **Transporters 5 · They sell to 36 · Their factory 1 · They buy from 3**.
