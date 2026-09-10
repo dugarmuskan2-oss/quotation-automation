@@ -3160,6 +3160,59 @@
         return true;
     }
 
+    /**
+     * ✕ means two different things on the two screens, and treating them the same broke it.
+     *
+     * On a card IN THE DIRECTORY it is a request: the owner's rule is that anything deleted goes
+     * to Recent changes and waits for his approval, so there is a record and a way back. On a
+     * card still WAITING there is nothing to request — it is not in the directory yet — so ✕
+     * just takes the row off the review copy, which is the only place it exists.
+     *
+     * It used to live inside bindPeople, where the notes, rules, products and branches could
+     * not see it: pressing "remove" on a note threw "askRemoval is not defined" and nothing
+     * happened, silently. And the review half only knew how to remove a person, a phone or an
+     * email, so on a waiting card every other ✕ was a no-op even when it was reachable.
+     */
+    function removalAsker(p, save) {
+        var takeOff = function (what, value, at) {
+            var who = at && at.person;
+            var drop = function (list) { return (list || []).filter(function (x) { return x !== value; }); };
+            if (what === 'person') p.people = drop(p.people);
+            else if (what === 'phone' && who) who.phones = drop(who.phones);
+            else if (what === 'email' && who) who.emails = drop(who.emails);
+            else if (what === 'branch') p.branches = drop(p.branches);
+            else if (what === 'route') p.routes = drop(p.routes);
+            else if (what === 'type') p.types = drop(p.types);
+            else if (what === 'product') p.products = drop(p.products);
+            else if (what === 'rule') p.rules = drop(p.rules);
+            else if (what === 'note') p.notes = drop(p.notes);
+            else if (what === 'size' && at && at.product) {
+                var pr = (p.products || []).filter(function (x) { return str(x.p) === str(at.product.p); })[0];
+                if (!pr) return;
+                pr.sizes = drop(pr.sizes);
+                save(true, ['products']);
+                return;
+            } else return;
+            save(true, [{ person: 'people', phone: 'people', email: 'people', branch: 'branches',
+                route: 'routes', type: 'types', product: 'products', rule: 'rules', note: 'notes' }[what]]);
+        };
+        return function (what, value, at) {
+            if (!isInDirectory(p)) { takeOff(what, value, at); return; }
+            if (S.busy['rm']) return;                 // one press is one request
+            S.busy['rm'] = true; render();
+            postJson('/contacts/removal/ask',
+                { cardId: p.id, what: what, value: value, at: at || null },
+                function (d) {
+                    S.saveNote = (d && d.already)
+                        ? 'That is already waiting in Recent changes.'
+                        : 'Marked for removal — approve it under Recent changes.';
+                    loadDirectory(render);
+                },
+                function () { delete S.busy['rm']; },
+                'Marking that for removal');
+        };
+    }
+
     function bindPeople(card, p, save) {
         each(card, '[data-pd-pc]', function (el) {
             el.onchange = function () {
@@ -3242,31 +3295,7 @@
          * On a waiting card, ✕ now just takes the row off the review copy, which is the only
          * place it exists.
          */
-        function askRemoval(what, value, at) {
-            if (!isInDirectory(p)) { removeFromReview(what, value, at); return; }
-            if (S.busy['rm']) return;                 // one press is one request
-            S.busy['rm'] = true; render();
-            postJson('/contacts/removal/ask',
-                { cardId: p.id, what: what, value: value, at: at || null },
-                function (d) {
-                    S.saveNote = (d && d.already)
-                        ? 'That is already waiting in Recent changes.'
-                        : 'Marked for removal — approve it under Recent changes.';
-                    loadDirectory(render);
-                },
-                function () { delete S.busy['rm']; },
-                'Marking that for removal');
-        }
-
-        /** Take a row straight off a card that has not been approved yet. */
-        function removeFromReview(what, value, at) {
-            var who = at && at.person;
-            if (what === 'person') p.people = (p.people || []).filter(function (c) { return c !== value; });
-            else if (what === 'phone' && who) who.phones = (who.phones || []).filter(function (q) { return q !== value; });
-            else if (what === 'email' && who) who.emails = (who.emails || []).filter(function (e) { return e !== value; });
-            else return;
-            save(true, ['people']);
-        }
+        var askRemoval = removalAsker(p, save);
 
         each(card, '[data-pd-delperson]', function (el) {
             el.onclick = function () { askRemoval('person', p.people[Number(el.getAttribute('data-pd-delperson'))]); };
@@ -3293,6 +3322,7 @@
     // together meant adding a branch wrote back this tab's hours-old copy of the routes,
     // silently wiping a lorry route a colleague had added on the other machine.
     function bindPlaces(card, p, save) {
+        var askRemoval = removalAsker(p, save);
         each(card, '[data-pd-cat]', function (el) {
             el.onchange = function () { p.categories[Number(el.getAttribute('data-pd-cat'))] = el.value; save(false, ['categories']); };
         });
@@ -3320,6 +3350,7 @@
     }
 
     function bindSupply(card, p, save) {
+        var askRemoval = removalAsker(p, save);
         var pick = $('pdTypePick');
         // Choosing "＋ Add another…" asks straight away. Waiting for a second press on a
         // button beside it is a step nobody expects — and that button was the one being
@@ -3420,6 +3451,7 @@
     }
 
     function bindNotes(card, p, save) {
+        var askRemoval = removalAsker(p, save);
         var input = $('pdNoteIn');
         var add = function () {
             var t = input ? str(input.value) : '';
