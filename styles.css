@@ -1396,6 +1396,9 @@
    where the town used to be. */
 .pd-rel-place.pd-rel-nowhere { grid-template-columns: 1fr; }
 .pd-rel-firms { font-size: 13px; line-height: 1.8; }
+/* His own words beside the name. Quieter than the name, because the name is the thing
+   you click and the quote is why it is there. */
+.pd-rel-said { color: #6b6b63; font-size: 12px; }
 @media (max-width: 640px) { .pd-rel-place { grid-template-columns: 1fr; } }
 .pd-branchgrp { border-left: 3px solid rgba(180,138,60,.35); padding-left: 10px; margin: 14px 0 8px; }
 .pd-branch-where { display: grid; grid-template-columns: 1fr 1.6fr auto; gap: 6px; margin: 0 0 8px; }

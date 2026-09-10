@@ -715,3 +715,22 @@ because it is theirs; Bombay Hardware's card carries the shorter note that names
 others keep it because their wording names no relationship at all.
 
 Bombay Hardware ends at **Transporters 5 · They sell to 36 · Their factory 1 · They buy from 3**.
+
+**And it goes BESIDE THE NAME, not in a note.** *His correction: "Add it in brackets next to the
+name under they sell to".* The relation block now carries what he wrote about each firm in
+brackets after the link:
+
+```
+THEY SELL TO   CRESCON PROJECTS SERVICE (CRESCON regularly purchases material from them
+               on a credit basis) · shree venus · PONDY OXIDES AND CHEMICALS LTD (POCL)
+               (POCL buys pipe material from them on credit basis) · ...
+```
+
+The bracket appears **only when his wording says something the heading does not**. "(transporter
+working for them)" under the heading Transporters is noise; "(BOMBAY HARDWARE HE PURCHASE
+MATERIAL ON CREDIT BASIS)" is worth reading. That test is `relExtra`, which was already written
+to answer the same question for the notes list.
+
+Because everything is now shown up there, a relation note is no longer repeated below.
+**Bombay Hardware's Notes box is ONE line** — the 21.2.2025 record of speaking to Sampath,
+which is genuinely about them. It began at 111.

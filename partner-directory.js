@@ -1800,7 +1800,16 @@
             if (!g.byPlace[pk]) { g.byPlace[pk] = { place: placeName, firms: [], keys: {} }; g.places.push(g.byPlace[pk]); }
             var slot = g.byPlace[pk];
             var fk = nameKey(rel.firm);
-            if (fk && !slot.keys[fk]) { slot.keys[fk] = 1; slot.firms.push(rel.firm); }
+            // What he wrote about this one, in brackets beside the name. His instruction:
+            // "Add it in brackets next to the name under they sell to". Only when it says
+            // something the heading does not — "SEVEN STAR AIRCON (BOMBAY HARDWARE HE PURCHASE
+            // MATERIAL ON CREDIT BASIS)" is worth reading; "(transporter working for them)"
+            // under the heading Transporters is not.
+            var said = relExtra(rel, p) ? str(rel.how) : '';
+            if (!fk) return;
+            if (!slot.keys[fk]) { slot.keys[fk] = 1; slot.firms.push({ name: rel.firm, said: said }); return; }
+            // The same firm named twice — keep whichever line actually says something.
+            slot.firms.forEach(function (x) { if (nameKey(x.name) === fk && !x.said) x.said = said; });
         });
         if (!kinds.length) return '';
         var total = kinds.reduce(function (a, g) {
@@ -1821,7 +1830,10 @@
                         return '<div class="pd-rel-place' + (oneLot ? ' pd-rel-nowhere' : '') + '">'
                             + (oneLot ? '' : '<span class="pd-rel-city">' + esc(s.place) + '</span>')
                             + '<span class="pd-rel-firms">'
-                            + s.firms.map(firmLink).join('<span class="pd-tiny"> · </span>') + '</span></div>';
+                            + s.firms.map(function (x) {
+                                return firmLink(x.name)
+                                    + (x.said ? ' <span class="pd-rel-said">(' + esc(x.said) + ')</span>' : '');
+                            }).join('<span class="pd-tiny"> · </span>') + '</span></div>';
                     }).join('') + '</div>';
             }).join('')
             + '<p class="pd-tiny">Taken from your notes. A name in bold has no card of its own yet — click any other to open it.</p>';
@@ -1834,8 +1846,9 @@
      * something the group heading cannot, in which case it belongs in both places.
      */
     function isRelationNote(n, p) {
-        var rel = splitRelationNote(n && n.t);
-        return rel !== null && !relExtra(rel, p);
+        // Everything a relation note says is now shown up there — the firm as a link, and
+        // what he wrote about it in brackets beside the name. Repeating it below is noise.
+        return splitRelationNote(n && n.t) !== null;
     }
 
     /**
