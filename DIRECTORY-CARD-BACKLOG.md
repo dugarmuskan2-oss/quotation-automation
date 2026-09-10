@@ -510,6 +510,44 @@ STAR ALL INDIA* page; there is no Jindal Star card), "ACCORDING TO MR SAMPATH (B
 PARTY. (about ENGINEERING TOOLS SUPPLY)", and "SIR SPOKE TO BOMBAY HW SAMPATH (21.2.2025)"
 (from the Coimbatore Industrial Product page). None of those three firms has a card yet.
 
+### 12a. So the firm the note is about needs a card — and 29 of them did not have one
+
+*His words: "it goes under the card of which the contact belongs".*
+
+Bombay Hardware's notes named **40 firms with no card at all** — not held back, not waiting,
+simply never brought in. The waiting list is keyed by **email domain**, and a firm with no
+email address never enters it. These exist only as pages in the phone book.
+
+**They were built from those pages: 29 new cards**, each with its people, numbers, town,
+address and the heading it is filed under — Seven Star Aircon (6 people), Metech (12), Sobha
+(10), Micron Electricals (8), Moglix (5), Sv Tech (5), shree venus (5) and the rest.
+
+The detail moved onto them **in his words**, and Bombay Hardware kept one bare line:
+
+| | |
+|---|---|
+| Was, on Bombay Hardware | `THEY ARE PURCHASING FROM BOMBAY H/W BY GIVING PDC UPTO 15 LAC — SREE MAZHI` |
+| Now, on Sree Mazhi | `BOMBAY HARDWARE — THEY ARE PURCHASING FROM BOMBAY H/W BY GIVING PDC UPTO 15 LAC` |
+| Now, on Bombay Hardware | `SREE MAZHI ENTERPRIES — they buy from them` |
+
+**Bombay Hardware's notes box went from 29 showing to 13**, and the customers in "Who they work
+with" became clickable instead of plain bold text.
+
+**What is NOT moved, and why:**
+
+- **A supplier or a transporter stays on both.** That is a two-way relationship and it is what
+  "Who they work with" is built from. Only a CUSTOMER note moves.
+- **A firm with nothing read stays put.** Sree Mazhi, National Fire Armour, Savoy Engineers and
+  Kumar Agro have no reading with a number, so there is no card to move to and losing the note
+  is worse than it sitting in the wrong place.
+- **Two of his wordings hid from the reader** and were moved by hand: "**Supply** one full truck
+  load per month" (the rule matches "supplier", not "Supply") and "ACCORDING TO MR SAMPATH
+  (BOMBAY H/W) GOOD PARTY. (about ENGINEERING TOOLS SUPPLY)", which names the firm only in a
+  bracket at the end.
+
+**The fact now appears on both cards** — once as his page wrote it, once as the moved line. That
+duplication is deliberate: the moved line is what makes the link work in both directions.
+
 ### 13. A fact should not be a note AND a rule
 
 "They give METAL up to 5,00,000" and "work with LC only" were sitting in both places. They are
