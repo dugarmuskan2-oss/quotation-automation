@@ -1797,6 +1797,10 @@
         var prods = (p && p.products) || [];
         var k = lower(t).replace(/[^a-z0-9]/g, '');
         if (k && prods.some(function (x) { return lower(str(x && x.p)).replace(/[^a-z0-9]/g, '') === k; })) return '';
+        // Nor is a FIRM a place. "TATA — SANTOSH STEEL is their dealer" left "SANTOSH STEEL"
+        // standing where a town should be, and Apollo's card grew a row headed with one of his
+        // own dealers. If the leftover is a firm he has a card for, it is not where anybody is.
+        if (findFirmCard(t)) return '';
         return t;
     }
 
