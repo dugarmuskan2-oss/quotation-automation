@@ -205,6 +205,10 @@ On the first 48 cards this guessed 13 and left 35 blank.
   as a supplier and can be sent a freight enquiry. Matched on the company name of all saved
   quotations **and** on email domain — a firm read from a notes box usually has no address, so
   the domain test alone missed Chemplast Sanmar, which was on the held-back list all along.
+- **Banks.** *His decision: do not add banks.* HDFC, Yes Bank, ICICI, Axis, SBI, Bank of
+  Baroda, IndusInd, RBI and the rest. He deals with them constantly, so they are all over his
+  emailed contacts — 149 people at HDFC alone — but the directory is who he BUYS pipe from and
+  ships with. Thirteen were held back. They are recorded under , not deleted.
 - **A WhatsApp group, a website, or a note to self.** Keep as a note on the firm it belongs to.
 - **A person named as a referrer.** "Suresh Chordia referred Saroj Steel" is one firm, not two.
 
