@@ -493,6 +493,20 @@ given a fresh one, and lands beside its twin. **No code on that path ever compar
 enough in this trade. Exact key equality for the warning; the prefix rule stays out of it. A
 silent refusal is the same failure as a silent duplicate.
 
-**Still open:** Airta Logistics is two cards — `airtalogistics@gmail.com` (Coimbatore) and
-`airtalogistics.rkl@gmail.com` (no town). Both free mail, so nothing can tell them apart.
-*Asked; not yet answered.*
+**Airta Logistics — merged.** *His answer: "same firm".* Both gmail addresses now sit on one
+card, with Coimbatore, the SAIL FACTORY → CUDDALORE route and the note. The directory is 25
+cards and both warning bands are empty.
+
+**How a merge is done, and the one judgement in it:** the app's own `mergePreviews` does the
+folding — it is additive by design, so a blank never replaces a value and nothing on either
+card is dropped. It knows nothing about the counters, and those are the only real decision:
+
+- **The same `last` date on both cards means ONE job that went out to two addresses** — asked
+  once, not twice. Both Airta cards said *asked 1, last 2026-08-04*, so the merged card says
+  asked 1. Different dates are different jobs and do add up.
+- Why it matters: "Regular" means asked 5+ times in the last 4 months, so a doubled count would
+  mark a firm regular that never was, and the ranking would then prefer it.
+
+The merge refuses to write unless every address, number, note and route from both cards is
+still reachable afterwards. The card that goes is an ordinary undoable removal in Recent
+changes.
