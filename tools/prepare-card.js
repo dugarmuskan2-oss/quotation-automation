@@ -134,7 +134,11 @@ function prepare(card, world) {
     const kept = [];
     (card.notes || []).forEach((n) => {
         const t = str(n.t);
-        if (splitRelation(t) || !IS_RULE.test(t)) { kept.push(n); return; }
+        // A note ending "— SOME FIRM" is about that firm, whatever words are in it. Sreevatsa
+        // had "Unimech has worked with them for 20 years on immediate and credit payment terms
+        // — UNIMECH SYSTEM INDIA PVT LTD" lifted into Price rules because it says "credit".
+        // It is Unimech's dealing, not a rule of Sreevatsa's. A rule he wrote is a plain line.
+        if (t.indexOf(' — ') !== -1 || !IS_RULE.test(t)) { kept.push(n); return; }
         if (!rules.some(r => norm(r) === norm(t))) rules.push(t);
     });
     if (rules.length !== (card.rules || []).length) {
@@ -153,7 +157,7 @@ function prepare(card, world) {
         if (!other) {
             const rec = reading(firm);
             if (!rec || !canBeACard(rec)) {
-                asks.push({ q: 'Who is "' + firm + '"?', why: 'Named on this card, but nothing in your phone book has a number for them, so there is no card to move the detail onto. It stays here for now.' });
+                asks.push({ key: 'who:' + contacts.firmNameKey(firm), q: 'Who is "' + firm + '"?', why: 'Named on this card, but nothing in your phone book has a number for them, so there is no card to move the detail onto. It stays here for now.' });
                 return n;
             }
             other = cardFromReading(rec, firm);
@@ -184,16 +188,22 @@ function prepare(card, world) {
 
     // ── what only he can answer ───────────────────────────────────────────────────────────
     if (!str(card.city)) {
-        asks.push({ q: 'Which town is the head office?', why: 'Nothing in your pages says. Never guess it from an area code — Bombay Hardware\'s numbers are all 044 and its head office is Bangalore.' });
+        asks.push({ key: 'headoffice', q: 'Which town is the head office?', why: 'Nothing in your pages says. Never guess it from an area code — Bombay Hardware\'s numbers are all 044 and its head office is Bangalore.' });
     }
-    if (!str(card.role)) {
-        asks.push({ q: 'What kind of firm is this — dealer, manufacturer, transporter?', why: 'Nothing was guessed, because it decides who gets sent a freight enquiry.' });
+    // "other" is what the card holds when nobody has said — it is not an answer.
+    if (!str(card.role) || card.role === 'other') {
+        asks.push({ key: 'role', q: 'What kind of firm is this — dealer, manufacturer, transporter?', why: 'Nothing was guessed, because it decides who gets sent a freight enquiry.' });
+    }
+    // A town the app does not know is not scored for distance, and is usually a misspelling —
+    // Sreevatsa's card says "coimbatter". Repairing it is a guess; asking is not.
+    if (str(card.city) && !world.towns.has(norm(card.city))) {
+        asks.push({ key: 'town:' + norm(card.city), q: 'Is the town "' + str(card.city) + '" spelt right?', why: 'The app does not know that town, so it cannot work out the distance to a delivery. It is left exactly as written.' });
     }
     (card.people || []).forEach((p) => {
         (p.phones || []).forEach((x) => {
             const digits = str(x.v).replace(/\D/g, '');
             if (digits.length >= 6 && digits.length < 10 && !/^0\d/.test(digits)) {
-                asks.push({ q: 'Is "' + str(x.v) + '" right, against ' + (str(p.name) || 'the office') + '?', why: 'It is ' + digits.length + ' digits. Completing a number is a guess, so it is left exactly as written.' });
+                asks.push({ key: 'number:' + digits, q: 'Is "' + str(x.v) + '" right, against ' + (str(p.name) || 'the office') + '?', why: 'It is ' + digits.length + ' digits. Completing a number is a guess, so it is left exactly as written.' });
             }
         });
     });
@@ -204,11 +214,15 @@ function prepare(card, world) {
         const firm = bareName(rel.firm);
         if (findCard(firm) || reading(firm)) return;
         if (asks.some(a => a.q.indexOf('"' + firm + '"') !== -1)) return;
-        asks.push({ q: 'Is "' + firm + '" one firm, or two run together?', why: 'That name is nowhere in your phone book. "MOKSHI MOTHILA" turned out to be Mokshi and Motilal with the comma lost.' });
+        asks.push({ key: 'split:' + contacts.firmNameKey(firm), q: 'Is "' + firm + '" one firm, or two run together?', why: 'That name is nowhere in your phone book. "MOKSHI MOTHILA" turned out to be Mokshi and Motilal with the comma lost.' });
     });
 
     card.checked = today();
-    return { card: contacts.sanitizePartner(card), did, asks, made };
+    // A question he has already answered is not asked again. He told me POLYFIT was a customer
+    // and the next run asked who POLYFIT was — a tool that nags is worse than no tool.
+    const settled = new Set(world.settled || []);
+    return { card: contacts.sanitizePartner(card), did, made,
+        asks: asks.filter(a => !settled.has(str(a.key))) };
 }
 
 // ── running it ────────────────────────────────────────────────────────────────────────────
@@ -235,7 +249,17 @@ async function main() {
     if (approved) say('(this one is already in your directory — working on it there)');
     const source = item ? item.preview : approved;
 
-    const world = { book, all: items.map(i => i.preview || {}).concat(dir) };
+    // The towns the app can measure a distance to, read out of the page itself so the two
+    // never drift apart.
+    const towns = new Set();
+    try {
+        const page = require('fs').readFileSync(require('path').join(__dirname, '..', 'partner-directory.js'), 'utf8');
+        const at = page.indexOf('var COORD = {');
+        page.slice(at, page.indexOf('};', at)).replace(/'([^']+)'\s*:/g, (m, t) => { towns.add(norm(t)); return m; });
+    } catch (e) { /* no towns known — then no town is questioned */ }
+
+    const world = { book, towns, settled: (item && item.settled) || (approved && approved.settled) || [],
+        all: items.map(i => i.preview || {}).concat(dir) };
     const out = prepare(JSON.parse(JSON.stringify(source)), world);
 
     say(NAME);
