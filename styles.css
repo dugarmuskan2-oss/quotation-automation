@@ -1392,6 +1392,9 @@
 .pd-rel-place { display: grid; grid-template-columns: 190px 1fr; gap: 8px; align-items: baseline;
     padding: 4px 0; border-top: 1px solid rgba(0,0,0,.06); }
 .pd-rel-city { font-size: 12.5px; font-weight: 600; color: #20201d; }
+/* With no town to show, the firms take the whole width rather than leaving a gap
+   where the town used to be. */
+.pd-rel-place.pd-rel-nowhere { grid-template-columns: 1fr; }
 .pd-rel-firms { font-size: 13px; line-height: 1.8; }
 @media (max-width: 640px) { .pd-rel-place { grid-template-columns: 1fr; } }
 .pd-branchgrp { border-left: 3px solid rgba(180,138,60,.35); padding-left: 10px; margin: 14px 0 8px; }

@@ -1807,9 +1807,15 @@
         return '<div class="pd-sec">Who they work with<span class="pd-sp"></span>'
             + '<span class="pd-tiny">' + total + ' firms</span></div>'
             + kinds.map(function (g) {
+                // The left column is for a TOWN, and it only earns its place when it splits
+                // the firms into more than one group. One row of it said "to HEAVY METAL" and
+                // "Pipe to" — leftover words from his sentence, standing where a town should
+                // be. With nothing to split, the heading above already says everything.
+                var oneLot = g.places.length === 1;
                 return '<div class="pd-rel"><p class="pd-rel-how">' + esc(g.kind) + '</p>'
                     + g.places.map(function (s) {
-                        return '<div class="pd-rel-place"><span class="pd-rel-city">' + esc(s.place) + '</span>'
+                        return '<div class="pd-rel-place' + (oneLot ? ' pd-rel-nowhere' : '') + '">'
+                            + (oneLot ? '' : '<span class="pd-rel-city">' + esc(s.place) + '</span>')
                             + '<span class="pd-rel-firms">'
                             + s.firms.map(firmLink).join('<span class="pd-tiny"> · </span>') + '</span></div>';
                     }).join('') + '</div>';
