@@ -210,6 +210,19 @@ think longer and add".* Everything below was sitting in the notes when it had a 
     contacts and on none of his eleven pages. *His decision: leave them unfiled* rather than
     assume the head office. An empty branch box is honest; a guessed one is not.
 
+31. **THE HEAD OFFICE WAS ASSERTED ON NO EVIDENCE.** The card said Jindal Saw's head office
+    is CHENNAI, carrying the Century Plaza address. Not one of his eleven pages says head
+    office, registered office or corporate office about Jindal Saw — the only "head office" on
+    any page belongs to Scoda Tubes, on an unrelated page. His pages give FOUR offices as
+    equals: Chennai, Bombay, Delhi, Nasik.
+
+    The city came from the contacts scan guessing, and the address was the CHENNAI OFFICE
+    branch's, sitting in the head-office box — which is why that branch showed no address.
+
+    *His decision: leave the head office BLANK and put the address on the Chennai branch.*
+    **A field nobody filled in is not an invitation to fill it.** Check every card for a head
+    office the pages never named — the scan set one on all of them.
+
 The general lesson, and the one worth the most: **a card is built from ALL his pages about that
 firm, not one.** Jindal Saw has seven. A detail that looks orphaned on one page is usually
 explained on another.
