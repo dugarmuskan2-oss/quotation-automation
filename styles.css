@@ -1333,6 +1333,15 @@
 /* Softer than pd-error: a thing to look at, not a thing that is wrong. Two cards can
    share a name and still be two real firms in two towns. */
 .pd-warn { background: #FFF6E5; color: #8A5A00; border-radius: 8px; padding: 8px 11px; font-size: 12.5px; margin-bottom: 10px; }
+/* The questions the card could not answer, at the top of it. Blue rather than amber: this is
+   not a warning, it is the work. */
+.pd-asks { background: #EAF2FB; border-radius: 8px; padding: 10px 12px; margin: 0 0 10px; }
+.pd-asks-head { margin: 0 0 8px; font-size: 12px; font-weight: 700; letter-spacing: .04em;
+    text-transform: uppercase; color: #1F4E79; }
+.pd-ask { display: grid; grid-template-columns: 20px 1fr; gap: 8px; align-items: start;
+    margin: 0 0 7px; font-size: 13px; color: #20201d; }
+.pd-ask-n { width: 18px; height: 18px; border-radius: 50%; background: #1F4E79; color: #fff;
+    font-size: 11px; line-height: 18px; text-align: center; font-weight: 700; }
 .pd-linkish { border: none; background: none; padding: 0; cursor: pointer; color: #8C2F2F; font: inherit; text-decoration: underline; }
 /* An address that cannot be stored stays on screen and says so, the same red the weight
    calculator uses for a missing kg/m — it is never dropped in silence. */

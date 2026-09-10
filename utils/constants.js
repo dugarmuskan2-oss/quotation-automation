@@ -78,6 +78,12 @@ const CONFIG_KEY_CONTACTS_PENDING     = 'contacts-pending.json';
  *  site's 60-second limit — so the slow read happens once and the app only ever
  *  reads this. */
 const CONFIG_KEY_GOOGLE_FIRMS         = 'google-firms.json';
+/** His phone book, as it was READ: every page with its heading and its text, and every firm
+ *  the reading found on it. 1,912 pages and 2,254 firms. This is the source a card is built
+ *  FROM, and it lived only in a scratch folder until Bombay Hardware needed it twice — the
+ *  readings cost real money to produce and cannot be re-made from the cards.
+ *  Written by tools/phone-book-save.js, read by tools/prepare-card.js. */
+const CONFIG_KEY_PHONE_BOOK           = 'phone-book.json';
 /** People who can log in: [{ name, email, hash }]. Managed with tools/manage-users.js. */
 const CONFIG_KEY_USERS                = 'users.json';
 
@@ -107,6 +113,7 @@ const PERSONAL_CONFIG_KEYS = new Set([
     CONFIG_KEY_DEFAULT_EMAIL_MESSAGE,
     CONFIG_KEY_CONTACTS_PENDING,
     CONFIG_KEY_GOOGLE_FIRMS,
+    CONFIG_KEY_PHONE_BOOK,
     // Each site keeps its own people. Sharing one list would mean anyone who can log in to the
     // m@ site can also open info@'s, which is the opposite of keeping the two sets of quotes apart.
     CONFIG_KEY_USERS,
@@ -150,6 +157,7 @@ module.exports = {
     CONFIG_KEY_CONTACTS,
     CONFIG_KEY_CONTACTS_PENDING,
     CONFIG_KEY_GOOGLE_FIRMS,
+    CONFIG_KEY_PHONE_BOOK,
     CONFIG_KEY_USERS,
     PERSONAL_CONFIG_KEYS,
     configKey,

@@ -2412,7 +2412,7 @@
                     + ' · ' + (pi.readFailed ? '<b>the reading failed — nothing was taken from it</b>'
                         : 'read into ' + pi.finds.length + ' field' + (pi.finds.length === 1 ? '' : 's'))) + '</p>'
             + '</div>'
-            + (open ? sourceEmailHtml(pi) + editCard(pendingPreview(pi, match)) : '')
+            + (open ? asksHtml(pi) + sourceEmailHtml(pi) + editCard(pendingPreview(pi, match)) : '')
             + clashNoteHtml(pi, match) + sameFirmNoteHtml(pi, match) + sameNameNoteHtml(pi, match)
             + approveRowHtml(pi, match, busy);
     }
@@ -2571,6 +2571,32 @@
             + 'If this is the same firm, open that card and add these details to it — approving here '
             + 'makes a second card, and the firm\'s people, notes and enquiries end up split across '
             + 'the two. If they really are two different firms, go ahead.</p></div>';
+    }
+
+    /**
+     * What the card could not work out, at the top, before he starts reading.
+     *
+     * Bombay Hardware took a whole afternoon because he was doing the mechanical work as well
+     * as the judging — folding one man's three spellings, emptying the notes box, noticing a
+     * note was really about somebody else. Those are rules now, and tools/prepare-card.js runs
+     * them before he opens the card. What is left is what only he knows: which town is the head
+     * office, whether a name is one firm or two, whether a nine-digit number is a typo.
+     *
+     * Three questions to answer beats twenty faults to find.
+     */
+    function asksHtml(pi) {
+        var asks = (pi && pi.asks) || [];
+        if (!asks.length) return '';
+        return '<div class="pd-asks"><p class="pd-asks-head">' + asks.length
+            + (asks.length === 1 ? ' thing' : ' things') + ' only you can answer</p>'
+            + asks.map(function (a, i) {
+                return '<p class="pd-ask"><span class="pd-ask-n">' + (i + 1) + '</span>'
+                    + '<span><b>' + esc(str(a && a.q)) + '</b>'
+                    + (str(a && a.why) ? '<br><span class="pd-tiny">' + esc(str(a.why)) + '</span>' : '')
+                    + '</span></p>';
+            }).join('')
+            + '<p class="pd-tiny">Everything else on this card has already been checked against your '
+            + 'phone book, your saved contacts and the people you have written to.</p></div>';
     }
 
     function clashNoteHtml(pi, match) {

@@ -2211,6 +2211,7 @@ module.exports = {
     removalPendingItem,
     removalsFor,
     keepWhatWasAddedSince,
+    foldPeople,
     LIST_KEY,
     companyFromEmail,
     changeEntry,
