@@ -1408,6 +1408,19 @@
 /* His own words beside the name. Quieter than the name, because the name is the thing
    you click and the quote is why it is there. */
 .pd-rel-said { color: #6b6b63; font-size: 12px; }
+/* Every line under Who they work with is typeable — the pencil shows on hover. */
+.pd-rel-one { white-space: nowrap; }
+.pd-rel-one .pd-rel-said { white-space: normal; }
+.pd-rel-edit { border: 0; background: none; color: #9a9a90; cursor: pointer; font-size: 11px;
+    padding: 0 3px; opacity: 0; transition: opacity .12s; }
+.pd-rel-one:hover .pd-rel-edit, .pd-rel-edit:focus { opacity: 1; }
+.pd-rel-editing { display: inline-flex; gap: 6px; align-items: center; margin-left: 6px;
+    white-space: normal; }
+.pd-rel-editing input { min-width: 320px; flex: 1; }
+
+/* The answer box under each question. */
+.pd-ask-row { display: flex; gap: 6px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
+.pd-ask-row input { flex: 1; min-width: 220px; }
 @media (max-width: 640px) { .pd-rel-place { grid-template-columns: 1fr; } }
 .pd-branchgrp { border-left: 3px solid rgba(180,138,60,.35); padding-left: 10px; margin: 14px 0 8px; }
 .pd-branch-where { display: grid; grid-template-columns: 1fr 1.6fr auto; gap: 6px; margin: 0 0 8px; }

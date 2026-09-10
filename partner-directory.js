@@ -1412,9 +1412,13 @@
         // off the card altogether, taking his own written list of their offices with it.
         var shown = {};
         rest.forEach(function (g) { shown[placeKey(g.branch)] = 1; });
-        (p.branches || []).forEach(function (b) {
+        (p.branches || []).forEach(function (b, i) {
             var k = placeKey(b.city);
-            if (!k || k === headKey || shown[k]) return;
+            // A branch he has JUST added has no name yet, and skipping it meant "+ Add a
+            // branch" looked like it did nothing at all. An unnamed branch shows, with its box
+            // empty and waiting — that is the whole point of pressing the button.
+            if (!k) { rest.push({ branch: '', rows: [], at: i, fresh: true }); return; }
+            if (k === headKey || shown[k]) return;
             shown[k] = 1;
             rest.push({ branch: str(b.city), rows: [] });
         });
@@ -1457,19 +1461,30 @@
         // The branch as recorded in "where they are", if it is recorded at all. A branch can
         // exist only on the people, having come out of a heading in the notes, and it still
         // gets a full block — otherwise the address has nowhere to be typed.
-        var at = -1;
-        (p.branches || []).forEach(function (b, i) { if (str(b.city) === g.branch) at = i; });
+        var at = typeof g.at === 'number' ? g.at : -1;
+        if (at === -1) (p.branches || []).forEach(function (b, i) { if (str(b.city) === g.branch) at = i; });
         var b = at === -1 ? { city: g.branch, area: '', address: '' } : p.branches[at];
+        // Every branch name is typeable, including one just added and one nobody has named. A
+        // block he cannot type into is a block he cannot correct, and his rule is that anything
+        // the app will not show him he cannot check.
+        var named = g.branch || g.fresh;
         return '<div class="pd-branchgrp">'
             + '<div class="pd-branch-head">'
             + (g.branch
                 ? '<input class="pd-branch-name" data-pd-renamebranch="' + esc(g.branch) + '"'
                     + ' value="' + esc(g.branch) + '" aria-label="Branch name">'
-                : '<span>No branch set</span>')
+                : (g.fresh
+                    ? '<input class="pd-branch-name" data-pd-br="' + at + '" data-pd-k="city" list="pdKnownCities"'
+                        + ' value="" placeholder="Name this branch — e.g. Coimbatore" aria-label="Branch name">'
+                    // Nobody has said where these people sit. Typing a town here puts ALL of
+                    // them in it at once, which is what he wanted when he tried to edit it.
+                    : '<input class="pd-branch-name" data-pd-branchall="1" list="pdCardBranches"'
+                        + ' value="" placeholder="No branch set — type one to move these ' + g.rows.length
+                        + ' here" aria-label="Give these people a branch">'))
             + '<span class="pd-sp"></span><span class="pd-tiny">' + g.rows.length + '</span>'
             + (at !== -1 ? '<button class="pd-del" data-pd-delbranch="' + at + '">✕</button>' : '')
             + '</div>'
-            + (g.branch
+            + (named
                 ? '<div class="pd-branch-where">'
                     + '<input data-pd-br="' + at + '" data-pd-k="area" value="' + esc(b.area || '') + '" placeholder="Town or area — e.g. Ambattur"' + (at === -1 ? ' disabled' : '') + '>'
                     + '<input data-pd-br="' + at + '" data-pd-k="address" value="' + esc(b.address || '') + '" placeholder="Full address (optional)"' + (at === -1 ? ' disabled' : '') + '>'
@@ -1806,7 +1821,7 @@
 
     function relationsBlock(p) {
         var kinds = [], byKind = {};
-        (p.notes || []).forEach(function (n) {
+        (p.notes || []).forEach(function (n, i) {
             var rel = splitRelationNote(n.t);
             if (!rel || !rel.firm || !rel.how) return;
             var k = relKind(rel.how, p);
@@ -1825,9 +1840,10 @@
             // under the heading Transporters is not.
             var said = relExtra(rel, p) ? str(rel.how) : '';
             if (!fk) return;
-            if (!slot.keys[fk]) { slot.keys[fk] = 1; slot.firms.push({ name: rel.firm, said: said }); return; }
+            // `at` is which note this came from, so the line can be typed into and corrected.
+            if (!slot.keys[fk]) { slot.keys[fk] = 1; slot.firms.push({ name: rel.firm, said: said, at: i }); return; }
             // The same firm named twice — keep whichever line actually says something.
-            slot.firms.forEach(function (x) { if (nameKey(x.name) === fk && !x.said) x.said = said; });
+            slot.firms.forEach(function (x) { if (nameKey(x.name) === fk && !x.said) { x.said = said; x.at = i; } });
         });
         if (!kinds.length) return '';
         var total = kinds.reduce(function (a, g) {
@@ -1849,8 +1865,10 @@
                             + (oneLot ? '' : '<span class="pd-rel-city">' + esc(s.place) + '</span>')
                             + '<span class="pd-rel-firms">'
                             + s.firms.map(function (x) {
-                                return firmLink(x.name)
-                                    + (x.said ? ' <span class="pd-rel-said">(' + esc(x.said) + ')</span>' : '');
+                                return '<span class="pd-rel-one">' + firmLink(x.name)
+                                    + (x.said ? ' <span class="pd-rel-said">(' + esc(x.said) + ')</span>' : '')
+                                    + '<button class="pd-rel-edit" data-pd-editrel="' + x.at + '" title="Change this line">✎</button>'
+                                    + '</span>';
                             }).join('<span class="pd-tiny"> · </span>') + '</span></div>';
                     }).join('') + '</div>';
             }).join('')
@@ -2605,16 +2623,105 @@
     function asksHtml(pi) {
         var asks = (pi && pi.asks) || [];
         if (!asks.length) return '';
-        return '<div class="pd-asks"><p class="pd-asks-head">' + asks.length
+        return '<div class="pd-asks" data-pd-asksfor="' + esc(str(pi && pi.id)) + '">'
+            + '<p class="pd-asks-head">' + asks.length
             + (asks.length === 1 ? ' thing' : ' things') + ' only you can answer</p>'
             + asks.map(function (a, i) {
-                return '<p class="pd-ask"><span class="pd-ask-n">' + (i + 1) + '</span>'
+                var key = esc(str(a && a.key) || ('ask' + i));
+                return '<div class="pd-ask"><span class="pd-ask-n">' + (i + 1) + '</span>'
                     + '<span><b>' + esc(str(a && a.q)) + '</b>'
                     + (str(a && a.why) ? '<br><span class="pd-tiny">' + esc(str(a.why)) + '</span>' : '')
-                    + '</span></p>';
+                    + '<span class="pd-ask-row">'
+                    + '<input data-pd-answer="' + key + '" data-pd-askat="' + i + '"'
+                    + ' placeholder="' + esc(answerHint(a)) + '">'
+                    + '<button class="pd-prim" data-pd-answergo="' + i + '">Answer</button>'
+                    + '<button class="pd-linkish" data-pd-asknot="' + i + '">not sure</button>'
+                    + '</span></span></div>';
             }).join('')
             + '<p class="pd-tiny">Everything else on this card has already been checked against your '
-            + 'phone book, your saved contacts and the people you have written to.</p></div>';
+            + 'phone book, your saved contacts and the people you have written to. '
+            + '"Not sure" leaves it exactly as it is and stops asking.</p></div>';
+    }
+
+    /**
+     * Answering a question.
+     *
+     * *His words: "where do I answer this?"* — the panel asked and gave him nowhere to reply.
+     *
+     * Where the answer IS the field, it is written straight onto the card: a town, a head
+     * office, what kind of firm they are. Everything else is kept as his answer against the
+     * question, and shown, because the next thing to do with it is not always obvious and
+     * guessing is what these questions exist to prevent.
+     *
+     * Either way the question is settled and never asked again — including "not sure", which is
+     * a real answer and stops the nagging.
+     */
+    function bindAsks(root) {
+        var settle = function (pi, i, answer) {
+            var a = (pi.asks || [])[i];
+            if (!a) return;
+            var key = str(a.key) || ('ask' + i);
+            var p = pi.preview || {};
+            var wrote = '';
+            if (key.indexOf('town:') === 0 && answer) { p.city = answer; wrote = 'town'; }
+            else if (key === 'headoffice' && answer) { p.city = answer; wrote = 'head office'; }
+            else if (key === 'role' && answer) {
+                var pick = ['dealer', 'manufacturer', 'transporter', 'fabricator', 'other']
+                    .filter(function (r) { return lower(answer).indexOf(r) !== -1; })[0];
+                if (pick) { p.role = pick; wrote = 'what they are'; }
+                else { p.role = 'other'; p.roleOther = answer; wrote = 'what they are'; }
+            }
+            pi.settled = (pi.settled || []).concat([key]);
+            pi.answers = (pi.answers || []).concat([{ key: key, q: str(a.q), a: answer || 'not sure' }]);
+            pi.asks = (pi.asks || []).filter(function (x, n) { return n !== i; });
+            S.saveNote = answer
+                ? (wrote ? 'Saved — ' + wrote + ' is now "' + answer + '".'
+                    : 'Saved. I have your answer: "' + answer + '".')
+                : 'Left as it is, and it will not ask again.';
+            postJson('/contacts/pending/preview',
+                { id: pi.id, preview: p, asks: pi.asks, settled: pi.settled, answers: pi.answers },
+                function () { loadDirectory(render); }, null, 'Saving your answer');
+        };
+        var forRow = function (el, then) {
+            var strip = el.closest('[data-pd-item]') || el.closest('.pd-strip') || el.parentElement;
+            var box = el.closest('.pd-asks');
+            var id = box && box.getAttribute('data-pd-asksfor');
+            var pi = (D.pending || []).filter(function (x) { return x.id === id; })[0];
+            if (pi) then(pi);
+        };
+        each(root, '[data-pd-answergo]', function (el) {
+            el.onclick = function () {
+                var i = Number(el.getAttribute('data-pd-answergo'));
+                var box = el.parentElement.querySelector('[data-pd-answer]');
+                forRow(el, function (pi) { settle(pi, i, str(box && box.value)); });
+            };
+        });
+        each(root, '[data-pd-asknot]', function (el) {
+            el.onclick = function () {
+                var i = Number(el.getAttribute('data-pd-asknot'));
+                forRow(el, function (pi) { settle(pi, i, ''); });
+            };
+        });
+        each(root, '[data-pd-answer]', function (el) {
+            el.onkeydown = function (e) {
+                if (e.key !== 'Enter') return;
+                var i = Number(el.getAttribute('data-pd-askat'));
+                forRow(el, function (pi) { settle(pi, i, str(el.value)); });
+            };
+        });
+    }
+
+    /** What a useful answer looks like, so the box is not a blank stare. */
+    function answerHint(a) {
+        var k = str(a && a.key);
+        if (k.indexOf('town:') === 0) return 'The right spelling — e.g. Coimbatore';
+        if (k === 'headoffice') return 'The town — e.g. Bangalore';
+        if (k === 'role') return 'dealer, manufacturer, transporter, fabricator';
+        if (k.indexOf('number:') === 0) return 'The full number, or say what it is';
+        if (k.indexOf('who:') === 0) return 'customer, supplier, transporter…';
+        if (k.indexOf('split:') === 0) return 'One firm, or the two names';
+        if (k.indexOf('theirs:') === 0) return 'Whose it is';
+        return 'Your answer';
     }
 
     function clashNoteHtml(pi, match) {
@@ -3096,6 +3203,24 @@
             };
         });
         /**
+         * Naming the "No branch set" block puts everyone in it into that branch at once.
+         *
+         * He tried to edit that header and found it was plain text. Fifteen people with no
+         * branch is fifteen edits otherwise, and the answer is the same for all of them — they
+         * came off one page together.
+         */
+        each(card, '[data-pd-branchall]', function (el) {
+            el.onchange = function () {
+                var now = str(el.value);
+                if (!now) return;
+                (p.people || []).forEach(function (c) { if (!str(c.branch)) c.branch = now; });
+                if (!(p.branches || []).some(function (b) { return placeKey(b.city) === placeKey(now); })) {
+                    (p.branches = p.branches || []).push({ city: now, area: '', address: '' });
+                }
+                save(true, ['people', 'branches']);
+            };
+        });
+        /**
          * Pressing ✕ asks; it does not delete.
          *
          * The owner's rule: edits save as they always did, but anything REMOVED goes to
@@ -3307,6 +3432,46 @@
         each(card, '[data-pd-delnote]', function (el) {
             el.onclick = function () { askRemoval('note', p.notes[Number(el.getAttribute('data-pd-delnote'))]); };
         });
+        bindRelations(card, p, save);
+    }
+
+    /**
+     * Every line under "Who they work with" can be typed into.
+     *
+     * It is built out of the notes, so it looked like something the app owned and he could only
+     * read. *His words: "I cant edit they sell to etc".* The ✎ opens the note that made the
+     * line, in his own words, and what he types is what the card reads back — so changing
+     * "supplier to them" to "they buy from them" moves the firm to the other heading, which is
+     * exactly how he has been correcting these by hand all day.
+     */
+    function bindRelations(card, p, save) {
+        each(card, '[data-pd-editrel]', function (el) {
+            el.onclick = function () {
+                var at = Number(el.getAttribute('data-pd-editrel'));
+                var n = (p.notes || [])[at];
+                if (!n) return;
+                var row = el.closest('.pd-rel-one');
+                if (!row || row.querySelector('[data-pd-relbox]')) return;
+                row.insertAdjacentHTML('beforeend',
+                    '<span class="pd-rel-editing">'
+                    + '<input data-pd-relbox="1" value="' + esc(str(n.t)) + '">'
+                    + '<button class="pd-prim" data-pd-relsave="1">Save</button>'
+                    + '<button class="pd-linkish" data-pd-relcancel="1">cancel</button>'
+                    + '<button class="pd-linkish" data-pd-relremove="1">remove</button></span>');
+                var box = row.querySelector('[data-pd-relbox]');
+                box.focus();
+                var done = function () {
+                    var t = str(box.value);
+                    if (!t || t === str(n.t)) { render(); return; }
+                    p.notes[at] = { t: t, d: n.d || new Date().toISOString().slice(0, 10), src: n.src || '' };
+                    save(true, ['notes']);
+                };
+                on(row, '[data-pd-relsave]', done);
+                box.onkeydown = function (e) { if (e.key === 'Enter') done(); if (e.key === 'Escape') render(); };
+                on(row, '[data-pd-relcancel]', function () { render(); });
+                on(row, '[data-pd-relremove]', function () { askRemoval('note', p.notes[at]); });
+            };
+        });
     }
 
     /**
@@ -3377,6 +3542,7 @@
                 }, function () { delete S.busy[id]; }, 'Keeping that');
             };
         });
+        bindAsks(app);
         each(app, '[data-pd-approve]', function (el) {
             el.onclick = function () {
                 var id = el.getAttribute('data-pd-approve');

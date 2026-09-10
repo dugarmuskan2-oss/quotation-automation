@@ -501,6 +501,13 @@ module.exports = function createContactsRouter({ storage, openai }) {
             item.preview.id = 'p_new_' + item.id;
             const matchId = str(((req.body || {}).preview || {}).matchId);
             if (matchId) item.preview.matchId = matchId;
+            // The questions the card could not answer, and his replies. They sit on the ITEM
+            // rather than the card, because sanitizePartner would drop anything it does not
+            // know — and a question he has answered must never be asked again.
+            const asked = (req.body || {});
+            if (Array.isArray(asked.asks)) item.asks = asked.asks.slice(0, 40);
+            if (Array.isArray(asked.settled)) item.settled = asked.settled.map(str).filter(Boolean).slice(0, 200);
+            if (Array.isArray(asked.answers)) item.answers = asked.answers.slice(0, 200);
             await savePending(items);
             res.json({ ok: true });
         } catch (error) {
