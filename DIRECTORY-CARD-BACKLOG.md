@@ -399,7 +399,62 @@ after any change to `utils/contacts.js` before touching a card in the browser.
 
 ---
 
-## What BOMBAY HARDWARE taught — to transfer
+## What BOMBAY HARDWARE taught, in six groups
+
+One card, worked end to end with him watching. **Everything below is written out in full
+further down** — this is the shape of it, because the shape is what transfers.
+
+| | was | now |
+|---|---|---|
+| People | 17 (really 8 men) | **26** |
+| Notes | 111 | **1 showing** |
+| Filed under | 42 headings | **60** |
+| Branches shown | 7 | **10** |
+| Price rules | none | 2 |
+| What they are | blank | pipe dealer (stockist) |
+
+**And 41 new cards came out of this one card, carrying 123 people.** That is the headline: a
+card is not just wrong in itself, it is holding other firms prisoner.
+
+### 1. A card is built from ALL his sources, and the head office is not guessable
+His saved contacts held 37 people where the card had 17. The head office is **Bangalore** —
+every landline on the card is 044, Chennai. *Never read a head office off an area code.*
+A number written under a CITY heading belongs to that city's branch.
+
+### 2. What is on the card may belong to somebody else
+The address was Chetna Steel's factory. A branch, `CHETNA FACTORY`, was a whole firm. Both
+arrived because one man, Rishab Mehta, is on both firms. **When a person is shared, check every
+field against the page it really came from.**
+
+### 3. A note is where something goes when nobody worked out where it belongs
+61 notes were provenance the Filed-under list already carried. Two price rules were sitting as
+notes. A two-word note, `HYD FACTORY`, was a **heading** governing five firms. **Of 111 notes,
+one was really a note.**
+
+### 4. A note about ANOTHER firm belongs on that firm's card — so that firm needs a card
+*His rule.* 40 firms named on this card had none: the waiting list is keyed by email domain, and
+a firm with no email address never enters it. They existed only as pages. **Never delete from
+one card until the fact is verified on the other.**
+
+### 5. Direction is not carried by the words
+"from them", "purchases from Bombay H/W" are written from ONE side. Reused on the other card
+they say the opposite — that fault reached 31 cards before it was caught. A **customer** note
+flips; a **transporter** or a **supplier** does not. And "Pipe supplier to them" meant Bombay
+Hardware supplying THEM, which is the reverse of how it reads.
+
+### 6. His words go beside the name, whole
+*"Add it in brackets next to the name under they sell to."* Not in a note, not cut short — a
+quotation is whole or it is not a quotation. **His headings: They sell to · They buy from ·
+Transporters · Their factory.**
+
+### What was NOT wrong
+**Not one digit was mistyped**, across nine numbers, and `7708106940` (Sampath) and
+`7708106949` (the godown) were correctly kept apart. Say so when it is true: the fault is
+almost always placement, not transcription.
+
+---
+
+## Found on BOMBAY HARDWARE — the detail behind those six
 
 The card had **17 people and 111 notes**; his saved contacts alone held 37 people for it. Both
 numbers were a symptom: things that belong in a field were sitting in notes, and the people who
