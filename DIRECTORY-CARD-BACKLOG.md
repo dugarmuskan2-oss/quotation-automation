@@ -292,6 +292,24 @@ explained on another.
 
 ---
 
+## The cap of twelve — what it cost, and what fixing it taught
+
+Saving a card cut its people to TWELVE, silently. Thirteen cards were sitting exactly at it.
+**199 people were restored from the waiting list, and 364 more from the people he has emailed.**
+Maharashtra Seamless had lost 106; Jindal Saw 71.
+
+- **A firm can carry more than one domain, and matching on ALL of them is a disaster.** The
+  first repair matched every domain on each card, including gmail.com, and took Maharashtra
+  Seamless to **3,830 people** — everyone he has ever emailed at a free-mail address. Rebuilt
+  using each firm's OWN domains only; free mail is never a firm.
+- **Some cards genuinely hold several firms' people.** Maharashtra Seamless has mahaseam.com
+  (70), jindalpipe.com (17) and unitedseamless.in (15) — three mills on one card. ISMT carries
+  kirloskar.com. *His decision: leave them, do not split.*
+- **Still open:** Hdfcbank, Yesbank and Irclass are two banks and a classification society,
+  sitting in the queue as suppliers. Not asked about yet.
+
+---
+
 ## Measured across the 46 cards in the queue
 
 Counted, not guessed. These are what the two cards above predict for the rest:
