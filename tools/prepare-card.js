@@ -251,7 +251,12 @@ function prepare(card, world) {
     const book = world.book;
     const findCard = (n) => {
         const k = contacts.firmNameKey(bareName(n));
-        return k ? world.all.find(c => contacts.firmNameKey(c.company) === k) : null;
+        if (!k) return null;
+        // A firm is found by ANY of the names he writes it under, not just the one on the
+        // card. He answered "all same" once for SREEVATSA / SRIVATSA / Sreevatsa Tube, and
+        // that answer has to hold on every card that mentions them.
+        return world.all.find(c => contacts.firmNameKey(c.company) === k
+            || (c.aka || []).some(x => contacts.firmNameKey(x) === k)) || null;
     };
     const reading = (n) => book.byKey.get(contacts.firmNameKey(bareName(n)));
 
@@ -397,12 +402,10 @@ function prepare(card, world) {
         const pageKey = pageFirmKey(page);
         if (!pageKey || pageKey === selfKey || isOwnPage(page, card.company, card)) return true;
         const other = world.all.find(c => contacts.firmNameKey(c.company) === pageKey);
-        if (!other) {
-            asks.push({ key: 'theirs:' + norm(t).slice(0, 24),
-                q: 'This is written on your "' + page + '" page — should it be on their card?',
-                why: '"' + t.slice(0, 70) + (t.length > 70 ? '…' : '') + '" — but that firm has no card yet, so it stays here for now.' });
-            return true;
-        }
+        // No card for that firm, so nowhere to move it to and nothing to ask. His rule: "if a
+        // name doesnt have any other contact cards in google contact, let it stay as is in the
+        // card". shree venus produced eight of these about one page.
+        if (!other) { stayed++; return true; }
         if (!(other.notes || []).some(x => norm(x.t) === norm(t))) other.notes = (other.notes || []).concat([{ t, d: today() }]);
         // Never leave here until it is standing there.
         if (!(other.notes || []).some(x => norm(x.t) === norm(t))) return true;
@@ -427,13 +430,25 @@ function prepare(card, world) {
     }
     // A town the app does not know is not scored for distance, and is usually a misspelling —
     // Sreevatsa's card says "coimbatter". Repairing it is a guess; asking is not.
+    // Only when it is CLOSE to a town the app knows, which is what a misspelling looks like.
+    // "coimbatter" is two letters from Coimbatore and was worth asking. Tirupur and
+    // Sriperumbudur are spelt perfectly and simply are not among the app's 24 towns — asking
+    // whether a real town is spelt right is noise, and that gap is the app's, not his.
     if (str(card.city) && !world.towns.has(norm(card.city))) {
-        asks.push({ key: 'town:' + norm(card.city), q: 'Is the town "' + str(card.city) + '" spelt right?', why: 'The app does not know that town, so it cannot work out the distance to a delivery. It is left exactly as written.' });
+        const near = [...world.towns].find(t => nearlyTheSameName(t, card.city));
+        if (near) {
+            asks.push({ key: 'town:' + norm(card.city),
+                q: 'Is the town "' + str(card.city) + '" meant to be ' + near.charAt(0) + near.slice(1).toLowerCase() + '?',
+                why: 'Two letters apart, so it reads as a slip. Left exactly as written until you say.' });
+        }
     }
     (card.people || []).forEach((p) => {
         (p.phones || []).forEach((x) => {
             const digits = str(x.v).replace(/\D/g, '');
-            if (digits.length >= 6 && digits.length < 10 && !/^0\d/.test(digits)) {
+            // A 7- or 8-digit LANDLINE is complete — 25342560 is a Chennai number without its
+            // 044, 2230458 a Coimbatore one. Only a MOBILE one digit short is worth asking
+            // about: his mobiles are ten digits and start 6, 7, 8 or 9.
+            if (digits.length === 9 && /^[6-9]/.test(digits)) {
                 asks.push({ key: 'number:' + digits, q: 'Is "' + str(x.v) + '" right, against ' + (str(p.name) || 'the office') + '?', why: 'It is ' + digits.length + ' digits. Completing a number is a guess, so it is left exactly as written.' });
             }
         });

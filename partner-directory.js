@@ -123,8 +123,8 @@
     // be worth the press, few enough that the queue below is still readable afterwards.
     var GOOGLE_BATCH = 25;
 
-    var ROLE_LABEL = { dealer: 'Dealer', manufacturer: 'Manufacturer', transporter: 'Transporter', fabricator: 'Fabricator', other: 'Other' };
-    var ROLE_ORDER = ['dealer', 'manufacturer', 'transporter', 'fabricator', 'other'];
+    var ROLE_LABEL = { dealer: 'Dealer', manufacturer: 'Manufacturer', transporter: 'Transporter', fabricator: 'Fabricator', client: 'Client', other: 'Other' };
+    var ROLE_ORDER = ['dealer', 'manufacturer', 'transporter', 'fabricator', 'client', 'other'];
     var PIPE_TYPES = ['GI', 'ERW', 'Seamless', 'SS', 'MS', 'Alloy'];
     function roleLabel(p) {
         if (p && p.role === 'other') return str(p.roleOther) || 'Other';
@@ -1305,7 +1305,11 @@
             + '<div class="pd-grid2">' + fld(p, 'Company', 'company', p.company, 'e.g. Annai Steel Traders')
             + '<div class="pd-fld"><label>They are a…</label><select data-pd-k="role">' + roles + '</select></div></div>'
             // With the company, where he would look for it — not down among the addresses.
-            + '<div class="pd-grid2">' + fld(p, 'GST number', 'gst', p.gst, '33AAACK1383P1ZE') + '</div>'
+            // The other names he writes this firm under. SREEVATSA, SRIVATSA and SREE VASTA are
+            // one firm; ABS FUJITSU is ABS FUIJICO. Recorded once here, every card that mentions
+            // them finds the right one — and he is not asked the same question on card after card.
+            + '<div class="pd-grid2">' + fld(p, 'GST number', 'gst', p.gst, '33AAACK1383P1ZE')
+            + fld(p, 'Also written as', 'aka', (p.aka || []).join(', '), 'e.g. SREEVATSA, SRIVATSA') + '</div>'
             + (p.role === 'other' ? fld(p, 'What are they?', 'roleOther', p.roleOther, 'e.g. galvaniser, testing lab') : '')
             + categoriesBlock(p)
             + peopleBlock(p)
@@ -2692,7 +2696,7 @@
             if (key.indexOf('town:') === 0 && answer) { p.city = answer; wrote = 'town'; }
             else if (key === 'headoffice' && answer) { p.city = answer; wrote = 'head office'; }
             else if (key === 'role' && answer) {
-                var pick = ['dealer', 'manufacturer', 'transporter', 'fabricator', 'other']
+                var pick = ['dealer', 'manufacturer', 'transporter', 'fabricator', 'client', 'other']
                     .filter(function (r) { return lower(answer).indexOf(r) !== -1; })[0];
                 if (pick) { p.role = pick; wrote = 'what they are'; }
                 else { p.role = 'other'; p.roleOther = answer; wrote = 'what they are'; }
@@ -2742,7 +2746,7 @@
         var k = str(a && a.key);
         if (k.indexOf('town:') === 0) return 'The right spelling — e.g. Coimbatore';
         if (k === 'headoffice') return 'The town — e.g. Bangalore';
-        if (k === 'role') return 'dealer, manufacturer, transporter, fabricator';
+        if (k === 'role') return 'dealer, manufacturer, transporter, fabricator, client';
         if (k.indexOf('number:') === 0) return 'The full number, or say what it is';
         if (k.indexOf('who:') === 0) return 'customer, supplier, transporter…';
         if (k.indexOf('split:') === 0) return 'One firm, or the two names';
@@ -3148,6 +3152,8 @@
                 var k = el.getAttribute('data-pd-k'), v = el.value;
                 if (k === 'moq') p.moq = parseFloat(v) || 0;
                 else if (k === 'partLoad') p.partLoad = v === 'yes' ? true : (v === 'no' ? false : null);
+                // One box, commas between — a list is how the card stores it.
+                else if (k === 'aka') p.aka = v.split(',').map(function (x) { return str(x); }).filter(Boolean);
                 else p[k] = v;
                 save(k === 'role' || k === 'company', [k]);
             };

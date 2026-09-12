@@ -13,7 +13,10 @@
  * Ranking lives in the browser (partner-directory.js) — the server never ranks.
  */
 
-const ROLES = ['dealer', 'manufacturer', 'transporter', 'fabricator', 'other'];
+// 'client' is his: the firms he SELLS to, in case their details are ever imported the way
+// the makers and transporters were. Not shared with the second setup — a new role defaults
+// to hidden, and sharing has to be an explicit choice.
+const ROLES = ['dealer', 'manufacturer', 'transporter', 'fabricator', 'client', 'other'];
 
 // The second setup (m@dscpipes.com) reads this SAME directory — one file, not a copy — but only
 // sees these two roles. Dealer, manufacturer and fabricator stay the main site's alone. Kept as
@@ -249,6 +252,12 @@ function sanitizePartner(input) {
         // under that heading shares it. One firm can be filed under several: APL Apollo is
         // under ERW MFG and under SQUARE PIPE.
         categories: sanitizeStrings(src.categories, 400),
+        // The other names he writes this firm under. His book has SREEVATSA, SRIVATSA and
+        // SREE VASTA for one firm, ABS FUJITSU for ABS FUIJICO, BOMBAY HARDWARD for BOMBAY
+        // HARDWARE. Without somewhere to record that, every card that mentions them asks the
+        // same question again — and answering it four times is how a firm ends up with four
+        // cards. *His answer, asked once: "all same".*
+        aka: sanitizeStrings(src.aka, 40),
         people: sanitizePeople(src.people),
         city: str(src.city),
         address: str(src.address),

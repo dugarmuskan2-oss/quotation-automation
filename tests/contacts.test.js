@@ -32,7 +32,8 @@ const path = require('path');
 const contactsLib = require('../utils/contacts');
 
 const {
-    ROLES, sanitizePartner, mergePartner, findByEmail, allEmails, bumpUsage,
+    ROLES, SHARED_ROLES, visibleToReadonly,
+    sanitizePartner, mergePartner, findByEmail, allEmails, bumpUsage,
     pendingFromSuggestions, pendingFromUsage, dropAlreadyQueued, MAX_PENDING, queueWithoutLosingAny,
     keepWhatWasAddedSince, unapprovedToPending, sanitizeEnquiries, noteEnquiry, MAX_ENQUIRIES,
     addressesSpokenFor, googleAlreadyHandled, nextGoogleBatch, googlePendingItem,
@@ -92,8 +93,17 @@ function withFrozenEntropy(nowMs, randomFn, fn) {
 describe('ROLES', () => {
     test('is the exact set the UI filter and normalizeRole both depend on', () => {
         // The browser builds its role filter from this list; dropping one hides every partner
-        // of that kind from the directory.
-        expect(ROLES).toEqual(['dealer', 'manufacturer', 'transporter', 'fabricator', 'other']);
+        // of that kind from the directory. 'client' is the owner's, for the firms he sells to.
+        expect(ROLES).toEqual(['dealer', 'manufacturer', 'transporter', 'fabricator', 'client', 'other']);
+    });
+
+    test("a new role is hidden from the second setup until sharing is chosen for it", () => {
+        // The comment beside SHARED_ROLES promises this: a role added later defaults to hidden,
+        // never shared by accident. 'client' is the first role added since, so it is the test.
+        expect(SHARED_ROLES).not.toContain('client');
+        const cards = [sanitizePartner({ company: 'A Client', role: 'client' }),
+            sanitizePartner({ company: 'A Carrier', role: 'transporter' })];
+        expect(visibleToReadonly(cards).map(c => c.company)).toEqual(['A Carrier']);
     });
 });
 
