@@ -197,11 +197,22 @@ function relDetail(rel, card) {
         .filter(w => w && !drop.has(w) && !PLAIN.test(w)).join(' ').trim();
 }
 
-function whosePage(text, world) {
+function whosePage(text, world, card) {
     const key = norm(text).slice(0, 40);
     if (key.length < 20) return '';          // too short to be sure it is the same sentence
-    const hit = (world.pages || []).find(pg => norm(str(pg.title) + ' ' + str(pg.body)).indexOf(key) !== -1);
-    return hit ? str(hit.title) : '';
+    const hits = (world.pages || []).filter(pg => norm(str(pg.title) + ' ' + str(pg.body)).indexOf(key) !== -1);
+    if (!hits.length) return '';
+    // He fills in the SAME form on many pages, so the same words appear on several of them —
+    // "HOW PARTY WILL MAKE PAYMENT / 60 DAYS PDC" is on twelve. Taking the first match blamed
+    // Merit Technologies for a line that is also on shree venus's own page, and the tool
+    // offered to move shree venus's own payment terms away from it. If ANY of the pages
+    // carrying it is this card's own, the line is this card's.
+    if (card && hits.some(pg => pageFirmKey(pg.title) === contacts.firmNameKey(card.company)
+        || isOwnPage(pg.title, card.company, card))) {
+        return str(hits.find(pg => pageFirmKey(pg.title) === contacts.firmNameKey(card.company)
+            || isOwnPage(pg.title, card.company, card)).title);
+    }
+    return str(hits[0].title);
 }
 
 // ── the card the note is really about ─────────────────────────────────────────────────────
@@ -310,7 +321,7 @@ function prepare(card, world) {
         // Better than guessing from the name: look the sentence up in his phone book and see
         // whose page it is written on. "DOING BUSINESS 4 YEARS ON ADVANCE PAYMENT" names
         // nobody, and is on JP ENERGY's page under "HE IS PURCHASING FROM (A). SREEVATSA".
-        const page = whosePage(t, world);
+        const page = whosePage(t, world, card);
         const mine = page && (pageFirmKey(page) === selfKey || isOwnPage(page, card.company, card));
         if ((page && !mine) || (!page && namesItself(t, card.company))) {
             kept.push(n);
@@ -397,7 +408,7 @@ function prepare(card, world) {
     card.notes = (card.notes || []).filter((n) => {
         const t = str(n.t);
         if (splitRelation(t)) return true;              // a relation is shown, not moved
-        const page = whosePage(t, world);
+        const page = whosePage(t, world, card);
         if (!page) return true;
         const pageKey = pageFirmKey(page);
         if (!pageKey || pageKey === selfKey || isOwnPage(page, card.company, card)) return true;
