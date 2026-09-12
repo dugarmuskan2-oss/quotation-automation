@@ -37,7 +37,39 @@ function say(line) { process.stdout.write(line + '\n'); }
 
 // ── reading his wording ───────────────────────────────────────────────────────────────────
 // The same tests the card itself uses, so what this tool decides is what he will see.
-const REL_WORD = /\b(dealers?|stockists?|distributors?|transporters?|transport|roadlines?|carriers?|cargo|coaters?|coating|galvanis\w*|testing|agents?|brokers?|suppliers?|works with|buy from|purchas\w*|pure?lasing|buys\w*|buying|bought|f(?:ro|or)m them|manufactur\w*|factory)\b/i;
+// Kept character-for-character the same as the card's own REL_WORD in partner-directory.js.
+// Crescon proved what happens when they drift: the card learned "supplies" and the tool did
+// not, so the tool went on treating four of its suppliers as loose text.
+const REL_WORD = /\b(dealers?|stockists?|distributors?|distributes?|transporters?|transport|roadlines?|carriers?|cargo|coaters?|coating|galvanis\w*|testing|agents?|brokers?|suppl\w*|work(?:s|ing)? with|buy from|purchas\w*|pure?lasing|buys\w*|buying|bought|f(?:ro|or)m them|manufactur\w*|factory|referen[cs]e|referred|referral|vouch\w*|bank)\b/i;
+
+// ── who actually works there ──────────────────────────────────────────────────────────────
+// *His words: "he doesnt work there -- only people that work in the company must be in the
+// list. Transporters come under transporters".*
+//
+// A TRADE names a relationship between two firms; a POST names a job inside one. "THEIR
+// REGULAR TRANSPORTER" is a trade. "TRANSPORT MANAGER" is a post at the firm, and so is "AXIS
+// BANK PERSON" on Axis Bank's own card — which is why a trade word alone is not enough to move
+// somebody out.
+const TRADE_ROLE = /\b(transport|transporters?|lorry|roadlines?|carriers?|cargo|freight|suppliers?|dealers?|stockists?|bank)\b/i;
+const POST_ROLE = /\b(manager|officer|executive|director|m\.?d|ceo|partner|proprietor|owner|incharge|in charge|co-?ordinat\w*|accountant|accounts?|purchase|sales|marketing|engineer|supervisor|person|staff|clerk|admin|head|boss|contact)\b/i;
+const NOT_STAFF = new RegExp('^(?=.*' + TRADE_ROLE.source.slice(2, -2) + ')(?!.*'
+    + POST_ROLE.source.slice(2, -2) + ').*$', 'i');
+
+/** Can this person still be rung after their row comes off THIS card? */
+function heldElsewhere(person, card, world) {
+    const mine = ((person && person.phones) || [])
+        .map(q => str(q && q.v).replace(/\D/g, '')).filter(d => d.length >= 6)
+        .map(d => (d.length >= 10 ? d.slice(-10) : d));
+    if (!mine.length) return true;              // no number to lose
+    const notes = ((card && card.notes) || []).map(n => str(n && n.t)).join(' ').replace(/\D/g, '');
+    if (mine.some(d => notes.indexOf(d) >= 0)) return true;
+    return ((world && world.all) || []).some((other) => {
+        if (!other || other === card) return false;
+        if (contacts.firmNameKey(other.company) === contacts.firmNameKey(card && card.company)) return false;
+        const hay = JSON.stringify(other).replace(/\D/g, '');
+        return mine.some(d => hay.indexOf(d) >= 0);
+    });
+}
 const BUYS_FROM_THEM = /\b(?:purchas\w*|pure?lasing|buy|buys|buying|bought)\b[^—]{0,60}?\bf(?:ro|or)m\s*(?:them|him)/i;
 /**
  * A GST number, in the shape the government issues.
@@ -512,6 +544,29 @@ function prepare(card, world) {
     const wasPeople = (card.people || []).length;
     card.people = contacts.foldPeople(card.people || []);
     if (card.people.length !== wasPeople) did.push(wasPeople + ' people folded to ' + card.people.length);
+
+    // 6. Only people who WORK THERE belong in the people list. *His words: "he doesnt work
+    // there -- only people that work in the company must be in the list. Transporters come
+    // under transporters".* MR. YUVARAJ sat among Crescon's staff with the role "their regular
+    // transporter" — he is the man with the lorry. A post is a job; a trade is a relationship,
+    // and a relationship has a heading of its own.
+    //
+    // He is only taken off when the card ALREADY names him under a heading AND some other card
+    // can still be rung on that number — never on the strength of the role alone, or the number
+    // goes with him.
+    const outsiders = (card.people || []).filter(p => NOT_STAFF.test(str(p.role)));
+    if (outsiders.length) {
+        const kept = outsiders.filter(p => !heldElsewhere(p, card, world));
+        card.people = (card.people || []).filter(p => kept.indexOf(p) >= 0 || !NOT_STAFF.test(str(p.role)));
+        const gone = outsiders.length - kept.length;
+        if (gone) did.push(gone + ' ' + (gone === 1 ? 'person' : 'people') + ' who do not work there'
+            + ' taken off the people list — they are under their own heading');
+        kept.forEach(p => asks.push({ key: 'staff:' + norm(p.name),
+            q: 'Does ' + str(p.name) + ' ("' + str(p.role) + '") work at '
+                + str(card.company) + ', or is that an outside firm?',
+            why: 'The role reads like a trade rather than a job, but the number is on no other'
+                + ' card, so taking the row off would lose it.' }));
+    }
 
     // ── what only he can answer ───────────────────────────────────────────────────────────
     // A blank head office is not a gap to be filled. *His words: "if head office isnt mentioned

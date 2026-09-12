@@ -1128,15 +1128,35 @@ Savani Transport and Reavathi Transport both carry for Crescon — said plainly 
 transport pages — and Crescon's card named neither. **A card is not finished when its own page
 is done.** Every page that mentions the firm is part of its card.
 
-### 7. Two things only he can answer, and they were not guessed
+### 7. Two things only he could answer — asked, and both answered
 
-- **SREEVATSA** was a supplier and no longer is: *"FROM LAST 2 YEARS THEY ARE NOT HAVING
-  BUSINESS WITH THEM. BECAUSE OF SOME OLD DELAY PAYMENT."* A firm they have stopped buying from
-  does not belong under "They buy from", and there is no heading for one they used to use. Left
-  as a plain note, wording intact, until he says.
-- **MR. YUVARAJ** is on the card as a person at Crescon with the role "their regular
-  transporter". He is not Crescon staff — he is the man with the lorry. Left alone: removing a
-  person is his call.
+Neither was guessed. Both answers turned out to be rules, not one-offs.
+
+**SREEVATSA** was a supplier and no longer is: *"FROM LAST 2 YEARS THEY ARE NOT HAVING BUSINESS
+WITH THEM. BECAUSE OF SOME OLD DELAY PAYMENT."* Offered a heading of its own — *"They used to
+buy from"* — he chose instead: **"under buy from with that note in brackets"**.
+
+So a relationship that has ENDED is not a different kind of relationship. It goes under the same
+heading, and his own sentence in the bracket is what says it stopped. One heading fewer to learn,
+and the bracket was already the place his own words live.
+
+**MR. YUVARAJ** sat among Crescon's staff with the role "their regular transporter". His answer
+is the rule:
+
+> *"he doesnt work there -- only people that work in the company must be in the list.
+> Transporters come under transporters"*
+
+**The people list is for people who work there. Nobody else.** A TRADE names a relationship
+between two firms; a POST names a job inside one — and only a trade moves somebody out, or
+"TRANSPORT MANAGER" and "AXIS BANK PERSON" (on Axis Bank's own card) would be thrown off the
+firms they work for. Nineteen roles were checked against that test before it was used.
+
+And a row only comes off when the number survives it: it must already be in a bracket on this
+card, or on another card that can still be rung. Yuvaraj's 9384017557 is in both, so only the
+row went. Where a number is nowhere else, the tool asks rather than drops.
+
+With those two answered, **Crescon's notes box is empty** — 28 notes became 12 lines under five
+headings and 3 notes on the people they are about, with nothing loose left over.
 
 ### Also, while auditing
 
