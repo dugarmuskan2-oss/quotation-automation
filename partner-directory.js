@@ -1703,9 +1703,19 @@
         if (firstIsHow && !lastIsHow) return { firm: last, how: parts.slice(0, -1).join(' — ').trim() };
         if (lastIsHow && !firstIsHow) return { firm: first, how: parts.slice(1).join(' — ').trim() };
         // BOTH sides say it. A firm can be NAMED after its trade — "SAFE SPEED CARRIERS",
-        // "BALAJI ROADLINES" — and reading those as the relationship dropped them off the card
-        // altogether. A description is longer than a name, so the longer side is the "how".
+        // "BALAJI ROADLINES", "SHRI LAKSHMI STEEL SUPPLIERS" — and reading those as the
+        // relationship dropped them off the card altogether.
         if (firstIsHow && lastIsHow) {
+            // A side he has a CARD for is the firm, whatever words are in its name. Length was
+            // the only tiebreak, and it read "Dealer — Tamilnadu & Chennai — SHRI LAKSHMI STEEL
+            // SUPPLIERS" as a firm called "Dealer", because the real firm's name is longer than
+            // the word describing it.
+            var firstIsFirm = !!findFirmCard(first), lastIsFirm = !!findFirmCard(last);
+            if (lastIsFirm && !firstIsFirm) return { firm: last, how: parts.slice(0, -1).join(' — ').trim() };
+            if (firstIsFirm && !lastIsFirm) return { firm: first, how: parts.slice(1).join(' — ').trim() };
+            // Still level. He writes these as "Dealer — where — WHO", so with a middle part the
+            // relationship comes first and the firm is last; with only two, length decides.
+            if (parts.length > 2) return { firm: last, how: parts.slice(0, -1).join(' — ').trim() };
             return first.length >= last.length
                 ? { firm: last, how: parts.slice(0, -1).join(' — ').trim() }
                 : { firm: first, how: parts.slice(1).join(' — ').trim() };
