@@ -39,6 +39,15 @@ function say(line) { process.stdout.write(line + '\n'); }
 // The same tests the card itself uses, so what this tool decides is what he will see.
 const REL_WORD = /\b(dealers?|stockists?|distributors?|transporters?|transport|roadlines?|carriers?|cargo|coaters?|coating|galvanis\w*|testing|agents?|brokers?|suppliers?|works with|buy from|purchas\w*|pure?lasing|buys\w*|buying|bought|f(?:ro|or)m them|manufactur\w*|factory)\b/i;
 const BUYS_FROM_THEM = /\b(?:purchas\w*|pure?lasing|buy|buys|buying|bought)\b[^—]{0,60}?\bf(?:ro|or)m\s*(?:them|him)/i;
+/**
+ * A GST number, in the shape the government issues.
+ *
+ * Two digits of state code, five letters and four digits of PAN, a letter, one character, a
+ * literal Z, and a check character — 33AAJCM9410A1ZW. Tight on purpose: a loose pattern would
+ * pull a PAN or an order number into the box that his paperwork is copied from.
+ */
+const GSTIN = /\b\d{2}[A-Z]{5}\d{4}[A-Z][0-9A-Z]Z[0-9A-Z]\b/;
+
 /** A line about money owed or allowed is a price rule, not a remark. */
 const IS_RULE = /\bcredit\b|\bpdc\b|\blc only\b|\bwork with lc\b|\badvance\b|\bpayment terms\b|\bup to [\d,]+\b|\bupto [\d,]+\b/i;
 
@@ -409,6 +418,27 @@ function prepare(card, world) {
     if (moved) did.push(moved + ' relations carried onto the other firm\'s card, the right way round');
     if (stayed) did.push(stayed + ' firms with no card anywhere left exactly as he wrote them');
     if (made.length) did.push(made.length + ' firms had no card at all — built from their own page');
+
+    // 3a. A GST number belongs in the GST box.
+    //
+    //     *His words: "GST can be added to GST box".* It was the very first thing done by hand
+    //     on Kerala Roadways and written down as "the field exists now, but nothing populates
+    //     it from the notes" — so it kept happening. A GST in a remark cannot be searched or
+    //     copied onto paperwork; in its own box it can.
+    //
+    //     The whole note goes only when the note is NOTHING BUT the number. "GST - 33AAJCM…"
+    //     is; a sentence that mentions it in passing keeps its sentence.
+    if (!str(card.gst)) {
+        const found = (card.notes || []).map(n => str(n.t).toUpperCase().match(GSTIN)).find(Boolean);
+        if (found) {
+            card.gst = found[0];
+            const bare = new RegExp('^(?:GST(?:IN)?\\s*(?:NO\\.?|NUMBER)?\\s*[:\\-–]?\\s*)?' + found[0] + '\\.?$', 'i');
+            const was = (card.notes || []).length;
+            card.notes = (card.notes || []).filter(n => !bare.test(str(n.t).trim()));
+            did.push('GST ' + found[0] + ' moved into the GST box'
+                + (was !== card.notes.length ? ', and the note it sat in removed' : ''));
+        }
+    }
 
     // 4a. A plain note written on somebody ELSE's page is that firm's, not this one's.
     //     *His words: "these notes also seem to be for clients".* "FROM LAST 2 YEARS THEY ARE
