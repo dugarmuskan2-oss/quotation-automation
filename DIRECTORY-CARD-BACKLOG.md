@@ -822,3 +822,88 @@ those notes stay on Bombay Hardware.
 **What transfers:** a name that matches nothing in 1,912 pages is usually **two names with the
 comma lost**, not a firm you have never met. Look for the pair somewhere else in his book before
 proposing anything — and propose, never decide.
+
+---
+
+## What APL APOLLO taught — and why it was the card that proved the tool
+
+Apollo is a MAKER with dealers all over India, where Bombay Hardware is a stockist with
+customers. Running the same rules over the opposite kind of firm is what found these: **most of
+them were rules that only ever worked on one card.**
+
+### 1. A test that names one firm works for one firm
+
+The buying test had **"bombay" written into it**. It had been tuned until Bombay Hardware read
+correctly, and every other card fell through it. "Enexio purchase from Sreevatsa" and "Wootz
+take material from them" each became a heading of its own with one firm under it.
+
+**What transfers:** any test that decides a relationship has to be told **whose card it is on**.
+A firm's own distinctive words identify it — never the trade words, because PIPE, STEEL and
+TUBES name half his book.
+
+### 2. He writes three parts, not two
+
+`Dealer — Tamilnadu & Chennai — SHRI LAKSHMI STEEL SUPPLIERS` is **the relationship, the place,
+and the firm.** Reading everything after the first dash as the firm gave a firm called
+"Tamilnadu & Chennai — SHRI LAKSHMI STEEL SUPPLIERS", and thirty questions asking whether that
+was one firm or two. Reading it properly took the relations carried across from **25 to 45**.
+
+### 3. "Dealer" is not a firm — a card beats a long name
+
+Both halves of that line carry a trade word: "Dealer" on one side, "SUPPLIERS" inside the firm's
+own name on the other. The only tiebreak was length, on the reasoning that a description is
+longer than a name — and here **the name is longer**.
+
+**The order now:** a side he has a CARD for is the firm, whatever words are in its name. Failing
+that, with three parts the firm is last. Length decides only between two.
+
+### 4. A firm is not a place, any more than a product is
+
+`TATA — SANTOSH STEEL is their dealer` left "SANTOSH STEEL" once the relationship words came
+off, and Apollo grew a row headed with one of his own dealers. Third time for this shape, after
+"HEAVY METAL" and "Pipe to". **If the leftover names a firm he has a card for, it is not where
+anybody is.**
+
+### 5. A list nobody would read is the same as no list
+
+Apollo's first run asked **forty questions, with Swastik in it three times**. Three faults at
+once: the same firm asked about once per note; questions about firms with nothing to lose; and
+the broken splitter inventing names.
+
+**The rules now:** one question per thing. Only ask when a detail would otherwise be **stranded**
+— and quote that detail, so he can see what is at stake. Never ask him to confirm what already
+happens.
+
+### 6. A firm with no card anywhere is left alone
+
+*His words: "if a name doesnt have any other contact cards in google contact, let it stay as is
+in the card -- most questions in apollo were just that".* Five of Apollo's seven questions were
+"Who is X?" about a firm with no card and nothing in the phone book, and his answer to every one
+was **"let it stay just here"**. Apollo has 17 of those. The tool reports the number now instead
+of asking seventeen times.
+
+### 7. A dealer of theirs is a firm they sell to
+
+*His words: "they are also who they sell to".* Apollo's regional dealers had a heading of their
+own as though that were a different kind of dealing. It is the same dealing seen from the
+maker's side. **Dealers now read under "They sell to"**, with the places kept as its rows and
+his own wording in the brackets — "Dealer for them in Mumbai".
+
+### 8. A person can carry a note of their own
+
+*His words: "can add notes option to contacts and move this note there".* "NOTE: WHO VISITED OUR
+OFFICE ON 26.7.2019 (Bhanu Srivastava)" was in the firm's notes box, where nothing connects it
+to the man. A person had **no field for a remark at all** — which is why three exhibition notes
+on this same card had been folded into a man's NAME to keep them beside him.
+
+### 9. One firm's page can be headed with two names
+
+"SNO 12 APL APOLLO/SG PREMIUM (ALL DETAILS) SNO 12" is Apollo's own page. Matching the whole
+heading made it somebody else's, and the tool offered to move Apollo's own factory list off
+Apollo. **Split the heading on "/" before deciding whose page it is.**
+
+### What Apollo ended at
+
+**45 relations carried onto the right cards, 22 firms built that had no card at all, 17 left
+exactly as he wrote them, and no questions outstanding** — all seven answered in his own words,
+kept on the card.
