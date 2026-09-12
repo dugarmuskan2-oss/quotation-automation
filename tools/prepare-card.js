@@ -120,6 +120,28 @@ function isOwnPage(title, company) {
     return clean.split(/[\/,]/).some(part => contacts.sameFirmName(part, company));
 }
 
+/**
+ * The first OTHER firm this line names, if any.
+ *
+ * Matched against firms he actually has cards for, on their distinctive words — never the trade
+ * words, because PIPE, STEEL and TUBES name half his book and would match everything.
+ */
+function namesAnotherFirm(text, card, world) {
+    const hay = norm(text);
+    const selfKey = contacts.firmNameKey(card && card.company);
+    let found = '';
+    (world.all || []).some((c) => {
+        const key = contacts.firmNameKey(c.company);
+        if (!key || key === selfKey) return false;
+        const words = str(c.company).split(/[^A-Za-z0-9]+/).filter(w => w.length > 4 && !COMMON.test(w));
+        if (!words.length) return false;
+        if (!words.some(w => hay.indexOf(norm(w)) !== -1)) return false;
+        found = str(c.company);
+        return true;
+    });
+    return found;
+}
+
 /** A "firm" that is only relationship words is not a firm — "Who is Dealer?" is not a question. */
 function looksLikeAFirm(name) {
     const left = str(name).toLowerCase().replace(/[^a-z0-9 ]+/g, ' ')
@@ -225,6 +247,7 @@ function prepare(card, world) {
 
     // 3. Money terms are price rules, not remarks.
     const rules = (card.rules || []).slice();
+    let notMine = 0;
     const kept = [];
     (card.notes || []).forEach((n) => {
         const t = str(n.t);
@@ -233,6 +256,15 @@ function prepare(card, world) {
         // — UNIMECH SYSTEM INDIA PVT LTD" lifted into Price rules because it says "credit".
         // It is Unimech's dealing, not a rule of Sreevatsa's. A rule he wrote is a plain line.
         if (t.indexOf(' — ') !== -1 || !IS_RULE.test(t)) { kept.push(n); return; }
+        // A line that names ANOTHER firm is about that firm, not a rule of this one's.
+        // Crescon's page says "VIMAL SPOKE TO CHRISTOPHER SIR ON (04.08.21). HE SAID VARDHAMAN
+        // GIVE OPEN CREDIT UP TO 1.5 CRORE ON 90 DAYS" — the word "credit" is in it, but the
+        // firm giving the credit is Vardhaman. Filing it as Crescon's terms would have the app
+        // offering Crescon a crore of credit it never mentioned.
+        // Left as a note, and not asked about: the answer is always "leave it", which is
+        // already what happens. His rule from Apollo — never ask him to confirm what the app
+        // was going to do anyway.
+        if (namesAnotherFirm(t, card, world)) { kept.push(n); notMine++; return; }
         // A line that NAMES this firm came off somebody else's page. A firm's own page does not
         // say "SREEVATSA ON 12 LAKS ORDERS LAST WEEK OPEN CREDIT 30 DAYS" — Enexio's page does,
         // about buying from Sreevatsa. *His words: "these seem like something written for
@@ -255,6 +287,9 @@ function prepare(card, world) {
     });
     if (rules.length !== (card.rules || []).length) {
         did.push((rules.length - (card.rules || []).length) + ' notes about credit or payment became Price rules');
+    }
+    if (notMine) {
+        did.push(notMine + ' lines about money left as notes, because they name another firm');
         card.rules = rules;
         card.notes = kept;
     }
