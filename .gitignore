@@ -9,4 +9,12 @@ uploads/
 .DS_Store
 *-service-account*.json
 google-cloud-key.json
+# The partner directory's own data, written here whenever the app or a tool runs against the
+# local store. contacts.json is 5,500 people, phone-book.json is his whole phone book — every
+# customer's mobile number. They belong in the S3 bucket, never in a public repository, and
+# they were one careless `git add .` from being published.
+contacts.json
+contacts-pending.json
+google-firms.json
+phone-book.json
 

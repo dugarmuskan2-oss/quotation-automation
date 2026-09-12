@@ -1697,7 +1697,13 @@
     // purchases from them, and not one of them matched, so each became its own heading and the
     // card read as a wall of one-line groups. His spelling wanders — PURELASING, "PURCHASE
     // FORM" — so the misspellings are matched on purpose rather than lost.
-    var REL_WORD = /\b(dealers?|stockists?|distributors?|distributes?|transporters?|transport|roadlines?|carriers?|cargo|coaters?|coating|galvanis\w*|testing|agents?|brokers?|suppliers?|works with|buy from|purchas\w*|pure?lasing|buys\w*|buying|bought|f(?:ro|or)m them|manufactur\w*|factory)\b/i;
+    // This gate decides whether a note is a RELATIONSHIP at all, and it held the noun
+    // "suppliers" but not the verb "supplies" — so "VARDHAMAN AGENCY — supplies material to
+    // CRESCON on credit" was not a relationship, and four of Crescon's six suppliers sat in
+    // the notes box instead of under a heading. "works with" was here as those two words
+    // exactly, so "working with them since 4 years" missed as well. The kinds list below
+    // already knew all of these; only this gate did not, and nothing gets past the gate.
+    var REL_WORD = /\b(dealers?|stockists?|distributors?|distributes?|transporters?|transport|roadlines?|carriers?|cargo|coaters?|coating|galvanis\w*|testing|agents?|brokers?|suppl\w*|work(?:s|ing)? with|buy from|purchas\w*|pure?lasing|buys\w*|buying|bought|f(?:ro|or)m them|manufactur\w*|factory|referen[cs]e|referred|referral|vouch\w*|bank)\b/i;
 
     function splitRelationNote(text) {
         // "— no number given" is this app's own footnote, not part of anybody's name.
@@ -1816,6 +1822,10 @@
         // "I TOOK REFERENCE FROM M/S MADRAS ENGG" is how a firm reaches his book at all, and it
         // is worth a line of its own: it says who vouched for whom.
         [/referen[cs]e|referred|vouch/i, 'Referred by'],
+        // Crescon's page ends "AXIS BANK PERSON - MUTHURAMAN KUMAR". A bank is a firm they
+        // work with, and with no heading for one the same fact sat in the notes box three
+        // times over. Last in the list, so it can never shadow a heading above it.
+        [/\bbank\b/i, 'Their bank'],
     ];
     function relKind(how, p) {
         if (buysFromThem(how, p)) return BUYERS;
@@ -4033,6 +4043,11 @@
                  holdCleanCopy: holdCleanCopy, restoreCleanCopy: restoreCleanCopy,
                  keepOpenEdits: keepOpenEdits,
                  directoryIsOpen: directoryIsOpen, enquiriesBlock: enquiriesBlock,
+                 // The card's own reader for a "FIRM — how" note. Exported because the card and
+                 // tools/prepare-card.js must read a note identically — two readers of one note
+                 // will disagree for ever unless they are the same reader.
+                 splitRelationNote: splitRelationNote, relKind: relKind, relPlace: relPlace,
+                 relExtra: relExtra, isRelationNote: isRelationNote, buysFromThem: buysFromThem,
                  _state: function () { return { S: S, D: D }; } },
     };
 })();

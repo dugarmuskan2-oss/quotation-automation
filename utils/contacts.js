@@ -1041,7 +1041,7 @@ function canBeSamePerson(a, b) {
  * The honorific goes too: he writes "MR." on some lines and not on others.
  */
 function personNameKey(name) {
-    return lower(name).replace(/(mr|mrs|ms|miss|shri|sri|smt)/g, ' ').replace(/[^a-z0-9]/g, '');
+    return lower(name).replace(/\b(mr|mrs|ms|miss|shri|sri|smt)\b/g, ' ').replace(/[^a-z0-9]/g, '');
 }
 
 /** Is there anything on this person you could ring or write to? */

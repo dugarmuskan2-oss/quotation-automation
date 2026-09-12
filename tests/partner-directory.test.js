@@ -3318,9 +3318,11 @@ describe('source guard — pressing ✕ asks, it does not delete', () => {
     });
 
     test('a card IN THE DIRECTORY is not touched — only the queue is written to', () => {
-        // The slice must stop at removeFromReview. It used to run to the next handler, which
-        // swallowed that function whole and read its save() as this one's.
-        const fn = sliceBetween('function askRemoval(what, value, at)', 'function removeFromReview');
+        // Both halves now live inside removalAsker: `takeOff` deletes on the spot, and the
+        // function it RETURNS is the one every ✕ handler calls. They were two top-level
+        // functions, and pressing remove on a note threw "askRemoval is not defined" —
+        // silently — because the old one lived inside the people section.
+        const fn = sliceBetween('return function (what, value, at) {', 'function bindPeople');
         expect(fn).toContain("postJson('/contacts/removal/ask'");
         expect(fn).not.toContain('save(true');
         expect(fn).toContain("if (S.busy['rm']) return;");     // one press is one request
@@ -3334,11 +3336,13 @@ describe('source guard — pressing ✕ asks, it does not delete', () => {
      * "that card is no longer in the directory", and the row silently stayed put.
      */
     test('a card still WAITING is deleted on the spot — there is nothing to request', () => {
-        const fn = sliceBetween('function removeFromReview(what, value, at)', "each(card, '[data-pd-delperson]'");
-        expect(fn).toContain("save(true, ['people'])");
+        const fn = sliceBetween('var takeOff = function (what, value, at)', 'return function (what, value, at)');
+        expect(fn).toContain('save(true,');
         expect(fn).not.toContain('postJson');
-        // every kind of row the ✕ can sit on
-        ['person', 'phone', 'email'].forEach((what) => expect(fn).toContain("'" + what + "'"));
+        // EVERY kind of row the ✕ can sit on. It knew only the first three, so on a card
+        // still waiting the ✕ on a note, a rule, a product or a branch did nothing at all.
+        ['person', 'phone', 'email', 'branch', 'route', 'type', 'product', 'rule', 'note', 'size']
+            .forEach((what) => expect(fn).toContain("=== '" + what + "'"));
     });
 
     test('the card says what is waiting, so a press never looks like nothing', () => {

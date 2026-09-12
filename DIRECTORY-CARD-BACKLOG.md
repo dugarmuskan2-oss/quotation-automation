@@ -1040,3 +1040,114 @@ readers of one note will disagree for ever unless they are the same reader.**
 - **His phone book is saved.** The 1,941 read pages and the 2,222 firms found on them existed
   only in a scratch folder on one machine. They cost real money to produce and cannot be
   re-made from the cards, because a card is what they were turned INTO.
+
+---
+
+## What CRESCON taught — the audit he asked for
+
+*His words: "on the crescon card -- a lot of things that can be in other places are in notes --
+audit -- I thought we were over this? / Notes that can be part of contacts, companies they buy
+from (what is written about them must be in brackets)."*
+
+He was right, and he was right to be annoyed: the rules for this had been written three cards
+earlier. **Twenty of the card's twenty-eight notes were sitting in the notes box, and not one of
+them was there because the rule was missing.** Every one was there because of two faults that
+had nothing to do with his data.
+
+### 1. The gate and the list must know the same words
+
+Two separate things read a note. First a GATE asks *is this a relationship at all?* Only then
+does a LIST decide *which heading*. The list already knew `suppl`, `referen[cs]e` and
+`work(?:s|ing)? with`. The gate knew the noun **"suppliers"** but not the verb **"supplies"**,
+and knew `works with` as those two words exactly — so `working with` missed too.
+
+Nothing gets past the gate. So:
+
+```
+VARDHAMAN AGENCY — supplies material to CRESCON on credit    -> the notes box
+MADRAS ENGG — gave the reference; working with them 4 years   -> the notes box
+```
+
+Four of Crescon's six suppliers, its credit reference and its bank contact, all filed as loose
+text, while the heading that would have held them was already written and working.
+
+**One gate, one list, one vocabulary.** When the gate learned those words, **15 notes across 5
+cards** went to their right heading at once — and every one of the 15 was checked by hand
+first. Crescon's six suppliers; MST and Sparsh supplying **Urcc**; MST and Sparsh as references
+for **Airmech**; and Bombay H/W's reference on **Maniam Steels** — the Sampath note he had asked
+about weeks earlier. No note moved to a wrong place. Nothing stored changed; only where the
+card draws it.
+
+### 2. A `\b` saved as an invisible junk byte
+
+`personNameKey` exists to strip the honorific, because he writes `MR.` on some lines and not on
+others. Its regex had been saved with the two word-boundary marks turned into a literal
+**backspace character** — a byte that shows as nothing in every editor and nothing in a diff.
+The regex could therefore never match, and the honorific had **never once** been stripped.
+
+`MR. PRASAD` and `PRASAD` were two men. So were Syed, Christopher, Ebic, Venkataraman,
+Chandraleka and Sri Velrajan — **seven pairs on this one card**, each pair sharing one phone
+number, which is the very thing that was supposed to merge them. 25 people became 18.
+
+Two men called Kumar with their own numbers still stay two men, and RAMSAY is still not RAM.
+
+### 3. A page read twice puts everything on the card twice
+
+Crescon's page had been read on the 9th and read again after. Every fact was on the card two,
+three or four times in different wordings:
+
+```
+VARDHAMAN AGENCY — Crescon regularly purchases material from them on a credit basis
+VARDHAMAN AGENCY — supplies material to CRESCON on credit; gives open credit ... — no number given
+```
+
+The fold that catches this can only see notes the gate let through, so a reworded line that
+failed the gate was invisible to it. **Fault 1 was what made fault 3 survive.** 28 notes carried
+14 facts; the card now carries 13 lines and the same 14 facts.
+
+**A page is read once.** Reading it again does not add information — it adds copies, and copies
+of a sentence disagree with each other about direction.
+
+### 4. A bank is a firm they work with
+
+His page ends `AXIS BANK PERSON / 1. MUTHURAMAN KUMAR - 9444512579`. There was no heading for a
+bank, so the same fact sat in the notes box three times over. **Their bank** is now a heading,
+last in the list so it can never shadow one above it.
+
+### 5. Where a fact is written is part of the fact
+
+`CRESCON SEND HIS VECHILE THRU SAVANI TRANSPORT` names two lorry firms and is written under
+**G.S. Transport's** entry, on five different pages. Which of the two Crescon actually books is
+not in the words. So the bracket quotes his sentence *and says where it was written* —
+"(written under G.S. TRANSPORT on your TR(4) Pondicherry page)" — and the judgement stays with
+him. Better a line he can correct in one glance than a guess he cannot see.
+
+### 6. A card can be missing what his other pages say about it
+
+Savani Transport and Reavathi Transport both carry for Crescon — said plainly on five of his
+transport pages — and Crescon's card named neither. **A card is not finished when its own page
+is done.** Every page that mentions the firm is part of its card.
+
+### 7. Two things only he can answer, and they were not guessed
+
+- **SREEVATSA** was a supplier and no longer is: *"FROM LAST 2 YEARS THEY ARE NOT HAVING
+  BUSINESS WITH THEM. BECAUSE OF SOME OLD DELAY PAYMENT."* A firm they have stopped buying from
+  does not belong under "They buy from", and there is no heading for one they used to use. Left
+  as a plain note, wording intact, until he says.
+- **MR. YUVARAJ** is on the card as a person at Crescon with the role "their regular
+  transporter". He is not Crescon staff — he is the man with the lorry. Left alone: removing a
+  person is his call.
+
+### Also, while auditing
+
+Three near-name pairs would each become a second card if anyone answered them twice —
+`VARDHAMAN AGENCY` against the `VARDHAMAN` card, `CALCUTTA TUBE` against `CALCUTTA TUBE CENTRE
+PVT LTD`, and `SREEVATSA` against both `Sreevatsa Venkateswara` and `Sreevatsa Tube` (he has
+already said those are "all same"). The names on the notes are left as **he** writes them; the
+"Also written as" box on each of those cards is where the two get joined, and that is a change
+to another card, so it waits for him.
+
+Two test guards had been failing silently since `askRemoval` was moved, because they looked for
+a function name that no longer existed. Repaired, and now they hold more than before: a card
+still waiting must handle the ✕ on **all ten** kinds of row, not the three it once knew. Four
+mutations applied, four caught.
