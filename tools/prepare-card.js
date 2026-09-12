@@ -49,12 +49,20 @@ const IS_RULE = /\bcredit\b|\bpdc\b|\blc only\b|\bwork with lc\b|\badvance\b|\bp
  * the firm. Joining everything after the first made the firm "Tamilnadu & Chennai — SANKARA",
  * and the tool then asked thirty times whether that was one firm or two.
  */
-function splitRelation(text) {
+function splitRelation(text, knows) {
     const parts = str(text).replace(/\s*—\s*no number given\s*$/i, '').split(' — ');
     if (parts.length < 2) return null;
     const first = parts[0].trim(), last = parts[parts.length - 1].trim();
     if (!first || !last) return null;
     const f = REL_WORD.test(first), l = REL_WORD.test(last);
+    // Neither side names a relationship, but one of them names a firm he HAS. The card reads
+    // it that way and this did not, so "He keeps Gandhi 007 matarial — GANDHI 007" was a
+    // relation on screen and a plain note to the tool — which is how Gandhi 007 kept two lines
+    // after the fold. Both must read a note the same way or they will disagree for ever.
+    if (!f && !l && knows) {
+        if (knows(last) && !knows(first)) return { firm: last, how: parts.slice(0, -1).join(' — ').trim() };
+        if (knows(first) && !knows(last)) return { firm: first, how: parts.slice(1).join(' — ').trim() };
+    }
     if (f && !l) return { firm: last, how: parts.slice(0, -1).join(' — ').trim() };
     if (l && !f) return { firm: first, how: parts.slice(1).join(' — ').trim() };
     if (f && l) {
@@ -270,6 +278,8 @@ function prepare(card, world) {
             || (c.aka || []).some(x => contacts.firmNameKey(x) === k)) || null;
     };
     const reading = (n) => book.byKey.get(contacts.firmNameKey(bareName(n)));
+    // Does he have a card for this name? The splitter needs it for its last resort.
+    const knows = (n) => !!findCard(n);
 
     // 1. Every heading his provenance notes name becomes a category, then those notes go.
     const heads = {};
@@ -289,7 +299,7 @@ function prepare(card, world) {
     const selfKey = contacts.firmNameKey(card.company);
     const before = (card.notes || []).length;
     card.notes = (card.notes || []).filter((n) => {
-        const rel = splitRelation(n.t);
+        const rel = splitRelation(n.t, knows);
         return !(rel && contacts.firmNameKey(bareName(rel.firm)) === selfKey);
     });
     if (before !== card.notes.length) did.push((before - card.notes.length) + ' notes that pointed the card at itself removed');
@@ -346,7 +356,7 @@ function prepare(card, world) {
     // 4. A note about ANOTHER firm belongs on that firm's card — which may have to be made.
     let moved = 0, stayed = 0;
     card.notes = (card.notes || []).map((n) => {
-        const rel = splitRelation(n.t);
+        const rel = splitRelation(n.t, knows);
         if (!rel) return n;
         const firm = bareName(rel.firm);
         let other = findCard(firm);
@@ -425,6 +435,43 @@ function prepare(card, world) {
     });
     if (sent) did.push(sent + ' notes written on another firm\'s page moved onto that firm\'s card');
 
+    // 4b. One firm, one relation line.
+    //
+    //     Hydraulic & Pneumatic carried the same fact FOUR ways for each of its three
+    //     suppliers, because his own line was read once and then re-worded by three passes:
+    //
+    //       (II) He buys from saiffuddin & dehgamwala, & Taher Tube
+    //       saiffuddin & dehgamwala — He buys from saiffuddin & dehgamwala
+    //       SAIFFUDDIN & DEHGAMWALA — supplier — Hydraulic & Pneumatic buys from them
+    //       He buys from them — SAIFFUDDIN & DEHGAMWALA
+    //
+    //     And the wordings disagree. "He buys from them" is the same shape as Bombay
+    //     Hardware's "they purchase from them" and means the opposite — who "he" is depends on
+    //     whose page it came off, which the words cannot say. The cure is not a better guess
+    //     but fewer lines: the one that NAMES this firm as the buyer or seller says plainly
+    //     which way round it is, so that is the one kept.
+    const byFirm = new Map();
+    (card.notes || []).forEach((n, i) => {
+        const rel = splitRelation(n.t, knows);
+        if (!rel) return;
+        const k = contacts.firmNameKey(bareName(rel.firm));
+        if (!k) return;
+        const plain = namesItself(rel.how, card.company) ? 2 : (str(rel.how).length > 24 ? 1 : 0);
+        const had = byFirm.get(k);
+        if (!had || plain > had.plain) byFirm.set(k, { at: i, plain });
+    });
+    let folded = 0;
+    card.notes = (card.notes || []).filter((n, i) => {
+        const rel = splitRelation(n.t, knows);
+        if (!rel) return true;
+        const k = contacts.firmNameKey(bareName(rel.firm));
+        if (!k) return true;
+        if (byFirm.get(k).at === i) return true;
+        folded++;
+        return false;
+    });
+    if (folded) did.push(folded + ' repeated relation lines folded away — one line per firm');
+
     // 5. One man, several spellings.
     const wasPeople = (card.people || []).length;
     card.people = contacts.foldPeople(card.people || []);
@@ -471,7 +518,7 @@ function prepare(card, world) {
     if (short) did.push(short + ' mobile number' + (short === 1 ? '' : 's') + ' one digit short dropped — they cannot be rung');
     // A name that matches nothing in 1,941 pages is usually two names with the comma lost.
     (card.notes || []).forEach((n) => {
-        const rel = splitRelation(n.t);
+        const rel = splitRelation(n.t, knows);
         if (!rel) return;
         const firm = bareName(rel.firm);
         if (findCard(firm) || reading(firm)) return;

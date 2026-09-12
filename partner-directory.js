@@ -1766,7 +1766,16 @@
     function buysFromThem(how, p) {
         var t = str(how);
         if (/\bregular purchase\b/i.test(t)) return true;
-        var whom = ['them', 'him', 'us'].concat(firmWords(p && p.company));
+        var mine = firmWords(p && p.company);
+        // Whose name is BEFORE the buying word settles the direction, and the direction is the
+        // whole meaning. "Saranya Steel purchases from Bombay H/W" on Bombay Hardware's card is
+        // a customer; "Hydraulic & Pneumatic buys from them" on Hydraulic & Pneumatic's card is
+        // the same firm SHOPPING. Both name the card and both say "buys from" — the difference
+        // is which side of the verb the name sits on.
+        var verb = t.search(new RegExp('\\b' + TAKES + '\\b', 'i'));
+        if (verb > 0 && mine.length
+            && new RegExp('(' + mine.join('|') + ')', 'i').test(t.slice(0, verb))) return false;
+        var whom = ['them', 'him', 'us'].concat(mine);
         return new RegExp('\\b' + TAKES + '\\b[^—]{0,60}?\\bf(?:ro|or)m\\s*(?:'
             + whom.join('|') + ')\\b', 'i').test(t);
     }
@@ -1792,7 +1801,10 @@
         // in the same list as a firm they buy from reads wrong. His words: "Chetna steel is
         // their manufacturing facility -- It can have its own header".
         [/factory|manufactur/i, 'Their factory'],
-        [/suppl|buy from|source/i, 'They buy from'],
+        // "buys from" was not in this list while "buy from" was, so "He buys from Taher Tube"
+        // matched nothing and took a heading of its own — three firms, three headings, one
+        // firm under each.
+        [/suppl|buys? from|bought from|purchas\w* from|source/i, 'They buy from'],
     ];
     function relKind(how, p) {
         if (buysFromThem(how, p)) return BUYERS;
