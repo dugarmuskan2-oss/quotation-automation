@@ -1767,7 +1767,11 @@
     }
     var BUYERS = 'They sell to';
     var REL_KINDS = [
-        [/dealers?|stockists?|distribut/i, 'Dealers'],
+        // A dealer of theirs is a firm they sell to. *His words: "they are also who they sell
+        // to".* Apollo's regional dealers sat in a heading of their own as though that were a
+        // different kind of dealing; it is the same dealing, seen from the maker's side. His
+        // own wording stays in the bracket — "Dealer for them in Mumbai" — so nothing is lost.
+        [/dealers?|stockists?|distribut/i, BUYERS],
         [/transport|lorry|roadline|carrier|cargo|freight/i, 'Transporters'],
         [/coat|galvanis|galvaniz/i, 'Coating'],
         [/test|inspect|lab\b/i, 'Testing'],

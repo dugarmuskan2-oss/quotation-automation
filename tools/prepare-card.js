@@ -58,6 +58,11 @@ function splitRelation(text) {
     if (f && !l) return { firm: last, how: parts.slice(0, -1).join(' — ').trim() };
     if (l && !f) return { firm: first, how: parts.slice(1).join(' — ').trim() };
     if (f && l) {
+        // Both sides carry a trade word — "Dealer" on one, "SUPPLIERS" inside the firm's own
+        // name on the other. Length alone read "Dealer — Tamilnadu & Chennai — SHRI LAKSHMI
+        // STEEL SUPPLIERS" as a firm called "Dealer". He writes these as "Dealer — where — WHO",
+        // so with a middle part the firm is last; length only decides between two parts.
+        if (parts.length > 2) return { firm: last, how: parts.slice(0, -1).join(' — ').trim() };
         return first.length >= last.length
             ? { firm: last, how: parts.slice(0, -1).join(' — ').trim() }
             : { firm: first, how: parts.slice(1).join(' — ').trim() };
@@ -255,7 +260,7 @@ function prepare(card, world) {
     }
 
     // 4. A note about ANOTHER firm belongs on that firm's card — which may have to be made.
-    let moved = 0;
+    let moved = 0, stayed = 0;
     card.notes = (card.notes || []).map((n) => {
         const rel = splitRelation(n.t);
         if (!rel) return n;
@@ -263,18 +268,12 @@ function prepare(card, world) {
         let other = findCard(firm);
         if (!other) {
             const rec = reading(firm);
-            if (!rec || !canBeACard(rec)) {
-                // Only worth asking when something would otherwise be LOST. Apollo names two
-                // dozen dealers as bare "X — dealer" lines: there is no detail to move, so
-                // there is nothing to ask, and asking anyway produced forty questions with
-                // Swastik in it three times.
-                if (relDetail(rel, card) && looksLikeAFirm(firm)) {
-                    asks.push({ key: 'who:' + contacts.firmNameKey(firm),
-                        q: 'Who is "' + firm + '"?',
-                        why: 'Your note says "' + str(rel.how).slice(0, 60) + '" — but nothing in your phone book has a number for them, so there is no card to move that onto. It stays here for now.' });
-                }
-                return n;
-            }
+            // A firm with no card and nothing in his phone book is left exactly where it is.
+            // *His words: "if a name doesnt have any other contact cards in google contact, let
+            // it stay as is in the card -- most questions in apollo were just that".* Five of
+            // Apollo's seven questions were this, and the answer to every one of them is "leave
+            // it alone" — which is already what happens, so there was nothing to ask.
+            if (!rec || !canBeACard(rec)) { stayed++; return n; }
             other = cardFromReading(rec, firm);
             made.push(other);
             world.all.push(other);
@@ -294,6 +293,7 @@ function prepare(card, world) {
         return n;                       // his wording stays here too — it shows beside the name
     });
     if (moved) did.push(moved + ' relations carried onto the other firm\'s card, the right way round');
+    if (stayed) did.push(stayed + ' firms with no card anywhere left exactly as he wrote them');
     if (made.length) did.push(made.length + ' firms had no card at all — built from their own page');
 
     // 4a. A plain note written on somebody ELSE's page is that firm's, not this one's.
