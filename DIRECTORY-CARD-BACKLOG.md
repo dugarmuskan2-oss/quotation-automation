@@ -907,3 +907,136 @@ Apollo. **Split the heading on "/" before deciding whose page it is.**
 **45 relations carried onto the right cards, 22 firms built that had no card at all, 17 left
 exactly as he wrote them, and no questions outstanding** — all seven answered in his own words,
 kept on the card.
+
+---
+
+## The next nine cards — what running the tool taught
+
+Sreevatsa, Crescon, ABS Fuijico, Maniam Steels, Manto Engineering, shree venus, Nrpprojects,
+Hydraulic & Pneumatic and Micron Electricals, through `tools/prepare-card.js`. **Nine cards, and
+every fault was in the TOOL rather than in his data.** That is what doing them one at a time
+buys: each card is a test of the rules, and a rule that only worked on the card it was written
+for is worse than no rule.
+
+### 1. A line about money is not a price rule just because it says "credit"
+
+Crescon's own page: *"VIMAL SPOKE TO CHRISTOPHER SIR ON (04.08.21). HE SAID **VARDHAMAN** GIVE
+OPEN CREDIT UP TO 1.5 CRORE ON 90 DAYS."* It is on Crescon's page, so the whose-page test passed
+it — but the firm giving the credit is Vardhaman. Filed as Crescon's terms, the app would have
+offered Crescon a crore of credit it never mentioned.
+
+**A line that names ANY other firm he has a card for stays a note.** Matched on that firm's
+distinctive words, never the trade words: PIPE, STEEL and TUBES name half his book.
+
+### 2. A firm's own page may be headed with a different spelling
+
+ABS Fuijico's only heading is **"ABS FUJITSU Yuganand"**. Matching on the name made the card's
+own page somebody else's, and the tool offered to move its own dealings off it. **The surest
+test needs no spelling at all: the card is FILED UNDER that page.**
+
+### 3. Never make a second card for a name he already has
+
+ABS Fuijico's notes were about to add **SREEVATSA** and **SRIVATSA** beside the *Sreevatsa
+Venkateswara* and *Sreevatsa Tube* he already has — four cards for what turned out to be one
+firm. *His answer: "all same".*
+
+So a firm now carries **the other names he writes it under** — "Also written as" on the card —
+and every lookup checks them. Without it each card asks again, and answering four times is how a
+firm ends up with four cards. Two tests hold it: the existing prefix rule, and one for names a
+letter or two apart, kept tight at six letters and two changes so **JPI** and **API** stay
+separate firms. Names already questioned on the same run count too, or holding SREEVATSA back
+left SRIVATSA with nothing to be near.
+
+### 4. He fills in the same form on many pages
+
+*"HOW PARTY WILL MAKE PAYMENT / 60 DAYS PDC"* is on **twelve** of his pages — Merit Technologies
+and shree venus both answered the same. The lookup took the first match and blamed Merit for
+shree venus's own term.
+
+**If ANY page carrying a line is this card's own, the line is this card's.**
+
+### 5. A landline is not a broken mobile
+
+`25342560` is a Chennai number without its 044; `2230458` a Coimbatore one. Questioning those
+gave two cards five questions between them. An Indian **mobile** is ten digits starting 6-9, so
+nine of those is one lost in the typing — *his instruction: "remove all 9 digit numbers"* — and
+eleven were dropped, on the reasoning Kerala Roadways settled: a number nobody can ring is not a
+contact, and completing it is a guess.
+
+### 6. A real town spelt correctly is not a misspelling
+
+**Tirupur** and **Sriperumbudur** are spelt perfectly and simply are not among the app's 24
+towns. Only a town CLOSE to one it knows is worth questioning — "coimbatter" is two letters from
+Coimbatore. **That gap is the app's, not his.**
+
+### 7. Never ask him to confirm what already happens
+
+Three questions died on this rule, all of them in his words:
+
+- *"if head office isnt mentioned — no need to add — leave it blank and no need to ask me
+  everytime."* **Blank IS the record.**
+- *"what kind of firm I can input myself when reviewing."* The card has the buttons already.
+- *"if a name doesnt have any other contact cards in google contact, let it stay as is in the
+  card — most questions in apollo were just that."*
+
+Across the nine that took the questions from **forty on Apollo alone to none at all on six of
+them**.
+
+### 8. Which side of the verb his name sits on decides the direction
+
+*"Saranya Steel purchases from Bombay H/W"* on Bombay Hardware's card is a **customer**.
+*"Hydraulic & Pneumatic buys from them"* on Hydraulic & Pneumatic's card is the same firm
+**shopping**. Both name the card, both say "buys from". Only the word order separates them.
+
+And "buys from" was not in the list that "buy from" was, so three suppliers took three headings
+with one firm under each.
+
+### 9. The same fact written four ways disagrees with itself
+
+Hydraulic & Pneumatic carried four lines per supplier — his own, plus three re-wordings:
+
+```
+(II) He buys from saiffuddin & dehgamwala, & Taher Tube
+saiffuddin & dehgamwala — He buys from saiffuddin & dehgamwala
+SAIFFUDDIN & DEHGAMWALA — supplier — Hydraulic & Pneumatic buys from them
+He buys from them — SAIFFUDDIN & DEHGAMWALA
+```
+
+*"He buys from them"* is the same shape as Bombay Hardware's *"they purchase from them"* and
+means the opposite — who "he" is depends on whose page it came off, which the words cannot say.
+
+**One relation line per firm, keeping the one that NAMES this firm as buyer or seller**, because
+only that one says which way round it is. Six lines folded away on that card; Apollo had 63 of
+the same kind.
+
+### 10. The tool and the card must read a note identically
+
+The card's splitter has a last resort the tool's lacked — *neither side names a relationship,
+but one names a firm he has* — so "He keeps Gandhi 007 matarial — GANDHI 007" was a relation on
+screen and a plain note to the tool, and survived a fold that should have caught it. **Two
+readers of one note will disagree for ever unless they are the same reader.**
+
+---
+
+## Also his, and now built
+
+- **"client" is a kind of firm**, beside dealer, manufacturer, transporter and fabricator — for
+  the firms he sells to, if their details are ever imported the way the makers and transporters
+  were. Not shared with the second setup: a new role defaults to hidden, and there is a test
+  holding it to that.
+- **A person carries a note of their own.** "NOTE: WHO VISITED OUR OFFICE ON 26.7.2019 (Bhanu
+  Srivastava)" was in the firm's notes box with nothing tying it to the man — and on Apollo
+  three exhibition notes had been folded into a man's NAME to keep them beside him.
+- **Everything on a card is typeable.** A branch just added showed as nothing at all; "No branch
+  set" was plain text, and typing a town there now moves everyone in that block at once; every
+  line under "Who they work with" has a pencil that opens the note behind it.
+- **The questions can be answered on the card** — a box, an Answer button, and a "not sure" that
+  is a real answer and stops the asking. A town or a head office typed there goes straight into
+  the field.
+- **Remove works again.** It had been written inside the people section, where the notes, rules,
+  products and branches could not see it, so pressing remove threw an error and did nothing —
+  silently, which is the worst way for it to fail. And on a card still waiting it only ever knew
+  how to remove a person, a phone or an email.
+- **His phone book is saved.** The 1,941 read pages and the 2,222 firms found on them existed
+  only in a scratch folder on one machine. They cost real money to produce and cannot be
+  re-made from the cards, because a card is what they were turned INTO.
