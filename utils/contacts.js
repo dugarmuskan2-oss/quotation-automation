@@ -138,6 +138,11 @@ function sanitizePerson(p) {
         emails: sanitizeLines(p && p.emails)
             .map(e => ({ label: e.label, v: cleanEmail(e.v) }))
             .filter(e => isEmail(e.v)),
+        // Something about the PERSON, not the firm. "NOTE: WHO VISITED OUR OFFICE ON
+        // 26.7.2019 (Bhanu Srivastava)" sat in the firm's notes box because a person had
+        // nowhere to carry a remark, and the same happened on Apollo, where three exhibition
+        // notes had to be folded into a man's NAME to keep them beside him.
+        note: str(p && p.note).slice(0, 400),
     };
 }
 

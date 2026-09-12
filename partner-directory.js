@@ -1546,7 +1546,15 @@
             + '<input data-pd-pc="' + i + '" data-pd-k="branch" list="pdCardBranches" value="' + esc(c.branch || '') + '" placeholder="Which branch">'
             + (i === 0 ? '<span class="pd-pill">Main</span>' : '<button class="pd-del" data-pd-delperson="' + i + '">✕</button>') + '</div>'
             + '<div class="pd-person-cols"><div>' + lineRows('ph', PHONE_LABELS, c.phones) + '</div>'
-            + '<div>' + lineRows('em', EMAIL_LABELS, c.emails) + '</div></div></div>';
+            + '<div>' + lineRows('em', EMAIL_LABELS, c.emails) + '</div></div>'
+            // Something about the PERSON. "NOTE: WHO VISITED OUR OFFICE ON 26.7.2019 (Bhanu
+            // Srivastava)" sat in the firm's notes box with nowhere of its own to go, and on
+            // Apollo three exhibition notes had to be folded into a man's NAME to keep them
+            // beside him. It shows only when there is something in it, or when he is looking
+            // at that person, so a card of twenty people is not twenty empty boxes.
+            + '<input class="pd-person-note" data-pd-pc="' + i + '" data-pd-k="note"'
+            + ' value="' + esc(c.note || '') + '" placeholder="Anything about them — e.g. visited our office 26.7.2019">'
+            + '</div>';
     }
 
     /**
