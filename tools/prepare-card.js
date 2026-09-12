@@ -115,9 +115,41 @@ function pageFirmKey(title) {
  * APOLLO/SG PREMIUM (ALL DETAILS) SNO 12" is Apollo's own page, and matching the whole heading
  * made it somebody else's, so the tool offered to move Apollo's own factory list away from it.
  */
-function isOwnPage(title, company) {
+function isOwnPage(title, company, card) {
+    // The surest test, and it needs no spelling at all: the card is FILED UNDER that page. ABS
+    // Fuijico's only heading is "ABS FUJITSU Yuganand" — his own two spellings of one firm —
+    // and matching on the name made the card's own page somebody else's, so the tool offered
+    // to move its own dealings away from it.
+    const filed = (card && card.categories) || [];
+    if (filed.some(c => norm(c) === norm(title))) return true;
     const clean = str(title).replace(/\(.*?\)/g, ' ').replace(FILING, ' ');
     return clean.split(/[\/,]/).some(part => contacts.sameFirmName(part, company));
+}
+
+/**
+ * Two names a letter or two apart are one firm spelt two ways.
+ *
+ * sameFirmName only matches whole words and prefixes, so "SRIVATSA" and "SREEVATSA" read as two
+ * different firms and ABS Fuijico's notes were about to add both beside the two Sreevatsa cards
+ * he already has. One missing letter is not a new company.
+ *
+ * Deliberately tight: six letters or more, and at most two letters different. "JPI" and "API"
+ * are three letters apart in meaning and one in spelling, which is exactly why short names are
+ * left out of this.
+ */
+function nearlyTheSameName(a, b) {
+    const x = norm(contacts.firmNameKey(a)), y = norm(contacts.firmNameKey(b));
+    if (x.length < 6 || y.length < 6) return false;
+    if (Math.abs(x.length - y.length) > 2) return false;
+    let prev = Array.from({ length: y.length + 1 }, (_, j) => j);
+    for (let i = 1; i <= x.length; i++) {
+        const row = [i];
+        for (let j = 1; j <= y.length; j++) {
+            row[j] = Math.min(prev[j] + 1, row[j - 1] + 1, prev[j - 1] + (x[i - 1] === y[j - 1] ? 0 : 1));
+        }
+        prev = row;
+    }
+    return prev[y.length] <= 2;
 }
 
 /**
@@ -215,6 +247,7 @@ function newItem(preview) {
 // ── the pass itself ───────────────────────────────────────────────────────────────────────
 function prepare(card, world) {
     const did = [], asks = [], made = [];
+    const held = [];                 // names questioned rather than made into cards
     const book = world.book;
     const findCard = (n) => {
         const k = contacts.firmNameKey(bareName(n));
@@ -273,7 +306,7 @@ function prepare(card, world) {
         // whose page it is written on. "DOING BUSINESS 4 YEARS ON ADVANCE PAYMENT" names
         // nobody, and is on JP ENERGY's page under "HE IS PURCHASING FROM (A). SREEVATSA".
         const page = whosePage(t, world);
-        const mine = page && (pageFirmKey(page) === selfKey || isOwnPage(page, card.company));
+        const mine = page && (pageFirmKey(page) === selfKey || isOwnPage(page, card.company, card));
         if ((page && !mine) || (!page && namesItself(t, card.company))) {
             kept.push(n);
             asks.push({ key: 'theirs:' + norm(t).slice(0, 24),
@@ -309,6 +342,26 @@ function prepare(card, world) {
             // Apollo's seven questions were this, and the answer to every one of them is "leave
             // it alone" — which is already what happens, so there was nothing to ask.
             if (!rec || !canBeACard(rec)) { stayed++; return n; }
+            // Never make a card that is another spelling of one he already has. He has
+            // "Sreevatsa Venkateswara" and "Sreevatsa Tube"; ABS Fuijico's notes say
+            // "SREEVATSA" and "SRIVATSA", and creating both would have given him four cards
+            // for what may be one firm. Which one it is, is his to say — so the note stays
+            // where it is and nothing is invented.
+            // sameFirmName answers "true" when either side is blank — nothing to disagree
+            // about — so an unnamed card matched every firm on the card.
+            // Compared against the cards he has AND the names already questioned on this run.
+            // "SREEVATSA" was held back as a question, so "SRIVATSA" two notes later had
+            // nothing to be near and a fourth Sreevatsa card went in anyway.
+            const near = world.all.concat(held).find(c => str(c.company)
+                && (contacts.sameFirmName(c.company, firm) || nearlyTheSameName(c.company, firm)));
+            if (near) {
+                stayed++;
+                held.push({ company: firm });
+                asks.push({ key: 'same:' + contacts.firmNameKey(firm),
+                    q: 'Is "' + firm + '" the same firm as "' + str(near.company) + '"?',
+                    why: 'Close enough in name that making a second card might split one firm in two, so nothing was made. Say which and the note goes to the right card.' });
+                return n;
+            }
             other = cardFromReading(rec, firm);
             made.push(other);
             world.all.push(other);
@@ -342,7 +395,7 @@ function prepare(card, world) {
         const page = whosePage(t, world);
         if (!page) return true;
         const pageKey = pageFirmKey(page);
-        if (!pageKey || pageKey === selfKey || isOwnPage(page, card.company)) return true;
+        if (!pageKey || pageKey === selfKey || isOwnPage(page, card.company, card)) return true;
         const other = world.all.find(c => contacts.firmNameKey(c.company) === pageKey);
         if (!other) {
             asks.push({ key: 'theirs:' + norm(t).slice(0, 24),
@@ -364,9 +417,10 @@ function prepare(card, world) {
     if (card.people.length !== wasPeople) did.push(wasPeople + ' people folded to ' + card.people.length);
 
     // ── what only he can answer ───────────────────────────────────────────────────────────
-    if (!str(card.city)) {
-        asks.push({ key: 'headoffice', q: 'Which town is the head office?', why: 'Nothing in your pages says. Never guess it from an area code — Bombay Hardware\'s numbers are all 044 and its head office is Bangalore.' });
-    }
+    // A blank head office is not a gap to be filled. *His words: "if head office isnt mentioned
+    // -- no need to add -- leave it blank and no need to ask me everytime".* It was asked on
+    // every card that did not name one, which is most of them, and the honest answer is that
+    // his pages do not say — the same answer Jindal Saw ended on. Blank IS the record.
     // "other" is what the card holds when nobody has said — it is not an answer.
     if (!str(card.role) || card.role === 'other') {
         asks.push({ key: 'role', q: 'What kind of firm is this — dealer, manufacturer, transporter?', why: 'Nothing was guessed, because it decides who gets sent a freight enquiry.' });
