@@ -1408,6 +1408,9 @@
 /* His own words beside the name. Quieter than the name, because the name is the thing
    you click and the quote is why it is there. */
 .pd-rel-said { color: #6b6b63; font-size: 12px; }
+/* A note can run to several lines, so the line breaks he typed are the line breaks he sees. */
+.pd-note p { white-space: pre-wrap; }
+#pdNoteIn { font: inherit; padding: 7px 9px; resize: vertical; min-height: 38px; }
 /* Every line under Who they work with is typeable — the pencil shows on hover. */
 .pd-rel-one { white-space: nowrap; }
 .pd-rel-one .pd-rel-said { white-space: normal; }

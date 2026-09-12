@@ -1966,7 +1966,10 @@
     function notesBlock(p) {
         return '<div class="pd-sec">Notes</div>'
             + '<div class="pd-row" style="margin-bottom:9px;">'
-            + '<input id="pdNoteIn" placeholder="What did they tell you? e.g. lead time is 10 days, not 5" style="flex:1;">'
+            // Several lines in one note. His page writes a party up as a paragraph — what he
+            // keeps, who he buys from, what he asked for — and forcing that into one line
+            // either loses the shape of it or makes four notes out of one thing.
+            + '<textarea id="pdNoteIn" rows="2" placeholder="What did they tell you? e.g. lead time is 10 days, not 5 — Enter for a new line" style="flex:1;"></textarea>'
             + '<button class="pd-prim" data-pd-addnote="1">Add note</button></div>'
             + ((p.notes || []).length ? p.notes.map(function (n, i) {
                 // Already listed under "Who they work with" — shown there, not twice.
@@ -3504,7 +3507,13 @@
             save(true, ['notes']);
         };
         on(card, '[data-pd-addnote]', add);
-        if (input) input.onkeydown = function (e) { if (e.key === 'Enter') add(); };
+        // Enter makes a new line now that a note can have several. Ctrl-Enter saves, for anyone
+        // who was used to Enter doing it.
+        if (input) {
+            input.onkeydown = function (e) {
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); add(); }
+            };
+        }
         each(card, '[data-pd-delnote]', function (el) {
             el.onclick = function () { askRemoval('note', p.notes[Number(el.getAttribute('data-pd-delnote'))]); };
         });
