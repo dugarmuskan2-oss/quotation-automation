@@ -402,9 +402,15 @@ function prepare(card, world) {
             world.all.push(other);
         }
         // Direction is not carried by the words: on THEIR card, this firm is the supplier.
-        const theirs = BUYS_FROM_THEM.test(rel.how)
-            ? card.company + ' — supplier to them'
-            : card.company + ' — ' + rel.how;
+        // His wording is written from THIS card's side and cannot be copied across unchanged.
+        // Bee Kay Transport's card read "Transporters: Crescon", because Crescon's own words —
+        // "CRESCON REGULAR TRANSPORT" — went onto Bee Kay untouched. On the other firm's card
+        // the line is rewritten so it NAMES who does what, which is the only wording that
+        // cannot be read backwards.
+        const theirs = BUYS_FROM_THEM.test(rel.how) ? card.company + ' — supplier to them'
+            : /transport|lorry|roadline|carrier|cargo|freight/i.test(rel.how)
+                ? card.company + ' — ' + bareName(rel.firm) + ' carries for them'
+                : card.company + ' — ' + rel.how;
         if (!(other.notes || []).some(x => norm(x.t) === norm(theirs))) {
             other.notes = (other.notes || []).concat([{ t: theirs, d: today() }]);
         }

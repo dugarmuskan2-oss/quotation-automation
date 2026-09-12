@@ -1793,6 +1793,11 @@
         // different kind of dealing; it is the same dealing, seen from the maker's side. His
         // own wording stays in the bracket — "Dealer for them in Mumbai" — so nothing is lost.
         [/dealers?|stockists?|distribut/i, BUYERS],
+        // On a TRANSPORTER's own card, the firms he carries for are not his transporters. Bee
+        // Kay Transport's card read "Transporters: Crescon", because Crescon's wording — "CRESCON
+        // REGULAR TRANSPORT" — was copied onto Bee Kay unchanged. This heading has to come
+        // before Transporters, since a carrier's NAME usually has "transport" in it.
+        [/carr(?:y|ies|ied)\s+for|hauls?\s+for|lift[s]?\s+for/i, 'They carry for'],
         [/transport|lorry|roadline|carrier|cargo|freight/i, 'Transporters'],
         [/coat|galvanis|galvaniz/i, 'Coating'],
         [/test|inspect|lab\b/i, 'Testing'],
@@ -1804,7 +1809,13 @@
         // "buys from" was not in this list while "buy from" was, so "He buys from Taher Tube"
         // matched nothing and took a heading of its own — three firms, three headings, one
         // firm under each.
-        [/suppl|buys? from|bought from|purchas\w* from|source/i, 'They buy from'],
+        // "Crescon regularly purchases material from them" puts a word between the verb and the
+        // "from", so an adjacent-words pattern missed it and the whole sentence became a heading
+        // with one firm under it. He writes what he buys in between: material, pipe, the size.
+        [/suppl|buys?[^—]{0,20}?from|bought[^—]{0,20}?from|purchas\w*[^—]{0,20}?from|source/i, 'They buy from'],
+        // "I TOOK REFERENCE FROM M/S MADRAS ENGG" is how a firm reaches his book at all, and it
+        // is worth a line of its own: it says who vouched for whom.
+        [/referen[cs]e|referred|vouch/i, 'Referred by'],
     ];
     function relKind(how, p) {
         if (buysFromThem(how, p)) return BUYERS;
@@ -1839,6 +1850,11 @@
         // standing where a town should be, and Apollo's card grew a row headed with one of his
         // own dealers. If the leftover is a firm he has a card for, it is not where anybody is.
         if (findFirmCard(t)) return '';
+        // Including the card's OWN firm, written short. "CRESCON REGULAR TRANSPORT" leaves
+        // "CRESCON", which is not the full name on the card, so the exact lookup above missed
+        // it and Crescon grew a row headed with itself.
+        var mine = nameKey(p && p.company);
+        if (mine && k && (mine.indexOf(k) === 0 || k.indexOf(mine) === 0)) return '';
         return t;
     }
 
