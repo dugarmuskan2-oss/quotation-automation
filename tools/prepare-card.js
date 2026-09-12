@@ -424,10 +424,9 @@ function prepare(card, world) {
     // -- no need to add -- leave it blank and no need to ask me everytime".* It was asked on
     // every card that did not name one, which is most of them, and the honest answer is that
     // his pages do not say — the same answer Jindal Saw ended on. Blank IS the record.
-    // "other" is what the card holds when nobody has said — it is not an answer.
-    if (!str(card.role) || card.role === 'other') {
-        asks.push({ key: 'role', q: 'What kind of firm is this — dealer, manufacturer, transporter?', why: 'Nothing was guessed, because it decides who gets sent a freight enquiry.' });
-    }
+    // What kind of firm they are is NOT asked. *His words: "what kind of firm I can input
+    // myself when reviewing".* The card already has the buttons and the review screen already
+    // says so when nothing is set; a question saying the same thing is a second reminder.
     // A town the app does not know is not scored for distance, and is usually a misspelling —
     // Sreevatsa's card says "coimbatter". Repairing it is a guess; asking is not.
     // Only when it is CLOSE to a town the app knows, which is what a misspelling looks like.
@@ -442,17 +441,23 @@ function prepare(card, world) {
                 why: 'Two letters apart, so it reads as a slip. Left exactly as written until you say.' });
         }
     }
+    // A nine-digit mobile is dropped, not questioned. *His instruction: "remove all 9 digit
+    // numbers".* An Indian mobile is ten digits starting 6, 7, 8 or 9, so nine of them is one
+    // lost in the typing — and it cannot be completed without guessing, which Kerala Roadways
+    // settled long ago. A number nobody can ring is not a contact, and leaving it makes the
+    // card look fuller than it is. A 7- or 8-digit LANDLINE is complete and is left alone:
+    // 25342560 is a Chennai number without its 044.
+    let short = 0;
     (card.people || []).forEach((p) => {
-        (p.phones || []).forEach((x) => {
+        const keep = (p.phones || []).filter((x) => {
             const digits = str(x.v).replace(/\D/g, '');
-            // A 7- or 8-digit LANDLINE is complete — 25342560 is a Chennai number without its
-            // 044, 2230458 a Coimbatore one. Only a MOBILE one digit short is worth asking
-            // about: his mobiles are ten digits and start 6, 7, 8 or 9.
-            if (digits.length === 9 && /^[6-9]/.test(digits)) {
-                asks.push({ key: 'number:' + digits, q: 'Is "' + str(x.v) + '" right, against ' + (str(p.name) || 'the office') + '?', why: 'It is ' + digits.length + ' digits. Completing a number is a guess, so it is left exactly as written.' });
-            }
+            if (!(digits.length === 9 && /^[6-9]/.test(digits))) return true;
+            short++;
+            return false;
         });
+        if (keep.length !== (p.phones || []).length) p.phones = keep;
     });
+    if (short) did.push(short + ' mobile number' + (short === 1 ? '' : 's') + ' one digit short dropped — they cannot be rung');
     // A name that matches nothing in 1,941 pages is usually two names with the comma lost.
     (card.notes || []).forEach((n) => {
         const rel = splitRelation(n.t);
