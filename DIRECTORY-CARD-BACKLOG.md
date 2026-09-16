@@ -1171,3 +1171,105 @@ Two test guards had been failing silently since `askRemoval` was moved, because 
 a function name that no longer existed. Repaired, and now they hold more than before: a card
 still waiting must handle the ✕ on **all ten** kinds of row, not the three it once knew. Four
 mutations applied, four caught.
+
+---
+
+## Rules for the app to apply when a page is pasted in
+
+*His instruction: "Hope you are adding learnings because these rules need to be added to the app
+in the future when they copy paste."*
+
+Everything below was found by reading whole pages — ABS FUIJICO and NRP PROJECTS — rather than
+looking for words. **None of it is a missing word. No word list could find any of it.** These
+are written as rules because they will have to run on their own when a page is pasted in.
+
+### Rule 1 — His form's headings ARE the card's boxes
+
+A visit page ("EVOLUTION OF NEW PARTY") is not a pile of notes. It is a filled-in form, and the
+field names map straight onto the card:
+
+| His heading | Where it goes |
+|---|---|
+| `IMP CLIENTS OF COMPANY` | **They sell to** |
+| `PIPE PURCHASING FROM HOW MANY COMPANIES` | **They buy from** |
+| `STEEL ITEM & FITTING & OTHER ITEMS PURCHASING FROM WHOM` | **They buy from** |
+| `HOW PARTY WILL MAKE PAYMENT`, `CREDIT LIMITED`, `OPEN CREDIT … DAYS` | **Price rules** |
+| `MD NAME & HIS MOBILE NO`, `KEY PURCHASE PERSON …`, `KEY ACCOUNT PERSON …` | **People**, with the heading as their job |
+| `OFFICE ADDRESS` | **Address** |
+| `FACTORY ADDRESS`, `BRANCH DETAIL` | **Branches** |
+| `AREA OF BUSINESS` | **Product range** |
+| `VISIT DATE`, `WHO VISITED`, `SIZE OF OFFICE/FACTORY`, `TOTAL HOW MANY STAFF`, `HOW OLD IS THE COMPANY` | **one** visit note, not one line each |
+| `ATTACHE PHOTO … NIL`, `LAND NO : NIL`, `ASK FOR INVOICE COPY : NA` | folded into that same visit note — an answer of NIL is still an answer |
+
+Left unread, one filled form becomes nineteen loose lines. Worse, **two of its lines were
+dropped altogether** on shree venus — its four big clients and where it buys its steel, which
+are the two things worth knowing about a customer.
+
+### Rule 2 — A person belongs to the firm whose page they are written on
+
+**One shared phone number moved an entire firm onto another firm's card.**
+
+`8825846135` is written on two of his pages: NRP's, against `MRS.SURANA KALA`, and Paalsun
+Engineers', against `SHAKUTHALA MADAM`. On that one number, NRP's card took in Paalsun's three
+people, both its addresses, its credit term and its note — and overwrote his own NRP page's name
+for her. Paalsun had no card at all; its whole page had gone to live on NRP.
+
+Two people sharing a number on ONE card are one person. Two people sharing a number on TWO
+FIRMS' pages are two people, and **nothing else may travel with them.**
+
+### Rule 3 — A page's own title is not a person
+
+`ABS FUIJICO (ALL DETAIL)` was a row in ABS's people list, holding Yuganand's number and his
+email address. A heading that ends in `(ALL DETAIL)` names the page, never a man.
+
+### Rule 4 — Which side of the verb decides the direction, and a card's stored name may not match
+
+"HE PURCHASED MATERIAL FROM ... MST" means ABS buys. Written as `MST — he purchased material
+from them`, the card reads "them" as ABS and files MST as a **customer**. ABS's five suppliers
+were under "They sell to" AND "They buy from" at the same time.
+
+The guard against this compares the sentence with the card's own name — and **the name the card
+is stored under is not always the name on the page.** NRP is stored as `Nrpprojects`, one word,
+so "NRP Projects buys from them" did not match itself and all six suppliers became customers.
+
+**Supplier wording carries no direction to get wrong**: `MST — supplies them` cannot be read
+backwards by anybody. Prefer it to any sentence with "from them" in it.
+
+### Rule 5 — The long dash is the note's own separator
+
+`KAPIL AGENCY — NRP buys from them; "PURCHASING FROM WHOM — KAPIL AGENCY / RANUK STEEL"` has two
+long dashes, so the card split it in the wrong place and read the quote as the firm. **Inside a
+bracket, use a colon.**
+
+### Rule 6 — The same fact, written four ways, is still one fact
+
+ABS carried **twenty notes for five facts** — the same five suppliers written as "he purchased
+material from them", "ABS Fuijico purchased material from them", "supplier on open credit", and
+once more reversed. Fifteen of the twenty had no bracket at all, so his own wording was gone
+from them.
+
+One line per firm, and the bracket carries what HE wrote.
+
+### Rule 7 — "Nothing to ask you" is not "this card is done"
+
+`tools/prepare-card.js` only ever did mechanical jobs — provenance into Filed under, money terms
+into rules, notes written on another firm's page, folding duplicates and people. It never asked
+*where does this sentence belong*. Its report said "nothing to ask you" on nine cards, and I
+reported that as the cards being finished. **They are different things, and the difference was
+56 loose notes.**
+
+### What this cost, on two cards
+
+| | ABS FUIJICO | NRP PROJECTS |
+|---|---|---|
+| notes | 26 → 6 | 15 → 8 |
+| in the notes box | 6 → 1 | 9 → 1 |
+| firms under a heading | 20 lines, 5 firms, contradicting | 7 firms, one line each |
+| wrong-direction lines | 5 removed | 6 corrected |
+| people off the card | 1 (a page title) | 2 (another firm's) |
+| facts rescued from loose text | 20 lakh credit limit | 3 lakh credit limit, IOCL, Hitesh Patel's history |
+
+*His answers, both recorded as given:* on the shared number, **"not sure save as is"** — so that
+one row stays exactly as it is. On Paalsun, **"not the same business but paalsum doesnt need a
+card"** — so its things came off NRP and were not made into a card. Nothing was destroyed: his
+`PAALSUN ENGINEERS INDIA PVT LTD (ALL DETAILS)` page still holds every word of it.

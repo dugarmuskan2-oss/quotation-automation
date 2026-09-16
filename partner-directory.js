@@ -1843,7 +1843,9 @@
      */
     function relPlace(how, p) {
         var t = str(how)
-            .replace(/\b(dealers?|stockists?|distributors?|main|one|sub|transporters?|transport|coaters?|coating|galvanisers?|agents?|brokers?|suppliers?|purchas\w*|pure?lasing|buys?|buying|bought)\b/ig, ' ')
+            // "suppliers" was stripped here and "supplies" was not, so "supplies them with
+            // pipe" left the word "supplies" standing where a town should be.
+            .replace(/\b(dealers?|stockists?|distributors?|main|one|sub|transporters?|transport|coaters?|coating|galvanisers?|agents?|brokers?|suppl\w*|purchas\w*|pure?lasing|buys?|buying|bought)\b/ig, ' ')
             .replace(/\b(for|them|in|at|on|by|to|with|the|an?|and|is|are|was|were|their|of|only|no|number|given|he|she|they|we|it|his|her|regular|regularly|materials?|pipes?|working|works|work|doing)\b/ig, ' ')
             .replace(/[^A-Za-z0-9& ]/g, ' ')
             .replace(/\s+/g, ' ')
