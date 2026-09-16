@@ -1376,3 +1376,44 @@ card Crescon is a customer.
 The line had been written when Crescon's card was worked on, meant as "[this card is a] supplier
 to them", but the card reads a `how` as describing the firm NAMED in the line. **Write the line
 so it names who does what: "they buy from them on a credit basis".**
+
+### Rule 12 — Count what he SEES, not what the data says
+
+Asked how many cards had been fixed, the first two numbers reported were wrong: "rows 380 → 320"
+and "about sixty repeats → none". Neither had been measured. Measured properly — by rendering
+every card twice, once with the code as it stood at the start of the day and once as it stands
+now, against the same data — the truth is **323 rows → 320**, and the repeated rows removed were
+on four cards: Sakthi Hi Tech (3), Manto, Vardhaman, Madhav Pipe.
+
+The "sixty" came from counting NOTES that pointed at the same firm and heading. Most of those
+never showed twice, because the old code already collapsed repeats that shared a town. The bug
+only surfaced when the two wordings left different leftovers behind, as on Sumit Industries.
+
+**A repeat in the data is not a repeat on the screen.** The only honest measure of a display
+change is to draw the card both ways and compare — anything counted off the notes overstates it.
+
+Two more traps met while measuring:
+
+- The old build did not expose the renderer, so the first run showed *every* card as changed
+  because the old side drew nothing at all. **A comparison that finds everything has found
+  nothing.**
+- Counting repeated names in the HTML missed most of them, because a firm with no card of its
+  own is drawn in bold rather than as a link. **The measure has to match how the thing is drawn.**
+
+### The day's tally
+
+Eleven cards rewritten, and twenty-two more that draw differently with their notes untouched.
+
+| Card | What was done |
+|---|---|
+| CRESCON | read whole — 28 notes to 12 lines and 3 person notes, notes box empty |
+| ABS FUIJICO | read whole — 26 to 6, five backwards lines removed; done twice, wiped once |
+| NRP PROJECTS | read whole — 15 to 8, and Paalsun Engineers untangled from it |
+| SUMIT INDUSTRIES | Crescon was backwards twice, now one line the right way round |
+| shree venus | part only — Venkatesan and Venkatesh merged, 19 notes still to read |
+| SAFE SPEED CARRIERS, BALAJI ROADLINES | the duplicate backwards line dropped |
+| VRT, LODHA, CCI, NASHIK GLOBE | the backwards line rewritten rather than deleted |
+
+Some cards GAINED rows, which is the other half of the work: Crescon 11→13, Urcc 1→3, Airmech
+0→2, Maniam Steels 7→8 — facts that had been stuck in the notes box only because the app did not
+know the word "supplies".
