@@ -55,6 +55,90 @@ const POST_ROLE = /\b(manager|officer|executive|director|m\.?d|ceo|partner|propr
 const NOT_STAFF = new RegExp('^(?=.*' + TRADE_ROLE.source.slice(2, -2) + ')(?!.*'
     + POST_ROLE.source.slice(2, -2) + ').*$', 'i');
 
+// ── one sentence, several firms ────────────────────────────────────────────────────────────
+// What the sentence is DOING decides the heading. Buying and hauling are the two he writes as
+// lists; a landmark ("FACTORY IS IN FONT OF JINDAL PIPE INDUSTRY GODOWN") names a firm and is
+// not a dealing at all, so a verb is required, never a name alone.
+const LIST_KINDS = [
+    { kind: 'They buy from', verb: /\b(purchas\w*|pure?las\w*|buy\w*|bought|tak(?:e|es|ing)|took|lift\w*|sourc\w*)\b/i,
+      how: (me) => me + ' buys from them' },
+    { kind: 'They carry for', verb: /\b(work(?:s|ing)? for|carr(?:y|ies|ied|ying) for|haul\w* for|deliver\w* for|doing (?:regular )?bus(?:s|)ines\w* (?:of|for|with))\b/i,
+      how: (me) => me + ' carries for them' },
+];
+
+/**
+ * His sentence, turned into one line per firm named in it.
+ *
+ * Only fires when the sentence has one of those verbs AND names at least two firms — one firm
+ * needs no splitting, and no verb means it is not a dealing.
+ */
+function splitTheList(card, findCard, world) {
+    const out = { made: 0, kind: '', asks: [] };
+    const me = bareName(card.company) || str(card.company);
+    const selfKey = contacts.firmNameKey(card.company);
+
+    // The vocabulary is every firm he has WRITTEN DOWN — the 178 cards and the 2,222 firms his
+    // phone book names. Cards alone found two of shree venus's four suppliers, because MST and
+    // VARDHMAN have no card yet; they are in his phone book, in his own hand, so no name here
+    // is invented.
+    const vocab = new Map();                 // distinctive-word signature -> the name to use
+    const offer = (name, hasCard) => {
+        const nm = str(name);
+        if (!nm || contacts.firmNameKey(nm) === selfKey) return;
+        const words = distinctiveWords(nm);
+        if (!words.length) return;
+        const sig = words.join(' ').toLowerCase();
+        const had = vocab.get(sig);
+        // A card beats a phone-book entry so the line links; failing that the SHORTEST name
+        // wins, because "VARDHMAN TUBES" and "VARDHMAN" share a signature and he wrote the
+        // short one. Picking the long one names a firm he did not mention.
+        if (!had || (hasCard && !had.hasCard)
+            || (hasCard === had.hasCard && nm.length < had.name.length)) {
+            vocab.set(sig, { name: nm, hasCard: hasCard, words: words });
+        }
+    };
+    ((world && world.all) || []).forEach(c => offer(c.company, true));
+    if (world && world.book && world.book.byKey) {
+        world.book.byKey.forEach(entry => offer((entry && entry.firm && entry.firm.company)
+            || (entry && entry.key), false));
+    }
+
+    for (let i = 0; i < (card.notes || []).length; i++) {
+        const text = str(card.notes[i].t);
+        if (!text || text.indexOf(' — ') >= 0) continue;      // already a relation line
+        const hit = LIST_KINDS.find(k => k.verb.test(text));
+        if (!hit) continue;
+        const found = [];
+        vocab.forEach((v) => {
+            const re = new RegExp('\\b' + v.words.map(escapeRe).join('[^A-Za-z0-9]{0,3}') + '\\b', 'i');
+            if (!re.test(text)) return;
+            if (found.some(f => contacts.firmNameKey(f) === contacts.firmNameKey(v.name))) return;
+            found.push(v.name);
+        });
+        if (found.length < 2) continue;
+        const said = hit.how(me) + '; "' + text.replace(/\s+/g, ' ').trim() + '"';
+        const kept = card.notes[i];
+        const lines = found.map(nm => ({ d: kept.d || today(), src: kept.src || '',
+                                        t: nm + ' — ' + said }));
+        card.notes.splice(i, 1, ...lines);
+        out.made = found.length;
+        out.kind = hit.kind;
+        // Any firm in his list he has NO card for keeps its name exactly as he wrote it, and
+        // that is the answer he already gave: "if a name doesnt have any other contact cards in
+        // google contact, let it stay as is in the card".
+        return out;
+    }
+    return out;
+}
+
+const escapeRe = (w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** A firm is identified by its distinctive words — PIPE and STEEL name half his book. */
+function distinctiveWords(name) {
+    return str(name).split(/[^A-Za-z0-9]+/)
+        .filter(w => w.length > 3 && !LIST_TRADE.test(w));
+}
+const LIST_TRADE = /^(pipe|pipes|steel|steels|tube|tubes|metal|metals|trading|traders?|industries|industry|enterprises?|corporation|agencies|agency|engineering|engineers?|systems?|solutions?|india|indian|pvt|private|ltd|limited|co|company|group|groups|and|the|of)$/i;
+
 /** Can this person still be rung after their row comes off THIS card? */
 function heldElsewhere(person, card, world) {
     const mine = ((person && person.phones) || [])
@@ -344,6 +428,29 @@ function prepare(card, world) {
         return !(rel && contacts.firmNameKey(bareName(rel.firm)) === selfKey);
     });
     if (before !== card.notes.length) did.push((before - card.notes.length) + ' notes that pointed the card at itself removed');
+
+    // 2b. ONE SENTENCE NAMING SEVERAL FIRMS BECOMES ONE LINE PER FIRM.
+    //
+    // He writes his suppliers as a list, in one breath:
+    //
+    //   "THEY HAVE REGULAR PURCHASES THE MATERIAL TO VARDHAMAN AGENCY, SUMIT INDUSTRIES, MST,
+    //    BOMBAY HARDWARE, SPARSH PIPES, CALCUTTA TUBE ON A CREDIT BASIS."
+    //   "HE WANT 90 DAYS CREDIT REGULARLY PURCHASE MATERIAL TO MST, BOMBAY HARDWARE, SREEVATSA"
+    //   "HE IS WORKING FOR MADHAV (RAMESH, KISHORE), BOMBAY H/W (RISHAB)"
+    //
+    // One sentence, six firms, and no heading — because a heading needs one firm. It was split
+    // by hand on Bombay Hardware and again on Crescon, and the sweep found it on seven more
+    // cards. **A shape that recurs is a rule, not a chore.**
+    //
+    // The verb decides the heading and the direction; HIS sentence goes in the bracket of every
+    // line it made, so nothing is paraphrased away. The note itself then has nothing left to
+    // say that the lines do not.
+    const listed = splitTheList(card, findCard, world);
+    if (listed.made) {
+        did.push('1 sentence naming ' + listed.made + ' firms became ' + listed.made
+            + ' lines under "' + listed.kind + '" — your wording kept in each bracket');
+    }
+    listed.asks.forEach(a => asks.push(a));
 
     // 3. Money terms are price rules, not remarks.
     const rules = (card.rules || []).slice();
