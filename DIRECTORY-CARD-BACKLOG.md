@@ -1331,3 +1331,48 @@ and Nashik Globe now read "JINDAL SAW LIMITED — <them> carries for them at Nas
 would have cut them off from Jindal Saw altogether.
 
 Four mutations applied to the guard, four caught.
+
+### Rule 10 — One row per firm per heading
+
+*His words, pointing at Sumit Industries: "why are there double entries?"*
+
+```
+THEY BUY FROM
+  Not said where    CRESCON PROJECTS SERVICE
+  CRESCON credit    CRESCON PROJECTS SERVICE  (supplies material to CRESCON on credit)
+```
+
+The card kept one row per firm **per town**, so the moment two wordings for one firm left
+different leftovers behind, the firm got two rows — and the second row was headed by a town
+called "CRESCON credit", made of the firm's own name and a payment word.
+
+**One row per firm per HEADING**, keeping whichever line actually says something. Across all 179
+cards this took the drawn rows from 380 to 320: Apollo had shown some of its dealers five times,
+Maniam Steels seven of its suppliers three times each.
+
+And three things that are not a town, in order of how often they turned up:
+
+- **the named firm's own words** — "BEE KAY TRANSPORT carries for them" left "BEE KAY carries";
+- **the card's own name, shortened** — Urcc's left "Also URC credit", so the check now looks at
+  every WORD of the leftover rather than the whole of it;
+- **money words** — credit, PDC, cheque, days, lakhs, crores, open, order, terms, basis.
+
+Last of all, a leftover the app does not recognise as a town but which reads like the start of a
+firm he has a card for is not a place either. **A town the app knows always wins** — Chennai is
+still Chennai though "Chennai Steel" is a firm.
+
+Four mutations applied, four caught. Two of the four escaped at first, and both escapes were
+faults in the TEST rather than the code: the town column is only drawn when a heading has more
+than one group, so a single-line card can never show what relPlace decided. The check had to ask
+relPlace directly.
+
+### Rule 11 — "supplier to them" says nothing about who supplies whom
+
+Sumit Industries' card read `CRESCON PROJECTS SERVICE — supplier to them`, which the card reads
+as CRESCON supplying Sumit. His Crescon page says the opposite: *"THEY HAVE REGULAR PURCHASES THE
+MATERIAL TO ... SUMIT INDUSTRIES ... ON A CREDIT BASIS"* — Crescon BUYS from Sumit, so on Sumit's
+card Crescon is a customer.
+
+The line had been written when Crescon's card was worked on, meant as "[this card is a] supplier
+to them", but the card reads a `how` as describing the firm NAMED in the line. **Write the line
+so it names who does what: "they buy from them on a credit basis".**

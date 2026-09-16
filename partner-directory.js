@@ -1844,12 +1844,18 @@
      * dealing, not a place, and heading a row with it gave thirty-three rows of one firm each.
      * Those facts are not lost: relExtra below keeps them showing as notes.
      */
-    function relPlace(how, p) {
-        var t = str(how)
+    function relPlace(how, p, firm) {
+        // The OTHER firm's own name is not a town either. "BEE KAY TRANSPORT carries for them"
+        // left "BEE KAY carries", and "supplies material to CRESCON on credit" left "CRESCON
+        // credit" — both stood as towns beside the very firm they name.
+        var theirs = firmWords(firm);
+        var t = (theirs.length
+            ? str(how).replace(new RegExp('\\b(' + theirs.join('|') + ')\\b', 'ig'), ' ')
+            : str(how))
             // "suppliers" was stripped here and "supplies" was not, so "supplies them with
             // pipe" left the word "supplies" standing where a town should be.
             .replace(/\b(dealers?|stockists?|distributors?|main|one|sub|transporters?|transport|coaters?|coating|galvanisers?|agents?|brokers?|suppl\w*|purchas\w*|pure?lasing|buys?|buying|bought)\b/ig, ' ')
-            .replace(/\b(for|them|in|at|on|by|to|with|the|an?|and|is|are|was|were|their|of|only|no|number|given|he|she|they|we|it|his|her|regular|regularly|materials?|pipes?|working|works|work|doing)\b/ig, ' ')
+            .replace(/\b(for|from|them|in|at|on|by|to|with|the|an?|and|is|are|was|were|their|of|only|no|number|given|he|she|they|we|it|his|her|regular|regularly|materials?|pipes?|working|works|work|doing|credit|cash|basis|days|pdc|cheque|payment|terms|open|orders?|price|rates?|lakhs?|crores?|party)\b/ig, ' ')
             .replace(/[^A-Za-z0-9& ]/g, ' ')
             .replace(/\s+/g, ' ')
             .trim();
@@ -1870,7 +1876,31 @@
         // it and Crescon grew a row headed with itself.
         var mine = nameKey(p && p.company);
         if (mine && k && (mine.indexOf(k) === 0 || k.indexOf(mine) === 0)) return '';
+        // The whole leftover is rarely just the name — Urcc's was "Also URC credit", with the
+        // card's own name shortened in the middle of it. Any WORD that is the firm's name, or
+        // the start of it, says this is a sentence about the dealing and not a town.
+        if (mine && t.split(/\s+/).some(function (w) {
+            var x = lower(w).replace(/[^a-z0-9]/g, '');
+            return x.length > 2 && (mine.indexOf(x) === 0 || x.indexOf(mine) === 0);
+        })) return '';
+        // Last of all: does it read like one of HIS FIRMS rather than a place? "MST", "EID" and
+        // "STEEL" were heading rows as though they were towns. A town the app actually knows
+        // always wins — Chennai stays Chennai even though "Chennai Steel" is a firm — so only a
+        // leftover it does NOT recognise is tested against his book.
+        if (!matchCity(t) && looksLikeOneOfHisFirms(t)) return '';
         return t;
+    }
+
+    /** Is this leftover the start of a firm he has a card for? Then it is not a town. */
+    function looksLikeOneOfHisFirms(t) {
+        var k = nameKey(t);
+        if (!k || k.length < 3) return false;
+        var names = D.contacts.map(function (c) { return c.company; })
+            .concat((D.pending || []).map(function (i) { return (i.preview || {}).company; }));
+        return names.some(function (nm) {
+            var n = nameKey(nm);
+            return n && n.length >= 3 && (n.indexOf(k) === 0 || k.indexOf(n) === 0);
+        });
     }
 
     /** Wording that carries no fact of its own — the plain way of saying a relationship. */
@@ -1928,25 +1958,37 @@
             var rel = splitRelationNote(n.t);
             if (!rel || !rel.firm || !rel.how) return;
             var k = relKind(rel.how, p);
-            if (!byKind[k]) { byKind[k] = { kind: k, places: [], byPlace: {} }; kinds.push(byKind[k]); }
+            if (!byKind[k]) { byKind[k] = { kind: k, places: [], byPlace: {}, seen: {} }; kinds.push(byKind[k]); }
             var g = byKind[k];
-            // A customer is not "in" anywhere — the wording is about the buying, not a town.
-            var placeName = (k === BUYERS ? '' : relPlace(rel.how, p)) || 'Not said where';
-            var pk = lower(placeName).replace(/[^a-z0-9]/g, '');
-            if (!g.byPlace[pk]) { g.byPlace[pk] = { place: placeName, firms: [], keys: {} }; g.places.push(g.byPlace[pk]); }
-            var slot = g.byPlace[pk];
             var fk = nameKey(rel.firm);
+            if (!fk) return;
             // What he wrote about this one, in brackets beside the name. His instruction:
             // "Add it in brackets next to the name under they sell to". Only when it says
             // something the heading does not — "SEVEN STAR AIRCON (BOMBAY HARDWARE HE PURCHASE
             // MATERIAL ON CREDIT BASIS)" is worth reading; "(transporter working for them)"
             // under the heading Transporters is not.
             var said = relExtra(rel, p) ? str(rel.how) : '';
-            if (!fk) return;
+            // ONE ROW PER FIRM PER HEADING. This used to be one row per firm per TOWN, so a
+            // firm written two ways got two rows the moment the two wordings left different
+            // leftovers behind — Sumit Industries showed CRESCON twice under "They buy from",
+            // once under "Not said where" and once under a town called "CRESCON credit". Apollo
+            // showed some of its dealers five times over.
+            var had = g.seen[fk];
+            if (had) {
+                // Keep whichever line actually says something, and prefer a real town to none.
+                if (!had.entry.said && said) { had.entry.said = said; had.entry.at = i; }
+                return;
+            }
+            // A customer is not "in" anywhere — the wording is about the buying, not a town.
+            var placeName = (k === BUYERS ? '' : relPlace(rel.how, p, rel.firm)) || 'Not said where';
+            var pk = lower(placeName).replace(/[^a-z0-9]/g, '');
+            if (!g.byPlace[pk]) { g.byPlace[pk] = { place: placeName, firms: [], keys: {} }; g.places.push(g.byPlace[pk]); }
+            var slot = g.byPlace[pk];
             // `at` is which note this came from, so the line can be typed into and corrected.
-            if (!slot.keys[fk]) { slot.keys[fk] = 1; slot.firms.push({ name: rel.firm, said: said, at: i }); return; }
-            // The same firm named twice — keep whichever line actually says something.
-            slot.firms.forEach(function (x) { if (nameKey(x.name) === fk && !x.said) { x.said = said; x.at = i; } });
+            var entry = { name: rel.firm, said: said, at: i };
+            slot.keys[fk] = 1;
+            slot.firms.push(entry);
+            g.seen[fk] = { slot: slot, entry: entry };
         });
         kinds = dropTheContradiction(kinds, byKind);
         if (!kinds.length) return '';
