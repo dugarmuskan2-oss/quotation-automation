@@ -1273,3 +1273,36 @@ reported that as the cards being finished. **They are different things, and the 
 one row stays exactly as it is. On Paalsun, **"not the same business but paalsum doesnt need a
 card"** — so its things came off NRP and were not made into a card. Nothing was destroyed: his
 `PAALSUN ENGINEERS INDIA PVT LTD (ALL DETAILS)` page still holds every word of it.
+
+### Rule 8 — A reference is not a price rule
+
+*His words, pointing at Crescon's terms box: "This is not a price rule".*
+
+```
+1. I TOOK REFERENCE FROM M/S MADRAS ENGG : (MR. YUSUF) THEY ARE WORKING WITH THEM
+   SINCE 4 YEARS & TOOK ONE BIG ORDER AGAINST LC FOR 1.5 CRORE & ALSO GIVEN MATERIAL
+   ON PLAN CREDIT.
+```
+
+It has LC and credit in it, so it reads like money. It is not: it is what MADRAS ENGG said
+about Crescon when vouching for them. **A price rule is a term of THIS firm's. A line naming
+another firm is about a dealing between two firms**, and it already sits in the bracket under
+"Referred by" — word for word, checked before the terms box was touched.
+
+The rule had been written down three cards earlier and simply not applied here.
+
+Swept across all 179 cards, against every firm in his phone book and not only firms with cards
+— "M/S MADRAS ENGG" has no card, so a card-only list could not see it. **Exactly one other
+card matched, and it was a false alarm**: Bombay Hardware's two rules name "BOMBAY H/W", which
+is itself. A firm naming itself is stating its own terms.
+
+### And the save guard is no longer something to build later
+
+The ABS FUIJICO work — 26 notes down to 6, five wrong-direction lines removed, the page-title
+person undone — **was wiped within the hour.** Approving the card wrote back a copy the browser
+had been holding since before the fix. Crescon and NRP, approved from a fresh view, survived.
+
+`POST /contacts/pending/preview` and the approve route both replace the WHOLE card from the
+client's copy, with nothing checking that the copy is current. *He said "BUILD IT WHEN IT COMES
+TO IT".* It has come to it twice now — Bombay Hardware in September, ABS today — and the second
+time it destroyed an hour of reading his pages by hand.
