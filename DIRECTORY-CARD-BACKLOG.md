@@ -1306,3 +1306,28 @@ had been holding since before the fix. Crescon and NRP, approved from a fresh vi
 client's copy, with nothing checking that the copy is current. *He said "BUILD IT WHEN IT COMES
 TO IT".* It has come to it twice now — Bombay Hardware in September, ABS today — and the second
 time it destroyed an hour of reading his pages by hand.
+
+### Rule 9 — One firm cannot be both the lorry and the load
+
+Safe Speed Carriers' card read:
+
+```
+TRANSPORTERS     JINDAL SAW LIMITED  (Transporter listed under Jindal Saw (Nasik))
+THEY CARRY FOR   JINDAL SAW LIMITED  (SAFE SPEED CARRIERS carries for them at Nasik)
+```
+
+The same fact, written from both ends, and one of the two says the opposite of the truth.
+*His words: "they only carry for jsl".*
+
+**The line that NAMES who carries for whom knows the direction; a bare "transporter" only knows
+the trade.** So when one firm is under both headings, the carries-for line wins and the other
+is not shown. The notes are untouched — this is about what the card draws.
+
+His Jindal Saw page has a section headed TRANSPORTER listing seven lorry firms. Every one of
+them got a card, and every card was given the same backwards line. Two of them already had the
+honest line beside it, so the wrong one was simply dropped; the other four had nothing to fall
+back on, so the line was **rewritten rather than deleted** — VRT Logistics, Lodha Roadways, CCI
+and Nashik Globe now read "JINDAL SAW LIMITED — <them> carries for them at Nasik". Deleting
+would have cut them off from Jindal Saw altogether.
+
+Four mutations applied to the guard, four caught.

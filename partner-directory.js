@@ -1793,6 +1793,9 @@
             .map(function (w) { return w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); });
     }
     var BUYERS = 'They sell to';
+    // The two directions of hauling, named so the contradiction between them can be spotted.
+    var CARRIES_FOR = 'They carry for';
+    var HAULED_BY = 'Transporters';
     var REL_KINDS = [
         // A dealer of theirs is a firm they sell to. *His words: "they are also who they sell
         // to".* Apollo's regional dealers sat in a heading of their own as though that were a
@@ -1803,8 +1806,8 @@
         // Kay Transport's card read "Transporters: Crescon", because Crescon's wording — "CRESCON
         // REGULAR TRANSPORT" — was copied onto Bee Kay unchanged. This heading has to come
         // before Transporters, since a carrier's NAME usually has "transport" in it.
-        [/carr(?:y|ies|ied)\s+for|hauls?\s+for|lift[s]?\s+for/i, 'They carry for'],
-        [/transport|lorry|roadline|carrier|cargo|freight/i, 'Transporters'],
+        [/carr(?:y|ies|ied)\s+for|hauls?\s+for|lift[s]?\s+for/i, CARRIES_FOR],
+        [/transport|lorry|roadline|carrier|cargo|freight/i, HAULED_BY],
         [/coat|galvanis|galvaniz/i, 'Coating'],
         [/test|inspect|lab\b/i, 'Testing'],
         [/agent|broker/i, 'Agents'],
@@ -1889,6 +1892,36 @@
             .filter(function (w) { return w && !drop[w] && !REL_PLAIN.test(w); }).join(' ').trim();
     }
 
+    /**
+     * One firm cannot be both the lorry and the load.
+     *
+     * Safe Speed Carriers read:
+     *     Transporters    — JINDAL SAW LIMITED (Transporter listed under Jindal Saw (Nasik))
+     *     They carry for  — JINDAL SAW LIMITED (SAFE SPEED CARRIERS carries for them at Nasik)
+     *
+     * The same fact, written from both ends, and one of the two says the opposite of the truth.
+     * *His words: "they only carry for jsl".* The line that NAMES who carries for whom is the
+     * one that knows the direction; a bare "transporter" only knows the trade. So when a firm
+     * is under both, the carries-for line wins and the other goes.
+     *
+     * The notes are untouched — this is about what the card shows.
+     */
+    function dropTheContradiction(kinds, byKind) {
+        var carry = byKind[CARRIES_FOR], hauled = byKind[HAULED_BY];
+        if (!carry || !hauled) return kinds;
+        var named = {};
+        carry.places.forEach(function (s) {
+            s.firms.forEach(function (f) { named[nameKey(f.name)] = 1; });
+        });
+        hauled.places.forEach(function (s) {
+            s.firms = s.firms.filter(function (f) { return !named[nameKey(f.name)]; });
+        });
+        hauled.places = hauled.places.filter(function (s) { return s.firms.length; });
+        if (hauled.places.length) return kinds;
+        delete byKind[HAULED_BY];
+        return kinds.filter(function (g) { return g !== hauled; });
+    }
+
     function relationsBlock(p) {
         var kinds = [], byKind = {};
         (p.notes || []).forEach(function (n, i) {
@@ -1915,6 +1948,7 @@
             // The same firm named twice — keep whichever line actually says something.
             slot.firms.forEach(function (x) { if (nameKey(x.name) === fk && !x.said) { x.said = said; x.at = i; } });
         });
+        kinds = dropTheContradiction(kinds, byKind);
         if (!kinds.length) return '';
         var total = kinds.reduce(function (a, g) {
             return a + g.places.reduce(function (b, s) { return b + s.firms.length; }, 0);
@@ -4050,6 +4084,7 @@
                  // will disagree for ever unless they are the same reader.
                  splitRelationNote: splitRelationNote, relKind: relKind, relPlace: relPlace,
                  relExtra: relExtra, isRelationNote: isRelationNote, buysFromThem: buysFromThem,
+                 relationsBlock: relationsBlock, dropTheContradiction: dropTheContradiction,
                  _state: function () { return { S: S, D: D }; } },
     };
 })();
