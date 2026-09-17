@@ -1477,3 +1477,47 @@ that actually want his eyes.
 And a card he has APPROVED leaves the waiting list altogether, so it cannot appear in Recent
 changes however it is stamped — Crescon, ABS Fuijico, NRP Projects, shree venus, Sumit
 Industries, Maniam Steels, Safe Speed Carriers and Balaji Roadlines are all in the Directory now.
+
+### Rule 16 — A note naming a person on the card belongs on that person
+
+*His words, pointing at Kamachi: "why are these not on the contact notes?"*
+
+```
+S.JAYA PRAKASH: HE SITS IN FACTORY AND DIRECTLY COORDINATING WITH MR. SHAHJAN AT MOUNT ROAD OFFICE
+SIVA KUMAR: MEENAKSHI MAM GIVE THIS NUMBER NAME NOT MENTION
+```
+
+He writes them `<NAME> : <what he wrote>`, and that is the only shape worth reading. The first
+draft also pulled a name out of a trailing bracket and dragged in four things a bracket is not:
+`CRESCON PROJECTS SERVICE — not having business ... (MR. RAVI)` is about a FIRM, and
+`( MM ISSUES D.A TO LOGISTIK)` is nobody at all.
+
+Three guards earned in one dry run:
+
+- **a note that reads as a relation is never a person's note**, whatever else it says;
+- **a town is not somebody.** `CHENNAI OFFICE : ( MM ISSUES D.A TO LOGISTIK)` is about the
+  office — and Maharashtra Seamless has a person row literally called "chennai", a branch that
+  became a person, waiting to catch it;
+- **a remark already on the man's row is not added again.**
+
+### And a rule I got wrong before I got it right
+
+Rule 13 waved a LABEL past the name check, on the reasoning that a label is not a name and so
+cannot contradict one. That was wrong, and it cost two men.
+
+Google holds one Kamachi contact as `Client JAYA PRAKASH ( KAMACHI  TMX BARS` carrying
+8939812746, and another as `Client Varadharajan (KAMACHI)` carrying BOTH 8939977379 and
+8939729289. Each label therefore BRIDGED two men his page lists separately — S.JAYA PRAKASH and
+SIVA KUMAR share one number, K. MURUGAN and VARADARAJAN the other — and the merge took each pair
+as one person. Eften lost its CEO the same way: `Captain op Dua (Eften)` shares 9382928989 with
+Suriya.
+
+**Only a label with NO name in it is waved through** — a mailbox like "Purchase | Fire Trix", or
+one that reduces to nothing. A label with a man's name inside it must still match a name.
+
+Both men were put back from his own pages, with their roles, their numbers and their emails
+returned to the right rows, under a guard that no number or address may leave either card.
+
+The lesson underneath: **a rule that merges records has to be tried against the data before it
+is trusted, not after.** The mutation tests all passed — they proved the rule did what I meant.
+They could not tell me what I meant was wrong.

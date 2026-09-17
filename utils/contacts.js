@@ -1030,11 +1030,23 @@ function canBeSamePerson(a, b) {
     // Compared with the punctuation and spacing taken out, or "Mr. Madan" and "MR.MADAN" are
     // two men — even when they share a phone number, which is how CCI and Balaji Roadlines
     // each ended up with the same person listed twice.
+    // A LABEL used to be waved through here, on the reasoning that a label is not a name and so
+    // cannot contradict one. But "Client JAYA PRAKASH ( KAMACHI  TMX BARS" is a label with a
+    // man's name inside it, and on Kamachi's card it shares 8939812746 with SIVA KUMAR — two
+    // different men his page lists separately. Waving it through merged them.
+    //
+    // So only a label with NO name in it is waved through: a mailbox like "Purchase | Fire Trix",
+    // or one that reduces to nothing at all. Anything with a name in it must match a name.
     const an = personNameKey(a.name), bn = personNameKey(b.name);
-    if (an && bn && an !== bn && !looksLikeALabel(a.name) && !looksLikeALabel(b.name)
+    if (an && bn && an !== bn && !isNamelessLabel(a.name) && !isNamelessLabel(b.name)
         && !sameManWrittenTwoWays(an, bn)) return false;
     const ab = lower(str(a.branch)), bb = lower(str(b.branch));
     return !(ab && bb && ab !== bb);
+}
+
+/** A label with no person's name in it — a shared mailbox, or a firm written where a man goes. */
+function isNamelessLabel(name) {
+    return /[|@]/.test(str(name)) || !personNameKey(name);
 }
 
 /**
