@@ -1717,3 +1717,57 @@ why the firms deal — but inventing it by rewording his sentence is how the car
 And the check that caught it was not any of the four. It was putting the card **beside his page**
 and reading both. The four checks find a line that can be read two ways; only his page finds a
 line that is simply wrong.
+
+## The second ten
+
+Pslltd · Sreevatsa Tube · Lakshmi Saraswathi TOT · Engineering Tools Supply · Surya Pipe Traders
+· Savoy Engineers · Jindal Pipe Industries · S&S · Ali Steel and Tubes · Khera Pipe.
+
+**Firms missing from cards entirely, found by reading his pages:**
+
+| Card | His page says he buys from | The card had |
+|---|---|---|
+| Engineering Tools Supply | BOMBAY HW / MADHAV PIPE / RAJ ENTERPRISE / CITY ENTERPRISE / STEEL TUBE SOUTH | one |
+| Surya Pipe Traders | BOMBAY H/W, JINDAL PIPE INDUSTRIES, MAHAVIR TUBE | one |
+| Savoy Engineers | BOMBAY HW, TAHER TUBE, JINDAL PIPE | one |
+
+Engineering Tools Supply's page is headed **GOODWILL TRADING C0** — their old name, now on the
+card as "Also written as". Without it the page reads as somebody else's.
+
+### Three faults in the app, each found by one card
+
+**"Dealer" beats "supplies", and decided it wrongly.** Apollo's dealers each carried "Dealer for
+them in Tamilnadu & Chennai". The word `dealer` is tested before the word `suppl`, so a line
+saying plainly that *Apollo supplies THEM* still came out as "They sell to" — and both cards then
+claimed to be the seller. **"<THEM> supplies <THIS CARD>" now settles it before anything else
+gets a say.**
+
+**"transports for" was missing while "carries for" was there.** So "LAKSHMI SARASWATHI TOT
+transports for BOMBAY HARDWARE" fell through to plain `transport` and came out as Bombay Hardware
+being THEIR transporter. His TR(1) LOCAL TRANSPORT page lists Lakshmi Saraswathi as the lorry
+firm; it is the other way round.
+
+**A firm can be named in plain sight and not be found.** `S&S` is two single letters and `ALI
+STEEL AND TUBES CO` is three trade words and a three-letter name — both come out with NO
+distinctive words at all, so every test that asks "is this firm named here?" said no. The whole
+name is matched instead when there are no distinctive words to use.
+
+### And three faults in the CHECKER, not the cards
+
+Every one of them raised a false alarm that looked exactly like a real fault:
+
+- it called `relKind` without the firm, so it got the old answer and flagged four cards that were
+  already right;
+- its list of opposite headings still held the old names, `Transporters` / `They carry for`;
+- its "does this line name both sides?" test had the S&S blindness above.
+
+**A checker is code, and code is wrong until it is checked too.** Each of these would have had me
+"fixing" a card that had nothing wrong with it.
+
+### Left alone on purpose
+
+**Eighteen more cards carry the same backwards Apollo line** — Shiv Shakthi, Santosh Steel, AMK,
+Market Metal Zone, R&V Tube Sales, Shankara, Calcutta Tube Centre, Kriscol, MKS Metal Roofing,
+Shri Lakshmi, Shri Shakthi, Ratan Iron, Sri Ram Steel, Tata, Trichy AMK, Sankara and two more.
+*His instruction: "I want you to fix only those and I am checking only those."* They are listed
+for him rather than changed behind his back.

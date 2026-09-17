@@ -1808,7 +1808,10 @@
         // Kay Transport's card read "Transporters: Crescon", because Crescon's wording — "CRESCON
         // REGULAR TRANSPORT" — was copied onto Bee Kay unchanged. This heading has to come
         // before Transporters, since a carrier's NAME usually has "transport" in it.
-        [/carr(?:y|ies|ied)\s+for|hauls?\s+for|lift[s]?\s+for/i, CARRIES_FOR],
+        // "transports for" was missing while "carries for" was there, so a line saying plainly
+        // that LAKSHMI SARASWATHI TOT transports for Bombay Hardware fell through to the next
+        // pattern — plain "transport" — and came out as Bombay Hardware being THEIR transporter.
+        [/carr(?:y|ies|ied)\s+for|transports?\s+for|hauls?\s+for|lift[s]?\s+for|deliver(?:s|ing)?\s+for/i, CARRIES_FOR],
         [/transport|lorry|roadline|carrier|cargo|freight/i, HAULED_BY],
         [/coat|galvanis|galvaniz/i, 'Coating'],
         [/test|inspect|lab\b/i, 'Testing'],
@@ -1850,10 +1853,39 @@
      * A heading is one of the headings. A line that fits none of them is a NOTE — which is
      * honest, and leaves it where he can see it and say where it really goes.
      */
-    function relKind(how, p) {
+    function relKind(how, p, firm) {
+        // "<THEM> supplies <THIS CARD>" settles it before anything else gets a say. Apollo's
+        // dealers each carried "Dealer for them in Tamilnadu & Chennai", and the word "dealer"
+        // is tested before the word "supplies" — so a line saying plainly that Apollo supplies
+        // THEM still came out as "They sell to", and both cards claimed to be the seller.
+        if (suppliesThisCard(how, p, firm)) return 'They buy from';
         if (buysFromThem(how, p)) return BUYERS;
         var hit = REL_KINDS.find(function (k) { return k[0].test(str(how)); });
         return hit ? hit[1] : '';
+    }
+
+    /** Does the wording say the OTHER firm supplies this one, in that order? */
+    function suppliesThisCard(how, p, firm) {
+        var t = str(how);
+        var at = t.search(/\bsuppl\w*/i);
+        if (at < 0) return false;
+        return namedIn(t.slice(0, at), firm) && namedIn(t.slice(at), p && p.company);
+    }
+
+    /**
+     * Is this firm named in this piece of text?
+     *
+     * Normally its distinctive words do it. But "S&S" is two single letters and "ALI STEEL AND
+     * TUBES CO" is three trade words and a three-letter name — both come out with NO distinctive
+     * words at all, so a firm can be named in plain sight and not be found. For those the whole
+     * name is matched instead, punctuation and spacing ignored.
+     */
+    function namedIn(text, name) {
+        var words = firmWords(name);
+        if (words.length) return new RegExp('(' + words.join('|') + ')', 'i').test(text);
+        var whole = lower(name).replace(/[^a-z0-9]/g, '');
+        if (whole.length < 2) return false;
+        return lower(text).replace(/[^a-z0-9]/g, '').indexOf(whole) >= 0;
     }
 
     /**
@@ -1977,7 +2009,7 @@
         (p.notes || []).forEach(function (n, i) {
             var rel = splitRelationNote(n.t);
             if (!rel || !rel.firm || !rel.how) return;
-            var k = relKind(rel.how, p);
+            var k = relKind(rel.how, p, rel.firm);
             if (!k) return;                 // fits no heading — it stays a note, see relKind
             if (!byKind[k]) { byKind[k] = { kind: k, places: [], byPlace: {}, seen: {} }; kinds.push(byKind[k]); }
             var g = byKind[k];
@@ -2055,7 +2087,7 @@
         // But only if it REACHED a heading. A line that fits none of them is drawn nowhere
         // above, so hiding it here would make it vanish off the card altogether.
         var rel = splitRelationNote(n && n.t);
-        return !!(rel && rel.firm && rel.how && relKind(rel.how, p));
+        return !!(rel && rel.firm && rel.how && relKind(rel.how, p, rel.firm));
     }
 
     /**
