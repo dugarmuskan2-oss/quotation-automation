@@ -1572,3 +1572,39 @@ thrown a name away, so they were joined by hand and both kept.
 But neither had anywhere to GO. **Same people** is a heading now: not a customer, not a supplier
 — the same men behind two firms, which is worth knowing before quoting either of them. It catches
 Siddachal's "Sister concern of metal trading corporation" and Arudra's "IGP GROUP COMPANY" too.
+
+### Rule 19 — Why the CONTACT notes kept coming back
+
+*His words: "what about the contacts notes — why is that error happening repeatedly?"*
+
+Two causes, and only one of them was his data.
+
+**The origin is finished.** The note field on a PERSON is days old — it was added for "NOTE: WHO
+VISITED OUR OFFICE ON 26.7.2019 (Bhanu Srivastava)" on Apollo. Every reading of his phone book
+before that had **nowhere to put a fact about a man**, so all of them went into the FIRM's notes
+box. No future reading will do it again.
+
+**What kept it alive afterwards was me.** The automatic move read exactly ONE shape,
+`<NAME> : <remark>`. He writes four:
+
+```
+MR. ANIL SUGLA - LEAVE ON OFFICE                            NAME - remark
+NOTE: WHO VISITED OUR OFFICE ON 26.7.2019 (Bhanu Srivastava) remark (NAME)
+DHANESH SIR MET HIM ON 10.5.2019 (MR.ANAND KUMAR)            remark (NAME)
+(3) Spoke to Umesh on 26.7.11 & took the reference.          met/spoke to NAME
+```
+
+The other three were moved by hand, one card at a time, whenever he pointed at one. **The same
+failure as Rule 17: a fix that runs on one shape, on one card, is not a fix.**
+
+Swept across every card: **five left in the whole book**, and all five are now on the man they
+are about — Bhanu Srivastava, Anil Sugla, Anand Kumar, Umesh, Dhayal. The count is zero.
+
+Two things learned building it:
+
+- **Try every shape, not the first that parses.** Apollo's note matched `NAME : remark` first,
+  with a man called "NOTE" — and stopped there, so the real name sitting in the bracket at the
+  end was never looked for. All shapes are tried now, and the first whose name IS one person on
+  the card wins.
+- **His own label for a note is not a name.** NOTE, REMARK, ADDRESS, CONTACT, BOARD NO and the
+  rest are how he heads a line, and every one of them can parse as a person.
