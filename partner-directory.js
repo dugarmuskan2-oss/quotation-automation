@@ -676,6 +676,16 @@
                 D.saveWhat = Array.isArray(what) ? what : [];
                 D.failedAction = typeof what === 'string' ? what : '';
                 failed = true;
+                // A card changed elsewhere is the ONE failure he can do nothing about from
+                // where he is standing. Telling him to "close it and open it again" and then
+                // leaving the old copy on screen is not an instruction, it is a dead end — so
+                // the newer version is fetched for him and the card redrawn on it.
+                if (/changed somewhere else/i.test(String(e.message))) {
+                    D.saveError = 'That card had been changed since you opened it, so nothing was'
+                        + ' overwritten. The newer version is on screen now — have a look, and do'
+                        + ' it again if it still needs doing.';
+                    loadDirectory(render);
+                }
             })
             .then(function (d) { if (always) always(); if (always || failed) render(); return d; });
     }

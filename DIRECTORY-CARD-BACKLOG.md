@@ -1771,3 +1771,29 @@ Market Metal Zone, R&V Tube Sales, Shankara, Calcutta Tube Centre, Kriscol, MKS 
 Shri Lakshmi, Shri Shakthi, Ratan Iron, Sri Ram Steel, Tata, Trichy AMK, Sankara and two more.
 *His instruction: "I want you to fix only those and I am checking only those."* They are listed
 for him rather than changed behind his back.
+
+### The save guard's own dead end
+
+*He hit it on Sakthi Hi Tech and said "I think this is a bug".*
+
+It was not a bug — his tab had been open since before that card was corrected, so the copy he
+was approving was the old one. **The guard did exactly what it exists for, and the proof is that
+Sakthi Hi Tech is now in his directory with the corrected three notes rather than the eleven.**
+Had it not refused, his older copy would have gone in and the work would have been gone again,
+silently, the way ABS Fuijico went.
+
+**But the message was a dead end.** "Close it and open it again to see the newer version" is an
+instruction he cannot follow from where he is standing, and the stale card stays on screen while
+he reads it. A refusal that leaves him stuck is only half a guard.
+
+So a refusal now fetches the newer version for him and redraws the card on it:
+
+> That card had been changed since you opened it, so nothing was overwritten. The newer version
+> is on screen now — have a look, and do it again if it still needs doing.
+
+Checked end to end: a save built on version 1 while the card is at 2 is refused with 409, the
+card on screen comes back at version 2, and the next attempt goes through.
+
+**And I made it worse than it needed to be.** Moving all 132 waiting cards on a version at once
+was right for safety and wrong for him — every card he had open went stale in the same instant.
+A scripted change should move on only the cards it actually writes.
