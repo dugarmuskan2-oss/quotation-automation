@@ -1458,3 +1458,22 @@ which would have refused every merge there is — folding two rows into one is t
 
 Five mutations applied, five caught — but only after the check was made to assert WHICH name
 survived. Checking the count alone let three through: the merge happened, and the label won.
+
+### Rule 15 — A card changed without being stamped never reaches his eyes
+
+*His words: "i dont see the ones you changed on top".*
+
+Recent changes is sorted on `freshened`, newest first. `tools/prepare-card.js` sets it; every
+script written by hand today wrote the card and did not. So the work was done, saved, correct —
+and the list never moved, which to him is indistinguishable from nothing having happened.
+
+**Any script that writes a card stamps `freshened`.** Doing the work is only half of it; he has
+to be able to find it.
+
+Only the cards whose CONTENT was rewritten are stamped. The ninety-five provenance notes that
+became headings touched about fifty cards, and putting all fifty in front would bury the ones
+that actually want his eyes.
+
+And a card he has APPROVED leaves the waiting list altogether, so it cannot appear in Recent
+changes however it is stamped — Crescon, ABS Fuijico, NRP Projects, shree venus, Sumit
+Industries, Maniam Steels, Safe Speed Carriers and Balaji Roadlines are all in the Directory now.
