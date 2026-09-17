@@ -40,6 +40,7 @@ const {
     removalPendingItem, removalsFor,
     companyFromEmail, changeEntry, pushChange, diffLines,
     undoChange, sanitizePendingItem, extractionPrompt, findsFromExtraction,
+    saveIsStale, bumpRev,
 } = contactsLib;
 
 const { normalizeRole, sanitizePerson, sanitizePeople, firmKeyOf } = contactsLib._test;
@@ -3186,5 +3187,60 @@ describe('a removal in the queue', () => {
     test('a card with nothing waiting gets an empty list, not everything', () => {
         expect(removalsFor([], 'p_1')).toEqual([]);
         expect(removalsFor(null, 'p_1')).toEqual([]);
+    });
+});
+
+/**
+ * A card saved from a browser that never saw the last change.
+ *
+ * Both the review save and Approve send back the WHOLE card as the browser holds it, so a tab
+ * opened an hour ago carries an hour-old copy. Bombay Hardware lost 48 headings and 2 rules to
+ * this in September; ABS Fuijico went from 6 notes back to 26 on 16 September, an hour after
+ * being put right. Neither showed an error — the work was simply gone.
+ */
+describe('a stale copy must not overwrite a fresh one', () => {
+    test('a card never written yet accepts anything — there is nothing to lose', () => {
+        expect(saveIsStale({ rev: 0 }, undefined)).toBe(false);
+        expect(saveIsStale({}, undefined)).toBe(false);
+        expect(saveIsStale({ rev: 0 }, 7)).toBe(false);
+    });
+
+    test('the version the browser loaded must match the one stored', () => {
+        expect(saveIsStale({ rev: 3 }, 3)).toBe(false);
+        expect(saveIsStale({ rev: 3 }, '3')).toBe(false);   // a form field arrives as text
+        expect(saveIsStale({ rev: 3 }, 2)).toBe(true);
+        expect(saveIsStale({ rev: 3 }, 4)).toBe(true);      // ahead is as wrong as behind
+    });
+
+    test('a page too old to send a version is refused once the card has been written', () => {
+        expect(saveIsStale({ rev: 1 }, undefined)).toBe(true);
+        expect(saveIsStale({ rev: 1 }, null)).toBe(true);
+        expect(saveIsStale({ rev: 1 }, '')).toBe(true);
+    });
+
+    test('writing the card moves the version on, so every open copy goes stale', () => {
+        const item = { rev: 4 };
+        bumpRev(item);
+        expect(item.rev).toBe(5);
+        expect(saveIsStale(item, 4)).toBe(true);
+        expect(saveIsStale(item, 5)).toBe(false);
+    });
+
+    test('a card with no version at all starts at one, not at nothing', () => {
+        const item = {};
+        bumpRev(item);
+        expect(item.rev).toBe(1);
+        // ...and now an older page, which sends nothing, can no longer overwrite it.
+        expect(saveIsStale(item, undefined)).toBe(true);
+    });
+
+    test('the version survives being read back off the queue', () => {
+        expect(sanitizePendingItem({ rev: 6 }).rev).toBe(6);
+        expect(sanitizePendingItem({ rev: '6' }).rev).toBe(6);
+        // Rubbish is not a version. It must not read as one, or a save built on nonsense
+        // would be waved through.
+        expect(sanitizePendingItem({ rev: 'abc' }).rev).toBe(0);
+        expect(sanitizePendingItem({ rev: -3 }).rev).toBe(0);
+        expect(sanitizePendingItem({}).rev).toBe(0);
     });
 });

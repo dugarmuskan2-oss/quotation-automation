@@ -41,6 +41,15 @@ function conflictMessage(clash) {
         + '. One address belongs to one company — remove it there first, or add this person to that card.';
 }
 
+// Refusing a save is only useful if it says WHY and what to do. "Saved" that silently threw the
+// work away is what this replaces, so the message names the card and asks for one plain action.
+function staleMessage(item) {
+    const name = String(((item && item.preview) || {}).company || '').trim();
+    return 'This card was changed somewhere else while you had it open'
+        + (name ? ' — ' + name : '') + '. Nothing was overwritten.'
+        + ' Close it and open it again to see the newer version, then make your change on that.';
+}
+
 function str(v) { return String(v == null ? '' : v).trim(); }
 
 /**
@@ -463,6 +472,12 @@ module.exports = function createContactsRouter({ storage, openai }) {
             const items = await loadPending();
             const item = items.find(x => x.id === String(id || ''));
             if (!item) return res.status(404).json({ error: 'That pending item was not found — it may already be handled.' });
+            // Approving sends the browser's whole card into the DIRECTORY. ABS Fuijico was put
+            // right and then approved from a tab holding the copy from before, and went back to
+            // 26 notes. The queue item stays put on a refusal, so nothing is half-applied.
+            if (contactsLib.saveIsStale(item, (req.body || {}).rev)) {
+                return res.status(409).json({ error: staleMessage(item) });
+            }
             const dir = await loadDirectory();
             const before = dir.contacts.find(p => p && p.id === (partner && partner.id)) || null;
             // Only what the review screen shows, for a card that already exists. Approving is
@@ -497,6 +512,12 @@ module.exports = function createContactsRouter({ storage, openai }) {
             const items = await loadPending();
             const item = items.find(x => x.id === id);
             if (!item) return res.status(404).json({ error: 'That item is no longer waiting — it may already be handled.' });
+            // This route replaces the WHOLE card with the browser's copy, so a tab holding an
+            // old one wipes everything done since (CLAUDE.md check #2). Refuse rather than
+            // overwrite — see the note on `rev` in utils/contacts.js.
+            if (contactsLib.saveIsStale(item, (req.body || {}).rev)) {
+                return res.status(409).json({ error: staleMessage(item) });
+            }
             item.preview = contactsLib.sanitizePartner((req.body || {}).preview);
             item.preview.id = 'p_new_' + item.id;
             const matchId = str(((req.body || {}).preview || {}).matchId);
@@ -508,8 +529,9 @@ module.exports = function createContactsRouter({ storage, openai }) {
             if (Array.isArray(asked.asks)) item.asks = asked.asks.slice(0, 40);
             if (Array.isArray(asked.settled)) item.settled = asked.settled.map(str).filter(Boolean).slice(0, 200);
             if (Array.isArray(asked.answers)) item.answers = asked.answers.slice(0, 200);
+            contactsLib.bumpRev(item);
             await savePending(items);
-            res.json({ ok: true });
+            res.json({ ok: true, rev: item.rev });
         } catch (error) {
             res.status(500).json({ error: 'Could not keep that correction: ' + error.message });
         }

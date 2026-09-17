@@ -1817,8 +1817,42 @@ function sanitizePendingItem(input) {
         // Add tab can mark it and put it first — the whole point of doing the reading is that
         // the owner can see which cards it changed.
         freshened: str(src.freshened),
+        // WHICH VERSION OF THIS CARD THE BROWSER IS HOLDING.
+        //
+        // Both the review save and Approve send back the WHOLE card as the browser has it. A
+        // tab that loaded the card an hour ago therefore carries an hour-old copy, and sending
+        // it wipes everything done since. That is not theory: Bombay Hardware lost 48 headings
+        // and 2 rules in September, and ABS Fuijico went from 6 notes back to 26 today, an hour
+        // after being put right.
+        //
+        // The number goes up every time the card is written. A save carrying an older number is
+        // refused, and the owner is told to open the card again — so the worst case is that he
+        // does the typing twice, instead of losing work he cannot see has gone.
+        rev: Math.max(0, Math.floor(Number(src.rev) || 0)),
         receivedAt: str(src.receivedAt) || new Date().toISOString(),
     };
+}
+
+/**
+ * Is the copy being saved built on the version that is stored?
+ *
+ * `sent` is what the browser says it loaded. Undefined means an older page that does not know
+ * about this yet — those are let through while the card has never been written, and refused
+ * once it has, because a card that has changed is exactly the one worth protecting.
+ */
+function saveIsStale(item, sent) {
+    const have = Math.max(0, Math.floor(Number(item && item.rev) || 0));
+    if (!have) return false;                       // never written — nothing to overwrite
+    if (sent === undefined || sent === null || sent === '') return true;
+    return Math.floor(Number(sent) || 0) !== have;
+}
+
+/** The card has been written — anything holding the old number is now out of date. */
+function bumpRev(item) {
+    if (item && typeof item === 'object') {
+        item.rev = Math.max(0, Math.floor(Number(item.rev) || 0)) + 1;
+    }
+    return item;
 }
 
 /** The prompt that turns an email + attachment text into directory findings. */
@@ -2288,6 +2322,8 @@ module.exports = {
     diffLines,
     undoChange,
     sanitizePendingItem,
+    saveIsStale,
+    bumpRev,
     extractionPrompt,
     findsFromExtraction,
     firmsForPrompt,

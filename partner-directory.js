@@ -855,7 +855,9 @@
     function savePendingPreview(p) {
         var item = D.pending.filter(function (x) { return x.preview && x.preview.id === p.id; })[0];
         if (!item) return;
-        return postJson('/contacts/pending/preview', { id: item.id, preview: p },
+        // The version this browser loaded. The server refuses a save built on an older one
+        // rather than overwriting what it cannot see — see `rev` in utils/contacts.js.
+        return postJson('/contacts/pending/preview', { id: item.id, preview: p, rev: item.rev },
                         null, null, 'Saving your corrections');
     }
 
@@ -2834,7 +2836,8 @@
                     : 'Saved. I have your answer: "' + answer + '".')
                 : 'Left as it is, and it will not ask again.';
             postJson('/contacts/pending/preview',
-                { id: pi.id, preview: p, asks: pi.asks, settled: pi.settled, answers: pi.answers },
+                { id: pi.id, preview: p, asks: pi.asks, settled: pi.settled,
+                  answers: pi.answers, rev: pi.rev },
                 function () { loadDirectory(render); }, null, 'Saving your answer');
         };
         var forRow = function (el, then) {
@@ -3756,7 +3759,7 @@
                 partner.id = partner.matchId || '';
                 delete partner.matchId;
                 S.busy[id] = true; S.approving = id; render();
-                postJson('/contacts/pending/approve', { id: id, partner: partner }, function () {
+                postJson('/contacts/pending/approve', { id: id, partner: partner, rev: pi.rev }, function () {
                     S.openPending = null; S.openId = null;
                     // The row must stay locked until the refreshed list is on screen. Freeing
                     // it in the tail of the request put a live "Approve" button back on a row

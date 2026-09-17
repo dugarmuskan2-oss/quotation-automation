@@ -1649,3 +1649,44 @@ Mr. Prakash, Chairman of Ratnamani, is his Saga Phunpha. On his row now, with bo
 a line that names both sides.
 
 **Not a dealing between firms — a reason the firms deal.**
+
+### Built: the save guard
+
+*Deferred in September with "BUILD IT WHEN IT COMES TO IT". It came to it twice.*
+
+Both the review save and **Approve** send the WHOLE card back as the browser holds it. A tab
+opened an hour ago carries an hour-old copy, and sending it wipes everything done since —
+silently, with a green "saved".
+
+- **Bombay Hardware**, September: 60 headings down to 12, two rules to none.
+- **ABS Fuijico**, 16 September: 6 notes back to 26, an hour after being put right.
+
+Every card now carries the version it was last written at. The browser sends the version it
+loaded; a save built on an older one is **refused, not applied**, and says so:
+
+> This card was changed somewhere else while you had it open — ABS FUIJICO. Nothing was
+> overwritten. Close it and open it again to see the newer version, then make your change on that.
+
+Four things it had to get right:
+
+- **Both routes**, not one. Approve is the route that wiped ABS, and it was the easy one to miss
+  because it looks like a move rather than a write.
+- **A card never written yet accepts anything.** There is nothing to lose, and refusing would
+  break every new card arriving from Gmail.
+- **A page too old to send a version is refused once the card HAS been written** — the cards
+  that have changed are exactly the ones worth protecting.
+- **"3" and 3 are the same version.** A number arriving as text from a form must not read as a
+  clash, or every save fails and the guard is worse than the bug.
+
+On a refusal the queue item **stays where it is**, so nothing is half-applied and he can open the
+card again and redo just the typing.
+
+**A script that writes a card must move the version on too.** A day of scripted changes went
+straight to storage without touching it, so every tab still held a matching number — the guard
+would have bitten nothing. All 132 waiting cards were moved on once to close that.
+
+Proved on the live routes, not only in tests: saving with the version loaded is allowed; saving
+again with that same old version is refused with a 409; saving with the new version is allowed;
+approving while holding an old copy is refused and the card stays in the queue. Five mutations
+applied to the guard, five caught, plus two checks that the routes actually call it — a guard
+nobody calls is no guard.
