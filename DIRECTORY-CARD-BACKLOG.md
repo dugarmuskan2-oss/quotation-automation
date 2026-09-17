@@ -1861,3 +1861,28 @@ Five mutations applied, five caught — but three of them only after the test wa
 The first version checked the dealers and never looked at whether **Apollo itself** was lifted by
 someone asking for Apollo; and it could not tell a blank box from a wrong one, because both score
 zero and only the WORDING differs.
+
+### The page itself was cached, so every fix was invisible
+
+*His words: "none of the add buttons are working".*
+
+Nothing was wrong with the add buttons. His browser was running **partner-directory.js from the
+10th of September** — the copy in which `askRemoval` had been moved out from under the handlers
+and every ✕ and Add threw `askRemoval is not defined`. That bug was fixed days ago.
+
+**Every script the page loads carries a `?v=` stamp, and that only works if the PAGE is fresh.**
+A browser holding yesterday's `index.html` goes on asking for yesterday's scripts for ever,
+whatever is deployed. So the cache-buster — the whole mechanism for shipping a fix — was being
+defeated by the one file it could not stamp.
+
+`index.html` is now served `Cache-Control: no-cache`, from both places that serve it: the
+allowlisted root files, and the catch-all that answers every other address. The scripts go on
+caching, which is what their `?v=` is for.
+
+Checked on the running server: the page and `/index.html` both answer `no-cache`;
+`partner-directory.js` still answers `public, max-age=0` and keeps its stamp.
+
+**The lesson is bigger than the bug.** Every fix made this week reached him only if his browser
+agreed to fetch the new page, and nothing guaranteed that. A fix he cannot receive is not a fix,
+and "it still does not work" was the correct report — I had simply been checking my own tab,
+which had been reloaded a hundred times.

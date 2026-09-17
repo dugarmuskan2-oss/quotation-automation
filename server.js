@@ -111,11 +111,18 @@ app.use(express.static('public')); // Serve static files if needed
 const { PUBLIC_FILES } = require('./utils/auth');
 const SERVABLE_ROOT_FILES = new Set([...PUBLIC_FILES, '/index.html', '/people.html']);
 const serveRootFile = express.static(__dirname, { dotfiles: 'deny', index: false });
+// THE PAGE ITSELF MUST NEVER BE CACHED. Every script it loads carries a ?v= stamp, and that
+// only works if the PAGE is fresh — a browser holding yesterday's index.html goes on asking for
+// yesterday's scripts for ever, whatever is deployed. It served a week-old partner-directory.js
+// that way, and the owner saw every Add button do nothing because that copy still had the bug
+// they were fixed in. The scripts themselves keep caching: their ?v= is what makes that safe.
+const NEVER_CACHE = /\.(html)$/i;
 app.use((req, res, next) => {
     // The file server only ever RUNS for a name on the list. Anything else carries on to the
     // routes and the SPA catch-all, and never gets near the file system.
-    if (SERVABLE_ROOT_FILES.has(req.path)) return serveRootFile(req, res, next);
-    return next();
+    if (!SERVABLE_ROOT_FILES.has(req.path)) return next();
+    if (NEVER_CACHE.test(req.path)) res.set('Cache-Control', 'no-cache');
+    return serveRootFile(req, res, next);
 });
 
 // Pull dir paths from storage module (they're computed there)
@@ -1112,6 +1119,7 @@ app.use((err, req, res, next) => {
 // API routes that didn't match any handler fall through to the 404 middleware below.
 app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api/')) return next();
+    res.set('Cache-Control', 'no-cache');
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
