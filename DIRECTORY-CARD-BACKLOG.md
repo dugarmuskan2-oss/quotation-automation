@@ -1608,3 +1608,44 @@ Two things learned building it:
   the card wins.
 - **His own label for a note is not a name.** NOTE, REMARK, ADDRESS, CONTACT, BOARD NO and the
   rest are how he heads a line, and every one of them can parse as a person.
+
+### Rule 20 — Name both sides. Never write a pronoun into a relation line.
+
+*His words: "other mistakes shouldnt happen -- especially pertaining to notes and getting the
+role right eg supplier vs clients -- what can we do for this?"*
+
+**Every direction error found so far had ONE cause: a pronoun.**
+
+```
+MST — he purchased material from them            who is "them"?
+CRESCON PROJECTS SERVICE — supplier to them      supplier to whom?
+Transporter listed under Jindal Saw (Nasik)      whose transporter?
+He purchases from them — MST                     who is "he"?
+```
+
+"He", "them", "his" only mean something if you know whose page the sentence came off. The card
+does not know that. Neither do I an hour later. **A line that names both firms cannot be read
+backwards by anybody** — `MST supplies SAKTHI HI TECH` has no second reading.
+
+### The four checks, run before a card is called done
+
+1. **LOOSE** — a note naming another firm AND a dealing, still sitting in the notes box.
+2. **PRONOUN** — a relation line saying "them/him/his/he" that names only ONE firm.
+3. **DISAGREE** — this card says it buys from a firm whose card says the same about this one.
+   Both ends must agree, or one of them is backwards.
+4. **BOTH WAYS** — one firm under two headings that mean opposite things on the same card.
+
+Run on the ten: **Sakthi Hi Tech failed all but one.** Eleven notes for one fact —
+`NOTE: HE PURCHASE MST / SREEVATSA / RAJENDRA STEEL` — with each of the three firms written three
+ways, and `He purchases from them — MST` putting all three under "They sell to" as well. Now
+three lines, both sides named, notes box empty.
+
+The check looks firms up in his PHONE BOOK, not only the ones with cards. Balwant Steel's notes
+are about RATNAMANI, which has no card, so a card-only list called the card finished.
+
+Nine of the ten pass. The last was Balwant's family note — and the page settles it: `MR. PRASHANT
+CHANDAN` is named at the foot of it, so "his" is his. Mayur of M/s. Vignesh is his saga Mama;
+Mr. Prakash, Chairman of Ratnamani, is his Saga Phunpha. On his row now, with both firms keeping
+a line that names both sides.
+
+**Not a dealing between firms — a reason the firms deal.**
