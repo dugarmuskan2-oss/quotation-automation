@@ -1690,3 +1690,30 @@ again with that same old version is refused with a 409; saving with the new vers
 approving while holding an old copy is refused and the card stays in the queue. Five mutations
 applied to the guard, five caught, plus two checks that the routes actually call it — a guard
 nobody calls is no guard.
+
+### Rule 21 — Never bend his words to reach a heading that exists
+
+*He asked: "did they go in the correct boxes?" — and one had not.*
+
+Balwant Steel's page keeps three things apart:
+
+```
+(1) Further of Mayur (M/s. Vignesh is his saga Mama
+(2) Mr. Prakash (Chairman of Ratnamani is his Saga Phunpha
+(3) Spoke to Umesh on 26.7.11 & took the reference.
+```
+
+The first two are **family**. The third is the reference, and it came from **Umesh**, who is a
+person on Balwant's own card. I appended "; referred" to the first two so they would reach
+"Referred by" — a heading that exists — and the card then told him Vignesh and Ratnamani had
+referred Balwant, which he never wrote.
+
+**A missing heading is not a reason to reword a fact.** The line goes back to being a note, and
+the fact itself stays where it is true: on MR. PRASHANT CHANDAN's own row.
+
+There is no heading for a family tie between two firms' men. That is worth having one day — it is
+why the firms deal — but inventing it by rewording his sentence is how the card starts lying.
+
+And the check that caught it was not any of the four. It was putting the card **beside his page**
+and reading both. The four checks find a line that can be read two ways; only his page finds a
+line that is simply wrong.
