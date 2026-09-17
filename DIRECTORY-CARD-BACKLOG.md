@@ -1521,3 +1521,54 @@ returned to the right rows, under a guard that no number or address may leave ei
 The lesson underneath: **a rule that merges records has to be tried against the data before it
 is trusted, not after.** The mutation tests all passed — they proved the rule did what I meant.
 They could not tell me what I meant was wrong.
+
+### Rule 17 — Why the same duplicates kept coming back
+
+*His words: "why are we finding the same mistakes still? I thought we went over this?"*
+
+He was right, and the reason is worth writing down plainly. **His phone book was read three or
+four times, months apart. Each reading wrote its OWN wording of the same fact onto the card and
+never looked at what was already there.** Eften carried the same fact three ways:
+
+```
+M/S. CANLE VALVES (P) LTD — The Coimbatore company of Eften's chairman Somsekhar Naidu
+M/S. CANLE VALVES (P) LTD — named as the Coimbatore company in the Eften contact
+                            (MISS SATHYADEVI) — no number given
+The Coimbatore company of Eften / Somsekhar Naidu — M/S. CANLE VALVES (P) LTD
+```
+
+Every dedupe built before today MISSES these, and here is exactly why:
+
+- **"One row per firm per heading"** lives in the DISPLAY, and only ever sees notes the card can
+  READ as a relation. None of those three is one — "the Coimbatore company of" carries no
+  relationship word — so it never looked at them.
+- **"One line per firm"** lives in `tools/prepare-card.js`, and only runs on the card it is
+  pointed at.
+- **Nothing had ever swept the STORED notes for two notes saying the same thing.**
+
+So the backlog just sat there, and he found it a card at a time. **A rule that only runs on the
+card in front of you is not a rule, it is a habit.**
+
+Swept now: **73 repeated notes folded away across 25 cards**, taking the notes drawn from 401 to
+334. Apollo alone had fifteen dealers written both as "Dealer for them in Tamilnadu & Chennai"
+and as "Dealer — Tamilnadu & Chennai — <FIRM>"; Maniam Steels had all seven suppliers three ways.
+
+Two things it will not do:
+
+- **Same words, different firm, is not the same fact.** NRP's six supplier lines each quote his
+  whole sentence, so their words match exactly while their firms differ. Six facts, not one.
+- **"— no number given" is the app's own footnote, not his words**, so it counts for nothing when
+  choosing which copy to keep. The first draft kept the longest note and was therefore keeping
+  the app's mumble over his sentence.
+
+Thirteen repeats are left, and all thirteen are the NRP shape — correctly refused.
+
+### Rule 18 — Two firms behind one set of people
+
+Eften's two surviving notes could not be folded because each carried a name the other did not —
+his chairman **Somsekhar Naidu** in one, **MISS SATHYADEVI** in the other. Folding would have
+thrown a name away, so they were joined by hand and both kept.
+
+But neither had anywhere to GO. **Same people** is a heading now: not a customer, not a supplier
+— the same men behind two firms, which is worth knowing before quoting either of them. It catches
+Siddachal's "Sister concern of metal trading corporation" and Arudra's "IGP GROUP COMPANY" too.

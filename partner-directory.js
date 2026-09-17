@@ -1703,7 +1703,7 @@
     // the notes box instead of under a heading. "works with" was here as those two words
     // exactly, so "working with them since 4 years" missed as well. The kinds list below
     // already knew all of these; only this gate did not, and nothing gets past the gate.
-    var REL_WORD = /\b(dealers?|stockists?|distributors?|distributes?|transporters?|transport|roadlines?|carriers?|cargo|coaters?|coating|galvanis\w*|testing|agents?|brokers?|suppl\w*|work(?:s|ing)? with|buy from|purchas\w*|pure?lasing|buys\w*|buying|bought|f(?:ro|or)m them|manufactur\w*|factory|referen[cs]e|referred|referral|vouch\w*|bank)\b/i;
+    var REL_WORD = /\b(dealers?|stockists?|distributors?|distributes?|transporters?|transport|roadlines?|carriers?|cargo|coaters?|coating|galvanis\w*|testing|agents?|brokers?|suppl\w*|work(?:s|ing)? with|buy from|purchas\w*|pure?lasing|buys\w*|buying|bought|f(?:ro|or)m them|manufactur\w*|factory|referen[cs]e|referred|referral|vouch\w*|bank|sister|group company|concern of)\b/i;
 
     function splitRelationNote(text) {
         // "— no number given" is this app's own footnote, not part of anybody's name.
@@ -1829,6 +1829,12 @@
         // work with, and with no heading for one the same fact sat in the notes box three
         // times over. Last in the list, so it can never shadow a heading above it.
         [/\bbank\b/i, 'Their bank'],
+        // Two firms behind one set of people: Siddachal is a "Sister concern of metal trading
+        // corporation", Canle Valves is "the Coimbatore company of Eften's chairman", Arudra is
+        // an "IGP GROUP COMPANY". Not a customer, not a supplier — the same people twice, which
+        // is worth knowing before quoting either of them.
+        [/sister\s*(?:concern|firm|company)|same\s*(?:owner|group|people|management)|group company|concern of|company of .{0,30}\b(?:chairman|owner|md|director)/i,
+            'Same people'],
     ];
     function relKind(how, p) {
         if (buysFromThem(how, p)) return BUYERS;
