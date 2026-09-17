@@ -62,7 +62,7 @@ const NOT_STAFF = new RegExp('^(?=.*' + TRADE_ROLE.source.slice(2, -2) + ')(?!.*
 const LIST_KINDS = [
     { kind: 'They buy from', verb: /\b(purchas\w*|pure?las\w*|buy\w*|bought|tak(?:e|es|ing)|took|lift\w*|sourc\w*)\b/i,
       how: (me) => me + ' buys from them' },
-    { kind: 'They carry for', verb: /\b(work(?:s|ing)? for|carr(?:y|ies|ied|ying) for|haul\w* for|deliver\w* for|doing (?:regular )?bus(?:s|)ines\w* (?:of|for|with))\b/i,
+    { kind: 'They transport for', verb: /\b(work(?:s|ing)? for|carr(?:y|ies|ied|ying) for|haul\w* for|deliver\w* for|doing (?:regular )?bus(?:s|)ines\w* (?:of|for|with))\b/i,
       how: (me) => me + ' carries for them' },
 ];
 

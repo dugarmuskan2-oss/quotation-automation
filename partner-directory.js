@@ -1796,8 +1796,8 @@
     }
     var BUYERS = 'They sell to';
     // The two directions of hauling, named so the contradiction between them can be spotted.
-    var CARRIES_FOR = 'They carry for';
-    var HAULED_BY = 'Transporters';
+    var CARRIES_FOR = 'They transport for';
+    var HAULED_BY = 'Their transporters';
     var REL_KINDS = [
         // A dealer of theirs is a firm they sell to. *His words: "they are also who they sell
         // to".* Apollo's regional dealers sat in a heading of their own as though that were a
@@ -1838,10 +1838,22 @@
         [/sister\s*(?:concern|firm|company)|same\s*(?:owner|group|people|management)|group company|concern of|company of .{0,30}\b(?:chairman|owner|md|director)/i,
             'Same people'],
     ];
+    /**
+     * The heading this line belongs under, or nothing.
+     *
+     * It used to fall back to using the SENTENCE ITSELF as a heading, and that put eleven
+     * headings on his cards that were each one sentence long, on one card each — "URC purchase
+     * worth one crore on PDC with their tube light division", "Rishab Mehta is on both; his
+     * page writes them together as CHETNA -STEEL( BOMBAY HARDWARE)". *His words when he first
+     * saw it: "why are there three headings?"*
+     *
+     * A heading is one of the headings. A line that fits none of them is a NOTE — which is
+     * honest, and leaves it where he can see it and say where it really goes.
+     */
     function relKind(how, p) {
         if (buysFromThem(how, p)) return BUYERS;
         var hit = REL_KINDS.find(function (k) { return k[0].test(str(how)); });
-        return hit ? hit[1] : cap(str(how));
+        return hit ? hit[1] : '';
     }
 
     /**
@@ -1966,6 +1978,7 @@
             var rel = splitRelationNote(n.t);
             if (!rel || !rel.firm || !rel.how) return;
             var k = relKind(rel.how, p);
+            if (!k) return;                 // fits no heading — it stays a note, see relKind
             if (!byKind[k]) { byKind[k] = { kind: k, places: [], byPlace: {}, seen: {} }; kinds.push(byKind[k]); }
             var g = byKind[k];
             var fk = nameKey(rel.firm);
@@ -2038,7 +2051,11 @@
     function isRelationNote(n, p) {
         // Everything a relation note says is now shown up there — the firm as a link, and
         // what he wrote about it in brackets beside the name. Repeating it below is noise.
-        return splitRelationNote(n && n.t) !== null;
+        //
+        // But only if it REACHED a heading. A line that fits none of them is drawn nowhere
+        // above, so hiding it here would make it vanish off the card altogether.
+        var rel = splitRelationNote(n && n.t);
+        return !!(rel && rel.firm && rel.how && relKind(rel.how, p));
     }
 
     /**
