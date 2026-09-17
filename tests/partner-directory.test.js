@@ -3271,10 +3271,13 @@ describe('source guard — adding a pipe type the list does not offer', () => {
     });
 });
 
-describe('source guard — the Make box on a product', () => {
+describe('source guard — the Brand box on a product', () => {
     test('it is on the row, beside the product and specification', () => {
         const fn = sliceBetween('function productRow(pr, i)', 'function transporterBlock');
-        expect(fn).toContain("f('make', 'Make — e.g. Jindal', pr.make)");
+        // Stored as `make` since it was built; called BRAND on screen because that is his word
+        // for it. The guard pins the field and the box, not the wording of the example.
+        expect(fn).toContain("f('make', 'Brand");
+        expect(fn).toContain('pr.make)');
     });
 
     test('and the row has a column for it, so nothing gets squeezed', () => {

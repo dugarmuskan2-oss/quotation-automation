@@ -1818,3 +1818,46 @@ refusing really was the rule. It was right about everything except who had moved
 
 And while proving the fix I approved **Speedelexpress** into his directory. Approving is HIS
 decision and never a step in a test. Put back in the queue, unchanged, three people and no notes.
+
+### Brand, on what they supply
+
+*His words: "add brand to what they supply".*
+
+The box was already there, labelled **Make**, and in seventy product rows across twenty-five
+cards **not one had ever been filled in**. Two reasons, and the second is the real one:
+
+- it was called "Make", which is not his word for it;
+- **filling it in did nothing.** The ranking read the pipe type, the minimum, the distance and
+  the history. It never read the make, so a brand typed on a card was decoration.
+
+So the box is **Brand** now, and it counts.
+
+**The brand list is not written down anywhere, and never should be.** A brand is a firm he has a
+card for that MAKES pipe — Apollo, Jindal Saw, Jindal Pipe, Jindal Hissar, ISMT, JCO, Maharashtra
+Seamless are all on his cards already. Mark a new firm a manufacturer and it joins the list by
+itself.
+
+```
+"Need 2 inch ERW heavy, Apollo make, 5 tons to Hosur"   ->  APL APOLLO TUBES LIMITED
+"100 x 50 rectangular, Jindal brand please"             ->  Jindal Saw / Jindal Pipe / Jindal hissar
+"2 inch GI medium 3 tons"                               ->  (no brand named)
+```
+
+**It never rules anybody out.** A dealer whose brands have not been typed in looks exactly like
+one who cannot get them, and blocking on a blank box would hide half the book — the same fault
+the part-load answer had. Three answers, not two:
+
+| | |
+|---|---|
+| stocks it, or IS the maker | **+30 / +35** — "Stocks Apollo", "They ARE APL Apollo" |
+| brands typed, none of them this one | 0, and a warning: "Stocks Surya — not Apollo" |
+| no brands typed at all | 0, and a nudge: "worth asking whether they carry Apollo" |
+
+Checked on his real cards: with Apollo typed on Bombay Hardware it goes 100 → 130 and tops the
+list; with Surya typed instead it stays at 100 and says why; with no brand asked for, both sit
+level again.
+
+Five mutations applied, five caught — but three of them only after the test was strengthened.
+The first version checked the dealers and never looked at whether **Apollo itself** was lifted by
+someone asking for Apollo; and it could not tell a blank box from a wrong one, because both score
+zero and only the WORDING differs.

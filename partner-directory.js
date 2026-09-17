@@ -269,9 +269,31 @@
             // Chennai dealer "right by the site" for a delivery 400 km away.
             siteUnknown: place.unknown,
             tons: kgTotal / 1000, known: kgTotal > 0,
+            brands: readBrands(raw),
             freight: /transport|freight|lorry|truck|part load|full load/.test(t) || !!place.pickup,
             empty: looksLikeNothing(t, types, place.pickup),
         };
+    }
+
+    /**
+     * Which MAKE the customer asked for.
+     *
+     * The list is not written down anywhere and never should be: a brand is a firm he has a
+     * card for that MAKES pipe. Apollo, Jindal, ISMT, Maharashtra Seamless are all on his
+     * cards already, so the list keeps itself the moment he marks a new firm a manufacturer.
+     */
+    function readBrands(text) {
+        var t = ' ' + lower(text) + ' ';
+        var out = [];
+        (D.contacts || []).forEach(function (c) {
+            if (c.role !== 'manufacturer') return;
+            [c.company].concat(c.aka || []).forEach(function (nm) {
+                var words = firmWords(nm);
+                if (!words.length || out.indexOf(c.company) >= 0) return;
+                if (new RegExp('\\b(' + words.join('|') + ')\\b', 'i').test(t)) out.push(c.company);
+            });
+        });
+        return out;
     }
 
     // Words that mean "this is where it goes", so the town beside one of them wins over the
@@ -479,9 +501,44 @@
     function scoreSupplier(p, need) {
         var why = [], wrongRole = roleBlock(p, 'material', why), types = scoreTypes(p, need, why);
         var score = types.pts + (types.blocked ? 0 : scoreMinimums(p, need, why))
-            + scoreDistance(p, need, why) + scoreHistoryAndNotes(p, why);
+            + scoreDistance(p, need, why) + scoreBrand(p, need, why) + scoreHistoryAndNotes(p, why);
         var blocked = types.blocked || wrongRole;
         return { p: p, score: blocked ? -999 + score : score, why: why, blocked: blocked };
+    }
+
+    /**
+     * Does he stock the make the customer asked for?
+     *
+     * It NEVER rules anybody out. A dealer who has not had his brands typed in looks exactly
+     * like one who cannot get them, and blocking on a blank box would hide half the book —
+     * the same fault the part-load answer had. Only a firm that HAS brands written down, none
+     * of them the one wanted, is marked down, and even then it is a warning, not a bar: a
+     * dealer can usually source a make he does not keep.
+     */
+    function scoreBrand(p, need, why) {
+        var wanted = (need && need.brands) || [];
+        if (!wanted.length) return 0;
+        var mine = (p.products || []).map(function (pr) { return str(pr.make); }).filter(Boolean);
+        var isTheMaker = wanted.some(function (b) { return nameKey(b) === nameKey(p.company); });
+        if (isTheMaker) { why.push(['ok', 'They ARE ' + wanted.join(' / ')]); return 35; }
+        if (!mine.length) {
+            why.push(['neutral', 'No makes on their card — worth asking whether they carry '
+                + wanted.join(' / ')]);
+            return 0;
+        }
+        var hits = wanted.filter(function (b) {
+            return mine.some(function (m) { return sameMake(m, b); });
+        });
+        if (hits.length) { why.push(['ok', 'Stocks ' + hits.join(' / ')]); return 30; }
+        why.push(['warn', 'Stocks ' + mine.join(', ') + ' — not ' + wanted.join(' / ')]);
+        return 0;
+    }
+
+    /** "Apollo" on a card and "APL APOLLO TUBES LIMITED" in an enquiry are one make. */
+    function sameMake(a, b) {
+        var x = nameKey(a), y = nameKey(b);
+        if (!x || !y) return false;
+        return x === y || x.indexOf(y) >= 0 || y.indexOf(x) >= 0;
     }
 
     /**
@@ -1622,7 +1679,7 @@
         var cls = specClass(pr.spec);
         return '<div class="pd-pcard"><div class="pd-pcard-r1">'
             + f('p', 'Product — e.g. GI pipe', pr.p) + f('spec', 'Specification — e.g. IS 1239 Heavy', pr.spec)
-            + f('make', 'Make — e.g. Jindal', pr.make)
+            + f('make', 'Brand — e.g. Jindal, Apollo', pr.make)
             + '<button class="pd-del" data-pd-delproduct="' + i + '">✕</button></div>'
             + '<div class="pd-row" style="margin-top:6px;"><span class="pd-tiny">Minimum order</span>'
             + '<span style="width:80px;">' + f('moq', 'T', pr.moq) + '</span><span class="pd-tiny">tonnes</span><span class="pd-sp"></span>'
