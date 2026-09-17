@@ -1417,3 +1417,44 @@ Eleven cards rewritten, and twenty-two more that draw differently with their not
 Some cards GAINED rows, which is the other half of the work: Crescon 11→13, Urcc 1→3, Airmech
 0→2, Maniam Steels 7→8 — facts that had been stuck in the notes box only because the app did not
 know the word "supplies".
+
+### Rule 13 — A name with the firm in brackets is a LABEL, not a name
+
+Google holds his contacts the way he can find them in a long list: `Client Varadharajan
+(KAMACHI)`, `S. NARESH (DANIELI INDIA)`, `Captain op Dua (Eften)`, `V.Vasudevan (Vigneshwaran
+Vasudevan)`. The firm goes after the man so the list sorts.
+
+The app read all of that as his NAME, so **sixty-two people were on their cards twice** — once
+as themselves off his phone-book page, once as the label off Google. Kamachi showed sixteen
+people for about nine: Varadharajan was there as `VARADARAJAN` on 8939977379 and again as
+`Client Varadharajan (KAMACHI)` on the same number.
+
+Worse, the label is LONGER than the plain name, so it won every merge — the man's own name was
+the one thrown away.
+
+Three pieces, and each is needed:
+
+- the key ignores a trailing `(…)` and an opening `Client` / `Customer` / `New party`;
+- a trailing bracket now READS as a label, so the plain name wins the merged row;
+- one man written with an initial one time and without it the next — `S. NARESH` and `NARESH`,
+  `V.Vasudevan` and `VASUDEVAN` — is one man, asked only of two rows that ALREADY share a number.
+  Five letters at least, so `RAM` and `RAJ` stay two people.
+
+### Rule 14 — Count the notes the card DRAWS
+
+`848` notes are stored across the 179 cards. Only `401` were ever drawn: the card already hides a
+note shown under "Who they work with", and a "From your phone book, under X" whose heading is in
+Filed under. Counting the stored notes said the job was twice as big as it was — the same trap as
+Rule 12, one day later.
+
+The 95 provenance notes whose heading was NOT yet in Filed under are now headings, which is where
+they belong and where they can be read. Notes drawn: **401 → 352**.
+
+Both jobs ran across every card at once under one guard: a card is written only if every number,
+every email address and every heading it had is still findable on it afterwards, comparing
+numbers on their last ten digits because he writes one as `08939729289` and the next as
+`8939729289`. Nothing was refused. The guard's first draft also demanded that every NAME survive,
+which would have refused every merge there is — folding two rows into one is the point.
+
+Five mutations applied, five caught — but only after the check was made to assert WHICH name
+survived. Checking the count alone let three through: the merge happened, and the label won.

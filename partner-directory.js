@@ -4127,6 +4127,7 @@
                  splitRelationNote: splitRelationNote, relKind: relKind, relPlace: relPlace,
                  relExtra: relExtra, isRelationNote: isRelationNote, buysFromThem: buysFromThem,
                  relationsBlock: relationsBlock, dropTheContradiction: dropTheContradiction,
+                 notesBlock: notesBlock, isHeadingNote: isHeadingNote,
                  _state: function () { return { S: S, D: D }; } },
     };
 })();

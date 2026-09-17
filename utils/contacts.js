@@ -1031,17 +1031,53 @@ function canBeSamePerson(a, b) {
     // two men — even when they share a phone number, which is how CCI and Balaji Roadlines
     // each ended up with the same person listed twice.
     const an = personNameKey(a.name), bn = personNameKey(b.name);
-    if (an && bn && an !== bn && !looksLikeALabel(a.name) && !looksLikeALabel(b.name)) return false;
+    if (an && bn && an !== bn && !looksLikeALabel(a.name) && !looksLikeALabel(b.name)
+        && !sameManWrittenTwoWays(an, bn)) return false;
     const ab = lower(str(a.branch)), bb = lower(str(b.branch));
     return !(ab && bb && ab !== bb);
 }
 
 /**
+ * One man, written with an initial one time and without it the next.
+ *
+ * Only ever asked about two rows that ALREADY share a number or an address, so this is not
+ * deciding that two strangers are one man — it is deciding whether one man's own line has been
+ * typed two ways. "S. NARESH" and "NARESH", "V.Vasudevan" and "VASUDEVAN", "Client Varadharajan"
+ * and "VARADARAJAN" are each one person on one phone.
+ *
+ * Kept tight: five letters at least, so short names stay apart, and either one name contains
+ * the other whole, or they are a letter or two apart.
+ */
+function sameManWrittenTwoWays(x, y) {
+    if (!x || !y || x.length < 5 || y.length < 5) return false;
+    if (x.indexOf(y) >= 0 || y.indexOf(x) >= 0) return true;
+    if (Math.abs(x.length - y.length) > 2) return false;
+    let prev = Array.from({ length: y.length + 1 }, (_, j) => j);
+    for (let i = 1; i <= x.length; i++) {
+        const row = [i];
+        for (let j = 1; j <= y.length; j++) {
+            row[j] = Math.min(prev[j] + 1, row[j - 1] + 1,
+                prev[j - 1] + (x[i - 1] === y[j - 1] ? 0 : 1));
+        }
+        prev = row;
+    }
+    return prev[y.length] <= 2;
+}
+
+/**
  * A person's name with the punctuation taken out — "Mr. Madan" and "MR.MADAN" are one man.
  * The honorific goes too: he writes "MR." on some lines and not on others.
+ *
+ * And so does a trailing bracket. Google holds these as "Client Varadharajan (KAMACHI)",
+ * "S. NARESH (DANIELI INDIA)", "Captain op Dua (Eften)" — the firm written after the man so he
+ * can find him in a long list. That is a LABEL, not a name, and it kept sixty-two people on
+ * their cards twice: once as themselves and once as the label.
  */
 function personNameKey(name) {
-    return lower(name).replace(/\b(mr|mrs|ms|miss|shri|sri|smt)\b/g, ' ').replace(/[^a-z0-9]/g, '');
+    return lower(name)
+        .replace(/\s*\([^)]*\)\s*$/, ' ')
+        .replace(/\b(mr|mrs|ms|miss|shri|sri|smt|client|customer)\b/g, ' ')
+        .replace(/[^a-z0-9]/g, '');
 }
 
 /** Is there anything on this person you could ring or write to? */
@@ -1101,7 +1137,13 @@ function foldPeople(people) {
  * does length decide.
  */
 function looksLikeALabel(name) {
-    return /[|@]|\b(pvt|ltd|limited|llp|corp|inc)\b/i.test(str(name));
+    // A trailing "(FIRM)", or a name that opens with what he sorted the list by, is how Google
+    // holds a contact so he can find him — "Client Varadharajan (KAMACHI)", "S. NARESH (DANIELI
+    // INDIA)". It is longer than the plain name, so without this the LABEL won every merge and
+    // the man's own name was the one thrown away.
+    return /[|@]|\b(pvt|ltd|limited|llp|corp|inc)\b/i.test(str(name))
+        || /\([^)]*\)\s*$/.test(str(name))
+        || /^\s*(client|customer|new party)\b/i.test(str(name));
 }
 
 function betterName(candidate, current) {
