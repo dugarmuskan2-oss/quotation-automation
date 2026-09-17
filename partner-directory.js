@@ -867,8 +867,13 @@
         if (!item) return;
         // The version this browser loaded. The server refuses a save built on an older one
         // rather than overwriting what it cannot see — see `rev` in utils/contacts.js.
+        //
+        // AND IT SENDS THE NEW ONE BACK. Without taking it, this tab goes on holding the number
+        // from before its own save — so the very next thing he does on that card is refused as
+        // stale, by his own edit. That is how "it wont let me approve anything" happened.
         return postJson('/contacts/pending/preview', { id: item.id, preview: p, rev: item.rev },
-                        null, null, 'Saving your corrections');
+                        function (d) { if (d && d.rev) item.rev = d.rev; },
+                        null, 'Saving your corrections');
     }
 
     // ── State for the tool page ───────────────────────────────────────────────
@@ -2897,7 +2902,8 @@
             postJson('/contacts/pending/preview',
                 { id: pi.id, preview: p, asks: pi.asks, settled: pi.settled,
                   answers: pi.answers, rev: pi.rev },
-                function () { loadDirectory(render); }, null, 'Saving your answer');
+                function (d) { if (d && d.rev) pi.rev = d.rev; loadDirectory(render); },
+                null, 'Saving your answer');
         };
         var forRow = function (el, then) {
             var strip = el.closest('[data-pd-item]') || el.closest('.pd-strip') || el.parentElement;

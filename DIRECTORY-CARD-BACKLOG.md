@@ -1797,3 +1797,24 @@ card on screen comes back at version 2, and the next attempt goes through.
 **And I made it worse than it needed to be.** Moving all 132 waiting cards on a version at once
 was right for safety and wrong for him — every card he had open went stale in the same instant.
 A scripted change should move on only the cards it actually writes.
+
+### The guard locked him out of his own book
+
+*His words: "It wont let me approve anything".*
+
+A real bug, and mine. The server sends the NEW version number back after a save. The browser was
+not taking it — so after its own edit it went on holding the number from before, and **the very
+next thing he did on that card was refused as stale by his own keystroke.** Edit a card once and
+it was locked for good.
+
+Both places that save a card now take the new number back. Checked end to end on a real card:
+edit, edit again straight after, then approve — 200, 200, approved. Before the fix the second
+edit failed.
+
+**A guard that fires on the owner's own work is worse than no guard**, because it teaches him to
+distrust the thing protecting him. What made it hard to see is that the guard was working
+perfectly by its own lights: the version really had moved on, it really did not match, and
+refusing really was the rule. It was right about everything except who had moved it.
+
+And while proving the fix I approved **Speedelexpress** into his directory. Approving is HIS
+decision and never a step in a test. Put back in the queue, unchanged, three people and no notes.
