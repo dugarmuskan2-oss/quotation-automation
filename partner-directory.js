@@ -959,7 +959,7 @@
     }
 
     // ── State for the tool page ───────────────────────────────────────────────
-    var S = { tab: 'dir', filter: 'all', openId: null, openPending: null, openChange: null,
+    var S = { tab: 'dir', filter: 'all', facet: { town: '', product: '', brand: '', load: '' }, openId: null, openPending: null, openChange: null,
               find: { text: '', state: 'idle', need: null, note: '' }, busy: {}, add: freshAdd(),
               confirmDelete: '',     // the card whose "are you sure?" is on screen
               dirty: {}, clean: {}, saveNote: '', confirmLeave: '', leaveThen: null, ask: null,
@@ -1155,8 +1155,152 @@
             + finderBlock()
             + '<div class="pd-filters">' + chips + '<span class="pd-sp"></span>'
             + '</div>'
+            + facetBarHtml()
             + listHtml();
     }
+
+    // ── Location / Product / Brand under the kind buttons (29 Sep) ───────────────
+    //
+    // *His words: "can we add filters to each. Under dealers for example : Location , Product ,
+    // Brand ?"* — and "under manufacturer there will be no brand", "transporters too",
+    // "fabricators too". A maker IS its brand, and a lorry firm has no products either — it
+    // has a load instead: *"transporters will have load -- part also/ full only"*.
+    var FACET_LABEL = { town: 'Any town', product: 'Any product', brand: 'Any brand', load: 'Any load' };
+    var FACET_NOUN = { town: 'town', product: 'product', brand: 'brand', load: 'load type' };
+
+    function facetsFor(kind) {
+        if (kind === 'transporter') return ['town', 'load'];
+        if (kind === 'manufacturer' || kind === 'fabricator') return ['town', 'product'];
+        return ['town', 'product', 'brand'];
+    }
+
+    /**
+     * One place however it is written: "CHENNAI OFFICE", "Chennai" and "chennai h.o" are Chennai.
+     * A branch box sometimes holds a whole address; a town the app knows is found anywhere in
+     * it, and anything longer than three words that is not one is not offered as a town at all
+     * ("2nd Godown" once came out as a town called "Nd").
+     */
+    // Old and misspelt names on his cards, so one place is one choice. Only the filter reads these.
+    var TOWN_ALIAS = { bombay: 'mumbai', bengaluru: 'bangalore', nasik: 'nashik', hydrabad: 'hyderabad',
+        madhurai: 'madurai', gaziabad: 'ghaziabad', sriperumbadur: 'sriperumbudur', sriperambudur: 'sriperumbudur',
+        nagothene: 'nagothane', vizag: 'visakhapatnam', vishakapatnam: 'visakhapatnam', visakapatnam: 'visakhapatnam' };
+    // A state beside a town, or a product word typed into a branch box, is not the town.
+    var NOT_A_TOWN = /\b(maharashtra|karnataka|gujarat|telangana|tamil ?nadu|uttar pradesh|up|division|ppc|erw|seamless|stainless|steel|pipes?|tubes?)\b/g;
+
+    function townKey(name) {
+        var text = lower(name).replace(/[a-z]+/g, function (w) { return TOWN_ALIAS[w] || w; });
+        var known = matchCity(text);
+        if (known) return known;
+        var words = text.replace(/\b\d+(st|nd|rd|th)\b/g, ' ').replace(NOT_A_TOWN, ' ')
+            .replace(/\b(head office|office|branch|factory|godown|works|plant|unit|h\.?\s?o|no|at|near)\b/g, ' ')
+            .replace(/[^a-z ]/g, ' ').split(' ').filter(function (w) { return w.length > 1; });
+        if (!words.length || words.length > 3) return '';
+        return words.join(' ').replace(/\b[a-z]/g, function (c) { return c.toUpperCase(); });
+    }
+
+    /** The words of a product, singular — "GI PIPES" and "GI pipe" say the same thing. */
+    function productWords(text) {
+        return lower(text).replace(/\bpipes?\b/g, ' ').split(/[^a-z0-9]+/)
+            .map(function (w) { return w.replace(/s$/, ''); }).filter(Boolean);
+    }
+
+    /**
+     * The values a card has for one filter. Empty means the box is not filled in — which is
+     * not the same as "no", so those cards are shown below the matches, never dropped.
+     * A product counts from the product rows AND the pipe types: a card typed "GI" deals in GI pipe.
+     */
+    function facetValues(p, f) {
+        if (f === 'town') return branchNames(p).map(townKey).filter(Boolean);
+        if (f === 'brand') return brandsOnCard(p);
+        // The card's own words for the part-load box; a box nobody answered is blank, not "no".
+        if (f === 'load') return p.partLoad === true ? ['Takes part load'] : (p.partLoad === false ? ['Full load only'] : []);
+        var texts = (p.products || []).map(function (pr) { return str(pr.p); }).concat(p.types || []).filter(Boolean);
+        if (!texts.length) return [];
+        var matched = PRODUCT_NAMES.filter(function (name) {
+            var want = productWords(name);
+            return texts.some(function (t) {
+                var have = productWords(t);
+                return want.every(function (w) { return have.indexOf(w) !== -1; });
+            });
+        });
+        return matched.length ? matched : ['(other)'];
+    }
+
+    /** Brands on a card; a maker's own name is its brand. Cleaned the way the Brand list is. */
+    function brandsOnCard(p) {
+        var out = [];
+        [].concat.apply([], (p.products || []).map(makesOf)).concat(p.role === 'manufacturer' ? [p.company] : [])
+            .forEach(function (b) {
+                b = str(str(b).replace(/\([^)]*\)/g, ' ').replace(/,/g, ' ').replace(/\s+/g, ' '));
+                if (b && !out.some(function (o) { return sameBrand(o, b); })) out.push(b);
+            });
+        return out;
+    }
+
+    function sameFacet(f, a, b) { return f === 'brand' ? sameBrand(a, b) : lower(a) === lower(b); }
+
+    /** 'yes', 'no', or 'blank' (a filter is set and this card has nothing in that box). */
+    function facetFit(p) {
+        var fit = 'yes';
+        facetsFor(S.filter).forEach(function (f) {
+            if (!S.facet[f] || fit === 'no') return;
+            var vals = facetValues(p, f);
+            if (!vals.length) fit = 'blank';
+            else if (!vals.some(function (v) { return sameFacet(f, v, S.facet[f]); })) fit = 'no';
+        });
+        return fit;
+    }
+
+    function activeFacets() { return facetsFor(S.filter).filter(function (f) { return S.facet[f]; }); }
+
+    function facetBarHtml() {
+        var pool = baseList();
+        return '<div class="pd-facets">' + facetsFor(S.filter).map(function (f) { return facetSelect(f, pool); }).join('')
+            + (activeFacets().length ? '<button class="pd-linkish" data-pd-facetclear="1">Clear filters</button>' : '')
+            + '</div>';
+    }
+
+    /** One dropdown, its choices read off the cards on screen, each with how many cards have it. */
+    function facetSelect(f, pool) {
+        var seen = [];
+        pool.forEach(function (p) {
+            facetValues(p, f).forEach(function (v) {
+                if (v === '(other)') return;
+                var hit = seen.filter(function (s) { return sameFacet(f, s.v, v); })[0];
+                if (hit) { if (hit.ids.indexOf(p.id) === -1) hit.ids.push(p.id); } else seen.push({ v: v, ids: [p.id] });
+            });
+        });
+        var cur = S.facet[f];
+        if (cur && !seen.some(function (s) { return sameFacet(f, s.v, cur); })) seen.push({ v: cur, ids: [] });
+        seen.sort(function (a, b) { return b.ids.length - a.ids.length || (lower(a.v) < lower(b.v) ? -1 : 1); });
+        return '<select data-pd-facet="' + f + '"><option value="">' + FACET_LABEL[f] + '</option>'
+            + seen.map(function (s) {
+                return '<option value="' + esc(s.v) + '"' + (cur && sameFacet(f, s.v, cur) ? ' selected' : '') + '>'
+                    + esc(s.v) + ' (' + s.ids.length + ')</option>';
+            }).join('') + '</select>';
+    }
+
+    /**
+     * The cards under the filters: the ones that fit, then — never hidden — the ones that
+     * cannot be told because the box is empty. His choice: "8 more dealers with no town
+     * filled in" beats a list that silently leaves them out.
+     */
+    function facetedHtml(list) {
+        var fits = list.filter(function (p) { return S.openId === p.id || facetFit(p) === 'yes'; });
+        var blank = list.filter(function (p) { return S.openId !== p.id && facetFit(p) === 'blank'; });
+        var noun = S.filter === 'all' ? 'card' : ROLE_LABEL[S.filter].toLowerCase();
+        var boxes = activeFacets().map(function (f) { return FACET_NOUN[f]; });
+        return (fits.length ? fits.map(rowOrCard).join('')
+                : '<p class="pd-muted pd-empty">No ' + noun + 's match those filters.</p>')
+            + (blank.length
+                ? '<div class="pd-sec" style="margin-top:16px;">' + blank.length + ' more ' + noun + (blank.length === 1 ? '' : 's')
+                    + ' with no ' + boxes.join(' or ') + ' filled in</div>'
+                    + '<p class="pd-tiny" style="margin-bottom:8px;">They may fit too — nobody has typed it on their card yet.</p>'
+                    + blank.map(rowOrCard).join('')
+                : '');
+    }
+
+    function rowOrCard(p) { return S.openId === p.id ? editCard(p) : rowCard(p); }
 
     // An address on two cards splits one firm's history in two and gets them asked twice.
     // New ones are refused on save; anything older is shown here with a way straight to it.
@@ -1205,8 +1349,9 @@
         }).join(' · ');
     }
 
-    function listHtml() {
-        var list = D.contacts.filter(function (p) {
+    /** The cards under the kind button and the name search — before Location / Product / Brand. */
+    function baseList() {
+        return D.contacts.filter(function (p) {
             // The card you are working in never disappears from under you. Ticking off the
             // last "check me" card while it was open used to close the whole list instead.
             if (S.openId === p.id) return true;
@@ -1218,6 +1363,10 @@
                 + ' ' + (p.notes || []).map(function (n) { return n.t; }).join(' '));
             return hay.indexOf(lower(S.find.text)) !== -1;
         });
+    }
+
+    function listHtml() {
+        var list = baseList();
         // An empty directory is not a failed search, and the answer is never "nobody fits".
         // Pasting an enquiry into the finder is the natural first thing to do on a fresh
         // directory, and it used to answer "Nobody in your directory fits this one" AND take
@@ -1227,7 +1376,8 @@
         // "Nobody matches that" on a directory that is simply empty reads like a failed
         // search. Say which it is, and give the way out.
         if (!list.length) return '<p class="pd-muted pd-empty">Nobody matches that.</p>';
-        return list.map(function (p) { return S.openId === p.id ? editCard(p) : rowCard(p); }).join('');
+        if (activeFacets().length) return facetedHtml(list);
+        return list.map(rowOrCard).join('');
     }
 
     function emptyStateHtml() {
@@ -3301,6 +3451,10 @@
                 S.filter = el.getAttribute('data-pd-filter'); S.openId = null; render();
             };
         });
+        each(app, '[data-pd-facet]', function (el) {
+            el.onchange = function () { S.facet[el.getAttribute('data-pd-facet')] = el.value; render(); };
+        });
+        on(app, '[data-pd-facetclear]', function () { S.facet = { town: '', product: '', brand: '', load: '' }; render(); });
         bindFinder(app); bindAdd(app); bindListAndCard(app); bindChanges(app);
     }
 
