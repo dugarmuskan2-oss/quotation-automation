@@ -1886,3 +1886,64 @@ Checked on the running server: the page and `/index.html` both answer `no-cache`
 agreed to fetch the new page, and nothing guaranteed that. A fix he cannot receive is not a fix,
 and "it still does not work" was the correct report — I had simply been checking my own tab,
 which had been reloaded a hundred times.
+
+## The third ten (29 Sep)
+
+*His words: "all seems to be good. Approved. Can do next ten".* The second ten are all in his
+directory. Written from a new computer: the old one, its chat and its hand-written checker are
+gone, so the method was rebuilt from this file and DIRECTORY-DATA-RULES.md before any card was
+touched.
+
+Bharat Steel Chennai · VRT Logistics · Lodha Roadways · CCI · Nashik Globe · Arudra Engineers ·
+Wootz Metal Solutions · Shankara Building Products · Calcutta Tube Centre · Kriscol Roofing.
+
+He said yes to 69 changes, and all 69 went in. Each card was read beside his pages, and every
+change was checked a second time against the page it quotes before anything was saved. Only these
+ten cards were written. Each has its version moved on, is stamped freshened, and carries its
+questions on the card (22 in all; Kriscol has none).
+
+| Card | What was done |
+|---|---|
+| BHARAT STEEL | GAURAV as his own page spells it. Yogesh Sharma, the factory note, the colour-coated heading and the JSL distributor line are Crayon's, not Bharat's, and came off. SAIL and VIZAG moved to "They buy from", with his sentence whole in both. |
+| VRT LOGISTICS | Backwards Jindal Saw copy removed. The kept line names both firms and quotes his page line. "DAILY GOES TO JSL FACTORY" moved onto Dinesh Kumar and onto the 9607523268 row. |
+| LODHA · CCI · NASHIK GLOBE | Backwards copy removed. One line in one shape: `<CARD> carries for JINDAL SAW LIMITED at Nasik; "<his line>" under "🚛TRANSPORTER 🚛" on your SNO 2JINDAL SAW LIMITED (ALL DETAILS) SN0 2 page`. Names back in his capitals (AJITH, MR.MADAN, SANGATHIP). |
+| ARUDRA | Three suppliers and six IGP group firms named in his words. A line the tool copied off Sreevatsa's card removed. The trade left blank for him to pick, not "other". |
+| WOOTZ | Four suppliers under "They buy from". Mokshi's credit moved off the price rules, because it is a dealing between two firms. Ramya Narayanan, Ganeshan and two addresses that are on no card were added. |
+| SHANKARA | People, Ambattur branch, branches, products and emails from his own page. The Apollo line turned the right way. "SANKARA" was NOT added as another name, because that waits on his question 1. |
+| CALCUTTA TUBE | Apollo line turned the right way. DWARAJI, two emails and the Chennai number added. The trade pre-filled "dealer" from his heading. |
+| KRISCOL | Apollo line turned the right way. The lost email put back. |
+
+**The app's words are not his words.** Calcutta and Kriscol first got a bracket quoting "Dealer
+for them in Tamilnadu & Chennai". That sentence is on none of his 1,941 pages; the app wrote it,
+and it carries a pronoun. Every bracket now quotes his own numbered line under
+"🧑‍💼TAMILNADU & CHENNAI🧑‍💼". Approved KHERA PIPE, ALI STEEL and S&S still carry the app's
+words. Listed, not changed.
+
+**A shared number is not a join.** Bharat had taken Crayon's partner, factory and heading through
+one mobile number (9884809549, GAURAV / GAURABH). They came off, and whether the two firms are
+the same people is his question 1 on Bharat.
+
+### What transfers (not applied — his cards, his call)
+
+- **NAVISH LOGISTICS and ARC** (waiting): the backwards "transporter for them at Nasik" line is
+  their ONLY Jindal Saw line, so it has to be rewritten, not deleted.
+- **VRT**: DEV SHARMA, DINESH KUMAR and JAYESH are in capitals on his page, and the card has
+  them in mixed case. This is the same fix Lodha, CCI and Nashik got. Owed on VRT's next pass.
+- **"at Nasik"** is on all six Jindal Saw lorry cards, but his page never says Nasik beside
+  them. Asked once per card. The answer is the same for all six.
+- **CRAYON, SAROJ STEEL, STEEL & METAL AGENCY, SHREE SAKTHI** (waiting): "one of 2 main
+  distributors" is drawn under "They sell to". This is the backwards-dealer shape again. The fix
+  is `<MAKER> supplies <CARD>` with his line quoted.
+- **JAFEE ALI, SATHISH, PERIYADAVAR PARCEL SERVICE** (waiting): "working for them (transport)"
+  is drawn as Bombay Hardware's lorry firm. They need reading against their pages.
+- **ARUDRA ENGG PVT LTD** (waiting) is the same firm as Arudra Engineers by numbers. That is
+  his question 1 on Arudra.
+- **TUBES INDIA / Tubesindia** (two waiting cards) may be one firm.
+- **Sreevatsa Venkateswara** (approved): Arudra wrote it as SREE VATSA and Wootz as SREEVATSA.
+  He already said "all same". The "Also written as" join goes on that card when he opens it.
+- **The old tool's trade default**: "other" was filled in by the tool on many waiting cards
+  that nobody chose. Arudra is now blank and Calcutta is "dealer" from his heading. Wootz,
+  Shankara and Kriscol still say "other".
+- **Counts not quoted to him**: the checkers disagreed on how many cards carry the backwards
+  Apollo line (13 / 17 / 18) and the tool's email bug. Recount card by card before giving him a
+  number (Rule 6a/12).
