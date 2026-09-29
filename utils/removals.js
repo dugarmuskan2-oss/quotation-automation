@@ -29,6 +29,35 @@ const REMOVABLE = {
     rule: { list: 'rules', same: (a, b) => lower(a) === lower(b), name: (v) => str(v).slice(0, 60) },
 };
 
+/** The ones that sit INSIDE a person or a product, so they need `at` to be found. */
+const NESTED = ['phone', 'email', 'size', 'brand'];
+
+/**
+ * The makes in one product's Brand box — one per comma, as he typed them.
+ *
+ * Stored as one line ("TATA, MSL, JSL") because that is what the brand ranking has always
+ * read. The dropdown adds to that line and ✕ takes one name out of it; nothing else changes.
+ */
+function makesOf(product) {
+    return str(product && product.make).split(',').map(str).filter(Boolean);
+}
+
+/**
+ * The product row a brand sits on.
+ *
+ * By name and specification AND holding that brand: a firm can list "ERW pipe" twice, and rows
+ * with no product name at all are common, so the first row with the same name is often the
+ * wrong one. The ✕ also sends the row's whole Brand line, and the row must still read exactly
+ * that: if it has changed since he marked it, nothing is taken — never the nearest match.
+ */
+function findBrandRow(card, want, brand) {
+    const rows = (card.products || []).filter((p) => lower(p && p.p) === lower(want && want.p)
+        && lower(p && p.spec) === lower(want && want.spec)
+        && makesOf(p).some((m) => lower(m) === lower(brand)));
+    if (want && want.make !== undefined) return rows.filter((p) => lower(p.make) === lower(want.make))[0] || null;
+    return rows.length === 1 ? rows[0] : null;
+}
+
 function firstMail(person) {
     return str((((person && person.emails) || [])[0] || {}).v);
 }
@@ -51,7 +80,7 @@ function samePerson(a, b) {
  * on its own is not enough to find, since two people at a firm can share a landline.
  */
 function removalRequest(card, what, value, at) {
-    if (!card || !REMOVABLE[what] && what !== 'phone' && what !== 'email' && what !== 'size') return null;
+    if (!card || !REMOVABLE[what] && !NESTED.includes(what)) return null;
     return {
         cardId: str(card.id),
         cardName: str(card.company) || 'this card',
@@ -72,6 +101,8 @@ function describeRemoval(req) {
         case 'email': return 'Remove the address ' + str(req.value && req.value.v) + who + on;
         case 'size': return 'Remove the size ' + sizeName(req.value)
             + (req.at && req.at.product ? ' from ' + str(req.at.product.p) : '') + on;
+        case 'brand': return 'Remove the brand ' + str(req.value)
+            + (req.at && req.at.product && str(req.at.product.p) ? ' from ' + str(req.at.product.p) : '') + on;
         default: {
             const meta = REMOVABLE[req.what];
             const label = meta ? meta.name(req.value) : '';
@@ -115,12 +146,25 @@ function applyRemoval(card, req) {
         return { changed: true };
     }
 
+    if (req.what === 'brand') return removeBrand(card, req);
+
     const meta = REMOVABLE[req.what];
     if (!meta) return { changed: false, reason: 'nothing to do' };
     const list = card[meta.list] || [];
     const at = list.findIndex((x) => meta.same(x, req.value));
     if (at === -1) return { changed: false, reason: 'it has already gone' };
     card[meta.list] = list.slice(0, at).concat(list.slice(at + 1));
+    return { changed: true };
+}
+
+/** One make out of one product's Brand box, found by name — never by its place in the line. */
+function removeBrand(card, req) {
+    const product = findBrandRow(card, req.at && req.at.product, req.value);
+    if (!product) return { changed: false, reason: 'it has already gone, or that product row has changed since' };
+    const makes = makesOf(product);
+    const at = makes.findIndex((m) => lower(m) === lower(req.value));
+    if (at === -1) return { changed: false, reason: 'it has already gone' };
+    product.make = makes.slice(0, at).concat(makes.slice(at + 1)).join(', ');
     return { changed: true };
 }
 
@@ -143,5 +187,5 @@ function isMarked(requests, what, value, at) {
 }
 
 module.exports = {
-    REMOVABLE, removalRequest, describeRemoval, applyRemoval, isMarked, samePerson, sizeName,
+    REMOVABLE, removalRequest, describeRemoval, applyRemoval, isMarked, samePerson, sizeName, makesOf,
 };

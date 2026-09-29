@@ -3275,9 +3275,11 @@ describe('source guard — the Brand box on a product', () => {
     test('it is on the row, beside the product and specification', () => {
         const fn = sliceBetween('function productRow(pr, i)', 'function transporterBlock');
         // Stored as `make` since it was built; called BRAND on screen because that is his word
-        // for it. The guard pins the field and the box, not the wording of the example.
-        expect(fn).toContain("f('make', 'Brand");
-        expect(fn).toContain('pr.make)');
+        // for it. Since 29 Sep it is a dropdown with tags ("so that later it is easy to
+        // search"), still stored as one line in `make`. The guard pins the call on the row and
+        // the field it reads — "+ " so the function's own definition cannot satisfy it.
+        expect(fn).toContain('+ brandPicker(pr, i)');
+        expect(fn).toContain('str(pr && pr.make)');
     });
 
     test('and the row has a column for it, so nothing gets squeezed', () => {

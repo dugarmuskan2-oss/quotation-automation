@@ -126,6 +126,13 @@
     var ROLE_LABEL = { dealer: 'Dealer', manufacturer: 'Manufacturer', transporter: 'Transporter', fabricator: 'Fabricator', client: 'Client', other: 'Other' };
     var ROLE_ORDER = ['dealer', 'manufacturer', 'transporter', 'fabricator', 'client', 'other'];
     var PIPE_TYPES = ['GI', 'ERW', 'Seamless', 'SS', 'MS', 'Alloy'];
+
+    // *His words: "for the product type and brand -- we can create a drop down? So that later
+    // it is easy to search".* 81 product rows had been typed 74 different ways. One short list,
+    // so the same thing is written one way; anything else comes in through "＋ Add another…".
+    // Sizes, factory and grade stay in the Specification box beside it.
+    // GP and GR added on his word: "GI Pipes already exists. GR Pipes and GP Pipes."
+    var PRODUCT_NAMES = ['GI pipe', 'GP pipe', 'GR pipe', 'ERW pipe', 'Seamless pipe', 'Square / Rectangular', 'Fittings', 'Valves', 'Sheets', 'Coating'];
     function roleLabel(p) {
         if (p && p.role === 'other') return str(p.roleOther) || 'Other';
         return ROLE_LABEL[p && p.role] || 'Other';
@@ -518,7 +525,8 @@
     function scoreBrand(p, need, why) {
         var wanted = (need && need.brands) || [];
         if (!wanted.length) return 0;
-        var mine = (p.products || []).map(function (pr) { return str(pr.make); }).filter(Boolean);
+        // One make per comma: a product can carry several now that the Brand box is a list.
+        var mine = [].concat.apply([], (p.products || []).map(makesOf));
         var isTheMaker = wanted.some(function (b) { return nameKey(b) === nameKey(p.company); });
         if (isTheMaker) { why.push(['ok', 'They ARE ' + wanted.join(' / ')]); return 35; }
         if (!mine.length) {
@@ -1377,6 +1385,7 @@
         if (r.what === 'product') return str(v && v.p);
         if (r.what === 'branch') return str(v && v.city);
         if (r.what === 'size') return [str(v && v.nb), str(v && v.inch)].filter(Boolean).join(' ');
+        if (r.what === 'brand') return 'Brand ' + str(v) + (r.at && r.at.product && str(r.at.product.p) ? ' on ' + str(r.at.product.p) : '');
         return str(v);
     }
 
@@ -1695,8 +1704,8 @@
         var f = function (k, ph, v) { return '<input data-pd-pr="' + i + '" data-pd-k="' + k + '" value="' + esc(v == null ? '' : v) + '" placeholder="' + esc(ph) + '">'; };
         var cls = specClass(pr.spec);
         return '<div class="pd-pcard"><div class="pd-pcard-r1">'
-            + f('p', 'Product — e.g. GI pipe', pr.p) + f('spec', 'Specification — e.g. IS 1239 Heavy', pr.spec)
-            + f('make', 'Brand — e.g. Jindal, Apollo', pr.make)
+            + productPicker(pr, i) + f('spec', 'Specification — e.g. IS 1239 Heavy', pr.spec)
+            + brandPicker(pr, i)
             + '<button class="pd-del" data-pd-delproduct="' + i + '">✕</button></div>'
             + '<div class="pd-row" style="margin-top:6px;"><span class="pd-tiny">Minimum order</span>'
             + '<span style="width:80px;">' + f('moq', 'T', pr.moq) + '</span><span class="pd-tiny">tonnes</span><span class="pd-sp"></span>'
@@ -1712,6 +1721,83 @@
             // tables across every firm for nothing.
             }).join('') : '<p class="pd-tiny" style="padding:4px 0;">No sizes yet. These are for your reference — the ranking matches on the product and specification, not on this table.</p>')
             + '<button class="pd-addline" data-pd-addsz="' + i + '">+ size</button></div></div>';
+    }
+
+    /**
+     * The product, picked from the list.
+     *
+     * A row typed before the list existed keeps its own words, shown as the choice, until he
+     * picks something else — nothing on a card is rewritten just because the box changed.
+     */
+    function productPicker(pr, i) {
+        var cur = str(pr.p);
+        var listed = PRODUCT_NAMES.some(function (n) { return lower(n) === lower(cur); });
+        return '<select data-pd-prname="' + i + '" style="min-width:0;">'
+            + '<option value="">Pick a product…</option>'
+            + (cur && !listed ? '<option value="' + esc(cur) + '" selected>' + esc(cur) + '</option>' : '')
+            + PRODUCT_NAMES.map(function (n) {
+                return '<option value="' + esc(n) + '"' + (lower(n) === lower(cur) ? ' selected' : '') + '>' + esc(n) + '</option>';
+            }).join('')
+            + '<option value="__other">＋ Add another…</option></select>';
+    }
+
+    /** The makes in one product's Brand box — one per comma, as he typed them. */
+    function makesOf(pr) {
+        return str(pr && pr.make).split(',').map(function (m) { return str(m); }).filter(Boolean);
+    }
+
+    /**
+     * One brand, told apart exactly. The ranking's sameMake is loose on purpose — "Apollo" in
+     * an enquiry should find "APL APOLLO TUBES LIMITED" — but the list must not be: loosely,
+     * "MS" swallowed "MSL" and "Jindal" swallowed "Jindal Saw", and one of each pair vanished.
+     */
+    function sameBrand(a, b) {
+        var x = nameKey(a);
+        return !!x && x === nameKey(b);
+    }
+
+    /** The product row a brand sits on — the same matching the server does (utils/removals.js). */
+    function brandRow(p, want, brand) {
+        var rows = (p.products || []).filter(function (x) {
+            return lower(x.p) === lower(want.p) && lower(x.spec) === lower(want.spec)
+                && makesOf(x).some(function (m) { return lower(m) === lower(brand); });
+        });
+        if (want.make !== undefined) return rows.filter(function (x) { return lower(x.make) === lower(want.make); })[0] || null;
+        return rows.length === 1 ? rows[0] : null;
+    }
+
+    /**
+     * The brands the dropdown offers.
+     *
+     * Every firm he has marked a manufacturer, as readBrands uses, AND every make already typed
+     * on any card: Tata, JSL and Prince have no card, and he wants them offered all the same.
+     * Another spelling of one already offered (APOLLO TUBES LTD beside APL APOLLO TUBES
+     * LIMITED) is the same brand, not a second entry. Nothing is stored — the list keeps itself.
+     */
+    function brandOptions() {
+        var out = [];
+        var add = function (nm) {
+            // "PRINCE (THEIR OWN MAKE)" offers PRINCE; a comma would split one brand into two once stored.
+            nm = str(str(nm).replace(/\([^)]*\)/g, ' ').replace(/,/g, ' ').replace(/\s+/g, ' '));
+            if (nm && !out.some(function (o) { return sameBrand(o, nm); })) out.push(nm);
+        };
+        D.contacts.forEach(function (c) { if (c.role === 'manufacturer') add(c.company); });
+        D.contacts.concat((D.pending || []).map(function (it) { return it.preview || {}; }))
+            .forEach(function (c) { (c.products || []).forEach(function (pr) { makesOf(pr).forEach(add); }); });
+        return out.sort(function (a, b) { return lower(a) < lower(b) ? -1 : 1; });
+    }
+
+    /** The brands on one product as tags, and a dropdown to add another. More than one is allowed. */
+    function brandPicker(pr, i) {
+        var mine = makesOf(pr);
+        return '<div class="pd-brands">'
+            + mine.map(function (m, j) {
+                return '<span class="pd-tag">' + esc(m) + ' <span class="pd-x" data-pd-delmake="' + i + ':' + j + '">✕</span></span>';
+            }).join('')
+            + '<select data-pd-addmake="' + i + '"><option value="">' + (mine.length ? '+ Brand' : 'Brand…') + '</option>'
+            + brandOptions().filter(function (b) { return !mine.some(function (m) { return sameBrand(m, b); }); })
+                .map(function (b) { return '<option value="' + esc(b) + '">' + esc(b) + '</option>'; }).join('')
+            + '<option value="__other">＋ Add another…</option></select></div>';
     }
 
     function otherRulesBlock(p) {
@@ -3491,6 +3577,12 @@
                 pr.sizes = drop(pr.sizes);
                 save(true, ['products']);
                 return;
+            } else if (what === 'brand' && at && at.product) {
+                var onIt = brandRow(p, at.product, value);
+                if (!onIt) return;
+                onIt.make = makesOf(onIt).filter(function (m) { return lower(m) !== lower(value); }).join(', ');
+                save(true, ['products']);
+                return;
             } else return;
             save(true, [{ person: 'people', phone: 'people', email: 'people', branch: 'branches',
                 route: 'routes', type: 'types', product: 'products', rule: 'rules', note: 'notes' }[what]]);
@@ -3704,6 +3796,14 @@
         each(card, '[data-pd-delproduct]', function (el) {
             el.onclick = function () { askRemoval('product', p.products[Number(el.getAttribute('data-pd-delproduct'))]); };
         });
+        bindProductPickers(card, p, save);
+        each(card, '[data-pd-delmake]', function (el) {
+            el.onclick = function () {
+                var a = el.getAttribute('data-pd-delmake').split(':');
+                var pr = p.products[+a[0]];
+                askRemoval('brand', makesOf(pr)[+a[1]], { product: { p: pr.p, spec: pr.spec, make: pr.make } });
+            };
+        });
         each(card, '[data-pd-pr]', function (el) {
             el.onchange = function () {
                 var i = Number(el.getAttribute('data-pd-pr')), k = el.getAttribute('data-pd-k');
@@ -3747,6 +3847,53 @@
         each(card, '[data-pd-delorule]', function (el) {
             el.onclick = function () { askRemoval('rule', p.rules[Number(el.getAttribute('data-pd-delorule'))]); };
         });
+    }
+
+    /**
+     * The product and brand dropdowns on each product row.
+     *
+     * Choosing "＋ Add another…" asks at once, on the page (window.prompt throws in this
+     * view), the same as the pipe-type dropdown. A brand typed there is offered on every
+     * card from then on, because the list is read from what is on the cards.
+     */
+    function bindProductPickers(card, p, save) {
+        each(card, '[data-pd-prname]', function (el) {
+            el.onchange = function () {
+                var pr = p.products[Number(el.getAttribute('data-pd-prname'))];
+                if (el.value !== '__other') { pr.p = el.value; save(false, ['products']); return; }
+                el.value = str(pr.p);                   // so cancelling leaves it as it was
+                askOnPage({ title: 'What product is it?', ask: 'Type it in', placeholder: 'e.g. Ductile iron pipe',
+                    okLabel: 'Use it', danger: false,
+                    run: function (v) { if (!str(v)) return; pr.p = str(v); save(true, ['products']); } });
+            };
+        });
+        each(card, '[data-pd-addmake]', function (el) {
+            el.onchange = function () {
+                var pr = p.products[Number(el.getAttribute('data-pd-addmake'))], v = el.value;
+                el.value = '';
+                if (v !== '__other') { addMake(pr, v); return; }
+                askOnPage({ title: 'Which brand?', ask: 'Type it in', placeholder: 'e.g. Tata',
+                    okLabel: 'Add it', danger: false, run: function (t) { addMake(pr, t); } });
+            };
+        });
+        // "Tata, JSL" typed in the box is two brands. One already on the row is not added twice,
+        // and the page says so — returning without a redraw left the box frozen on "Working…".
+        var addMake = function (pr, v) {
+            var mine = makesOf(pr), added = [];
+            str(v).split(',').forEach(function (b) {
+                b = str(b);
+                if (b && !mine.concat(added).some(function (m) { return sameBrand(m, b); })) added.push(b);
+            });
+            if (!added.length) {
+                if (!str(v)) { render(); return; }
+                // OK must redraw: the box shows "Working…" until something does.
+                askOnPage({ title: 'Already on this product', okLabel: 'OK', danger: false, run: function () { render(); },
+                    lines: [str(v) + ' is already one of its brands, so nothing was added.'] });
+                return;
+            }
+            pr.make = mine.concat(added).join(', ');
+            save(true, ['products']);
+        };
     }
 
     function bindNotes(card, p, save) {
