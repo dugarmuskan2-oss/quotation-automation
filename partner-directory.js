@@ -1694,7 +1694,8 @@
             // "(head office)" after it, not two labelled boxes in a section of their own.
             + '<div class="pd-branchgrp">'
             + '<div class="pd-branch-head">'
-            + '<input class="pd-branch-name" data-pd-k="city" list="pdKnownCities" value="' + esc(p.city || '') + '" placeholder="Town" aria-label="Head office town">'
+            + townPicker(p.city, 'data-pd-town="head"', 'Head office town')
+            + '<input class="pd-area" data-pd-k="area" value="' + esc(p.area || '') + '" placeholder="Area — e.g. Ambattur" aria-label="Head office area">'
             + '<span class="pd-tiny">(head office)</span>'
             + (headRows.length ? '<span class="pd-sp"></span><span class="pd-tiny">' + headRows.length + '</span>' : '')
             + '</div>'
@@ -1708,6 +1709,38 @@
             + '<p class="pd-tiny" style="margin-top:6px;">The first address on the first person is where enquiries go — but <b>every</b> address is matched against incoming email. '
             + 'The nearest branch to a delivery point is what the ranking measures; distance is only worked out for the '
             + known.length + ' towns the app knows, and a town outside them is not scored.</p>';
+    }
+
+    /**
+     * The towns a Town box offers: every town the app measures distance to, and every clean town
+     * already on a card. *His words: "clean town in the cards as well and make it a drop down"*.
+     * Only a name already in its clean form is offered, so an old "ERW FACTORY" in a box is shown
+     * on its own card but never offered on the others.
+     */
+    function townOptions() {
+        var out = [];
+        var add = function (t) {
+            t = str(t);
+            if (t && townKey(t) === t && !out.some(function (o) { return lower(o) === lower(t); })) out.push(t);
+        };
+        Object.keys(COORD).forEach(add);
+        D.contacts.concat((D.pending || []).map(function (it) { return it.preview || {}; })).forEach(function (c) {
+            add(c.city);
+            (c.branches || []).forEach(function (b) { add(b.city); });
+        });
+        return out.sort(function (a, b) { return lower(a) < lower(b) ? -1 : 1; });
+    }
+
+    /** A Town box. A town written before the list keeps his words as the choice until he picks another. */
+    function townPicker(value, attrs, label) {
+        var cur = str(value), towns = townOptions();
+        var listed = towns.some(function (t) { return lower(t) === lower(cur); });
+        return '<select class="pd-town" ' + attrs + ' aria-label="' + esc(label) + '"><option value="">Town…</option>'
+            + (cur && !listed ? '<option value="' + esc(cur) + '" selected>' + esc(cur) + '</option>' : '')
+            + towns.map(function (t) {
+                return '<option value="' + esc(t) + '"' + (lower(t) === lower(cur) ? ' selected' : '') + '>' + esc(t) + '</option>';
+            }).join('')
+            + '<option value="__other">＋ Add another…</option></select>';
     }
 
     /** Two ways of writing the same town reduced to one key — "Jyoti Nagar" and "JYOTI NAGAR". */
@@ -1729,22 +1762,20 @@
         return '<div class="pd-branchgrp">'
             + '<div class="pd-branch-head">'
             + (g.branch
-                ? '<input class="pd-branch-name" data-pd-renamebranch="' + esc(g.branch) + '"'
-                    + ' value="' + esc(g.branch) + '" aria-label="Branch name">'
+                ? townPicker(g.branch, 'data-pd-town="rename" data-pd-was="' + esc(g.branch) + '"', 'Branch town')
                 : (g.fresh
-                    ? '<input class="pd-branch-name" data-pd-br="' + at + '" data-pd-k="city" list="pdKnownCities"'
-                        + ' value="" placeholder="Name this branch — e.g. Coimbatore" aria-label="Branch name">'
+                    ? townPicker('', 'data-pd-town="' + at + '"', 'Branch town')
                     // Nobody has said where these people sit. Typing a town here puts ALL of
                     // them in it at once, which is what he wanted when he tried to edit it.
                     : '<input class="pd-branch-name" data-pd-branchall="1" list="pdCardBranches"'
                         + ' value="" placeholder="No branch set — type one to move these ' + g.rows.length
                         + ' here" aria-label="Give these people a branch">'))
+            + (named ? '<input class="pd-area" data-pd-br="' + at + '" data-pd-k="area" value="' + esc(b.area || '') + '" placeholder="Area — e.g. Ambattur" aria-label="Branch area"' + (at === -1 ? ' disabled' : '') + '>' : '')
             + '<span class="pd-sp"></span><span class="pd-tiny">' + g.rows.length + '</span>'
             + (at !== -1 ? '<button class="pd-del" data-pd-delbranch="' + at + '">✕</button>' : '')
             + '</div>'
             + (named
                 ? '<div class="pd-branch-where">'
-                    + '<input data-pd-br="' + at + '" data-pd-k="area" value="' + esc(b.area || '') + '" placeholder="Town or area — e.g. Ambattur"' + (at === -1 ? ' disabled' : '') + '>'
                     + '<input data-pd-br="' + at + '" data-pd-k="address" value="' + esc(b.address || '') + '" placeholder="Full address (optional)"' + (at === -1 ? ' disabled' : '') + '>'
                     + (at === -1 ? '<button class="pd-addline" data-pd-listbranch="' + esc(g.branch) + '">Add its address</button>' : '')
                     + '</div>'
@@ -3897,6 +3928,7 @@
                 save(true, ['categories']);
             };
         });
+        bindTowns(card, p, save);
         on(card, '[data-pd-addbranch]', function () { (p.branches = p.branches || []).push({ city: '', area: '', address: '' }); save(true, ['branches']); });
         each(card, '[data-pd-br]', function (el) {
             el.onchange = function () { p.branches[Number(el.getAttribute('data-pd-br'))][el.getAttribute('data-pd-k')] = el.value; save(false, ['branches']); };
@@ -3910,6 +3942,40 @@
         });
         each(card, '[data-pd-delroute]', function (el) {
             el.onclick = function () { askRemoval('route', p.routes[Number(el.getAttribute('data-pd-delroute'))]); };
+        });
+    }
+
+    /**
+     * The Town boxes. Changing a town moves the people filed under it — the way renaming a
+     * branch always has — so nobody is left in a group of their own under the old name.
+     * "＋ Add another…" asks on the page; what he types is tidied the way the list is.
+     */
+    function bindTowns(card, p, save) {
+        var moveTo = function (was, now) {
+            (p.people || []).forEach(function (c) { if (was && str(c.branch) === was) c.branch = now; });
+        };
+        var setTown = function (el, v) {
+            var where = el.getAttribute('data-pd-town');
+            if (where === 'head') { moveTo(str(p.city), v); p.city = v; save(true, ['city', 'people']); return; }
+            if (where === 'rename') {
+                var was = el.getAttribute('data-pd-was');
+                if (!v || v === was) { render(); return; }
+                moveTo(was, v);
+                (p.branches || []).forEach(function (b) { if (str(b.city) === was) b.city = v; });
+                save(true, ['people', 'branches']);
+                return;
+            }
+            p.branches[Number(where)].city = v;
+            save(true, ['branches']);
+        };
+        each(card, '[data-pd-town]', function (el) {
+            el.onchange = function () {
+                var v = el.value;
+                if (v !== '__other') { setTown(el, v); return; }
+                el.value = el.getAttribute('data-pd-town') === 'head' ? str(p.city) : (el.getAttribute('data-pd-was') || '');
+                askOnPage({ title: 'Which town?', ask: 'Type it in', placeholder: 'e.g. Tirupur', okLabel: 'Use it', danger: false,
+                    run: function (t) { t = str(t); if (!t) { render(); return; } setTown(el, townKey(t) || t); } });
+            };
         });
     }
 

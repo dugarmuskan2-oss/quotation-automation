@@ -2013,3 +2013,44 @@ card for that reason.
 - The R&V twin card "R &V TUBE SALES PVT LTD" (waiting) holds the same Apollo entry.
 - his-pages.js false hits: titles split on "/" leave "M", which matches any card starting
   with M (6 wrong pages for MKS). Read the page list with care until that is fixed.
+
+## One spelling per town (29 Sep)
+
+*His words: "clean town in the cards as well and make it a drop down"*, *"make sure area is
+added next to the city"*, and "OK" to the list.
+
+145 different town spellings sat in 222 town boxes. Each was read against the cards it is on:
+123 cleaned, 6 already clean, 16 left alone for him. **168 boxes changed, on 23 approved and
+40 waiting cards.** The approved ones each have a change-log entry with Undo.
+
+- One spelling per town: Bombay → Mumbai, Bengaluru → Bangalore, Nasik → Nashik, Hydrabad →
+  Hyderabad, Gaziabad → Ghaziabad, CHEANNAI → Chennai, and so on.
+- A locality goes in the Area box beside the town: AMBATTUR → Chennai + Ambattur, and EGMORE,
+  SATHANGADU, PENDURTHI the same way. 16 places got an area, all on branches.
+- Nothing is lost. When the box held more than a town ("CHENNAI OFFICE", "BOMBAY FACTORY -
+  CLOSED", a whole address), the original text went into the address box (64 of them).
+
+**Two faults in the first run, both put right the same day:**
+- People are filed under a branch by its NAME. Renaming 168 boxes left 121 people on 15 cards
+  filed under the old names, in a group of their own. They were moved with their branch, the
+  way the app's own branch rename does it.
+- An approval he made 1.3 seconds after the save read the waiting list before it and wrote it
+  back after, undoing the clean-up on the waiting cards (only). The app's routes read the
+  whole file, change it, and write it back, with no lock. The waiting cards were done again
+  and checked 20 seconds later. **A bulk save must be checked again afterwards.**
+
+**The 16 left for him** (not a place, or not certain): '10, Armanian Street' (Siddachal),
+'2nd Godown' (Jindal Pipe Industries), "A'BAD OFF" (Asian Steels), 'CHETNA FACTORY', 'ERW /
+SEAMLESS / VIBHORE FACTORY' (Maharashtra Seamless), 'GODOWN NO : 1 ADINATH TRADE COMPLEX'
+(Wootz), 'GUJARAT' (ABS), 'HYDRABAD' head office with a T. Nagar Chennai address (Maharashtra
+Seamless), 'JSL ( COLD MILL - SMALL PLANT )' and 'STAINLESS STEEL FACTORY' (Jindal Saw),
+'JYOTI NAGAR GODOWN' (Bombay Hardware), 'KERALA' (Apollo), 'SPONGE AND POWER DIVISION' and
+'WATER AND FLUENT DIVISION' (Kamachi).
+
+**One town, two places.** 8 cards now have two or more branches in the same town. Most are the
+same place written more than once (Apollo lists Raipur, Murbad, Hosur and Bangalore three or
+four times). Some are really different: Jindal Saw's NASIK FACTORY and NASIK FACTORY (PPC
+DIVISION); Pondy Oxides' lead and zinc factories in Kanchipuram; Zenith's two Tarapur
+plants. The card shows one block per town, so the second is out of sight, though nothing is
+lost. Jindal Saw's PPC Division keeps its old name until he decides. **To do:** tell same-town
+branches apart by their Area, and ask him about merging the true repeats.

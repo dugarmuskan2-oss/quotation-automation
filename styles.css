@@ -1433,6 +1433,8 @@
 @media (max-width: 640px) { .pd-rel-place { grid-template-columns: 1fr; } }
 .pd-branchgrp { border-left: 3px solid rgba(180,138,60,.35); padding-left: 10px; margin: 14px 0 8px; }
 .pd-branch-where { display: grid; grid-template-columns: 1fr 1.6fr auto; gap: 6px; margin: 0 0 8px; }
+.pd-branch-head .pd-town { flex: 0 1 200px; min-width: 0; font-weight: 700; }
+.pd-branch-head .pd-area { flex: 0 1 190px; min-width: 0; font-weight: 400; }
 @media (max-width: 640px) { .pd-branch-where { grid-template-columns: 1fr; } }
 .pd-person-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 6px; }
 .pd-cline { display: grid; grid-template-columns: 90px 1fr 26px; gap: 5px; align-items: center; margin-bottom: 4px; }
