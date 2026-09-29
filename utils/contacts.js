@@ -260,6 +260,8 @@ function sanitizePartner(input) {
         aka: sanitizeStrings(src.aka, 40),
         people: sanitizePeople(src.people),
         city: str(src.city),
+        // The part of town, beside the town: *"make sure area is added next to the city"*.
+        area: str(src.area),
         address: str(src.address),
         branches: sanitizeBranches(src.branches),
         types: sanitizeStrings(src.types, 100),
@@ -273,6 +275,9 @@ function sanitizePartner(input) {
         // Three states, not two. Anything that is not an explicit yes or no is "not
         // recorded" — a default answered for the owner, and the ranking then scored it.
         partLoad: src.partLoad === true ? true : (src.partLoad === false ? false : null),
+        // How far a transporter goes: one town, one fixed route, or many cities. Blank until he
+        // says — the filter shows a blank card as "not filled in", never as a no.
+        reach: ['city', 'route', 'many'].indexOf(src.reach) !== -1 ? src.reach : '',
         enquiries: sanitizeEnquiries(src.enquiries),
         notes: sanitizeNotes(src.notes),
         images: (Array.isArray(src.images) ? src.images : [])
@@ -1003,7 +1008,7 @@ function mergePreviews(base, extra) {
     // A name read from the notes beats one made up from an email domain, so "Md4" gives way
     // to "MD4 STEELS". Every other box only fills a blank — a stored answer is never replaced.
     out.company = betterCompanyName(out.company, from.company, out);
-    ['role', 'roleOther', 'city', 'address', 'vehicles', 'moq', 'partLoad'].forEach(f => {
+    ['role', 'roleOther', 'city', 'area', 'address', 'vehicles', 'moq', 'partLoad', 'reach'].forEach(f => {
         if (!saysSomething(out[f]) && saysSomething(from[f])) out[f] = from[f];
     });
     return out;
@@ -1640,7 +1645,7 @@ function pushChange(changes, entry) {
 function diffLines(before, now) {
     const out = [], b = before || {};
     const was = k => str(b[k]);
-    [['company', 'Company'], ['city', 'City'], ['address', 'Address'], ['vehicles', 'Vehicles']]
+    [['company', 'Company'], ['city', 'City'], ['area', 'Area'], ['address', 'Address'], ['vehicles', 'Vehicles'], ['reach', 'How far they go']]
         .forEach(([k, label]) => { if (was(k) !== str(now[k])) out.push({ label, from: was(k), to: str(now[k]) }); });
     diffRole(out, b, now, !before);
     if (num(b.moq, 0) !== num(now.moq, 0)) out.push({ label: 'Overall MOQ', from: num(b.moq, 0) + ' T', to: num(now.moq, 0) + ' T' });

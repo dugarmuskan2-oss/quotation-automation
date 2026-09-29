@@ -63,7 +63,7 @@ function str(v) { return String(v == null ? '' : v).trim(); }
  * which is right: reading a fresh brochure into a card IS checking it.
  */
 const REVIEWED_FIELDS = ['company', 'gst', 'categories', 'role', 'roleOther', 'city', 'address', 'branches', 'types',
-    'moq', 'products', 'rules', 'routes', 'vehicles', 'partLoad', 'notes', 'people', 'images'];
+    'moq', 'products', 'rules', 'routes', 'vehicles', 'partLoad', 'reach', 'area', 'notes', 'people', 'images'];
 
 /**
  * What to call a card in the log. A card can be approved with no firm name at all — an

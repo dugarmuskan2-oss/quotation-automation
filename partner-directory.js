@@ -639,7 +639,7 @@
         branches: 'The branches', types: 'The pipe types', products: 'The product range',
         rules: 'The price rules', routes: 'The routes', moq: 'The minimum order',
         vehicles: 'The vehicles', notes: 'The notes', fromEnquiry: 'The check-me flag',
-        partLoad: 'Part load',
+        partLoad: 'Part load', reach: 'How far they go', area: 'The area',
     };
     function saveFailedWhat() {
         var named = (D.saveWhat || []).map(function (k) { return FIELD_LABEL[k]; }).filter(Boolean);
@@ -959,7 +959,7 @@
     }
 
     // ── State for the tool page ───────────────────────────────────────────────
-    var S = { tab: 'dir', filter: 'all', facet: { town: '', product: '', brand: '', load: '' }, openId: null, openPending: null, openChange: null,
+    var S = { tab: 'dir', filter: 'all', facet: { town: '', product: '', brand: '', load: '', reach: '' }, openId: null, openPending: null, openChange: null,
               find: { text: '', state: 'idle', need: null, note: '' }, busy: {}, add: freshAdd(),
               confirmDelete: '',     // the card whose "are you sure?" is on screen
               dirty: {}, clean: {}, saveNote: '', confirmLeave: '', leaveThen: null, ask: null,
@@ -1166,12 +1166,12 @@
     // "fabricators too". A maker IS its brand, and a lorry firm has no products either — it
     // has a load instead: *"transporters will have load -- part also/ full only"*. And
     // *"Clients and others dont need any filters"*.
-    var FACET_LABEL = { town: 'Any town', product: 'Any product', brand: 'Any brand', load: 'Any load' };
-    var FACET_NOUN = { town: 'town', product: 'product', brand: 'brand', load: 'load type' };
+    var FACET_LABEL = { town: 'Any town', product: 'Any product', brand: 'Any brand', load: 'Any load', reach: 'Any distance' };
+    var FACET_NOUN = { town: 'town', product: 'product', brand: 'brand', load: 'load type', reach: 'distance' };
 
     function facetsFor(kind) {
         if (kind === 'client' || kind === 'other') return [];
-        if (kind === 'transporter') return ['town', 'load'];
+        if (kind === 'transporter') return ['town', 'load', 'reach'];
         if (kind === 'manufacturer' || kind === 'fabricator') return ['town', 'product'];
         return ['town', 'product', 'brand'];
     }
@@ -1216,6 +1216,7 @@
         if (f === 'brand') return brandsOnCard(p);
         // The card's own words for the part-load box; a box nobody answered is blank, not "no".
         if (f === 'load') return p.partLoad === true ? ['Takes part load'] : (p.partLoad === false ? ['Full load only'] : []);
+        if (f === 'reach') return REACH_LABEL[p.reach] ? [REACH_LABEL[p.reach]] : [];
         var texts = (p.products || []).map(function (pr) { return str(pr.p); }).concat(p.types || []).filter(Boolean);
         if (!texts.length) return [];
         var matched = PRODUCT_NAMES.filter(function (name) {
@@ -1972,7 +1973,7 @@
             + '<option value=""' + (p.partLoad == null ? ' selected' : '') + '>Not recorded</option>'
             + '<option value="yes"' + (p.partLoad === true ? ' selected' : '') + '>Accepts part load</option>'
             + '<option value="no"' + (p.partLoad === false ? ' selected' : '') + '>Full load only</option>'
-            + '</select></div></div>'
+            + '</select></div>' + reachField(p) + '</div>'
             + '<div class="pd-tiny pd-head-line">Regular routes</div>'
             + (p.routes || []).map(function (r, i) {
                 return '<div class="pd-cline" style="grid-template-columns:1fr 1fr 26px;">'
@@ -1982,6 +1983,17 @@
             }).join('')
             + '<button class="pd-addline" data-pd-addroute="1">+ Add route</button>'
             + otherRulesBlock(p);
+    }
+
+    // *"same route vs same city vs multiple cities"* — how far a transporter goes. He says it;
+    // nothing is worked out from the routes, so a blank stays blank.
+    var REACH_LABEL = { city: 'Same city', route: 'Same route', many: 'Multiple cities' };
+    function reachField(p) {
+        return '<div class="pd-fld"><label>How far they go</label><select data-pd-k="reach">'
+            + '<option value=""' + (!p.reach ? ' selected' : '') + '>Not recorded</option>'
+            + ['city', 'route', 'many'].map(function (k) {
+                return '<option value="' + k + '"' + (p.reach === k ? ' selected' : '') + '>' + REACH_LABEL[k] + '</option>';
+            }).join('') + '</select></div>';
     }
 
     // ── who this firm is connected to ────────────────────────────────────────
@@ -3459,7 +3471,7 @@
         each(app, '[data-pd-facet]', function (el) {
             el.onchange = function () { S.facet[el.getAttribute('data-pd-facet')] = el.value; render(); };
         });
-        on(app, '[data-pd-facetclear]', function () { S.facet = { town: '', product: '', brand: '', load: '' }; render(); });
+        on(app, '[data-pd-facetclear]', function () { S.facet = { town: '', product: '', brand: '', load: '', reach: '' }; render(); });
         bindFinder(app); bindAdd(app); bindListAndCard(app); bindChanges(app);
     }
 
