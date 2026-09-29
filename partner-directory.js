@@ -1781,9 +1781,11 @@
             nm = str(str(nm).replace(/\([^)]*\)/g, ' ').replace(/,/g, ' ').replace(/\s+/g, ' '));
             if (nm && !out.some(function (o) { return sameBrand(o, nm); })) out.push(nm);
         };
-        D.contacts.forEach(function (c) { if (c.role === 'manufacturer') add(c.company); });
+        // What he typed comes first, so his spelling is the one offered: *"Merge all Apollo to
+        // APL Apollo Tubes Ltd"* — not the card's "APL APOLLO TUBES LIMITED", which is the same brand.
         D.contacts.concat((D.pending || []).map(function (it) { return it.preview || {}; }))
             .forEach(function (c) { (c.products || []).forEach(function (pr) { makesOf(pr).forEach(add); }); });
+        D.contacts.forEach(function (c) { if (c.role === 'manufacturer') add(c.company); });
         return out.sort(function (a, b) { return lower(a) < lower(b) ? -1 : 1; });
     }
 

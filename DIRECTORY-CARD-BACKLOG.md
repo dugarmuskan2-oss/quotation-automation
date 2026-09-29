@@ -1947,3 +1947,31 @@ the same people is his question 1 on Bharat.
 - **Counts not quoted to him**: the checkers disagreed on how many cards carry the backwards
   Apollo line (13 / 17 / 18) and the tool's email bug. Recount card by card before giving him a
   number (Rule 6a/12).
+
+## One Apollo (29 Sep)
+
+*His words: "Merge all Apollo to APL Apollo Tubes Ltd . Loha is a seperate manufacturer".*
+
+Asked for by name, so this is the one backfill Rule 0 allows. Only the Brand boxes were
+touched, and each row had to still read exactly what it read at the scan. 7 rows on 6
+approved cards changed. Each card has a change-log entry, with Undo, under Recent changes.
+
+| Card | Was | Now |
+|---|---|---|
+| KRISCOL | APL APOLLO TUBES LIMITED | APL Apollo Tubes Ltd |
+| CALCUTTA TUBE | Apollo | APL Apollo Tubes Ltd |
+| KHERA PIPE | APL Apollo Tubes Limited | APL Apollo Tubes Ltd |
+| S&S | Apollo Tubes Limited | APL Apollo Tubes Ltd |
+| JINDAL PIPE INDUSTRIES | Apollo Tubes Ltd | APL Apollo Tubes Ltd |
+| SHANKARA (square & rectangular) | APOLLO & LOHA | APL Apollo Tubes Ltd, Loha |
+| SHANKARA (round pipe) | HTL,  APOLLA & LOHA | HTL, APL Apollo Tubes Ltd, Loha |
+
+ALI STEEL already read APL Apollo Tubes Ltd. No waiting card had an Apollo brand.
+
+**The spelling he types is the one the Brand list offers.** The maker card is still called
+APL APOLLO TUBES LIMITED, and it was winning the dropdown. Brands typed on cards now come
+before maker-card names, so his spelling is shown. The Apollo card itself was not renamed:
+dozens of relation lines name it, and nobody asked for that.
+
+**What transfers:** any new card should get APL Apollo Tubes Ltd in its Brand box, never
+another spelling. Loha has no card of its own yet.
