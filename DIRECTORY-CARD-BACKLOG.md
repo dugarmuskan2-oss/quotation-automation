@@ -1975,3 +1975,41 @@ dozens of relation lines name it, and nobody asked for that.
 
 **What transfers:** any new card should get APL Apollo Tubes Ltd in its Brand box, never
 another spelling. Loha has no card of its own yet.
+
+## The fourth ten (29 Sep)
+
+MKS Metal Roofing · Shri Lakshmi Steel Suppliers · Shri Shakthi Steel and Pipe · Ratan Iron
+Com · Sri Ram Steel · Trichy AMK · R&V Tube Sales · SANKARA · VARDHAMAN · S.ABBAS &CO.
+
+He said yes to 58 changes, and then "dealer" for the four cards that come only from the
+Apollo TN list: 62 changes, all saved. Each card got its version moved on and its questions
+put on it (35 questions in all; none on MKS, Shri Lakshmi or Ratan).
+
+- **Eight backwards Apollo lines** (every card except VARDHAMAN and S.ABBAS) are now in the
+  one approved shape, each quoting his own numbered line from the SNO 12 Apollo page.
+- **Lost emails put back on 6 cards.** The old tool's email bug had dropped them.
+- **Trichy AMK:** MOHAMED BARIQ and A. HARIKRISHNAN added. Trade set to dealer, from his
+  heading "CHENNAI DEALER".
+- **R&V Tube Sales:** the five firm numbers moved off RAHUL SIR onto an Office row. The
+  "R&V TUBES PVT LTD" page (Tondiarpet address) is NOT joined; that is a question.
+- **SANKARA:** still not folded into the approved SHANKARA. The only link is a shared number,
+  so it is asked again.
+- **VARDHAMAN:** ABS FUIJICO was backwards. Its four notes become one line. 8 buyers and the
+  lorry man SATHISH added, from pages that spell VARDHAMAN exactly as the card does. The
+  other spellings (VARDHMAN, VARADHAMAN, Vardhman Agency) are questions, not joins.
+- **S.ABBAS:** ABS line turned round; 3 numbers, 2 products and 2 filings added.
+
+**A fault in the APP, found by S.ABBAS:** the dot in "S.ABBAS" made "ABS FUIJICO buys from
+S.ABBAS &CO" read backwards. It is fixed on the testing branch (initials before a name now
+count as part of it). The card is right; it draws right once that fix is live.
+
+**His answers don't survive approval.** The previous ten were approved with their questions
+unanswered, and the questions went with them. SANKARA's question is asked again on its own
+card for that reason.
+
+### What transfers (not applied)
+
+- AMK and TRICHK AMK (waiting) share people and numbers with Trichy AMK. Questions on Trichy AMK.
+- The R&V twin card "R &V TUBE SALES PVT LTD" (waiting) holds the same Apollo entry.
+- his-pages.js false hits: titles split on "/" leave "M", which matches any card starting
+  with M (6 wrong pages for MKS). Read the page list with care until that is fixed.
