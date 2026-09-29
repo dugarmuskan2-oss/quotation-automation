@@ -4804,7 +4804,7 @@
                  // Searchable lists and the "New to your lists" line (30 Sep).
                  listPickerHtml: listPickerHtml, filterList: filterList, listChosen: listChosen, sameInList: sameInList,
                  townPicker: townPicker, productOptions: productOptions, newToLists: newToLists, nearlyThe: nearlyThe,
-                 bindTowns: bindTowns, closeListOutside: closeListOutside,
+                 bindTowns: bindTowns, closeListOutside: closeListOutside, facetSelect: facetSelect,
                  _state: function () { return { S: S, D: D }; } },
     };
 })();

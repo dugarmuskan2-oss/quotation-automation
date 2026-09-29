@@ -3244,3 +3244,16 @@ describe('a stale copy must not overwrite a fresh one', () => {
         expect(sanitizePendingItem({}).rev).toBe(0);
     });
 });
+
+describe('a product added through "+ Add" stays marked', () => {
+    // The searchable Product list (30 Sep) offers a product added on one card on the others, so
+    // the mark has to survive the server's own cleaning of a card. Only an explicit true is kept.
+    const { sanitizePartner } = require('../utils/contacts');
+    test('added: true is kept; anything else is not', () => {
+        const out = sanitizePartner({ company: 'X', products: [
+            { p: 'Ductile iron pipe', added: true }, { p: 'GI pipe', added: 'yes' }, { p: 'ERW pipe' }] }).products;
+        expect(out[0].added).toBe(true);
+        expect(out[1]).not.toHaveProperty('added');
+        expect(out[2]).not.toHaveProperty('added');
+    });
+});

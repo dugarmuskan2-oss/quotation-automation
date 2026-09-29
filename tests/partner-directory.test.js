@@ -3507,6 +3507,13 @@ describe('the Product and Brand dropdowns', () => {
             expect(pop.none.hidden).toBe(false);
         });
 
+        test('a filter list has no "+ Add", even open', () => {
+            setContacts([partner({ city: 'Chennai' })]);
+            const html = opened('facet:town', () => t.facetSelect('town', D.contacts));
+            expect(html).toContain('data-pd-lsq="facet:town"');                 // it is open, and searchable
+            expect(html).not.toContain('data-pd-lsadd');
+        });
+
         test('a click outside closes an open list; a click inside does not', () => {
             S().listOpen = 'town:head';
             t.closeListOutside({ target: { closest: () => ({}) } });
@@ -3598,12 +3605,21 @@ describe('the Product and Brand dropdowns', () => {
             return { p, save };
         }
 
-        test('picked from the list, it joins the line', () => {
+        test('picked from the list, it joins the line, and the list closes', () => {
             const { p, save } = oneRow('Tata');
+            S().listOpen = 'brand:0';
             t.listChosen('brand:0', 'JSL', false);
             expect(p.products[0].make).toBe('Tata, JSL');
             expect(save).toHaveBeenCalledWith(true, ['products']);
             expect(S().listOpen).toBeNull();
+        });
+
+        test('each Brand list adds to its own row, never the first', () => {
+            const p = partner({ products: [{ p: 'GI pipe', spec: '', make: 'Tata', sizes: [], moq: 0, rule: '' },
+                                           { p: 'ERW pipe', spec: '', make: '', sizes: [], moq: 0, rule: '' }] });
+            t.bindProductPickers(fakeCard([]), p, jest.fn());
+            t.listChosen('brand:1', 'JSL', false);
+            expect(p.products.map((r) => r.make)).toEqual(['Tata', 'JSL']);
         });
 
         test('typed with commas, it is two brands — and one of them already there is not repeated', () => {
