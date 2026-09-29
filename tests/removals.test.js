@@ -232,9 +232,45 @@ describe('a brand off one product', () => {
     const ask = (c, brand, row) => removalRequest(c, 'brand', brand,
         { product: { p: c.products[row].p, spec: c.products[row].spec, make: c.products[row].make } });
 
-    test('the Brand line is read one brand per comma', () => {
+    test('the Brand line is read one brand per comma, and only per comma', () => {
         expect(makesOf({ make: ' Tata,  JSL ,, ' })).toEqual(['Tata', 'JSL']);
+        expect(makesOf({ make: 'Tata, S/S Tubes' })).toEqual(['Tata', 'S/S Tubes']);
         expect(makesOf({})).toEqual([]);
+    });
+
+    test('nothing queued yet means nothing is marked', () => {
+        expect(isMarked([], 'brand', 'Tata', { product: { p: '', spec: '', make: 'Tata' } })).toBe(false);
+    });
+
+    test('MS off a line holding MSL and MS takes MS, not MSL', () => {
+        const c = { products: [{ p: '', spec: '', make: 'MSL, MS' }] };
+        applyRemoval(c, removalRequest(c, 'brand', 'MS', { product: { p: '', spec: '', make: 'MSL, MS' } }));
+        expect(c.products[0].make).toBe('MSL');
+    });
+
+    test('a line typed without spaces is still read', () => {
+        const c = { products: [{ p: '', spec: '', make: 'TATA,MSL' }] };
+        expect(applyRemoval(c, removalRequest(c, 'brand', 'MSL', { product: { p: '', spec: '', make: 'TATA,MSL' } })).changed).toBe(true);
+        expect(c.products[0].make).toBe('TATA');
+    });
+
+    test('a nameless row is not "ERW pipe", and a blank spec is not "IS 1239"', () => {
+        const c = { products: [{ p: '', spec: 'IS 1239', make: 'Tata' }, { p: 'ERW pipe', spec: 'IS 1239', make: 'Tata' }, { p: '', spec: '', make: 'Tata' }] };
+        applyRemoval(c, removalRequest(c, 'brand', 'Tata', { product: { p: 'ERW pipe', spec: 'IS 1239', make: 'Tata' } }));
+        applyRemoval(c, removalRequest(c, 'brand', 'Tata', { product: { p: '', spec: '', make: 'Tata' } }));
+        expect(c.products.map((r) => r.make)).toEqual(['Tata', '', '']);
+    });
+
+    test('two identical rows: the first, the one the card greys out', () => {
+        const c = { products: [{ p: '', spec: '', make: 'Tata', moq: 1 }, { p: '', spec: '', make: 'Tata', moq: 2 }] };
+        applyRemoval(c, removalRequest(c, 'brand', 'Tata', { product: { p: '', spec: '', make: 'Tata' } }));
+        expect(c.products.map((r) => r.make)).toEqual(['', 'Tata']);
+    });
+
+    test('a brand marked on a nameless row does not grey out the same brand on ERW pipe', () => {
+        const c = brandCard();
+        const req = removalRequest(c, 'brand', 'Tata', { product: { p: '', spec: '', make: 'Tata' } });
+        expect(isMarked([req], 'brand', 'Tata', { product: { p: 'ERW pipe', spec: 'IS 1239', make: 'Tata' } })).toBe(false);
     });
 
     test('a brand is a request that can be made at all', () => {
@@ -266,8 +302,18 @@ describe('a brand off one product', () => {
         const c = brandCard();
         const req = ask(c, 'Tata', 1);
         c.products[1].make = 'Tata, JSL, MSL';                          // edited while it waited
-        expect(applyRemoval(c, req).changed).toBe(false);
+        expect(applyRemoval(c, req)).toMatchObject({ changed: false, reason: expect.stringContaining('changed since') });
         expect(c.products.map((r) => r.make)).toEqual(['Tata', 'Tata, JSL, MSL', 'Tata, APL Apollo Tubes Ltd, JSL', 'Tata']);
+    });
+
+    test('the only row still holding it has changed: still nothing, never "close enough"', () => {
+        const c = { products: [{ p: '', spec: '', make: 'JSL, MSL' }, { p: '', spec: '', make: 'Tata, JSL' }] };
+        const req = removalRequest(c, 'brand', 'JSL', { product: { p: '', spec: '', make: 'Tata, JSL' } });
+        c.products[1].make = 'Tata';                                     // he took JSL off himself
+        c.products[0].make = 'MSL';
+        c.products.push({ p: '', spec: '', make: 'JSL' });
+        expect(applyRemoval(c, req).changed).toBe(false);
+        expect(c.products.map((r) => r.make)).toEqual(['MSL', 'Tata', 'JSL']);
     });
 
     test('approved twice, the second does nothing', () => {

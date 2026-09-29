@@ -1164,11 +1164,13 @@
     // *His words: "can we add filters to each. Under dealers for example : Location , Product ,
     // Brand ?"* — and "under manufacturer there will be no brand", "transporters too",
     // "fabricators too". A maker IS its brand, and a lorry firm has no products either — it
-    // has a load instead: *"transporters will have load -- part also/ full only"*.
+    // has a load instead: *"transporters will have load -- part also/ full only"*. And
+    // *"Clients and others dont need any filters"*.
     var FACET_LABEL = { town: 'Any town', product: 'Any product', brand: 'Any brand', load: 'Any load' };
     var FACET_NOUN = { town: 'town', product: 'product', brand: 'brand', load: 'load type' };
 
     function facetsFor(kind) {
+        if (kind === 'client' || kind === 'other') return [];
         if (kind === 'transporter') return ['town', 'load'];
         if (kind === 'manufacturer' || kind === 'fabricator') return ['town', 'product'];
         return ['town', 'product', 'brand'];
@@ -1254,6 +1256,7 @@
     function activeFacets() { return facetsFor(S.filter).filter(function (f) { return S.facet[f]; }); }
 
     function facetBarHtml() {
+        if (!facetsFor(S.filter).length) return '';
         var pool = baseList();
         return '<div class="pd-facets">' + facetsFor(S.filter).map(function (f) { return facetSelect(f, pool); }).join('')
             + (activeFacets().length ? '<button class="pd-linkish" data-pd-facetclear="1">Clear filters</button>' : '')
