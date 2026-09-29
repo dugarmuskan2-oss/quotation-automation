@@ -2054,3 +2054,29 @@ DIVISION); Pondy Oxides' lead and zinc factories in Kanchipuram; Zenith's two Ta
 plants. The card shows one block per town, so the second is out of sight, though nothing is
 lost. Jindal Saw's PPC Division keeps its old name until he decides. **To do:** tell same-town
 branches apart by their Area, and ask him about merging the true repeats.
+
+## The fifth ten (29 Sep, overnight)
+
+Taher Steel · R.K Steel · Madhav Pipe · Kapil Agency · Ril · Ramco Cements · Irclass · Zenith
+Steel Pipes · Navish Logistics · ARC.
+
+The first of five batches done overnight. *His words: "hm ok lets work on the mac"*, and
+yes to saving each batch without showing it first; *"run 10 at a time always"*. He approves
+every card himself in the morning.
+
+107 changes, all saved; 19 questions on the cards. Every card was checked against his pages,
+cross-checked, rebuilt, and checked again before saving. The save was re-checked 20 seconds
+later.
+
+- **Taher Steel** was edited by him after the batch was read (trade set to dealer). The save
+  guard held it back. Its 4 changes went onto HIS version, and his "dealer" stays.
+- **Navish Logistics and ARC:** the backwards Jindal Saw lorry line was REWRITTEN in the CCI
+  shape, not deleted, as noted after the third ten.
+- **Madhav Pipe:** 32 changes, mostly lines on his pages that the card had lost.
+- **Irclass:** the card asks him whether it belongs in the directory at all.
+
+**A fault in the APP, found by R.K Steel:** "MANTO ENGINEERING PVT LTD buys from R.K STEEL"
+still draws under "They buy from", backwards. buysFromThem looks for R.K STEEL by its
+distinctive words, and "R", "K" and "STEEL" give it none. The S&S fix (match the whole name
+when there are no distinctive words) never reached buysFromThem. Fix it in the app; the card's
+text is right.
