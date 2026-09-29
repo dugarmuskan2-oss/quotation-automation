@@ -2114,7 +2114,9 @@
         if (verb > 0 && mine.length
             && new RegExp('(' + mine.join('|') + ')', 'i').test(t.slice(0, verb))) return false;
         var whom = ['them', 'him', 'us'].concat(mine);
-        return new RegExp('\\b' + TAKES + '\\b[^—]{0,60}?\\bf(?:ro|or)m\\s*(?:'
+        // Initials before the name are part of it: "buys from S.ABBAS &CO" names S.ABBAS, and
+        // without allowing the "S." the line was read backwards and drawn under "They buy from".
+        return new RegExp('\\b' + TAKES + '\\b[^—]{0,60}?\\bf(?:ro|or)m\\s*(?:[a-z]\\.\\s*)*(?:'
             + whom.join('|') + ')\\b', 'i').test(t);
     }
     /** The distinctive words of a firm's name — trade words are too common to identify it. */

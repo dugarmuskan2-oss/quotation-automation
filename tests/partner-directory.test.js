@@ -3710,3 +3710,18 @@ describe('the Product and Brand dropdowns', () => {
         expect(rows.filter((r) => r.p.company === 'Tata Steel')[0].why).toContainEqual(['ok', 'They ARE Tata Steel']);
     });
 });
+
+describe('a firm written with initials, like S.ABBAS', () => {
+    const t = global.window.partnerDirectory._test;
+    // The fourth ten: "ABS FUIJICO buys from S.ABBAS &CO" was read as the card buying from ABS,
+    // because the reader wanted the name straight after "from" and the "S." got in the way.
+    test('"buys from S.ABBAS" on S.ABBAS\'s own card is a customer', () => {
+        const card = { company: 'S.ABBAS &CO' };
+        const how = 'ABS FUIJICO buys from S.ABBAS &CO; "THEY PURCHASE FROM S.ABBAS" on your ABS page';
+        expect(t.relKind(how, card, 'ABS FUIJICO')).toBe('They sell to');
+    });
+
+    test('and the other way round is still the other way round', () => {
+        expect(t.relKind('S.ABBAS &CO buys from ABS FUIJICO', { company: 'S.ABBAS &CO' }, 'ABS FUIJICO')).toBe('They buy from');
+    });
+});
