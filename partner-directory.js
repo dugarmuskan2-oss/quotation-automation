@@ -2287,6 +2287,11 @@
         var t = str(how);
         if (/\bregular purchase\b/i.test(t)) return true;
         var mine = firmWords(p && p.company);
+        // A name with no distinctive words — "R.K STEEL", "S&S" — is matched whole. The S&S fix
+        // of 17 Sep never reached this reader, so "MANTO buys from R.K STEEL" on R.K STEEL's own
+        // card was read backwards (fifth ten, 29 Sep).
+        var whole = mine.length ? '' : wholeNamePattern(p && p.company);
+        if (whole) mine = [whole];
         // Whose name is BEFORE the buying word settles the direction, and the direction is the
         // whole meaning. "Saranya Steel purchases from Bombay H/W" on Bombay Hardware's card is
         // a customer; "Hydraulic & Pneumatic buys from them" on Hydraulic & Pneumatic's card is
@@ -2294,13 +2299,19 @@
         // is which side of the verb the name sits on.
         var verb = t.search(new RegExp('\\b' + TAKES + '\\b', 'i'));
         if (verb > 0 && mine.length
-            && new RegExp('(' + mine.join('|') + ')', 'i').test(t.slice(0, verb))) return false;
+            && new RegExp(whole ? '\\b(?:' + whole + ')\\b' : '(' + mine.join('|') + ')', 'i').test(t.slice(0, verb))) return false;
         var whom = ['them', 'him', 'us'].concat(mine);
         // Initials before the name are part of it: "buys from S.ABBAS &CO" names S.ABBAS, and
         // without allowing the "S." the line was read backwards and drawn under "They buy from".
         return new RegExp('\\b' + TAKES + '\\b[^—]{0,60}?\\bf(?:ro|or)m\\s*(?:[a-z]\\.\\s*)*(?:'
             + whom.join('|') + ')\\b', 'i').test(t);
     }
+    /** A whole firm name as a pattern, any punctuation between its parts: "R.K STEEL" also finds "RK STEEL". */
+    function wholeNamePattern(name) {
+        return str(name).split(/[^A-Za-z0-9]+/).filter(Boolean)
+            .map(function (w) { return w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }).join('[^A-Za-z0-9]*');
+    }
+
     /** The distinctive words of a firm's name — trade words are too common to identify it. */
     var TRADE_WORD = /^(pipe|pipes|steel|steels|tube|tubes|metal|metals|trading|traders?|industries|industry|enterprises?|corporation|agencies|agency|engineering|engineers?|systems?|solutions?|india|indian|pvt|private|ltd|limited|co|company|and|the|of)$/i;
     function firmWords(name) {

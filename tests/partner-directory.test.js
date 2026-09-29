@@ -3783,4 +3783,20 @@ describe('a firm written with initials, like S.ABBAS', () => {
     test('and the other way round is still the other way round', () => {
         expect(t.relKind('S.ABBAS &CO buys from ABS FUIJICO', { company: 'S.ABBAS &CO' }, 'ABS FUIJICO')).toBe('They buy from');
     });
+
+    // The fifth ten: R.K STEEL has no distinctive word at all ("R", "K", "STEEL"), and neither
+    // does S&S. The whole name is matched instead.
+    test('"buys from R.K STEEL" on R.K STEEL\'s own card is a customer — and so is S&S', () => {
+        const how = 'MANTO ENGINEERING PVT LTD buys from R.K STEEL; "(3)  THEY ARE PURCHASING FROM (1) AAGARSEN / MADHAV PIPE / MST / RK STEEL" on your MANTO page';
+        expect(t.relKind(how, { company: 'R.K STEEL' }, 'MANTO ENGINEERING PVT LTD')).toBe('They sell to');
+        expect(t.relKind('ABS FUIJICO buys from S&S', { company: 'S&S' }, 'ABS FUIJICO')).toBe('They sell to');
+    });
+
+    test('R.K STEEL buying is still R.K STEEL buying', () => {
+        expect(t.relKind('R.K STEEL buys from MANTO ENGINEERING PVT LTD', { company: 'R.K STEEL' }, 'MANTO ENGINEERING PVT LTD')).toBe('They buy from');
+    });
+
+    test('a short name is matched as a word, not inside another — ASSOCIATES is not S&S', () => {
+        expect(t.relKind('ASSOCIATES STEEL buys from S&S', { company: 'S&S' }, 'ASSOCIATES STEEL')).toBe('They sell to');
+    });
 });
