@@ -204,6 +204,9 @@ function sanitizeProducts(list) {
             make: str(pr && pr.make),
             sizes: sanitizeSizes(pr && pr.sizes),
             moq: num(pr && pr.moq, 0), rule: str(pr && pr.rule),
+            // Added through "+ Add" rather than picked from the Product list — kept so it is
+            // offered on other cards too. Only an explicit true is kept.
+            ...(pr && pr.added === true ? { added: true } : {}),
         }))
         // A row holding only a make is still worth keeping — "they stock Jindal" is a real
         // thing to have written down, and dropping it would lose what was just typed.

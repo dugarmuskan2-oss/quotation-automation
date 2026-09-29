@@ -1321,6 +1321,32 @@
 .pd-pill { font-size: 11px; padding: 2px 8px; border-radius: 7px; background: #E6F1FB; color: #0C447C; white-space: nowrap; }
 .pd-pill-good { background: #E1F5EE; color: #0F6E56; }
 .pd-pill-warn { background: #FAEEDA; color: #854F0B; }
+.pd-pill-new { background: #E8F3E6; color: #2E6B2A; }
+.pd-newlists { margin: 2px 0 6px 20px; color: #2E6B2A; }
+/* Searchable lists (29 Sep): a button showing the choice; open, a search box and the list. */
+.pd-ls { position: relative; display: inline-block; min-width: 0; max-width: 100%; }
+.pd-ls-btn { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; text-align: left;
+    border: 1px solid rgba(0,0,0,.18); border-radius: 6px; background: #fff; padding: 5px 8px; font: inherit;
+    color: inherit; letter-spacing: normal; text-transform: none; cursor: pointer; }
+.pd-ls-btn > :first-child, .pd-ls-btn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pd-ls-ph { color: #9b988e; font-weight: 400; }
+.pd-ls-caret { margin-left: auto; color: #9b988e; font-size: 11px; }
+.pd-ls-pop { position: absolute; z-index: 40; top: calc(100% + 4px); left: 0; min-width: 240px; max-width: 320px;
+    background: #fff; border: 1px solid rgba(0,0,0,.14); border-radius: 8px; box-shadow: 0 6px 22px rgba(0,0,0,.14);
+    padding: 6px; text-transform: none; letter-spacing: normal; font-weight: 400; }
+.pd-ls-q { width: 100%; box-sizing: border-box; margin-bottom: 4px; }
+.pd-ls-list { max-height: 240px; overflow-y: auto; }
+.pd-ls-opt { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 6px 8px;
+    border-radius: 5px; font: inherit; color: inherit; cursor: pointer; }
+.pd-ls-opt:hover, .pd-ls-opt:focus { background: #F4F1E8; }
+.pd-ls-opt.on { font-weight: 700; }
+.pd-ls-opt[hidden], .pd-ls-add[hidden], .pd-ls-none[hidden] { display: none; }
+.pd-ls-add { display: block; width: 100%; text-align: left; margin-top: 4px; padding: 7px 8px; border-radius: 5px;
+    border: 1px dashed #b48a3c; background: #FFF8EC; color: #7A5A1E; font: inherit; font-weight: 600; cursor: pointer; }
+.pd-ls-none { padding: 4px 8px; }
+.pd-facets .pd-ls { flex: 0 1 200px; }
+.pd-brands .pd-ls { flex: 1 1 110px; }
+.pd-branch-head .pd-ls.pd-town { flex: 0 1 200px; }
 .pd-pill-bad { background: #FBE9E9; color: #8C2F2F; }
 .pd-card { border: 1px solid rgba(0,0,0,.11); border-radius: 10px; padding: 11px 13px; background: #fff; margin-bottom: 8px; }
 .pd-click { cursor: pointer; }

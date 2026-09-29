@@ -959,7 +959,7 @@
     }
 
     // ── State for the tool page ───────────────────────────────────────────────
-    var S = { tab: 'dir', filter: 'all', facet: { town: '', product: '', brand: '', load: '', reach: '' }, openId: null, openPending: null, openChange: null,
+    var S = { tab: 'dir', filter: 'all', facet: { town: '', product: '', brand: '', load: '', reach: '' }, listOpen: null, openId: null, openPending: null, openChange: null,
               find: { text: '', state: 'idle', need: null, note: '' }, busy: {}, add: freshAdd(),
               confirmDelete: '',     // the card whose "are you sure?" is on screen
               dirty: {}, clean: {}, saveNote: '', confirmLeave: '', leaveThen: null, ask: null,
@@ -1277,11 +1277,10 @@
         var cur = S.facet[f];
         if (cur && !seen.some(function (s) { return sameFacet(f, s.v, cur); })) seen.push({ v: cur, ids: [] });
         seen.sort(function (a, b) { return b.ids.length - a.ids.length || (lower(a.v) < lower(b.v) ? -1 : 1); });
-        return '<select data-pd-facet="' + f + '"><option value="">' + FACET_LABEL[f] + '</option>'
-            + seen.map(function (s) {
-                return '<option value="' + esc(s.v) + '"' + (cur && sameFacet(f, s.v, cur) ? ' selected' : '') + '>'
-                    + esc(s.v) + ' (' + s.ids.length + ')</option>';
-            }).join('') + '</select>';
+        // A filter only offers what is on the cards, so it can be searched but never added to.
+        return listPickerHtml({ id: 'facet:' + f, value: cur, placeholder: FACET_LABEL[f], noun: FACET_NOUN[f],
+            clear: FACET_LABEL[f], canAdd: false,
+            options: seen.map(function (s) { return { v: s.v, label: s.v + ' (' + s.ids.length + ')' }; }) });
     }
 
     /**
@@ -1694,7 +1693,7 @@
             // "(head office)" after it, not two labelled boxes in a section of their own.
             + '<div class="pd-branchgrp">'
             + '<div class="pd-branch-head">'
-            + townPicker(p.city, 'data-pd-town="head"', 'Head office town')
+            + townPicker('head', p.city, 'Head office town')
             + '<input class="pd-area" data-pd-k="area" value="' + esc(p.area || '') + '" placeholder="Area — e.g. Ambattur" aria-label="Head office area">'
             + '<span class="pd-tiny">(head office)</span>'
             + (headRows.length ? '<span class="pd-sp"></span><span class="pd-tiny">' + headRows.length + '</span>' : '')
@@ -1731,16 +1730,153 @@
         return out.sort(function (a, b) { return lower(a) < lower(b) ? -1 : 1; });
     }
 
-    /** A Town box. A town written before the list keeps his words as the choice until he picks another. */
-    function townPicker(value, attrs, label) {
-        var cur = str(value), towns = townOptions();
-        var listed = towns.some(function (t) { return lower(t) === lower(cur); });
-        return '<select class="pd-town" ' + attrs + ' aria-label="' + esc(label) + '"><option value="">Town…</option>'
-            + (cur && !listed ? '<option value="' + esc(cur) + '" selected>' + esc(cur) + '</option>' : '')
-            + towns.map(function (t) {
-                return '<option value="' + esc(t) + '"' + (lower(t) === lower(cur) ? ' selected' : '') + '>' + esc(t) + '</option>';
+    /** A Town box. A town written before the list keeps his words on the button until he picks another. */
+    function townPicker(where, value, label) {
+        return listPickerHtml({ id: 'town:' + where, value: str(value), placeholder: 'Town…', noun: 'town', aria: label,
+            canAdd: true, cls: 'pd-town', options: townOptions().map(function (t) { return { v: t }; }) });
+    }
+
+    /** One town however it is written — the test "+ Add" uses so a second spelling is never added. */
+    function sameTown(a, b) {
+        var x = townKey(a) || str(a), y = townKey(b) || str(b);
+        return !!x && lower(x) === lower(y);
+    }
+
+    // ── Lists you can search, and add to (29 Sep) ───────────────────────────────
+    //
+    // *His words: "in all drop downs add a search bar so its easy if the list gets long and avoids
+    // double entry. If they cant find what they are looking for, add a + button in the empty
+    // search area so they can add it."* Closed, a list is a button showing the choice. Open, a
+    // search box and the list: typing hides what does not match, in place and with no redraw, so
+    // the cursor never jumps. "+ Add" shows only when nothing in the list is the SAME thing — the
+    // same town, product or brand however it is written — which is what stops a second
+    // "Tiruppur" appearing beside "Tirupur". Each kind's handler lives in LISTS, set up by the
+    // part of the page that owns it, and is called with (rest of the id, value, isNew).
+    var LISTS = {};
+
+    function listPickerHtml(o) {
+        var open = S.listOpen === o.id;
+        var shown = o.value ? esc(o.value) : '<span class="pd-ls-ph">' + esc(o.placeholder) + '</span>';
+        return '<span class="pd-ls' + (o.cls ? ' ' + o.cls : '') + (open ? ' open' : '') + '">'
+            + '<button type="button" class="pd-ls-btn" data-pd-lsopen="' + esc(o.id) + '" aria-label="' + esc(o.aria || o.placeholder) + '">'
+            + shown + '<span class="pd-ls-caret">▾</span></button>'
+            + (open ? listPopHtml(o) : '') + '</span>';
+    }
+
+    function listPopHtml(o) {
+        return '<div class="pd-ls-pop">'
+            + '<input class="pd-ls-q" data-pd-lsq="' + esc(o.id) + '" placeholder="Search ' + esc(o.noun) + 's…" autocomplete="off">'
+            + '<div class="pd-ls-list">'
+            + (o.clear ? '<button type="button" class="pd-ls-opt" data-pd-lsval="">' + esc(o.clear) + '</button>' : '')
+            + o.options.map(function (opt) {
+                return '<button type="button" class="pd-ls-opt' + (o.value && lower(opt.v) === lower(o.value) ? ' on' : '') + '"'
+                    + ' data-pd-lsval="' + esc(opt.v) + '">' + esc(opt.label || opt.v) + '</button>';
             }).join('')
-            + '<option value="__other">＋ Add another…</option></select>';
+            + '</div>'
+            + '<p class="pd-tiny pd-ls-none" hidden>Nothing matches.</p>'
+            + (o.canAdd ? '<button type="button" class="pd-ls-add" data-pd-lsadd="' + esc(o.id) + '" hidden></button>' : '')
+            + '</div>';
+    }
+
+    /** Whether two entries are the same thing, by the kind of list — how "+ Add" knows not to offer a copy. */
+    function sameInList(id, a, b) {
+        var kind = str(id).split(':')[0];
+        if (kind === 'town' || id === 'facet:town') return sameTown(a, b);
+        if (kind === 'brand' || id === 'facet:brand') return sameBrand(a, b);
+        if (kind === 'product' || id === 'facet:product') return productWords(a).join(' ') === productWords(b).join(' ');
+        return lower(a) === lower(b);
+    }
+
+    /**
+     * A spelling a letter or two away — "Tiruppur" typed with "Tirupur" on the list. Shown in the
+     * list so it can be picked instead of adding a second spelling. Five letters or more only, or
+     * every short name would look like every other.
+     */
+    function nearlyThe(a, b) {
+        var x = lower(a).replace(/[^a-z0-9]/g, ''), y = lower(b).replace(/[^a-z0-9]/g, '');
+        if (x.length < 5 || y.length < 5 || Math.abs(x.length - y.length) > 2) return false;
+        var prev = [];
+        for (var j = 0; j <= y.length; j++) prev.push(j);
+        for (var i = 1; i <= x.length; i++) {
+            var row = [i];
+            for (var k = 1; k <= y.length; k++) {
+                row.push(Math.min(prev[k] + 1, row[k - 1] + 1, prev[k - 1] + (x[i - 1] === y[k - 1] ? 0 : 1)));
+            }
+            prev = row;
+        }
+        return prev[y.length] <= 2;
+    }
+
+    /** Hide what does not match the search; offer "+ Add" only when nothing listed is the same thing. */
+    function filterList(pop, id, q) {
+        var t = str(q), shown = 0, same = false;
+        [].slice.call(pop.querySelectorAll('[data-pd-lsval]')).forEach(function (b) {
+            var v = b.getAttribute('data-pd-lsval');
+            if (!v) { b.hidden = !!t; return; }                 // "Any town" only on an empty search
+            var hit = !t || lower(b.textContent).indexOf(lower(t)) !== -1 || sameInList(id, v, t) || nearlyThe(v, t);
+            b.hidden = !hit;
+            if (hit) shown++;
+            if (t && sameInList(id, v, t)) same = true;
+        });
+        var add = pop.querySelector('[data-pd-lsadd]');
+        if (add) { add.hidden = !t || same; add.textContent = '+ Add “' + t + '”'; }
+        var none = pop.querySelector('.pd-ls-none');
+        if (none) none.hidden = shown > 0 || !!(add && !add.hidden);
+    }
+
+    /** A choice from the list (isNew false) or "+ Add" (isNew true). The handler always redraws. */
+    function listChosen(id, value, isNew) {
+        var kind = str(id).split(':')[0], rest = str(id).slice(kind.length + 1);
+        S.listOpen = null;
+        if (LISTS[kind]) LISTS[kind](rest, str(value), !!isNew);
+        else render();
+    }
+
+    function bindListPickers(app) {
+        each(app, '[data-pd-lsopen]', function (el) {
+            el.onclick = function () {
+                var id = el.getAttribute('data-pd-lsopen');
+                S.listOpen = S.listOpen === id ? null : id;
+                render();
+                var q = S.listOpen && app.querySelector('[data-pd-lsq]');
+                if (q && q.focus) q.focus();
+            };
+        });
+        each(app, '[data-pd-lsq]', function (el) {
+            var id = el.getAttribute('data-pd-lsq'), pop = el.parentNode;
+            el.oninput = function () { filterList(pop, id, el.value); };
+            el.onkeydown = function (e) {
+                if (e.key === 'Escape') { S.listOpen = null; render(); return; }
+                if (e.key !== 'Enter') return;
+                if (e.preventDefault) e.preventDefault();
+                var first = [].slice.call(pop.querySelectorAll('[data-pd-lsval]')).filter(function (b) {
+                    return !b.hidden && b.getAttribute('data-pd-lsval');
+                })[0];
+                var add = pop.querySelector('[data-pd-lsadd]');
+                // Enter takes what the list shows first; adding a new one takes a deliberate press of
+                // "+ Add" — otherwise Enter on "tiruppur" would add a second spelling of Tirupur.
+                if (first && str(el.value)) listChosen(id, first.getAttribute('data-pd-lsval'), false);
+                else if (add && !add.hidden) listChosen(id, el.value, true);
+            };
+        });
+        each(app, '[data-pd-lsval]', function (el) {
+            el.onclick = function () { listChosen(S.listOpen, el.getAttribute('data-pd-lsval'), false); };
+        });
+        each(app, '[data-pd-lsadd]', function (el) {
+            el.onclick = function () {
+                var q = app.querySelector('[data-pd-lsq]');
+                listChosen(el.getAttribute('data-pd-lsadd'), q ? q.value : '', true);
+            };
+        });
+    }
+
+    /** A click anywhere else closes an open list, the way a dropdown does. */
+    function closeListOutside(e) {
+        if (!S.listOpen) return;
+        var t = e && e.target;
+        if (t && t.closest && t.closest('.pd-ls')) return;
+        S.listOpen = null;
+        render();
     }
 
     /** Two ways of writing the same town reduced to one key — "Jyoti Nagar" and "JYOTI NAGAR". */
@@ -1762,9 +1898,9 @@
         return '<div class="pd-branchgrp">'
             + '<div class="pd-branch-head">'
             + (g.branch
-                ? townPicker(g.branch, 'data-pd-town="rename" data-pd-was="' + esc(g.branch) + '"', 'Branch town')
+                ? townPicker('rename:' + g.branch, g.branch, 'Branch town')
                 : (g.fresh
-                    ? townPicker('', 'data-pd-town="' + at + '"', 'Branch town')
+                    ? townPicker('fresh:' + at, '', 'Branch town')
                     // Nobody has said where these people sit. Typing a town here puts ALL of
                     // them in it at once, which is what he wanted when he tried to edit it.
                     : '<input class="pd-branch-name" data-pd-branchall="1" list="pdCardBranches"'
@@ -1867,10 +2003,8 @@
         return '<div class="pd-sec">What they supply</div>'
             + '<div class="pd-grid2"><div class="pd-fld"><label>Pipe types</label>'
             + '<div style="display:flex;gap:6px;align-items:center;">'
-            + '<select id="pdTypePick" style="flex:1;min-width:0;"><option value="">Pick a type…</option>'
-            + canAdd.map(function (t) { return '<option>' + t + '</option>'; }).join('')
-            + '<option value="__other">＋ Add another…</option></select>'
-            + '<button class="pd-prim" data-pd-addtype="1" style="flex:0 0 auto;white-space:nowrap;">Add</button>'
+            + listPickerHtml({ id: 'type:add', value: '', placeholder: 'Pick a type…', noun: 'type', canAdd: true,
+                options: canAdd.map(function (t) { return { v: t }; }) })
             + '</div></div>'
             + fld(p, 'Overall MOQ (tonnes)', 'moq', p.moq) + '</div>'
             + ((p.types || []).length ? '<div style="margin-bottom:8px;">' + (p.types || []).map(function (t, i) {
@@ -1915,15 +2049,20 @@
      * picks something else — nothing on a card is rewritten just because the box changed.
      */
     function productPicker(pr, i) {
-        var cur = str(pr.p);
-        var listed = PRODUCT_NAMES.some(function (n) { return lower(n) === lower(cur); });
-        return '<select data-pd-prname="' + i + '" style="min-width:0;">'
-            + '<option value="">Pick a product…</option>'
-            + (cur && !listed ? '<option value="' + esc(cur) + '" selected>' + esc(cur) + '</option>' : '')
-            + PRODUCT_NAMES.map(function (n) {
-                return '<option value="' + esc(n) + '"' + (lower(n) === lower(cur) ? ' selected' : '') + '>' + esc(n) + '</option>';
-            }).join('')
-            + '<option value="__other">＋ Add another…</option></select>';
+        return listPickerHtml({ id: 'product:' + i, value: str(pr.p), placeholder: 'Pick a product…', noun: 'product',
+            canAdd: true, options: productOptions().map(function (n) { return { v: n }; }) });
+    }
+
+    /** The Product list, and any product already added to a card through "+ Add". */
+    function productOptions() {
+        var out = PRODUCT_NAMES.slice();
+        D.contacts.forEach(function (c) {
+            (c.products || []).forEach(function (pr) {
+                var n = str(pr.p);
+                if (n && pr.added && !out.some(function (o) { return sameInList('product', o, n); })) out.push(n);
+            });
+        });
+        return out;
     }
 
     /** The makes in one product's Brand box — one per comma, as he typed them. */
@@ -1981,10 +2120,10 @@
             + mine.map(function (m, j) {
                 return '<span class="pd-tag">' + esc(m) + ' <span class="pd-x" data-pd-delmake="' + i + ':' + j + '">✕</span></span>';
             }).join('')
-            + '<select data-pd-addmake="' + i + '"><option value="">' + (mine.length ? '+ Brand' : 'Brand…') + '</option>'
-            + brandOptions().filter(function (b) { return !mine.some(function (m) { return sameBrand(m, b); }); })
-                .map(function (b) { return '<option value="' + esc(b) + '">' + esc(b) + '</option>'; }).join('')
-            + '<option value="__other">＋ Add another…</option></select></div>';
+            + listPickerHtml({ id: 'brand:' + i, value: '', placeholder: mine.length ? '+ Brand' : 'Brand…', noun: 'brand', canAdd: true,
+                options: brandOptions().filter(function (b) { return !mine.some(function (m) { return sameBrand(m, b); }); })
+                    .map(function (b) { return { v: b }; }) })
+            + '</div>';
     }
 
     function otherRulesBlock(p) {
@@ -3003,6 +3142,42 @@
         });
     }
 
+    /**
+     * What a waiting card would add to his lists: a town, product, brand or pipe type that no
+     * card in the directory has yet. *His words: "If someone does add something -- in the
+     * approval area, the person approving must know it."* Read off the cards, so nothing is
+     * stored and nothing can drift: once a card carrying it is approved, it is simply on the list.
+     */
+    function newToLists(p) {
+        if (!p) return [];
+        var dir = D.contacts, out = [];
+        var dirTowns = Object.keys(COORD);
+        dir.forEach(function (c) { branchNames(c).forEach(function (t) { dirTowns.push(t); }); });
+        [str(p.city)].concat((p.branches || []).map(function (b) { return str(b.city); })).forEach(function (t) {
+            var k = townKey(t) || t;
+            // Named as the card has it, unless only the capitals differ: "CHETNA FACTORY" is not a town called Chetna.
+            var said = lower(k) === lower(t) ? k : str(t);
+            if (k && !dirTowns.some(function (d) { return sameTown(d, k); }) && out.indexOf('town ' + said) === -1) out.push('town ' + said);
+        });
+        var dirProducts = PRODUCT_NAMES.slice(), dirBrands = [], dirTypes = PIPE_TYPES.slice();
+        dir.forEach(function (c) {
+            (c.products || []).forEach(function (pr) { dirProducts.push(str(pr.p)); dirBrands = dirBrands.concat(makesOf(pr)); });
+            if (c.role === 'manufacturer') dirBrands.push(c.company);
+            dirTypes = dirTypes.concat(c.types || []);
+        });
+        (p.products || []).forEach(function (pr) {
+            var n = str(pr.p);
+            if (n && !dirProducts.some(function (d) { return sameInList('product', d, n); })) out.push('product ' + n);
+            makesOf(pr).forEach(function (b) {
+                if (!dirBrands.some(function (d) { return sameBrand(d, b); }) && out.indexOf('brand ' + b) === -1) out.push('brand ' + b);
+            });
+        });
+        (p.types || []).forEach(function (t) {
+            if (!dirTypes.some(function (d) { return lower(d) === lower(t); })) out.push('pipe type ' + t);
+        });
+        return out;
+    }
+
     function pendingStrip(pi) {
         if (pi.origin === 'removal') return removalStrip(pi);
         var imported = pi.origin === 'import';
@@ -3019,6 +3194,7 @@
             // Which cards were rebuilt from a notes box. Without this the work is invisible:
             // the card simply has more on it than it did, and no way to tell why.
             + (pi.freshened ? '<span class="pd-pill">Read from your notes</span>' : '')
+            + (newToLists(pi.preview).length ? '<span class="pd-pill pd-pill-new">New to your lists</span>' : '')
             + '<span class="pd-sp"></span><span class="pd-tiny">' + ago(pi.receivedAt) + '</span></div>'
             + '<p class="pd-tiny" style="margin-left:20px;">' + (imported ? importedStripLine(pi)
                 : notesCardLine(pi)
@@ -3029,6 +3205,9 @@
                     + ' · ' + (pi.readFailed ? '<b>the reading failed — nothing was taken from it</b>'
                         : 'read into ' + pi.finds.length + ' field' + (pi.finds.length === 1 ? '' : 's'))) + '</p>'
             + '</div>'
+            + (newToLists(pi.preview).length
+                ? '<p class="pd-tiny pd-newlists">New to your lists — approving adds '
+                    + esc(newToLists(pi.preview).join(' · ')) + '</p>' : '')
             + (open ? asksHtml(pi) + sourceEmailHtml(pi) + editCard(pendingPreview(pi, match)) : '')
             + clashNoteHtml(pi, match) + sameFirmNoteHtml(pi, match) + sameNameNoteHtml(pi, match)
             + approveRowHtml(pi, match, busy);
@@ -3481,6 +3660,7 @@
     function on(root, sel, fn) { var el = root.querySelector(sel); if (el) el.onclick = fn; }
 
     function bind(app) {
+        LISTS = {};                  // each part of the page sets its own lists' handlers again
         each(app, '[data-pd-tab]', function (el) {
             el.onclick = function () {
                 // Leaving for another tab drops the open card just as surely as closing it.
@@ -3499,11 +3679,10 @@
                 S.filter = el.getAttribute('data-pd-filter'); S.openId = null; render();
             };
         });
-        each(app, '[data-pd-facet]', function (el) {
-            el.onchange = function () { S.facet[el.getAttribute('data-pd-facet')] = el.value; render(); };
-        });
+        LISTS.facet = function (f, v) { S.facet[f] = v; render(); };
         on(app, '[data-pd-facetclear]', function () { S.facet = { town: '', product: '', brand: '', load: '', reach: '' }; render(); });
         bindFinder(app); bindAdd(app); bindListAndCard(app); bindChanges(app);
+        bindListPickers(app);
     }
 
     function bindFinder(app) {
@@ -3954,79 +4133,39 @@
         var moveTo = function (was, now) {
             (p.people || []).forEach(function (c) { if (was && str(c.branch) === was) c.branch = now; });
         };
-        var setTown = function (el, v) {
-            var where = el.getAttribute('data-pd-town');
+        var setTown = function (where, v) {
             if (where === 'head') { moveTo(str(p.city), v); p.city = v; save(true, ['city', 'people']); return; }
-            if (where === 'rename') {
-                var was = el.getAttribute('data-pd-was');
+            if (where.indexOf('rename:') === 0) {
+                var was = where.slice(7);
                 if (!v || v === was) { render(); return; }
                 moveTo(was, v);
                 (p.branches || []).forEach(function (b) { if (str(b.city) === was) b.city = v; });
                 save(true, ['people', 'branches']);
                 return;
             }
-            p.branches[Number(where)].city = v;
+            p.branches[Number(where.slice(6))].city = v;
             save(true, ['branches']);
         };
-        each(card, '[data-pd-town]', function (el) {
-            el.onchange = function () {
-                var v = el.value;
-                if (v !== '__other') { setTown(el, v); return; }
-                el.value = el.getAttribute('data-pd-town') === 'head' ? str(p.city) : (el.getAttribute('data-pd-was') || '');
-                askOnPage({ title: 'Which town?', ask: 'Type it in', placeholder: 'e.g. Tirupur', okLabel: 'Use it', danger: false,
-                    run: function (t) { t = str(t); if (!t) { render(); return; } setTown(el, townKey(t) || t); } });
-            };
-        });
+        // The list's own words for where: "head", "rename:<old town>", "fresh:<branch number>".
+        // What he types through "+ Add" is tidied the way the list is ("bombay" becomes Mumbai).
+        LISTS.town = function (where, v, isNew) {
+            if (isNew) v = townKey(v) || v;
+            if (!v) { render(); return; }
+            setTown(where, v);
+        };
     }
 
     function bindSupply(card, p, save) {
         var askRemoval = removalAsker(p, save);
-        var pick = $('pdTypePick');
-        // Choosing "＋ Add another…" asks straight away. Waiting for a second press on a
-        // button beside it is a step nobody expects — and that button was the one being
-        // squeezed off the row in the first place.
-        if (pick) {
-            pick.onchange = function () {
-                if (pick.value !== '__other') return;
-                pick.value = '';                        // so cancelling leaves it on "Pick a type…"
-                askForAnotherType();
-            };
-        }
-        on(card, '[data-pd-addtype]', function () {
-            // Compared without case: an import writes SEAMLESS, the dropdown offers Seamless,
-            // and the same type went onto the card twice.
-            var addType = function (v) {
-                v = str(v);
-                if (!v) return;
-                var has = (p.types = p.types || []).some(function (t) { return lower(t) === lower(v); });
-                if (!has) p.types.push(v);
-                save(true, ['types']);
-            };
-            var v = pick ? pick.value : '';
-            if (v !== '__other') { addType(v); return; }
-            askForAnotherType();
-        });
-        /**
-         * Ask what else they deal in.
-         *
-         * On the page, never window.prompt — prompt THROWS in this view rather than
-         * returning nothing, so the handler died half-way and "＋ Add another…" did nothing
-         * at all. Reachable from the dropdown and from the Add button alike.
-         */
-        function askForAnotherType() {
-            askOnPage({
-                title: 'What else do they deal in?',
-                ask: 'Type it in', placeholder: 'e.g. Ductile iron',
-                okLabel: 'Add it', danger: false,
-                run: function (v) {
-                    var t = str(v);
-                    if (!t) return;
-                    var has = (p.types = p.types || []).some(function (x) { return lower(x) === lower(t); });
-                    if (!has) p.types.push(t);
-                    save(true, ['types']);
-                },
-            });
-        }
+        // Picking a type adds it at once. Compared without case: an import writes SEAMLESS, the
+        // list offers Seamless, and the same type once went onto the card twice.
+        LISTS.type = function (rest, v) {
+            v = str(v);
+            if (!v) { render(); return; }
+            var has = (p.types = p.types || []).some(function (t) { return lower(t) === lower(v); });
+            if (!has) p.types.push(v);
+            save(true, ['types']);
+        };
 
         each(card, '[data-pd-deltype]', function (el) {
             el.onclick = function () { askRemoval('type', p.types[Number(el.getAttribute('data-pd-deltype'))]); };
@@ -4096,25 +4235,20 @@
      * card from then on, because the list is read from what is on the cards.
      */
     function bindProductPickers(card, p, save) {
-        each(card, '[data-pd-prname]', function (el) {
-            el.onchange = function () {
-                var pr = p.products[Number(el.getAttribute('data-pd-prname'))];
-                if (el.value !== '__other') { pr.p = el.value; save(false, ['products']); return; }
-                el.value = str(pr.p);                   // so cancelling leaves it as it was
-                askOnPage({ title: 'What product is it?', ask: 'Type it in', placeholder: 'e.g. Ductile iron pipe',
-                    okLabel: 'Use it', danger: false,
-                    run: function (v) { if (!str(v)) return; pr.p = str(v); save(true, ['products']); } });
-            };
-        });
-        each(card, '[data-pd-addmake]', function (el) {
-            el.onchange = function () {
-                var pr = p.products[Number(el.getAttribute('data-pd-addmake'))], v = el.value;
-                el.value = '';
-                if (v !== '__other') { addMake(pr, v); return; }
-                askOnPage({ title: 'Which brand?', ask: 'Type it in', placeholder: 'e.g. Tata',
-                    okLabel: 'Add it', danger: false, run: function (t) { addMake(pr, t); } });
-            };
-        });
+        // A product added through "+ Add" is marked, so it is offered on other cards from then on
+        // and the approval screen can say it is new.
+        LISTS.product = function (i, v, isNew) {
+            var pr = p.products[Number(i)];
+            if (!pr || !str(v)) { render(); return; }
+            pr.p = str(v);
+            if (isNew) pr.added = true; else delete pr.added;
+            save(true, ['products']);
+        };
+        LISTS.brand = function (i, v) {
+            var pr = p.products[Number(i)];
+            if (!pr) { render(); return; }
+            addMake(pr, v);
+        };
         // "Tata, JSL" typed in the box is two brands. One already on the row is not added twice,
         // and the page says so — returning without a redraw left the box frozen on "Working…".
         var addMake = function (pr, v) {
@@ -4637,6 +4771,7 @@
     function checkWhatIsWaiting() { loadDirectory(); loadGoogleStatus(); startBadgeWatch(); }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', checkWhatIsWaiting);
     else checkWhatIsWaiting();
+    document.addEventListener('click', closeListOutside);
 
     window.switchToDirectoryTab = switchToDirectoryTab;
     window.partnerDirectory = {
@@ -4666,6 +4801,10 @@
                  productPicker: productPicker, brandPicker: brandPicker, brandOptions: brandOptions,
                  makesOf: makesOf, sameBrand: sameBrand, brandRow: brandRow,
                  bindProductPickers: bindProductPickers, removalAsker: removalAsker, bindSupply: bindSupply,
+                 // Searchable lists and the "New to your lists" line (30 Sep).
+                 listPickerHtml: listPickerHtml, filterList: filterList, listChosen: listChosen, sameInList: sameInList,
+                 townPicker: townPicker, productOptions: productOptions, newToLists: newToLists, nearlyThe: nearlyThe,
+                 bindTowns: bindTowns, closeListOutside: closeListOutside,
                  _state: function () { return { S: S, D: D }; } },
     };
 })();

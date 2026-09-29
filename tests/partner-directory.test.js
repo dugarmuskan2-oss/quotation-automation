@@ -2756,27 +2756,34 @@ describe('"＋ Add another…" pipe type asks on the page too', () => {
      * it THROWS rather than returning nothing, so the click handler died half way and
      * picking "＋ Add another…" did nothing whatever — no box, no message, no type added.
      */
+    // Since 30 Sep the pipe types are a searchable list: picking one adds it at once, and "+ Add"
+    // puts on what was typed. Both go through LISTS.type, which bindSupply sets up.
     const src = require('fs').readFileSync(SRC_PATH, 'utf8');
-    const handler = (() => {
-        const at = src.indexOf("on(card, '[data-pd-addtype]'");
-        return src.slice(at, src.indexOf('each(card,', at));
-    })();
+    const t = global.window.partnerDirectory._test;
+    const noCard = { querySelectorAll: () => [], querySelector: () => null };
 
-    test('it does not call window.prompt', () => {
-        expect(handler).not.toMatch(/window\.prompt\s*\(/);   // a CALL, not the word in a comment
-        expect(handler).toContain('askOnPage({');
-        expect(handler).toContain("ask: 'Type it in'");
+    test('no window.prompt anywhere in the searchable lists', () => {
+        const lists = src.slice(src.indexOf('// ── Lists you can search, and add to'), src.indexOf('function closeListOutside'));
+        expect(lists.length).toBeGreaterThan(500);
+        expect(lists).not.toMatch(/window\.prompt\s*\(/);
     });
 
-    test('a normal pick still adds straight away, with no question', () => {
-        expect(handler).toContain("if (v !== '__other') { addType(v); return; }");
+    test('picking a type adds it straight away, and "+ Add" puts on what was typed', () => {
+        const p = partner({ types: [] });
+        const save = jest.fn();
+        t.bindSupply(noCard, p, save);
+        t.listChosen('type:add', 'ERW', false);
+        t.listChosen('type:add', 'Ductile iron', true);
+        expect(p.types).toEqual(['ERW', 'Ductile iron']);
+        expect(save).toHaveBeenLastCalledWith(true, ['types']);
     });
 
     test('the same type cannot go on twice under a different case', () => {
-        // An import writes SEAMLESS, the dropdown offers Seamless. The rule survived the
-        // rewrite — it now lives inside addType, which BOTH paths go through.
-        expect(handler).toMatch(/lower\(t\) === lower\(v\)/);
-        expect(handler).toContain('var addType = function (v)');
+        // An import writes SEAMLESS, the list offers Seamless.
+        const p = partner({ types: ['SEAMLESS'] });
+        t.bindSupply(noCard, p, jest.fn());
+        t.listChosen('type:add', 'Seamless', false);
+        expect(p.types).toEqual(['SEAMLESS']);
     });
 
     test('an empty answer holds the question open instead of quietly doing nothing', () => {
@@ -3240,34 +3247,13 @@ describe('source guard — bringing in Google contacts', () => {
 });
 
 describe('source guard — adding a pipe type the list does not offer', () => {
-    /**
-     * Reported live: "add another has no space for me to add another". Two faults in one
-     * control. The Add button beside the dropdown was a bare <button> with no padding — 28
-     * pixels wide, its text jammed against the edge of the select, and easy to read as
-     * clipped. And picking "＋ Add another…" did nothing until that button was found and
-     * pressed, which is a step nobody expects from a dropdown.
-     */
-    test('the Add button is a real button, and keeps its width', () => {
+    // "add another has no space for me to add another" — the old select and its squeezed Add
+    // button are gone. The types are a searchable list with "+ Add" in it.
+    test('the pipe types are a searchable list you can add to', () => {
         const fn = sliceBetween('function supplierBlock(p)', 'function productRow');
-        expect(fn).toContain('class="pd-prim" data-pd-addtype="1"');
-        expect(fn).toContain('flex:0 0 auto;white-space:nowrap;');
-        // ...and the select must be allowed to shrink, or it squeezes the button out
-        expect(fn).toContain('style="flex:1;min-width:0;"');
-    });
-
-    test('picking "Add another" asks straight away, with no second click', () => {
-        const fn = sliceBetween("pick.onchange = function () {", "on(card, '[data-pd-addtype]'");
-        expect(fn).toContain("if (pick.value !== '__other') return;");
-        expect(fn).toContain('askForAnotherType();');
-        expect(fn).toContain("pick.value = '';");     // cancelling leaves it on "Pick a type…"
-    });
-
-    test('the asking is on the page — window.prompt throws in this view', () => {
-        const fn = sliceBetween('function askForAnotherType()', "each(card, '[data-pd-deltype]'");
-        expect(fn).toContain('askOnPage({');
-        expect(fn).not.toContain('window.prompt');
-        // the same type twice, in any case, is still one type
-        expect(fn).toContain('lower(x) === lower(t)');
+        expect(fn).toContain("listPickerHtml({ id: 'type:add'");
+        expect(fn).toContain('canAdd: true');
+        expect(fn).not.toContain('<select id="pdTypePick"');
     });
 });
 
@@ -3413,75 +3399,120 @@ describe('the Product and Brand dropdowns', () => {
     beforeEach(() => { setContacts([]); S().ask = null; S().busy = {}; });
     afterEach(() => { FETCH = () => Promise.reject(new Error('no network in unit tests')); });
 
+    /** The list open on screen, as the page draws it after the button is pressed. */
+    const opened = (id, draw) => { S().listOpen = id; try { return draw(); } finally { S().listOpen = null; } };
+    const optionValues = (html) => (html.match(/data-pd-lsval="([^"]*)"/g) || []).map((m) => m.slice(15, -1));
+
     describe('the Product box', () => {
-        test('offers the fixed list, GP and GR included, and marks the one chosen', () => {
-            // The whole list, in order, from a blank row — a missing entry cannot hide behind
-            // the "his old words" option, which would otherwise print the same text.
-            const texts = (html) => (html.match(/>([^<]*)<\/option>/g) || []).map((o) => o.slice(1, -9));
-            expect(texts(t.productPicker({ p: '' }, 0))).toEqual(['Pick a product…', 'GI pipe', 'GP pipe', 'GR pipe',
-                'ERW pipe', 'Seamless pipe', 'Square / Rectangular', 'Fittings', 'Valves', 'Sheets', 'Coating', '＋ Add another…']);
-            const html = t.productPicker({ p: 'GP pipe' }, 0);
-            ['GI pipe', 'GP pipe', 'GR pipe', 'ERW pipe', 'Seamless pipe', 'Square / Rectangular',
-             'Fittings', 'Valves', 'Sheets', 'Coating'].forEach((n) => expect(html).toContain('>' + n + '</option>'));
-            expect(html).toContain('<option value="GP pipe" selected>GP pipe</option>');
-            expect(html).toContain('<option value="__other">＋ Add another…</option>');
+        test('the fixed list, GP and GR included, in order', () => {
+            expect(optionValues(opened('product:0', () => t.productPicker({ p: '' }, 0)))).toEqual(
+                ['GI pipe', 'GP pipe', 'GR pipe', 'ERW pipe', 'Seamless pipe', 'Square / Rectangular', 'Fittings', 'Valves', 'Sheets', 'Coating']);
         });
 
-        test('a product typed before the list keeps his words, shown as the choice', () => {
-            // Nothing on a card is rewritten because the box changed.
-            const html = t.productPicker({ p: 'GP PIPE / GR PIPE/ GI PIPE' }, 1);
-            expect(html).toContain('<option value="GP PIPE / GR PIPE/ GI PIPE" selected>GP PIPE / GR PIPE/ GI PIPE</option>');
-            expect(html.match(/ selected/g)).toHaveLength(1);
+        test('closed, it is a button for its own row showing the choice', () => {
+            const html = t.productPicker({ p: 'GP pipe' }, 4);
+            expect(html).toContain('data-pd-lsopen="product:4"');
+            expect(html).toContain('>GP pipe<span class="pd-ls-caret">');
+            expect(html).not.toContain('data-pd-lsq');                      // no search box until opened
         });
 
-        test('his capitals do not make a second entry — "gi PIPE" is GI pipe, chosen', () => {
-            const html = t.productPicker({ p: 'gi PIPE' }, 4);
-            expect(html).toContain('<option value="GI pipe" selected>GI pipe</option>');
-            expect(html).not.toContain('value="gi PIPE"');
-            expect(html).toContain('<select data-pd-prname="4"');           // the row it belongs to
+        test('a product typed before the list keeps his words on the button', () => {
+            expect(t.productPicker({ p: 'GP PIPE / GR PIPE/ GI PIPE' }, 1)).toContain('>GP PIPE / GR PIPE/ GI PIPE<span');
         });
 
-        test('a blank product is "Pick a product…", with nothing else chosen', () => {
-            const html = t.productPicker({ p: '' }, 0);
-            expect(html).not.toContain(' selected');
-            expect(html).toContain('<option value="">Pick a product…</option>');
+        test('a blank product shows "Pick a product…"', () => {
+            expect(t.productPicker({ p: '' }, 0)).toContain('<span class="pd-ls-ph">Pick a product…</span>');
         });
 
-        test('what he typed is escaped, quotes and ampersands alike', () => {
+        test('what he typed is escaped, on the button and in the list', () => {
             const html = t.productPicker({ p: 'SS "304" & 316' }, 0);
-            expect(html).toContain('value="SS &quot;304&quot; &amp; 316"');
-            expect(html).toContain('>SS &quot;304&quot; &amp; 316</option>');
-            expect(html).not.toContain('value="SS "304"');
+            expect(html).toContain('SS &quot;304&quot; &amp; 316');
+            expect(html).not.toContain('SS "304"');
         });
 
-        test('picking one stores it; "Add another" asks on the page and leaves the box as it was', () => {
-            const p = partner({ products: [{ p: 'OLD NAME', spec: '', make: '', sizes: [], moq: 0, rule: '' }] });
-            const save = jest.fn();
-            const card = fakeCard([{ attrs: { 'data-pd-prname': 0 } }]);
-            t.bindProductPickers(card, p, save);
-            const box = card.els[0];
-
-            box.value = 'ERW pipe'; box.onchange();
-            expect(p.products[0].p).toBe('ERW pipe');
-            expect(save).toHaveBeenLastCalledWith(false, ['products']);
-
-            box.value = '__other'; box.onchange();
-            expect(box.value).toBe('ERW pipe');                 // cancelling leaves it as it was
-            expect(S().ask.title).toBe('What product is it?');
-            S().ask.run('Ductile iron pipe');
-            expect(p.products[0].p).toBe('Ductile iron pipe');
-            expect(save).toHaveBeenLastCalledWith(true, ['products']);    // redrawn, so the box closes
-        });
-
-        test('each box works on its own row, never the first', () => {
+        test('picking stores it; "+ Add" stores what was typed and marks it added; each on its own row', () => {
             const p = partner({ products: [
                 { p: 'GI pipe', spec: '', make: 'Tata', sizes: [], moq: 0, rule: '' },
                 { p: 'ERW pipe', spec: '', make: 'JSL', sizes: [], moq: 0, rule: '' }] });
-            const card = fakeCard([{ attrs: { 'data-pd-prname': 1 } }, { attrs: { 'data-pd-addmake': 1 } }]);
-            t.bindProductPickers(card, p, jest.fn());
-            card.els[0].value = 'Seamless pipe'; card.els[0].onchange();
-            card.els[1].value = 'Loha'; card.els[1].onchange();
-            expect(p.products.map((r) => [r.p, r.make])).toEqual([['GI pipe', 'Tata'], ['Seamless pipe', 'JSL, Loha']]);
+            const save = jest.fn();
+            t.bindProductPickers(fakeCard([]), p, save);
+            t.listChosen('product:1', 'Seamless pipe', false);
+            expect(p.products.map((r) => r.p)).toEqual(['GI pipe', 'Seamless pipe']);
+            expect(p.products[1].added).toBeUndefined();
+            t.listChosen('product:0', 'Ductile iron pipe', true);
+            expect(p.products[0]).toMatchObject({ p: 'Ductile iron pipe', added: true });
+            expect(save).toHaveBeenLastCalledWith(true, ['products']);     // redrawn, so the list closes
+        });
+
+        test('a product added on one card is offered on the others; old typing is not', () => {
+            setContacts([partner({ products: [
+                { p: 'Ductile iron pipe', spec: '', make: '', sizes: [], moq: 0, rule: '', added: true },
+                { p: 'TMX BARS', spec: '', make: '', sizes: [], moq: 0, rule: '' }] })]);
+            expect(t.productOptions()).toContain('Ductile iron pipe');
+            expect(t.productOptions()).not.toContain('TMX BARS');
+        });
+    });
+
+    describe('searching a list', () => {
+        /** The open list as the page has it: option buttons, the "+ Add" line, "Nothing matches". */
+        function fakePop(values, withAdd) {
+            const opt = (v) => ({ v, hidden: false, textContent: v, getAttribute: (k) => (k === 'data-pd-lsval' ? v : null) });
+            const opts = values.map(opt);
+            const add = withAdd ? { hidden: true, textContent: '' } : null;
+            const none = { hidden: true };
+            return { opts, add, none,
+                querySelectorAll: (sel) => (sel === '[data-pd-lsval]' ? opts : []),
+                querySelector: (sel) => (sel === '[data-pd-lsadd]' ? add : sel === '.pd-ls-none' ? none : null) };
+        }
+        const visible = (pop) => pop.opts.filter((o) => !o.hidden).map((o) => o.v);
+
+        test('typing hides what does not match', () => {
+            const pop = fakePop(['Chennai', 'Coimbatore', 'Mumbai'], true);
+            t.filterList(pop, 'town:head', 'chen');
+            expect(visible(pop)).toEqual(['Chennai']);
+        });
+
+        test('"+ Add" appears with what was typed when nothing is the same thing', () => {
+            const pop = fakePop(['Chennai', 'Mumbai'], true);
+            t.filterList(pop, 'town:head', 'Tirupur');
+            expect(pop.add.hidden).toBe(false);
+            expect(pop.add.textContent).toBe('+ Add “Tirupur”');
+        });
+
+        test('no "+ Add" for another spelling of one already listed — Bombay is Mumbai', () => {
+            const pop = fakePop(['Chennai', 'Mumbai'], true);
+            t.filterList(pop, 'town:head', 'bombay');
+            expect(visible(pop)).toEqual(['Mumbai']);
+            expect(pop.add.hidden).toBe(true);
+        });
+
+        test('a spelling a letter away is shown, so it can be picked instead of added', () => {
+            const pop = fakePop(['Tirupur', 'Chennai'], true);
+            t.filterList(pop, 'town:head', 'Tiruppur');
+            expect(visible(pop)).toEqual(['Tirupur']);
+            expect(t.nearlyThe('Tirupur', 'Tiruppur')).toBe(true);
+            expect(t.nearlyThe('MS', 'MSL')).toBe(false);                 // short names are not near
+        });
+
+        test('the same brand however written is not offered again — APL Apollo', () => {
+            const pop = fakePop(['APL Apollo Tubes Ltd', 'Tata'], true);
+            t.filterList(pop, 'brand:0', 'APL APOLLO TUBES LIMITED');
+            expect(pop.add.hidden).toBe(true);
+        });
+
+        test('a filter list has no "+ Add", and says so when nothing matches', () => {
+            const pop = fakePop(['Chennai'], false);
+            t.filterList(pop, 'facet:town', 'Pune');
+            expect(visible(pop)).toEqual([]);
+            expect(pop.none.hidden).toBe(false);
+        });
+
+        test('a click outside closes an open list; a click inside does not', () => {
+            S().listOpen = 'town:head';
+            t.closeListOutside({ target: { closest: () => ({}) } });
+            expect(S().listOpen).toBe('town:head');
+            t.closeListOutside({ target: { closest: () => null } });
+            expect(S().listOpen).toBeNull();
         });
     });
 
@@ -3502,10 +3533,9 @@ describe('the Product and Brand dropdowns', () => {
         });
 
         test('a removal request waiting in the queue has no card, and nothing breaks', () => {
-            // Every ✕ on a directory card puts one of these in the queue, with preview: null.
             setContacts([partner({ company: 'Dealer', products: [{ p: '', spec: '', make: '(their own make), Tata', sizes: [], moq: 0, rule: '' }] })]);
             D.pending = [{ id: 'r1', origin: 'removal', preview: null }];
-            expect(t.brandOptions()).toEqual(['Tata']);                    // and a bare remark is not a brand
+            expect(t.brandOptions()).toEqual(['Tata']);
         });
 
         test('his spelling is offered, not the maker card\'s — "APL Apollo Tubes Ltd"', () => {
@@ -3533,32 +3563,30 @@ describe('the Product and Brand dropdowns', () => {
             expect(t.brandOptions()).toEqual(['PRINCE', 'Prince Pipes Unit 2']);
         });
 
-        test('the Brand box: its row, a way to type a new one, and nothing blank shown as a brand', () => {
+        test('the Brand box: its row, "+ Add" when open, and nothing blank shown as a brand', () => {
             const blank = t.brandPicker({ make: '' }, 3);
-            expect(blank).toContain('<select data-pd-addmake="3">');
-            expect(blank).toContain('<option value="__other">＋ Add another…</option>');
-            expect(blank).toContain('<option value="">Brand…</option>');
+            expect(blank).toContain('data-pd-lsopen="brand:3"');
+            expect(blank).toContain('<span class="pd-ls-ph">Brand…</span>');
             expect(blank).not.toContain('pd-tag');
+            expect(opened('brand:3', () => t.brandPicker({ make: '' }, 3))).toContain('data-pd-lsadd="brand:3"');
             const one = t.brandPicker({ make: 'JSL, ' }, 3);
             expect(one.match(/pd-tag/g)).toHaveLength(1);
-            expect(one).toContain('<option value="">+ Brand</option>');
+            expect(one).toContain('<span class="pd-ls-ph">+ Brand</span>');
         });
 
-        test('brand names are escaped, in the tag and in the dropdown', () => {
+        test('brand names are escaped, in the tag and in the list', () => {
             setContacts([partner({ company: 'Dealer', products: [{ p: '', spec: '', make: 'Tata "Tiscon"', sizes: [], moq: 0, rule: '' }] })]);
-            expect(t.brandPicker({ make: '' }, 0)).toContain('<option value="Tata &quot;Tiscon&quot;">');
+            expect(opened('brand:0', () => t.brandPicker({ make: '' }, 0))).toContain('data-pd-lsval="Tata &quot;Tiscon&quot;"');
             expect(t.brandPicker({ make: 'A&B <x>' }, 0)).toContain('A&amp;B &lt;x&gt; <span class="pd-x"');
         });
 
-        test('a product\'s brands are tags, and the dropdown does not offer them again', () => {
+        test('a product\'s brands are tags, and the list does not offer them again', () => {
             setContacts([partner({ company: 'Dealer', products: [{ p: '', spec: '', make: 'Tata, JSL', sizes: [], moq: 0, rule: '' }] }),
                          partner({ company: 'Ismt', role: 'manufacturer' })]);
-            const html = t.brandPicker({ make: 'Tata, JSL' }, 3);
+            const html = opened('brand:3', () => t.brandPicker({ make: 'Tata, JSL' }, 3));
             expect(html).toContain('Tata <span class="pd-x" data-pd-delmake="3:0">');
             expect(html).toContain('JSL <span class="pd-x" data-pd-delmake="3:1">');
-            expect(html).toContain('<option value="Ismt">Ismt</option>');
-            expect(html).not.toContain('<option value="Tata">');
-            expect(html).not.toContain('<option value="JSL">');
+            expect(optionValues(html)).toEqual(['Ismt']);
         });
     });
 
@@ -3566,50 +3594,65 @@ describe('the Product and Brand dropdowns', () => {
         function oneRow(make) {
             const p = partner({ products: [{ p: 'GI pipe', spec: '', make: make, sizes: [], moq: 0, rule: '' }] });
             const save = jest.fn();
-            const card = fakeCard([{ attrs: { 'data-pd-addmake': 0 } }]);
-            t.bindProductPickers(card, p, save);
-            return { p, save, box: card.els[0] };
+            t.bindProductPickers(fakeCard([]), p, save);
+            return { p, save };
         }
 
-        test('picked from the list, it joins the line; the box goes back to "+ Brand"', () => {
-            const { p, save, box } = oneRow('Tata');
-            box.value = 'JSL'; box.onchange();
+        test('picked from the list, it joins the line', () => {
+            const { p, save } = oneRow('Tata');
+            t.listChosen('brand:0', 'JSL', false);
             expect(p.products[0].make).toBe('Tata, JSL');
-            expect(box.value).toBe('');
             expect(save).toHaveBeenCalledWith(true, ['products']);
+            expect(S().listOpen).toBeNull();
         });
 
         test('typed with commas, it is two brands — and one of them already there is not repeated', () => {
-            const { p, box } = oneRow('Tata');
-            box.value = '__other'; box.onchange();
-            expect(S().ask.title).toBe('Which brand?');
-            S().ask.run('Tata, Loha');
+            const { p } = oneRow('Tata');
+            t.listChosen('brand:0', 'Tata, Loha', true);
             expect(p.products[0].make).toBe('Tata, Loha');
         });
 
         test('the same brand twice in one typed line goes on once', () => {
-            const { p, box } = oneRow('Tata');
-            box.value = '__other'; box.onchange();
-            S().ask.run('Loha, LOHA');
+            const { p } = oneRow('Tata');
+            t.listChosen('brand:0', 'Loha, LOHA', true);
             expect(p.products[0].make).toBe('Tata, Loha');
         });
 
         test('OK on the "already on this product" box redraws, so it closes', () => {
-            // Without a redraw it sat on "Working…" — the fault the message was added to fix.
             const fn = sliceBetween('var addMake = function (pr, v) {', 'function bindNotes');
             expect(fn).toContain("run: function () { render(); }");
         });
 
         test('one already on the product is not added twice — and the page says so', () => {
-            // Returning quietly left the "Add another" box frozen on "Working…".
-            const { p, save, box } = oneRow('APL Apollo Tubes Ltd');
-            box.value = '__other'; box.onchange();
-            S().ask.run('APL APOLLO TUBES LIMITED');
+            const { p, save } = oneRow('APL Apollo Tubes Ltd');
+            t.listChosen('brand:0', 'APL APOLLO TUBES LIMITED', true);
             expect(p.products[0].make).toBe('APL Apollo Tubes Ltd');
             expect(save).not.toHaveBeenCalled();
             expect(S().ask.title).toBe('Already on this product');
             expect(S().ask.lines[0]).toContain('APL APOLLO TUBES LIMITED is already one of its brands');
             expect(S().ask.danger).toBe(false);
+        });
+    });
+
+    describe('what a waiting card adds to the lists', () => {
+        test('a town, product, brand or pipe type no approved card has yet is named', () => {
+            setContacts([partner({ company: 'A', city: 'Chennai', types: ['ERW'],
+                products: [{ p: 'GI pipe', spec: '', make: 'Tata', sizes: [], moq: 0, rule: '' }] })]);
+            expect(t.newToLists({ city: 'tirupur', branches: [{ city: 'Chennai' }, { city: 'Bombay' }], types: ['erw', 'Cast iron'],
+                products: [{ p: 'GI PIPES', make: 'TATA, Surya' }, { p: 'Ductile iron pipe', make: '' }] }))
+                .toEqual(['town Tirupur', 'brand Surya', 'product Ductile iron pipe', 'pipe type Cast iron']);
+        });
+
+        test('nothing new, nothing said', () => {
+            setContacts([partner({ city: 'Chennai' })]);
+            expect(t.newToLists({ city: 'Chennai', products: [], types: [] })).toEqual([]);
+            expect(t.newToLists(null)).toEqual([]);
+        });
+
+        test('the approval strip carries it — a pill, and the line naming each one', () => {
+            const fn = sliceBetween('function pendingStrip(pi)', 'function removalStrip');
+            expect(fn).toContain("<span class=\"pd-pill pd-pill-new\">New to your lists</span>");
+            expect(fn).toContain("New to your lists — approving adds '");
         });
     });
 
