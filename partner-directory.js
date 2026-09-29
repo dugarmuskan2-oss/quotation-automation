@@ -643,7 +643,7 @@
             .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function (d) {
                 D.contacts = keepOpenEdits(D.contacts, d.contacts || []); D.changes = d.changes || [];
-                D.pending = keepOpenReview(D.pending, d.pending || []);
+                D.pending = giveWaitingCardsAnId(keepOpenReview(D.pending, d.pending || []));
                 D.duplicates = d.duplicates || [];
                 D.sameName = d.sameName || [];
                 D.readonly = !!d.readonly;
@@ -697,6 +697,23 @@
             fields.forEach(function (f) { merged[f] = mine[f]; });
             return merged;
         });
+    }
+
+    /**
+     * A waiting card with no id cannot be edited at all.
+     *
+     * *His words: "add product range button doesnt seem to be working".* Every box and button
+     * on an open card finds its card by id. Eight Google cards were written into the queue by
+     * script without one, so the lookup found nothing and every click on them went nowhere —
+     * silently. A queue item the app builds itself gets 'p_new_' + its own id when first shown
+     * (pendingPreview), and the server gives the same on the first saved correction; this
+     * gives it to the ones that never had it. Approving still swaps it for a real id.
+     */
+    function giveWaitingCardsAnId(items) {
+        (items || []).forEach(function (pi) {
+            if (pi && pi.preview && !pi.preview.id) pi.preview.id = 'p_new_' + pi.id;
+        });
+        return items;
     }
 
     function keepOpenReview(old, fresh) {
