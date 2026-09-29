@@ -3386,3 +3386,238 @@ describe('source guard — pressing ✕ asks, it does not delete', () => {
         expect(src).toContain("if (pi.origin === 'removal') return removalStrip(pi);");
     });
 });
+
+// ── The Product and Brand dropdowns (29 Sep) ──────────────────────────────────
+//
+// *His words: "for the product type and brand -- we can create a drop down? So that later it
+// is easy to search"*, then "Allow without cards too", "GR Pipes and GP Pipes", and "Merge all
+// Apollo to APL Apollo Tubes Ltd . Loha is a seperate manufacturer". These run the shipped
+// functions through the module's own _test object, with a fake card element where a handler
+// needs one — the handlers only ever read attributes and values and assign onchange/onclick.
+
+describe('the Product and Brand dropdowns', () => {
+    const t = global.window.partnerDirectory._test;
+    const S = () => _state().S;
+
+    /** A stand-in for the open card: each element carries its attributes and a value. */
+    function fakeCard(els) {
+        const all = els.map((e) => Object.assign({
+            value: '', onchange: null, onclick: null,
+            getAttribute(k) { return this.attrs[k] === undefined ? null : String(this.attrs[k]); },
+            hasAttribute(k) { return this.attrs[k] !== undefined; },
+        }, e));
+        const match = (sel) => all.filter((e) => e.attrs[sel.replace(/^\[|\]$/g, '')] !== undefined);
+        return { els: all, querySelectorAll: match, querySelector: (sel) => match(sel)[0] || null };
+    }
+
+    beforeEach(() => { setContacts([]); S().ask = null; S().busy = {}; });
+    afterEach(() => { FETCH = () => Promise.reject(new Error('no network in unit tests')); });
+
+    describe('the Product box', () => {
+        test('offers the fixed list, GP and GR included, and marks the one chosen', () => {
+            // The whole list, in order, from a blank row — a missing entry cannot hide behind
+            // the "his old words" option, which would otherwise print the same text.
+            const texts = (html) => (html.match(/>([^<]*)<\/option>/g) || []).map((o) => o.slice(1, -9));
+            expect(texts(t.productPicker({ p: '' }, 0))).toEqual(['Pick a product…', 'GI pipe', 'GP pipe', 'GR pipe',
+                'ERW pipe', 'Seamless pipe', 'Square / Rectangular', 'Fittings', 'Valves', 'Sheets', 'Coating', '＋ Add another…']);
+            const html = t.productPicker({ p: 'GP pipe' }, 0);
+            ['GI pipe', 'GP pipe', 'GR pipe', 'ERW pipe', 'Seamless pipe', 'Square / Rectangular',
+             'Fittings', 'Valves', 'Sheets', 'Coating'].forEach((n) => expect(html).toContain('>' + n + '</option>'));
+            expect(html).toContain('<option value="GP pipe" selected>GP pipe</option>');
+            expect(html).toContain('<option value="__other">＋ Add another…</option>');
+        });
+
+        test('a product typed before the list keeps his words, shown as the choice', () => {
+            // Nothing on a card is rewritten because the box changed.
+            const html = t.productPicker({ p: 'GP PIPE / GR PIPE/ GI PIPE' }, 1);
+            expect(html).toContain('<option value="GP PIPE / GR PIPE/ GI PIPE" selected>GP PIPE / GR PIPE/ GI PIPE</option>');
+            expect(html.match(/ selected/g)).toHaveLength(1);
+        });
+
+        test('a blank product is "Pick a product…", with nothing else chosen', () => {
+            const html = t.productPicker({ p: '' }, 0);
+            expect(html).not.toContain(' selected');
+            expect(html).toContain('<option value="">Pick a product…</option>');
+        });
+
+        test('what he typed is escaped, quotes and ampersands alike', () => {
+            const html = t.productPicker({ p: 'SS "304" & 316' }, 0);
+            expect(html).toContain('value="SS &quot;304&quot; &amp; 316"');
+            expect(html).not.toContain('value="SS "304"');
+        });
+
+        test('picking one stores it; "Add another" asks on the page and leaves the box as it was', () => {
+            const p = partner({ products: [{ p: 'OLD NAME', spec: '', make: '', sizes: [], moq: 0, rule: '' }] });
+            const save = jest.fn();
+            const card = fakeCard([{ attrs: { 'data-pd-prname': 0 } }]);
+            t.bindProductPickers(card, p, save);
+            const box = card.els[0];
+
+            box.value = 'ERW pipe'; box.onchange();
+            expect(p.products[0].p).toBe('ERW pipe');
+            expect(save).toHaveBeenLastCalledWith(false, ['products']);
+
+            box.value = '__other'; box.onchange();
+            expect(box.value).toBe('ERW pipe');                 // cancelling leaves it as it was
+            expect(S().ask.title).toBe('What product is it?');
+            S().ask.run('Ductile iron pipe');
+            expect(p.products[0].p).toBe('Ductile iron pipe');
+        });
+    });
+
+    describe('the Brand list', () => {
+        test('one brand per comma, trimmed, blanks dropped', () => {
+            expect(t.makesOf({ make: ' Tata,  JSL ,, ' })).toEqual(['Tata', 'JSL']);
+            expect(t.makesOf({ make: '' })).toEqual([]);
+            expect(t.makesOf(null)).toEqual([]);
+        });
+
+        test('makers AND brands typed on any card, waiting cards included — no card needed', () => {
+            setContacts([
+                partner({ company: 'Jindal Saw Limited', role: 'manufacturer' }),
+                partner({ company: 'Dealer A', products: [{ p: 'GI pipe', spec: '', make: 'Tata, JSL', sizes: [], moq: 0, rule: '' }] }),
+            ]);
+            D.pending = [{ id: 'q1', preview: { company: 'Waiting B', products: [{ p: '', spec: '', make: 'Vizag' }] } }];
+            expect(t.brandOptions()).toEqual(['Jindal Saw Limited', 'JSL', 'Tata', 'Vizag']);
+        });
+
+        test('his spelling is offered, not the maker card\'s — "APL Apollo Tubes Ltd"', () => {
+            setContacts([
+                partner({ company: 'APL APOLLO TUBES LIMITED', role: 'manufacturer' }),
+                partner({ company: 'Dealer', products: [{ p: '', spec: '', make: 'APL Apollo Tubes Ltd, Loha', sizes: [], moq: 0, rule: '' }] }),
+            ]);
+            expect(t.brandOptions()).toEqual(['APL Apollo Tubes Ltd', 'Loha']);
+        });
+
+        test('brands are told apart exactly — MS is not MSL, Jindal is not Jindal Saw', () => {
+            setContacts([partner({ company: 'Dealer', products: [
+                { p: '', spec: '', make: 'MS, MSL', sizes: [], moq: 0, rule: '' },
+                { p: '', spec: '', make: 'Jindal, Jindal Saw', sizes: [], moq: 0, rule: '' }] })]);
+            expect(t.brandOptions()).toEqual(['Jindal', 'Jindal Saw', 'MS', 'MSL']);
+            expect(t.sameBrand('MS', 'MSL')).toBe(false);
+            expect(t.sameBrand('APL Apollo Tubes Ltd', 'APL APOLLO TUBES LIMITED')).toBe(true);
+        });
+
+        test('a remark in brackets is not offered as part of the name, and a comma never splits one', () => {
+            setContacts([
+                partner({ company: 'Prince Pipes, Unit 2', role: 'manufacturer' }),
+                partner({ company: 'Dealer', products: [{ p: '', spec: '', make: 'PRINCE (THEIR OWN MAKE)', sizes: [], moq: 0, rule: '' }] }),
+            ]);
+            expect(t.brandOptions()).toEqual(['PRINCE', 'Prince Pipes Unit 2']);
+        });
+
+        test('a product\'s brands are tags, and the dropdown does not offer them again', () => {
+            setContacts([partner({ company: 'Dealer', products: [{ p: '', spec: '', make: 'Tata, JSL', sizes: [], moq: 0, rule: '' }] }),
+                         partner({ company: 'Ismt', role: 'manufacturer' })]);
+            const html = t.brandPicker({ make: 'Tata, JSL' }, 3);
+            expect(html).toContain('Tata <span class="pd-x" data-pd-delmake="3:0">');
+            expect(html).toContain('JSL <span class="pd-x" data-pd-delmake="3:1">');
+            expect(html).toContain('<option value="Ismt">Ismt</option>');
+            expect(html).not.toContain('<option value="Tata">');
+            expect(html).not.toContain('<option value="JSL">');
+        });
+    });
+
+    describe('adding a brand', () => {
+        function oneRow(make) {
+            const p = partner({ products: [{ p: 'GI pipe', spec: '', make: make, sizes: [], moq: 0, rule: '' }] });
+            const save = jest.fn();
+            const card = fakeCard([{ attrs: { 'data-pd-addmake': 0 } }]);
+            t.bindProductPickers(card, p, save);
+            return { p, save, box: card.els[0] };
+        }
+
+        test('picked from the list, it joins the line; the box goes back to "+ Brand"', () => {
+            const { p, save, box } = oneRow('Tata');
+            box.value = 'JSL'; box.onchange();
+            expect(p.products[0].make).toBe('Tata, JSL');
+            expect(box.value).toBe('');
+            expect(save).toHaveBeenCalledWith(true, ['products']);
+        });
+
+        test('typed with commas, it is two brands — and one of them already there is not repeated', () => {
+            const { p, box } = oneRow('Tata');
+            box.value = '__other'; box.onchange();
+            expect(S().ask.title).toBe('Which brand?');
+            S().ask.run('Tata, Loha');
+            expect(p.products[0].make).toBe('Tata, Loha');
+        });
+
+        test('one already on the product is not added twice — and the page says so', () => {
+            // Returning quietly left the "Add another" box frozen on "Working…".
+            const { p, save, box } = oneRow('APL Apollo Tubes Ltd');
+            box.value = '__other'; box.onchange();
+            S().ask.run('APL APOLLO TUBES LIMITED');
+            expect(p.products[0].make).toBe('APL Apollo Tubes Ltd');
+            expect(save).not.toHaveBeenCalled();
+            expect(S().ask.title).toBe('Already on this product');
+            expect(S().ask.lines[0]).toContain('APL APOLLO TUBES LIMITED is already one of its brands');
+            expect(S().ask.danger).toBe(false);
+        });
+    });
+
+    describe('✕ on a brand', () => {
+        const rows = () => [
+            { p: '', spec: '', make: 'Tata', sizes: [], moq: 0, rule: '' },
+            { p: '', spec: '', make: 'Tata, JSL', sizes: [], moq: 0, rule: '' },
+            { p: 'ERW pipe', spec: 'IS 3589', make: 'Tata', sizes: [], moq: 0, rule: '' },
+        ];
+
+        test('the row is found by product, specification AND its whole Brand line', () => {
+            const p = partner({ products: rows() });
+            expect(t.brandRow(p, { p: '', spec: '', make: 'Tata, JSL' }, 'Tata')).toBe(p.products[1]);
+            expect(t.brandRow(p, { p: '', spec: '', make: 'Tata' }, 'Tata')).toBe(p.products[0]);
+            // the line has changed since it was marked: nothing, never the nearest match
+            expect(t.brandRow(p, { p: '', spec: '', make: 'Tata, MSL' }, 'Tata')).toBeNull();
+            // with no line to go on, only a row that HOLDS the brand — and only if there is one
+            expect(t.brandRow(p, { p: '', spec: '' }, 'JSL')).toBe(p.products[1]);
+            expect(t.brandRow(p, { p: '', spec: '' }, 'Tata')).toBeNull();
+        });
+
+        test('pressing ✕ on a directory card sends the row\'s whole Brand line with the request', async () => {
+            const p = partner({ products: rows() });
+            setContacts([p]);
+            const calls = [];
+            FETCH = (url, opts) => { calls.push(JSON.parse(opts.body)); return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) }); };
+            const card = fakeCard([{ attrs: { 'data-pd-delmake': '1:1' } }]);
+            t.bindSupply(card, p, jest.fn());
+            card.els[0].onclick();
+            await flush();
+            expect(calls[0]).toMatchObject({ what: 'brand', value: 'JSL', at: { product: { p: '', spec: '', make: 'Tata, JSL' } } });
+        });
+
+        test('on a card still waiting, it comes off that row at once', () => {
+            const p = partner({ products: rows() });
+            const save = jest.fn();
+            t.removalAsker(p, save)('brand', 'Tata', { product: { p: '', spec: '', make: 'Tata, JSL' } });
+            expect(p.products.map((r) => r.make)).toEqual(['Tata', 'JSL', 'Tata']);
+            expect(save).toHaveBeenCalledWith(true, ['products']);
+        });
+
+        test('on a card in the directory, it is only a request — the card is not touched', async () => {
+            const p = partner({ products: rows() });
+            setContacts([p]);
+            const calls = [];
+            FETCH = (url, opts) => { calls.push({ url, body: JSON.parse(opts.body) }); return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) }); };
+            const save = jest.fn();
+            t.removalAsker(p, save)('brand', 'JSL', { product: { p: '', spec: '', make: 'Tata, JSL' } });
+            await flush();
+            expect(calls[0].url).toContain('/contacts/removal/ask');
+            expect(calls[0].body).toMatchObject({ cardId: p.id, what: 'brand', value: 'JSL', at: { product: { make: 'Tata, JSL' } } });
+            expect(p.products[1].make).toBe('Tata, JSL');
+            expect(save).not.toHaveBeenCalled();
+        });
+    });
+
+    test('the ranking reads each brand on its own — "Tata" on a card is a Tata Steel dealer', () => {
+        // Read as one line, "JSL, Tata" did not match Tata Steel at all.
+        setContacts([
+            partner({ company: 'Tata Steel', role: 'manufacturer', types: [] }),
+            partner({ company: 'Dealer Tata', products: [{ p: 'ERW pipe', spec: '', make: 'JSL, Tata', sizes: [], moq: 0, rule: '' }] }),
+        ]);
+        const row = rankFor('material', readEnquiry(ENQUIRY + ', Tata make')).filter((r) => r.p.company === 'Dealer Tata')[0];
+        // exactly the brand line — "Stocks ERW pipe — you clear the minimum" is a different reason
+        expect(row.why).toContainEqual(['ok', 'Stocks Tata Steel']);
+        expect(row.why.some((w) => /not Tata Steel/.test(w[1]))).toBe(false);
+    });
+});

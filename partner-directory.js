@@ -4425,6 +4425,10 @@
                  relExtra: relExtra, isRelationNote: isRelationNote, buysFromThem: buysFromThem,
                  relationsBlock: relationsBlock, dropTheContradiction: dropTheContradiction,
                  notesBlock: notesBlock, isHeadingNote: isHeadingNote,
+                 // The Product and Brand dropdowns (29 Sep), and the ✕ that takes a brand off.
+                 productPicker: productPicker, brandPicker: brandPicker, brandOptions: brandOptions,
+                 makesOf: makesOf, sameBrand: sameBrand, brandRow: brandRow,
+                 bindProductPickers: bindProductPickers, removalAsker: removalAsker, bindSupply: bindSupply,
                  _state: function () { return { S: S, D: D }; } },
     };
 })();

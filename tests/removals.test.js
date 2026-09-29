@@ -14,7 +14,7 @@
  */
 
 const {
-    removalRequest, describeRemoval, applyRemoval, isMarked, samePerson, sizeName,
+    removalRequest, describeRemoval, applyRemoval, isMarked, samePerson, sizeName, makesOf,
 } = require('../utils/removals');
 
 const card = (over) => Object.assign({
@@ -211,5 +211,91 @@ describe('telling two contacts apart', () => {
     test('with no address at all, the name has to do', () => {
         expect(samePerson({ name: 'Ravi', emails: [] }, { name: 'ravi', emails: [] })).toBe(true);
         expect(samePerson({ name: '', emails: [] }, { name: '', emails: [] })).toBe(false);
+    });
+});
+
+// ── A brand off one product (29 Sep) ──────────────────────────────────────────
+//
+// The Brand box is a list now, stored as one line ("TATA, MSL, JSL"). ✕ on one brand of a card
+// in the directory is a request like any other, and the danger is the one this file exists for:
+// a card can list the same product twice — and rows with no product name are common — so "the
+// first row called ERW pipe" is often the wrong row. The request carries the row's whole Brand
+// line, and if that row has changed since he marked it, nothing is taken.
+
+describe('a brand off one product', () => {
+    const brandCard = () => ({ id: 'p_2', company: 'Dealer', products: [
+        { p: '', spec: '', make: 'Tata' },
+        { p: '', spec: '', make: 'Tata, JSL' },
+        { p: 'ERW pipe', spec: 'IS 3589', make: 'Tata, APL Apollo Tubes Ltd, JSL' },
+        { p: 'ERW pipe', spec: 'IS 1239', make: 'Tata' },
+    ] });
+    const ask = (c, brand, row) => removalRequest(c, 'brand', brand,
+        { product: { p: c.products[row].p, spec: c.products[row].spec, make: c.products[row].make } });
+
+    test('the Brand line is read one brand per comma', () => {
+        expect(makesOf({ make: ' Tata,  JSL ,, ' })).toEqual(['Tata', 'JSL']);
+        expect(makesOf({})).toEqual([]);
+    });
+
+    test('a brand is a request that can be made at all', () => {
+        const req = ask(brandCard(), 'JSL', 1);
+        expect(req).toMatchObject({ cardId: 'p_2', what: 'brand', value: 'JSL' });
+        expect(req.at.product.make).toBe('Tata, JSL');
+    });
+
+    test('it comes off the row it was marked on, and only that brand', () => {
+        const c = brandCard();
+        expect(applyRemoval(c, ask(c, 'Tata', 1))).toEqual({ changed: true });
+        expect(c.products.map((r) => r.make)).toEqual(['Tata', 'JSL', 'Tata, APL Apollo Tubes Ltd, JSL', 'Tata']);
+    });
+
+    test('a brand in the middle of the line leaves the others joined as before', () => {
+        const c = brandCard();
+        applyRemoval(c, ask(c, 'apl apollo tubes ltd', 2));             // case does not matter
+        expect(c.products[2].make).toBe('Tata, JSL');
+    });
+
+    test('same product name, different specification: the other row is left alone', () => {
+        const c = brandCard();
+        applyRemoval(c, ask(c, 'Tata', 3));
+        expect(c.products[3].make).toBe('');
+        expect(c.products[2].make).toBe('Tata, APL Apollo Tubes Ltd, JSL');
+    });
+
+    test('if the row has changed since he marked it, nothing is taken — not the nearest match', () => {
+        const c = brandCard();
+        const req = ask(c, 'Tata', 1);
+        c.products[1].make = 'Tata, JSL, MSL';                          // edited while it waited
+        expect(applyRemoval(c, req).changed).toBe(false);
+        expect(c.products.map((r) => r.make)).toEqual(['Tata', 'Tata, JSL, MSL', 'Tata, APL Apollo Tubes Ltd, JSL', 'Tata']);
+    });
+
+    test('approved twice, the second does nothing', () => {
+        const c = brandCard();
+        const req = ask(c, 'JSL', 1);
+        expect(applyRemoval(c, req).changed).toBe(true);
+        expect(applyRemoval(c, req)).toMatchObject({ changed: false });
+        expect(c.products.map((r) => r.make)).toEqual(['Tata', 'Tata', 'Tata, APL Apollo Tubes Ltd, JSL', 'Tata']);
+    });
+
+    test('same product, same brands, different specification: the one he marked', () => {
+        const c = { id: 'p_3', company: 'Twin', products: [
+            { p: 'ERW pipe', spec: 'IS 3589', make: 'Tata' },
+            { p: 'ERW pipe', spec: 'IS 1239', make: 'Tata' }] };
+        applyRemoval(c, ask(c, 'Tata', 1));
+        expect(c.products.map((r) => r.make)).toEqual(['Tata', '']);
+    });
+
+    test('the queue line names the brand, the product and the firm', () => {
+        const c = brandCard();
+        expect(describeRemoval(ask(c, 'JSL', 2))).toBe('Remove the brand JSL from ERW pipe on Dealer');
+        expect(describeRemoval(ask(c, 'JSL', 1))).toBe('Remove the brand JSL on Dealer');
+    });
+
+    test('the same brand on two different rows is two requests', () => {
+        const c = brandCard();
+        const req = ask(c, 'Tata', 0);
+        expect(isMarked([req], 'brand', 'Tata', { product: { p: '', spec: '', make: 'Tata' } })).toBe(true);
+        expect(isMarked([req], 'brand', 'Tata', { product: { p: '', spec: '', make: 'Tata, JSL' } })).toBe(false);
     });
 });
