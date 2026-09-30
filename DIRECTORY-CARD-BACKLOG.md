@@ -2263,3 +2263,27 @@ his rates) and all his notes are unchanged. Re-checked 20 seconds after the save
   specification. The same fault — a size range, thickness, grade or plant typed into the
   Product box — is on 18 more rows: MAHARASHTRA SEAMLESS LTD (8), MAN INDUSTRIES (5), TATA (2),
   APL APOLLO, Ismt and Asian Steels (1 each). Not touched; waiting on him.
+
+## Product rows tidied on six cards, and size ranges (30 Sep)
+
+*His "yes" to fixing the 18 rows where a size range, thickness, grade or factory sat in the
+Product box, and to a range option for sizes.*
+
+- **Approved** (logged in Recent changes as "Your instruction", with Undo; re-checked 20 s
+  later): MAHARASHTRA SEAMLESS LTD — 8 rows became 9: Seamless pipe (7" MILL, 1/2" to 7"; 14"
+  MILL, 8" to 24"), ERW pipe (8" to 20" and 1/2" to 8"; Hyderabad and Gaziabad 1/2" to 6"), GI
+  pipe (Hyderabad, Gaziabad 1/2" to 6"), and two rows with NO product named (8" to 12", 4 to 8
+  mm, "GR 410 ALSO (Hyderabad factory)"; 8" to 14", up to 9.5 mm, "GR -410 & APL ALSO (Gaziabad
+  factory)") — his rows do not say which pipe, so none is guessed. APL APOLLO — Square /
+  Rectangular, 15X15 to 400 X 200, 1.1 to 12 mm. Ismt — Seamless pipe, 1/2" to 10" (ISMT is a
+  seamless maker).
+- **Waiting** (re-checked 20 s later): MAN INDUSTRIES — 13 rows became 12 proper ones (LSAW,
+  two ERW, Square / Rectangular with its section size, induction bends under Fittings, HSAW, six
+  coatings; the bare "LSAW & HSAW" line folded into those). TATA — Jamshedpur 1/2" to 12" and
+  Khopoli 8" to 24", product left blank (his page does not say which). Asian Steels — 20" to
+  100", 5 to 20 mm, product left blank.
+- **The range option:** a size line's ↔ turns each box into From / To, saved as "a to b" in the
+  same box (so the live site and every tool read it unchanged). The thickness sits on the same
+  line as its size range. **The suggestion list now reads size lines:** "Makes 2" GI (their range
+  1/2" to 6")" (+10), or "Not on their card: 8" GI — their GI sizes: 1/2" to 6"" (−10). Nobody
+  is ruled out on size.

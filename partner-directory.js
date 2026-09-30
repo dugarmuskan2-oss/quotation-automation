@@ -214,6 +214,73 @@
         return m ? Number(m[1]) : null;
     }
 
+    // ── Size lines: one size, or a range (30 Sep) ───────────────────────────────
+    //
+    // *His words: "Add range and thickness to sizes. The thickness is for the same OD range, they
+    // arent seperate. Maybe instead of individual sizes, we can have a range option."* A size line
+    // keeps its four boxes (NB, Size, OD mm, Thk mm); a range is written "1/2\" to 8\"" in the
+    // same box, so a card saved this way reads the same everywhere, old tools included. The
+    // suggestion list now reads these lines to see whether a firm makes the size asked for.
+
+    /** "1/2\"", "1-1/2\"", "20\"", "8 inch" → inches. */
+    function inchesOf(text) {
+        return sizeToInches(str(text).replace(/["”]|inch(?:es)?|\bnb\b/gi, '').trim());
+    }
+    /** NB in mm → inches: the IS 1239 table up to 150 NB, then NB ÷ 25 (200 NB is 8"). */
+    function nbToInches(v) {
+        var n = parseFloat(v);
+        if (!isFinite(n)) return null;
+        var row = IS1239.filter(function (r) { return Number(r.nb) === n; })[0];
+        if (row) return inchesOf(row.inch);
+        return n > 150 ? Math.round(n / 25) : null;
+    }
+    /** OD in mm → inches: the IS 1239 table, the common 8"–12" ODs, then OD ÷ 25.4 from 14" up. */
+    function odToInches(v) {
+        var n = parseFloat(v);
+        if (!isFinite(n)) return null;
+        var row = IS1239.filter(function (r) { return Math.abs(Number(r.od) - n) < 0.6; })[0];
+        if (row) return inchesOf(row.inch);
+        var mid = [[219.1, 8], [273, 10], [323.9, 12]].filter(function (x) { return Math.abs(x[0] - n) < 1.5; })[0];
+        if (mid) return mid[1];
+        return n >= 355 ? Math.round(n / 25.4) : null;
+    }
+    /** "a to b" → [a, b]; "up to b" → ['', b]; "a" → [a]. */
+    function rangeParts(text) {
+        var t = str(text);
+        if (!t) return [];
+        var up = t.match(/^up\s*to\s+(.+)$/i);
+        if (up) return ['', str(up[1])];
+        var parts = t.split(/\s+to\s+|\s*–\s*/i).map(str).filter(Boolean);
+        return parts.length > 1 ? [parts[0], parts[parts.length - 1]] : [t];
+    }
+    /** The sizes one line covers, in inches — from its Size box, else NB, else OD. Null if unreadable. */
+    function sizeSpan(line) {
+        var readers = [['inch', inchesOf], ['nb', nbToInches], ['od', odToInches]];
+        for (var r = 0; r < readers.length; r++) {
+            var parts = rangeParts(line && line[readers[r][0]]);
+            if (!parts.length) continue;
+            var hi = readers[r][1](parts[parts.length - 1]);
+            var lo = parts.length > 1 ? (parts[0] ? readers[r][1](parts[0]) : 0) : hi;
+            if (hi != null && lo != null) return { lo: Math.min(lo, hi), hi: Math.max(lo, hi) };
+        }
+        return null;
+    }
+    function inchLabel(n) {
+        var whole = Math.floor(n), frac = n - whole, f = '';
+        [[0.25, '1/4'], [0.5, '1/2'], [0.75, '3/4']].forEach(function (x) { if (Math.abs(frac - x[0]) < 0.01) f = x[1]; });
+        if (!f && frac > 0.01) return (Math.round(n * 10) / 10) + '"';
+        return (whole ? whole + (f ? '-' + f : '') : f) + '"';
+    }
+    function spanLabel(sp) { return sp.lo === sp.hi ? inchLabel(sp.hi) : (sp.lo ? inchLabel(sp.lo) : 'up') + ' to ' + inchLabel(sp.hi); }
+    /** Which pipe family a product row is, by its name: GI, ERW or Seamless, else none. */
+    function rowFamily(pr) {
+        var t = lower(pr && pr.p);
+        if (/\bgi\b|galvani/.test(t)) return 'gi';
+        if (/seamless|\bsmls\b/.test(t)) return 'seamless';
+        if (/\berw\b/.test(t)) return 'erw';
+        return '';
+    }
+
     function readTypesAndClass(t) {
         var type = '';
         if (/\bss\b|stainless|\b304\b|\b316\b|a312/.test(t)) type = 'SS';
@@ -554,7 +621,8 @@
     function scoreSupplier(p, need) {
         var why = [], wrongRole = roleBlock(p, 'material', why), types = scoreTypes(p, need, why);
         var score = types.pts + (types.blocked ? 0 : scoreMinimums(p, need, why))
-            + scoreDistance(p, need, why) + scoreBrand(p, need, why) + scoreHistoryAndNotes(p, why);
+            + scoreDistance(p, need, why) + scoreBrand(p, need, why) + scoreSizes(p, need, why)
+            + scoreHistoryAndNotes(p, why);
         var blocked = types.blocked || wrongRole;
         return { p: p, score: blocked ? -999 + score : score, why: why, blocked: blocked };
     }
@@ -585,6 +653,32 @@
         });
         if (hits.length) { why.push(['ok', 'Stocks ' + hits.join(' / ')]); return 30; }
         why.push(['warn', 'Stocks ' + mine.join(', ') + ' — not ' + wanted.join(' / ')]);
+        return 0;
+    }
+
+    /**
+     * Does their card say they make the size asked for? Read from the size lines of the product
+     * rows of the same family (GI / ERW / Seamless). Like the brand, it never rules anybody out:
+     * a card with no sizes says nothing, and one whose sizes stop short is marked down and told
+     * why, because a mill can often roll a size it has not listed.
+     */
+    function scoreSizes(p, need, why) {
+        var items = (need && need.items || []).filter(function (li) { return li && li.inches != null && li.type; });
+        var fits = [], misses = [];
+        items.forEach(function (li) {
+            var fam = lower(li.type);
+            var spans = [];
+            (p.products || []).filter(function (pr) { return rowFamily(pr) === fam; }).forEach(function (pr) {
+                (pr.sizes || []).forEach(function (line) { var sp = sizeSpan(line); if (sp) spans.push(sp); });
+            });
+            if (!spans.length) return;
+            var hit = spans.filter(function (sp) { return li.inches >= sp.lo - 1e-9 && li.inches <= sp.hi + 1e-9; })[0];
+            var label = inchLabel(li.inches) + ' ' + typeNames([li.type]);
+            if (hit) fits.push(label + ' (their range ' + spanLabel(hit) + ')');
+            else misses.push(label + ' — their ' + typeNames([li.type]) + ' sizes: ' + spans.map(spanLabel).filter(function (x, n, all) { return all.indexOf(x) === n; }).join(', '));
+        });
+        if (misses.length) { why.push(['warn', 'Not on their card: ' + misses.join('; ')]); return -10; }
+        if (fits.length) { why.push(['ok', 'Makes ' + fits.join(', ')]); return 10; }
         return 0;
     }
 
@@ -1009,7 +1103,7 @@
     }
 
     // ── State for the tool page ───────────────────────────────────────────────
-    var S = { tab: 'dir', filter: 'all', facet: { town: '', product: '', brand: '', load: '', reach: '' }, listOpen: null, openId: null, openPending: null, openChange: null,
+    var S = { tab: 'dir', filter: 'all', facet: { town: '', product: '', brand: '', load: '', reach: '' }, listOpen: null, rangeOn: {}, openId: null, openPending: null, openChange: null,
               find: { text: '', state: 'idle', need: null, note: '' }, busy: {}, add: freshAdd(),
               confirmDelete: '',     // the card whose "are you sure?" is on screen
               dirty: {}, clean: {}, saveNote: '', confirmLeave: '', leaveThen: null, ask: null,
@@ -2102,16 +2196,39 @@
             + '<span style="width:80px;">' + f('moq', 'T', pr.moq) + '</span><span class="pd-tiny">tonnes</span><span class="pd-sp"></span>'
             + (cls ? '<button class="pd-addline" data-pd-loadis="' + i + '">Load IS 1239 ' + cls + ' sizes</button>' : '') + '</div>'
             + '<div style="margin-top:6px;">' + f('rule', 'Price rule — e.g. ASTM + Rs 45/kg', pr.rule) + '</div>'
-            + '<div class="pd-sizes"><div class="pd-szrow pd-szhead"><span>NB</span><span>Size</span><span>OD mm</span><span>Thk mm</span><span></span></div>'
-            + ((pr.sizes || []).length ? pr.sizes.map(function (s, j) {
-                var g = function (k, ph) { return '<input data-pd-pr="' + i + '" data-pd-sz="' + j + '" data-pd-k="' + k + '" value="' + esc(s[k] == null ? '' : s[k]) + '" placeholder="' + ph + '">'; };
-                return '<div class="pd-szrow">' + g('nb', '15') + g('inch', '1/2&quot;') + g('od', '21.3') + g('thk', '3.2')
-                    + '<button class="pd-del" data-pd-delsz="' + i + ':' + j + '">✕</button></div>';
-            // The ranking matches on the product name and specification only — it has never
-            // read these rows. Saying they decided the match had the owner filling size
-            // tables across every firm for nothing.
-            }).join('') : '<p class="pd-tiny" style="padding:4px 0;">No sizes yet. These are for your reference — the ranking matches on the product and specification, not on this table.</p>')
+            + '<div class="pd-sizes"><div class="pd-szrow pd-szhead' + ((pr.sizes || []).some(function (s, j) { return isRangeLine(s) || S.rangeOn[i + ':' + j]; }) ? ' pd-szrow-range' : '') + '"><span>NB</span><span>Size</span><span>OD mm</span><span>Thk mm</span><span></span></div>'
+            + ((pr.sizes || []).length ? pr.sizes.map(function (s, j) { return sizeLineHtml(s, i, j); }).join('')
+                // Since 30 Sep the suggestion list reads these lines: a firm whose GI sizes stop at
+                // 6" is told so for an 8" enquiry. Nothing is ruled out on them.
+                : '<p class="pd-tiny" style="padding:4px 0;">No sizes yet. A line can be one size, or a range (↔) with its thickness beside it — the suggestion list uses them to check a firm makes the size asked for.</p>')
             + '<button class="pd-addline" data-pd-addsz="' + i + '">+ size</button></div></div>';
+    }
+
+    /**
+     * One size line. A plain line has four boxes; a range line (↔, or any box already holding
+     * "a to b") has a From and a To in each, stored back as "a to b" in the same box — the
+     * thickness range sits on the same line as the size range it belongs to.
+     */
+    function isRangeLine(s) {
+        return ['nb', 'inch', 'od', 'thk'].some(function (k) { return rangeParts(s && s[k]).length > 1; });
+    }
+    function sizeLineHtml(s, i, j) {
+        var at = 'data-pd-pr="' + i + '" data-pd-sz="' + j + '"';
+        var del = '<button class="pd-del" data-pd-delsz="' + i + ':' + j + '">✕</button>';
+        var ph = { nb: '15', inch: '1/2&quot;', od: '21.3', thk: '3.2' };
+        if (!(isRangeLine(s) || S.rangeOn[i + ':' + j])) {
+            var g = function (k) { return '<input ' + at + ' data-pd-k="' + k + '" value="' + esc(s[k] == null ? '' : s[k]) + '" placeholder="' + ph[k] + '">'; };
+            return '<div class="pd-szrow">' + g('nb') + g('inch') + g('od') + g('thk')
+                + '<span class="pd-szbtns"><button type="button" class="pd-szrange" data-pd-szrange="' + i + ':' + j + '" title="Make this line a range — From / To">↔</button>' + del + '</span></div>';
+        }
+        var pair = function (k) {
+            var parts = rangeParts(s[k]);
+            var from = parts.length > 1 ? parts[0] : (parts[0] || ''), to = parts.length > 1 ? parts[1] : '';
+            return '<span class="pd-szpair"><input ' + at + ' data-pd-k="' + k + '" data-pd-szpart="from" value="' + esc(from) + '" placeholder="from">'
+                + '<span class="pd-tiny">to</span><input ' + at + ' data-pd-k="' + k + '" data-pd-szpart="to" value="' + esc(to) + '" placeholder="to"></span>';
+        };
+        return '<div class="pd-szrow pd-szrow-range">' + pair('nb') + pair('inch') + pair('od') + pair('thk')
+            + '<span class="pd-szbtns">' + del + '</span></div>';
     }
 
     /**
@@ -4299,12 +4416,29 @@
             };
         });
         each(card, '[data-pd-pr]', function (el) {
+            if (el.hasAttribute('data-pd-szpart')) return;      // a From / To box — joined below
             el.onchange = function () {
                 var i = Number(el.getAttribute('data-pd-pr')), k = el.getAttribute('data-pd-k');
                 if (el.hasAttribute('data-pd-sz')) p.products[i].sizes[Number(el.getAttribute('data-pd-sz'))][k] = el.value;
                 else p.products[i][k] = (k === 'moq') ? (parseFloat(el.value) || 0) : el.value;
                 save(k === 'spec', ['products']);
             };
+        });
+        // A range line: the From and To of one box are written back as "from to to".
+        each(card, '[data-pd-szpart]', function (el) {
+            el.onchange = function () {
+                var i = el.getAttribute('data-pd-pr'), j = el.getAttribute('data-pd-sz'), k = el.getAttribute('data-pd-k');
+                var box = function (part) {
+                    var hit = card.querySelector('[data-pd-pr="' + i + '"][data-pd-sz="' + j + '"][data-pd-k="' + k + '"][data-pd-szpart="' + part + '"]');
+                    return str(hit && hit.value);
+                };
+                var from = box('from'), to = box('to');
+                p.products[Number(i)].sizes[Number(j)][k] = to ? (from ? from + ' to ' + to : 'up to ' + to) : from;
+                save(false, ['products']);
+            };
+        });
+        each(card, '[data-pd-szrange]', function (el) {
+            el.onclick = function () { S.rangeOn[el.getAttribute('data-pd-szrange')] = true; render(); };
         });
         each(card, '[data-pd-addsz]', function (el) { el.onclick = function () { var pr = p.products[Number(el.getAttribute('data-pd-addsz'))]; (pr.sizes = pr.sizes || []).push({ nb: '', inch: '', od: '', thk: '' }); save(true, ['products']); }; });
         each(card, '[data-pd-delsz]', function (el) {
@@ -4650,6 +4784,13 @@
         return names.sort(function (a, b) { return lower(a) < lower(b) ? -1 : 1; });
     }
 
+    /** A quote line as the panel receives it ({product: description, kg}), with its size and family read off the description. */
+    function withSize(li) {
+        if (!li || (li.inches != null && li.type)) return li;
+        var read = readLine(str(li.product), {});
+        return read ? Object.assign({}, li, { inches: li.inches != null ? li.inches : read.inches, type: li.type || read.type }) : li;
+    }
+
     function renderSuggestPanel(container, opts, onAddChip) {
         if (!container) return;
         // Re-drawn from what is already loaded — a choice of Makers or of a delivery town costs
@@ -4662,7 +4803,7 @@
             // for a material enquiry the home city is still the sensible default.
             var isFreight = opts.kind === 'transport';
             var need = {
-                types: opts.types || [], items: opts.items || [],
+                types: opts.types || [], items: (opts.items || []).map(withSize),
                 tons: (opts.kg || 0) / 1000, known: (opts.kg || 0) > 0,
             };
             if (isFreight) need.site = town(opts.drop) || town(opts.site);
@@ -5016,6 +5157,9 @@
                  deliverySite: deliverySite, panelHtml: panelHtml, placeItHtml: placeItHtml,
                  setRoleShown: function (v) { roleShown = v; },
                  reachOf: reachOf, reachField: reachField, facetValues: facetValues,
+                 // Size lines and ranges (30 Sep).
+                 sizeSpan: sizeSpan, rangeParts: rangeParts, scoreSizes: scoreSizes, sizeLineHtml: sizeLineHtml,
+                 isRangeLine: isRangeLine, withSize: withSize, inchLabel: inchLabel,
                  _state: function () { return { S: S, D: D }; } },
     };
 })();
