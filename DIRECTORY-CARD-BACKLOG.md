@@ -2170,3 +2170,31 @@ seconds after the save.
 - The same Bombay line is still on 4 waiting cards in the ninth ten (Khandelwal, National
   Fire Armour, Sree Mazhi, Kumar Agro) and on 4 approved cards (SARANYA, M.A ENTERPRISES,
   MICRON ELECTRIALS, shree venus). Approved cards are left for him.
+
+## The ninth ten (30 Sep) — the last of tonight's 50
+
+M/S. Khandelwal Pipe Corporation · National Fire Armour · Sree Mazhi Enterpries · Kumar Agro
+Refinery · Krishna (Kediya person) · Tubes India · Arvos Energy · Geeco Enercon · Enexio Power
+Cooling · Eversendai Construction.
+
+65 changes, all saved; 22 questions on the cards. Re-checked 20 seconds after the save.
+
+**A leaner run.** He asked why it used so many tokens (about 4.6 million for the eighth ten).
+This ten ran with one small pack of pages per card (`make-packs.js`), a 38 KB method file
+instead of the 287 KB one, and a cheaper model for the building step only. It used 3.7
+million: about a fifth less, with every check kept.
+
+- **Six buyers** (National Fire Armour, Kumar Agro, Arvos, Geeco, Enexio, Eversendai) ask the
+  same question: should it stay in the directory, and as a client?
+- **Krishna and Tubes India** now agree, both quoting "he works for B"BAY H/W, Tubes India.".
+  Krishna's trade is transporter, from his "🚛TRANSPORTERS🚛" heading. His warehouse went in
+  as a branch with no town, since his page never names one.
+- **Tubes India:** a second waiting card, "Tubesindia" (marketing@tubesindia.co.in), may be the
+  same firm. Not merged; the card asks.
+- **Sreevatsa:** this ten kept the name "Sreevatsa Venkateswara" so the lines stay linked;
+  the sixth and eighth ten wrote his "SREEVATSA". He has said they are all one firm. Adding
+  SREEVATSA to that card's "Also written as" would link every one of them.
+
+One card did not pass the last check cleanly and was saved for a written reason: **Tubes
+India** has no line for his Y.M ENTERPRISE page ("2.THEY ALSO BUY FROM TUBES (INDIA)"). Nothing
+was removed; the line is simply not added yet. It is left for him.
