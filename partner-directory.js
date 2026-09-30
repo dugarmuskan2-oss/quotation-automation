@@ -1266,7 +1266,7 @@
         if (f === 'brand') return brandsOnCard(p);
         // The card's own words for the part-load box; a box nobody answered is blank, not "no".
         if (f === 'load') return p.partLoad === true ? ['Takes part load'] : (p.partLoad === false ? ['Full load only'] : []);
-        if (f === 'reach') return REACH_LABEL[p.reach] ? [REACH_LABEL[p.reach]] : [];
+        if (f === 'reach') return reachOf(p).map(function (k) { return REACH_LABEL[k]; });
         var texts = (p.products || []).map(function (pr) { return str(pr.p); }).concat(p.types || []).filter(Boolean);
         if (!texts.length) return [];
         var matched = PRODUCT_NAMES.filter(function (name) {
@@ -2235,14 +2235,24 @@
     }
 
     // *"same route vs same city vs multiple cities"* — how far a transporter goes. He says it;
-    // nothing is worked out from the routes, so a blank stays blank.
-    var REACH_LABEL = { city: 'Same city', route: 'Same route', many: 'Multiple cities' };
+    // nothing is worked out from the routes, so a blank stays blank. *30 Sep: "Same City and
+    // Local - under 100 kms. Have both. And allow multiple checks"* — his phone book has a page
+    // for them, "TR(1) LOCAL TRANSPORT (LESS THEN 100KM)". Same four words as utils/contacts.js.
+    var REACH_KEYS = ['city', 'local', 'route', 'many'];
+    var REACH_LABEL = { city: 'Same city', local: 'Local — under 100 km', route: 'Same route', many: 'Multiple cities' };
+    /** A card saved before 30 Sep holds one word; since then, a list. Both read the same. */
+    function reachOf(p) {
+        var v = p && p.reach;
+        var list = Array.isArray(v) ? v : (str(v) ? [str(v)] : []);
+        return REACH_KEYS.filter(function (k) { return list.indexOf(k) !== -1; });
+    }
     function reachField(p) {
-        return '<div class="pd-fld"><label>How far they go</label><select data-pd-k="reach">'
-            + '<option value=""' + (!p.reach ? ' selected' : '') + '>Not recorded</option>'
-            + ['city', 'route', 'many'].map(function (k) {
-                return '<option value="' + k + '"' + (p.reach === k ? ' selected' : '') + '>' + REACH_LABEL[k] + '</option>';
-            }).join('') + '</select></div>';
+        var on = reachOf(p);
+        return '<div class="pd-fld"><label>How far they go <span class="pd-tiny">— tick all that apply</span></label>'
+            + '<div class="pd-reach">' + REACH_KEYS.map(function (k) {
+                return '<label class="pd-reachopt"><input type="checkbox" data-pd-reach="' + k + '"'
+                    + (on.indexOf(k) !== -1 ? ' checked' : '') + '> ' + esc(REACH_LABEL[k]) + '</label>';
+            }).join('') + '</div></div>';
     }
 
     // ── who this firm is connected to ────────────────────────────────────────
@@ -3988,6 +3998,15 @@
                 save(k === 'role' || k === 'company', [k]);
             };
         });
+        // How far they go: every ticked box, in the list's own order.
+        each(card, '[data-pd-reach]', function (el) {
+            el.onchange = function () {
+                var on = [];
+                each(card, '[data-pd-reach]', function (b) { if (b.checked) on.push(b.getAttribute('data-pd-reach')); });
+                p.reach = REACH_KEYS.filter(function (k) { return on.indexOf(k) !== -1; });
+                save(false, ['reach']);
+            };
+        });
         bindPeople(card, p, save); bindPlaces(card, p, save); bindSupply(card, p, save); bindNotes(card, p, save);
     }
 
@@ -5002,6 +5021,7 @@
                  placeFor: placeFor, townKey: townKey, filterByRole: filterByRole, roleCounts: roleCounts,
                  deliverySite: deliverySite, panelHtml: panelHtml, placeItHtml: placeItHtml,
                  setRoleShown: function (v) { roleShown = v; },
+                 reachOf: reachOf, reachField: reachField, facetValues: facetValues,
                  _state: function () { return { S: S, D: D }; } },
     };
 })();

@@ -278,9 +278,9 @@ function sanitizePartner(input) {
         // Three states, not two. Anything that is not an explicit yes or no is "not
         // recorded" — a default answered for the owner, and the ranking then scored it.
         partLoad: src.partLoad === true ? true : (src.partLoad === false ? false : null),
-        // How far a transporter goes: one town, one fixed route, or many cities. Blank until he
-        // says — the filter shows a blank card as "not filled in", never as a no.
-        reach: ['city', 'route', 'many'].indexOf(src.reach) !== -1 ? src.reach : '',
+        // How far a transporter goes — as many of the four as he ticks. Blank until he says: the
+        // filter shows a blank card as "not filled in", never as a no.
+        reach: sanitizeReach(src.reach),
         enquiries: sanitizeEnquiries(src.enquiries),
         notes: sanitizeNotes(src.notes),
         images: (Array.isArray(src.images) ? src.images : [])
@@ -396,6 +396,18 @@ function duplicateFirms(contacts) {
         .map(k => ({ name: by[k][0].company, cards: by[k] }));
 }
 
+
+/**
+ * How far a transporter goes. *His words (30 Sep): "Same City and Local - under 100 kms. Have both.
+ * And allow multiple checks"* — so a list of any of four, kept in this order. A card saved before
+ * then holds one word ("city"), which reads as a one-item list, so nothing old is lost.
+ */
+const REACH_KEYS = ['city', 'local', 'route', 'many'];
+const REACH_WORDS = { city: 'Same city', local: 'Local — under 100 km', route: 'Same route', many: 'Multiple cities' };
+function sanitizeReach(v) {
+    const list = Array.isArray(v) ? v.map(str) : (str(v) ? [str(v)] : []);
+    return REACH_KEYS.filter(k => list.includes(k));
+}
 
 /** No firm name and nobody you could reach — there is nothing here to keep. */
 function partnerIsEmpty(p) {
@@ -1648,8 +1660,11 @@ function pushChange(changes, entry) {
 function diffLines(before, now) {
     const out = [], b = before || {};
     const was = k => str(b[k]);
-    [['company', 'Company'], ['city', 'City'], ['area', 'Area'], ['address', 'Address'], ['vehicles', 'Vehicles'], ['reach', 'How far they go']]
+    [['company', 'Company'], ['city', 'City'], ['area', 'Area'], ['address', 'Address'], ['vehicles', 'Vehicles']]
         .forEach(([k, label]) => { if (was(k) !== str(now[k])) out.push({ label, from: was(k), to: str(now[k]) }); });
+    const reachWas = sanitizeReach(b.reach).map(k => REACH_WORDS[k]).join(', ');
+    const reachNow = sanitizeReach(now.reach).map(k => REACH_WORDS[k]).join(', ');
+    if (reachWas !== reachNow) out.push({ label: 'How far they go', from: reachWas, to: reachNow });
     diffRole(out, b, now, !before);
     if (num(b.moq, 0) !== num(now.moq, 0)) out.push({ label: 'Overall MOQ', from: num(b.moq, 0) + ' T', to: num(now.moq, 0) + ' T' });
     diffList(out, 'Pipe types', (b.types || []).join(', '), (now.types || []).join(', '));
@@ -2295,6 +2310,8 @@ function pushContactLines(list, label, value) {
 
 module.exports = {
     ROLES,
+    REACH_KEYS,
+    sanitizeReach,
     SHARED_ROLES,
     visibleToReadonly,
     sanitizePartner,
