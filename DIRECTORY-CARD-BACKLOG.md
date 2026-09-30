@@ -2080,3 +2080,39 @@ still draws under "They buy from", backwards. buysFromThem looks for R.K STEEL b
 distinctive words, and "R", "K" and "STEEL" give it none. The S&S fix (match the whole name
 when there are no distinctive words) never reached buysFromThem. Fix it in the app; the card's
 text is right.
+
+## The sixth ten (30 Sep, morning)
+
+Jindal Quality Tubular · MR. VNC Vijay Kumar · MR. Vasanth · Chetna Steel · Jafee Ali ·
+Sathish · Periyadavar Parcel Service · Pondy Oxides (POCL) · Albusten Fire Systems · Sobha.
+
+82 changes, all saved; 14 questions on the cards. The save was re-checked 20 seconds later.
+
+**Why it was late.** The Mac was restarted at 22:25 and shut down at 22:26 on 29 Sep. It
+stayed off until 05:53. It did not sleep; the keep-awake cannot stop a shut down. The restart
+emptied /private/tmp, where the snapshot, the method file and both check tools lived, so the
+batch died between checking and saving. Nothing was half-saved. The tools were rebuilt from
+the chat history into `~/Projects/qa-work` (outside git), which a restart does not empty.
+
+- **Backwards Bombay Hardware lorry line** ("BOMBAY HARDWARE — transporter working for them")
+  on Sathish, Jafee Ali and Periyadavar: turned round in the shape of approved LAKSHMI
+  SARASWATHI TOT, one line per firm his sentence names.
+- **The two TATA PPGL dealers** (VNC Vijay Kumar, Vasanth): the TATA line turned round, and the
+  lost row put back the same way on both — Sheets / PPGL / Tata.
+- **Jindal Quality Tubular:** trade set to manufacturer, from his "🏭MFG🏭" sub-heading.
+- **Albusten:** his phone book has a second page, ALBUSTAN, with the same man and mobile
+  (K.V. SAJEESH, 9744198464), and a second waiting card. Not merged; the card asks him.
+- **SREEVATSA** is now written his way on POCL and Albusten. He has said all the Sreevatsa
+  names are "all same", so it links to Sreevatsa Tube. He still has two approved Sreevatsa
+  cards (Tube and Venkateswara) for one firm — his to merge.
+- **Chetna Steel:** its branch town still reads "CHETNA FACTORY", which is not a town. Left as
+  it is; no town guessed.
+
+Three cards failed the last check and were saved anyway, each for a written reason. On POCL
+and Albusten the "missing question" was already on the card; the checker had not been shown
+the questions. That is fixed for the next ten. On Chetna, KAVITHA's email comes from Google's
+chetnasteel.com entry, not his page; approved Bombay Hardware holds the same row.
+
+**Faults in the check tools:** his-pages.js misses near spellings (ALBUSTAN, CHENTNA) and
+matches "M/S" page titles to "MR." cards; four-checks.js PRONOUN skips lines that reach no
+heading. The checkers now search for these by hand.
