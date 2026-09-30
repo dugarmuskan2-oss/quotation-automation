@@ -2244,3 +2244,14 @@ checked by a second reader, saved, and re-checked 20 seconds later. Nothing appr
 **Standing answers from today (his words): "All questions about spelling differences -- you
 can consider as the same company. If something seems like "Other" Keep the card. Moving
 forward".** The card checks no longer ask either question.
+
+## Zenith Steel Pipes, from its website and filings (30 Sep)
+
+*His words: "check the internet. What kinds of pipes does Zenith make" … "populate accordingly".*
+On the waiting **Zenith Steel Pipes** card only: trade set to manufacturer (his own note already
+said "THEY MAKE API MATERIAL"); pipe types ERW and GI; three product rows added — ERW pipe
+(black, 1/2" to 20", Tarapur), GI pipe (1/2" to 10", Tarapur), Square / Rectangular (hollow
+sections); and one plain note with the website/annual-report facts: plants, the HSAW spiral
+mill near Trichy, Khopoli locked out since Nov 2013, sales down from Rs 119 cr to Rs 50 cr,
+auditors' going-concern doubt. His six rows (the 20" to 100" range, API, three coatings with
+his rates) and all his notes are unchanged. Re-checked 20 seconds after the save.
