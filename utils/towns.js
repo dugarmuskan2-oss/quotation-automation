@@ -18,7 +18,7 @@ const townPlaces = require('../town-places');
 
 const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
 // Who is asking. The website only — no personal address goes to a service like this.
-const USER_AGENT = 'DSC Pipes quotation app (https://quotes.dscpipes.com)';
+const USER_AGENT = 'DSC Pipes quotation app (https://quotation-automation-phi.vercel.app)';
 const GAP_MS = 1100;
 
 const str = (v) => String(v == null ? '' : v).trim();
