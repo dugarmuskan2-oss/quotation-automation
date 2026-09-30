@@ -2116,3 +2116,35 @@ chetnasteel.com entry, not his page; approved Bombay Hardware holds the same row
 **Faults in the check tools:** his-pages.js misses near spellings (ALBUSTAN, CHENTNA) and
 matches "M/S" page titles to "MR." cards; four-checks.js PRONOUN skips lines that reach no
 heading. The checkers now search for these by hand.
+
+## The seventh ten (30 Sep)
+
+TAP Engineering · Balaji Pipe Traders · METECH · Goodwill Trading Co · Jain Steel & Alloys ·
+METEC · MOGLIX · Tamilnad Tools & Machinery Mart · Hasnain Syndicate · Coimbatore Industrial
+Product.
+
+95 changes, all saved; 15 questions on the cards. Re-checked 20 seconds after the save.
+
+- **All ten** carried the tool's "BOMBAY HARDWARE — supplier to them". Each now reads
+  "BOMBAY HARDWARE — BOMBAY HARDWARE supplies <CARD>; "<his line>" on your <page> page".
+- **TAP Engineering:** nothing from his own TAP ENGINEERING (ALL DETAILS) page was on the
+  card; 20 changes put it back. Three branch numbers (Mumbai, Kolkata, Vizag) could NOT go
+  on: the app keeps at most 6 numbers per person, and the Office row already has 6. They
+  stay on his page.
+- **METECH and METEC:** the same man and number (ANANDHARAJ, 9500060729) and nearly the same
+  notes. Two waiting cards, probably one firm. Not merged; both cards ask him.
+- **SREEVASTA (METECH) and SREEVATRA (METEC)** are not among the Sreevatsa spellings he has
+  settled, so each card asks once.
+- **MSL** on Balaji and Coimbatore: both ask whether it is his Maharashtra Seamless card.
+- **Area box** filled from his addresses: Ambattur (TAP), Mannady (Goodwill), Kattoor (Balaji).
+
+Two cards did not pass the last check cleanly and were saved for a written reason:
+- **METEC**'s builder never reported back. A helper sat for two hours on a permission
+  prompt, asking to delete its own temp folder. A separate checker then read the finished
+  card on its own: pass. Helpers are now told never to delete anything.
+- **Jain Steel & Alloys:** "TOOK REFERNCE FROM SANJAY JAIN ..." stays word for word; it names
+  a man, not a firm. His ARIHANT STEELS page ("youngest brother is m/s jain steel & alloy.")
+  was missed by his-pages.js, but it changes nothing on this card.
+
+**A fault in the APP:** utils/contacts.js `sameFirmName` treats SAKTHI and SAKTHI HI TECH as
+one firm, but the card view links by exact name only, so Balaji's SAKTHI shows no link.
