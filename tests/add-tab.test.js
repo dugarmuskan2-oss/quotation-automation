@@ -195,21 +195,24 @@ describe('/contacts/add-apply is the only write the Add tab makes', () => {
         expect(card.people[0].phones[0].v).toBe('98400 12345');
     });
 
-    test('it goes through mergePartner: an address another card holds is a 409 and nothing is stored', async () => {
-        // One address, one company. The Add tab must not be a back door around the rule the
-        // Directory tab enforces.
+    test('it goes through mergePartner: an address another card holds is stored, on both cards', async () => {
+        // Until 30 Sep this was a 409 with nothing stored ("one address, one company").
+        // *His words: "Allow the same emails"* — the Add tab follows the same rule as the
+        // Directory tab, so the new firm is added and MSL keeps the address as well.
         const { app, writes, blobs } = makeApp({ contacts: [MSL()] });
-        const before = blobs[CONFIG_KEY_CONTACTS];
+        const mslBefore = JSON.stringify(cardsIn(blobs)[0]);
 
         const res = await request(app).post('/api/contacts/add-apply').send({
             after: { company: 'Vikas Tubes', people: [{ name: 'V', emails: [{ label: 'Work', v: 'suresh@msltubes.in' }] }] },
         });
 
-        expect(res.status).toBe(409);
-        expect(res.body.error).toContain('suresh@msltubes.in');
-        expect(res.body.error).toContain('MSL Tubes');
-        expect(writes).toEqual([]);
-        expect(blobs[CONFIG_KEY_CONTACTS]).toBe(before);
+        expect(res.status).toBe(200);
+        expect(res.body.error).toBeUndefined();
+        expect(writtenKeys(writes)).toEqual([CONFIG_KEY_CONTACTS]);
+        const cards = cardsIn(blobs);
+        expect(cards.map(p => p.company)).toEqual(['Vikas Tubes', 'MSL Tubes']);
+        expect(cards[0].people[0].emails[0].v).toBe('suresh@msltubes.in');
+        expect(JSON.stringify(cards[1])).toBe(mslBefore);   // MSL still holds it, untouched
     });
 
     test('and it still saves a clean one — the 409 is not a blanket refusal', async () => {

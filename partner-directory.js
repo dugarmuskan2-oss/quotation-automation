@@ -1355,21 +1355,14 @@
 
     function rowOrCard(p) { return S.openId === p.id ? editCard(p) : rowCard(p); }
 
-    // An address on two cards splits one firm's history in two and gets them asked twice.
-    // New ones are refused on save; anything older is shown here with a way straight to it.
+    // Two cards for one firm split its history in two and get it asked twice — shown here with
+    // a way straight to each card.
     function duplicateWarningHtml() {
-        return sameAddressWarningHtml() + sameNameWarningHtml();
+        // The same ADDRESS on two cards is allowed since 30 Sep ("Allow the same emails"), so
+        // only two cards for one firm name are warned about.
+        return sameNameWarningHtml();
     }
 
-    function sameAddressWarningHtml() {
-        if (!D.duplicates.length) return '';
-        return '<div class="pd-error"><b>The same address is on more than one card.</b>'
-            + ' One address belongs to one company — open each and remove it from the wrong one.'
-            + D.duplicates.slice(0, 10).map(function (d) {
-                return '<p class="pd-tiny" style="margin-top:6px;"><b>' + esc(d.email) + '</b> — '
-                    + cardButtons(d.cards) + '</p>';
-            }).join('') + '</div>';
-    }
 
     /**
      * Two cards whose names read as one firm.
@@ -3353,7 +3346,7 @@
         // from. It is not a detail: the role decides who receives a freight enquiry.
         var roleless = !match && !str(pi.preview && pi.preview.role);
         // Every other row is held too while one is being approved — see the approve handler.
-        var stop = busy || S.approving || clashingCard(pi, match) || nameless || roleless;
+        var stop = busy || S.approving || nameless || roleless;
         return (nameless ? '<p class="pd-tiny pd-need-name">No firm name was found in this one. '
             + 'Open it above and type their name, and it can be approved.</p>' : '')
             + (roleless ? '<p class="pd-tiny pd-need-name">Open it above and say what kind of firm '
@@ -3387,8 +3380,9 @@
             + '</div>';
     }
 
-    // One address belongs to one company, so say so BEFORE the button is pressed — pressing
-    // Approve only to be refused is a worse way to learn it. The other card is one click away.
+    // Another card that already holds one of these addresses. Until 30 Sep "One address belongs
+    // to one company" and Approve was refused; *his words then: "Allow the same emails"*. It is
+    // still worth saying — the other card is one click away — but it no longer stops anything.
     function clashingCard(pi, match) {
         // Compared lowercased on BOTH sides, the way the server does. allEmails keeps the
         // address as typed because the chips and the picker show it — so comparing raw let
@@ -3589,10 +3583,10 @@
     function clashNoteHtml(pi, match) {
         var clash = clashingCard(pi, match);
         if (!clash) return '';
-        return '<div class="pd-error" style="margin:0 0 8px;"><b>' + esc(clash.email) + '</b> is already on '
+        return '<div class="pd-info" style="margin:0 0 8px;"><b>' + esc(clash.email) + '</b> is also on '
             + '<button data-pd-open="' + esc(clash.card.id) + '" class="pd-linkish">'
             + esc(clash.card.company || '(no name)') + '</button>. '
-            + 'One address belongs to one company — remove it there first, or discard this one.</div>';
+            + 'The same address can be on both cards — approving keeps it on both.</div>';
     }
 
     // An imported firm has no email to quote — it has the addresses themselves, and the

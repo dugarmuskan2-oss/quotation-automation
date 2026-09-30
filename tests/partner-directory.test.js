@@ -1178,9 +1178,10 @@ describe('source guard — reviewing a pending email never writes to the live ca
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * The server refuses a clashing address with a 409. That is the backstop, not the
- * experience: pressing Approve only to be told no is a worse way to learn it than being
- * told before you press. So the page has to say it up front and disable the button.
+ * Until 30 Sep the server refused a clashing address with a 409, and this page said so up
+ * front in red and disabled Approve. *His words then: "Allow the same emails"* — Chetna
+ * Steel's Kavitha is on Bombay Hardware's card too. So the page now shows a calm blue note
+ * (".pd-info") naming the other card, one click away, and Approve stays ENABLED for it.
  *
  * These are behaviour tests, not source guards. The page is rendered for real through
  * window.switchToDirectoryTab() — the same entry point the sidebar button uses — with a
@@ -1220,7 +1221,7 @@ function fakeAppEl() {
     return app;
 }
 
-describe('the partner directory refuses a duplicate address before Approve is pressed', () => {
+describe('the partner directory says a shared address is also on another card, and still lets Approve through', () => {
     const { S } = _state();
     let realGetElementById;
     let app;
@@ -1317,13 +1318,16 @@ describe('the partner directory refuses a duplicate address before Approve is pr
             })],
         }, 'changes').then((html) => {
             expect(html).toContain('data-pd-approve="pd_1"');   // the strip really rendered
+            expect(html).not.toContain('is also on');
             expect(html).not.toContain('is already on');
             expect(approveButton(html)).not.toContain('disabled');
         });
     });
 
-    test('a draft colliding with a DIFFERENT card is flagged, and Approve is disabled', async () => {
-        // Updating Sri Logistics, but carrying Kalpataru's address across with it.
+    test('a draft sharing an address with a DIFFERENT card gets a calm note, and Approve stays enabled', async () => {
+        // Updating Sri Logistics, and carrying Kalpataru's address across with it. Until
+        // 30 Sep that was a red "One address belongs to one company" and a disabled Approve.
+        // "Allow the same emails": the owner is told, in blue, and can approve.
         const html = await open({
             contacts: [KALP, SRI],
             pending: [queued({
@@ -1335,20 +1339,23 @@ describe('the partner directory refuses a duplicate address before Approve is pr
             })],
         }, 'changes');
 
-        expect(html).toContain('<b>manish@kalpatarusteel.com</b> is already on');
-        expect(html).toContain('One address belongs to one company');
-        // The other card is one click away — a refusal with nowhere to go is a dead end.
+        expect(html).toContain('<div class="pd-info" style="margin:0 0 8px;"><b>manish@kalpatarusteel.com</b> is also on');
+        expect(html).toContain('The same address can be on both cards — approving keeps it on both.');
+        expect(html).not.toContain('One address belongs to one company');
+        expect(html).not.toContain('is already on');
+        // The other card is still one click away.
         expect(html).toContain('data-pd-open="p_kalp"');
         expect(html).toContain('>Kalpataru Steel</button>');
-        expect(approveButton(html)).toContain(' disabled');
+        expect(approveButton(html)).not.toContain('disabled');
     });
 
     test('the same address in different capitals is still the same address', async () => {
         // allEmails keeps an address exactly as typed, because the chips and the picker show
         // it — so comparing raw let MANISH@KalpataruSteel.com slip past a stored
-        // manish@kalpatarusteel.com. The data stayed safe (the server refuses either way),
-        // but the owner pressed Approve only to meet the refusal this warning exists to spare
-        // them. Both sides are lowercased before comparing, exactly as the server does.
+        // manish@kalpatarusteel.com. Since 30 Sep ("Allow the same emails") that no longer
+        // blocks anything, but the owner should still be told Kalpataru has it — so both
+        // sides are lowercased before comparing, exactly as the server does, and Approve
+        // stays open.
         const html = await open({
             contacts: [KALP],
             pending: [queued({
@@ -1357,14 +1364,31 @@ describe('the partner directory refuses a duplicate address before Approve is pr
             })],
         }, 'changes');
 
-        expect(html).toContain('is already on');
+        expect(html).toContain('<b>manish@kalpatarusteel.com</b> is also on');
         expect(html).toContain('data-pd-open="p_kalp"');
-        expect(approveButton(html)).toContain(' disabled');
+        expect(approveButton(html)).not.toContain('disabled');
+
+        // ...and the other way round: capitals on the STORED card, plain on the draft. With
+        // only the draft side lowercased, this one said nothing (a mutation that escaped).
+        const shouty = partner(Object.assign({}, KALP, {
+            people: [{ name: 'Manish', role: 'Sales', phones: [], emails: [{ label: 'Work', v: 'MANISH@KalpataruSteel.com' }] }],
+        }));
+        const html2 = await open({
+            contacts: [shouty],
+            pending: [queued({
+                company: 'Manish Trading Co',
+                people: [{ name: 'Manish', role: 'Main contact', phones: [], emails: [{ label: 'Work', v: 'manish@kalpatarusteel.com' }] }],
+            })],
+        }, 'changes');
+
+        expect(html2).toContain('<b>manish@kalpatarusteel.com</b> is also on');
+        expect(approveButton(html2)).not.toContain('disabled');
     });
 
-    test('a brand-new firm draft carrying someone else\'s address is flagged too', async () => {
+    test('a brand-new firm draft carrying someone else\'s address gets the note too, and can be approved', async () => {
         // No matchId at all: nothing to keep, so every card in the directory is a candidate
-        // for the clash. A guard that only ran on updates would wave this one straight in.
+        // for sharing the address. A check that only ran on updates would say nothing here.
+        // Since 30 Sep ("Allow the same emails") the note is blue and Approve is not held.
         const html = await open({
             contacts: [KALP],
             pending: [queued({
@@ -1373,8 +1397,9 @@ describe('the partner directory refuses a duplicate address before Approve is pr
             })],
         }, 'changes');
 
-        expect(html).toContain('<b>manish@kalpatarusteel.com</b> is already on');
-        expect(approveButton(html)).toContain(' disabled');
+        expect(html).toContain('<div class="pd-info" style="margin:0 0 8px;"><b>manish@kalpatarusteel.com</b> is also on');
+        expect(html).toContain('>Kalpataru Steel</button>');
+        expect(approveButton(html)).not.toContain('disabled');
     });
 
     test('the card named in the clash note can actually be opened from the changes tab', async () => {
@@ -1401,9 +1426,11 @@ describe('the partner directory refuses a duplicate address before Approve is pr
         expect(app.innerHTML).toContain('data-pd-card="p_kalp"');   // the card is on screen
     });
 
-    test('duplicates that pre-date the rule are shown at the top of the directory', async () => {
-        // Enforcing the rule on write stops NEW ones. Anything written before it would sit
-        // there for ever, splitting one firm's history across two cards, unless the page says so.
+    test('an address on two cards no longer puts a warning at the top of the directory', async () => {
+        // Until 30 Sep a red "The same address is on more than one card" banner sat here,
+        // asking the owner to remove it from the wrong card. *His words: "Allow the same
+        // emails"* — two cards sharing an address is now normal, so there is nothing to warn
+        // about. The server still reports the pair; the page must not turn it into a banner.
         const html = await open({
             contacts: [KALP, SRI],
             duplicates: [{
@@ -1412,10 +1439,12 @@ describe('the partner directory refuses a duplicate address before Approve is pr
             }],
         }, 'dir');
 
-        expect(html).toContain('The same address is on more than one card.');
-        expect(html).toContain('<b>manish@kalpatarusteel.com</b>');
-        expect(html).toContain('data-pd-open="p_kalp"');
+        expect(html).toContain('data-pd-open="p_kalp"');       // the directory really rendered
         expect(html).toContain('data-pd-open="p_sri"');
+        expect(html).not.toContain('The same address is on more than one card');
+        expect(html).not.toContain('One address belongs to one company');
+        expect(html).not.toContain('<b>manish@kalpatarusteel.com</b>');
+        expect(html).not.toContain('pd-error');
     });
 
     test('a clean directory shows no duplicate banner at all', async () => {
@@ -1843,10 +1872,13 @@ describe('source guard — you can see what you are being asked to approve', () 
         expect(body).toMatch(/too large to send for reading/);
     });
 
-    test('Approve is held back while the firm has no name', () => {
+    test('Approve is held back while the firm has no name — but not for a shared address', () => {
         const body = bodyOf('approveRowHtml');
         expect(body).toMatch(/var nameless =/);
-        expect(body).toContain('var stop = busy || S.approving || clashingCard(pi, match) || nameless || roleless;');
+        // clashingCard left this list on 30 Sep. *His words: "Allow the same emails"* — an
+        // address another card holds gets a note, it no longer stops Approve.
+        expect(body).toContain('var stop = busy || S.approving || nameless || roleless;');
+        expect(body).not.toMatch(/var stop =[^;]*clashingCard/);
         // roleless joined it: a firm brought in from Google has no role, and the role
         // decides who receives a freight enquiry. Nothing is guessed for him.
         expect(body).toContain('var roleless = !match && !str(pi.preview && pi.preview.role);');
@@ -3348,7 +3380,9 @@ describe('source guard — pressing ✕ asks, it does not delete', () => {
     });
 
     test('a removal in the queue offers Keep it as well as Yes, remove it', () => {
-        const fn = sliceBetween('function removalStrip(pi)', 'One address belongs to one company');
+        // Ends at the next function. It used to end at the "One address belongs to one company"
+        // comment, which went when that rule was reversed on 30 Sep ("Allow the same emails").
+        const fn = sliceBetween('function removalStrip(pi)', 'function clashingCard(pi, match)');
         expect(fn).toContain('data-pd-rmkeep');
         expect(fn).toContain('data-pd-rmok');
         expect(fn).toContain('Keep it');

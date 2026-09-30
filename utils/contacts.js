@@ -307,14 +307,15 @@ function mergePartner(list, incoming, fields) {
     const wanted = sanitizePartner(incoming);
     const idx = contacts.findIndex(c => c && c.id === wanted.id);
     const settle = (result, at) => {
-        // ONE ADDRESS, ONE COMPANY — checked on the merged result, so every write path is
-        // covered by the one guard. Refusing is the only honest answer: dropping the address
-        // would lose what was typed without saying so, and letting it through is how a firm
-        // ends up on two cards, asked twice, each copy telling a different story.
-        const clash = emailConflict(contacts, result, at);
-        if (clash) return { contacts, partner: contacts[at] || null, conflict: clash };
+        // The same address MAY sit on more than one card. *His words, 30 Sep 2026: "Allow the
+        // same emails"* — Chetna Steel's Kavitha is on Bombay Hardware's card too, because
+        // Bombay Hardware started Chetna. Until then one address belonged to one company and a
+        // clash was refused. Now it is written, and the other card holding the address is
+        // handed back as `shared` so the page can say so. `conflict` stays for the routes'
+        // guard and is always null.
+        const shared = emailConflict(contacts, result, at);
         if (at === -1) contacts.unshift(result); else contacts[at] = result;
-        return { contacts: contacts.slice(0, MAX_CONTACTS), partner: result, conflict: null };
+        return { contacts: contacts.slice(0, MAX_CONTACTS), partner: result, conflict: null, shared: shared || null };
     };
     // Never CREATE a card with nothing on it. Editing an existing one down to nothing is the
     // owner's business, but a blank new row is only ever an accident — a client that saved
@@ -1783,10 +1784,8 @@ function undoChange(contacts, changes, changeId, confirmed) {
         // would be a lie the owner only finds out about later.
         if (!ch.removed) return { contacts, changes: list, ok: false, missing: true };
         const back = sanitizePartner(ch.before);
-        // One address, one company still holds. If an address of the deleted card has since
-        // been given to another card, putting this one back would split that firm in two.
-        const clash = emailConflict(next, back, -1);
-        if (clash) return { contacts, changes: list, ok: false, conflict: clash };
+        // Since 30 Sep an address may be on two cards ("Allow the same emails"), so a card is
+        // put back even when another card now holds one of its addresses.
         next.unshift(back);
     }
     ch.undone = true;
