@@ -89,6 +89,25 @@ function toCandidate(r) {
     };
 }
 
+/**
+ * The same town comes back several times — the town itself, its municipality, the middle of its
+ * district — and they are not in the same place: "Puducherry" once came back 113 km south of the
+ * city, "Cuddalore" 25 km inland. The one with a PIN code is the town itself, so it is the one
+ * kept. Districts and sub-districts that come back as though they were towns are dropped.
+ */
+function oneOfEachTown(list) {
+    const pin = (c) => /\b\d{6}\b/.test(c.label);
+    const key = (c) => [c.name, c.district, c.state].join('|').toLowerCase();
+    list = list.filter((c) => !/\b(sub)?district\b|\bmandal\b|\bcorporation\b|\(m\.?\s?corp\.?\)/i.test(c.name));
+    // A result with no district beside one that has a district is the region, not the town.
+    list = list.filter((c) => c.district || !list.some((o) => o !== c && o.district && o.name === c.name && o.state === c.state));
+    const best = new Map();
+    list.forEach((c) => { const k = key(c), had = best.get(k); if (!had || (!pin(had) && pin(c))) best.set(k, c); });
+    const out = [];
+    list.forEach((c) => { const b = best.get(key(c)); if (b && out.indexOf(b) === -1) out.push(b); });
+    return out;
+}
+
 let lastCall = 0;
 let queue = Promise.resolve();
 const found = new Map();          // name → candidates, for this server copy only; failures are never kept
@@ -117,13 +136,8 @@ function lookupTown(name, fetchImpl) {
         if (res.status === 429) throw new MapError('busy', 'the map is busy — try again in a minute');
         if (!res.ok) throw new MapError('unreachable', 'the map answered with an error (' + res.status + ') — the town stays on the card, its distance is not measured yet');
         const rows = await res.json();
-        // The same town comes back several times (the town, its municipality, its ward), and
-        // districts and sub-districts come back as though they were towns. One of each town.
-        const seen = new Set();
-        const list = (Array.isArray(rows) ? rows : []).map(toCandidate)
-            .filter((c) => c.name && c.state && townPlaces.inIndia(c.lat, c.lon))
-            .filter((c) => !/\b(sub)?district\b|\bmandal\b|\bcorporation\b|\(m\.?\s?corp\.?\)/i.test(c.name))
-            .filter((c) => { const k = [c.name, c.district, c.state].join('|').toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+        const list = oneOfEachTown((Array.isArray(rows) ? rows : []).map(toCandidate)
+            .filter((c) => c.name && c.state && townPlaces.inIndia(c.lat, c.lon)));
         found.set(key, list);
         return list;
     });
@@ -144,4 +158,4 @@ function placeFromPick(name, c) {
 }
 
 module.exports = { loadPlaces, addPlace, addPlaces, lookupTown, placeFromPick, MapError, USER_AGENT,
-    _test: { toCandidate, parsePlaces, reset: () => { found.clear(); lastCall = 0; queue = Promise.resolve(); } } };
+    _test: { toCandidate, parsePlaces, oneOfEachTown, reset: () => { found.clear(); lastCall = 0; queue = Promise.resolve(); } } };
