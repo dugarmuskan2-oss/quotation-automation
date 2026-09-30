@@ -2255,3 +2255,11 @@ sections); and one plain note with the website/annual-report facts: plants, the 
 mill near Trichy, Khopoli locked out since Nov 2013, sales down from Rs 119 cr to Rs 50 cr,
 auditors' going-concern doubt. His six rows (the 20" to 100" range, API, three coatings with
 his rates) and all his notes are unchanged. Re-checked 20 seconds after the save.
+- **Later the same day (his words: "these are not pipe types. Come on you are smarter than that.
+  Add range and thickness to sizes. The thickness is for the same OD range, they arent
+  seperate"):** his three rows "PRODUCTION RANGE 20"  TO 100"", "THICKNESS 5 MM TO 25 MM" and
+  "API MATERIAL" were not products. They now sit inside the HSAW pipe row: one size line
+  20" to 100" / OD 508 to 2540 mm / thickness 5 to 25 mm, and "API MATERIAL" as its
+  specification. The same fault — a size range, thickness, grade or plant typed into the
+  Product box — is on 18 more rows: MAHARASHTRA SEAMLESS LTD (8), MAN INDUSTRIES (5), TATA (2),
+  APL APOLLO, Ismt and Asian Steels (1 each). Not touched; waiting on him.
