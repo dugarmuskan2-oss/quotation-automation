@@ -2219,3 +2219,28 @@ instruction", with Undo; re-checked 20 seconds after the save):
   line about another firm and drew under "Their factory" pointing at this same card.
 - Chegunta, Malur and Simga are placed on the map (the town list now holds 41 towns).
   Umm Al Quwain is outside India and stays unmeasured.
+
+## His answers acted on (30 Sep)
+
+*The agreed flow, his words: "I can just answer -- then you make the changes and then I can
+approve."* He answered 20 questions on 8 waiting cards; each change rests on one answer, was
+checked by a second reader, saved, and re-checked 20 seconds later. Nothing approved.
+
+- **Chetna Steel:** his two answers go on the card in his words — "bombay hardware started
+  chetna" as a plain note (the app files "started" under no heading), and CHETNA TRANSPORT under
+  "Their transporters", quoting "chetna's transporter is what they mean" and his TR(28) lines.
+- **Links to his own cards** (his "Yes" that the spellings are one firm): Sathish → ALI STEEL
+  AND TUBES CO; TAP → Jindal Pipe Limited ("JPL- G BAD"); Balaji → MAHARASHTRA SEAMLESS LTD
+  (MSL), KAPIL AGENCY, and MST as a supplier line quoting "OPEN CREDIT 1.5 LAKH"; Sobha →
+  CALCUTTA TUBE CENTRE PVT LTD ("CALCULATE TUBE") and Jindal Pipe as a supplier; METECH →
+  Sreevatsa Venkateswara. His spelling stays inside every quote.
+- **Client:** POCL and ALBUSTEN.
+- **Two joins:** ALBUSTAN folded into ALBUSTEN, METEC into METECH (no duplicate people; METEC's
+  spellings of the men kept as notes on their rows). The leftover card is untouched and asks
+  "Joined into … Discard this card?" — discarding is his to press.
+- "not sure" (POCL scrap, Sobha's trade) and "No" to "what is TEJKIRAN's right number?" changed
+  nothing.
+
+**Standing answers from today (his words): "All questions about spelling differences -- you
+can consider as the same company. If something seems like "Other" Keep the card. Moving
+forward".** The card checks no longer ask either question.
