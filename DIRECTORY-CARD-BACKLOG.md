@@ -2287,3 +2287,13 @@ Product box, and to a range option for sizes.*
   line as its size range. **The suggestion list now reads size lines:** "Makes 2" GI (their range
   1/2" to 6")" (+10), or "Not on their card: 8" GI — their GI sizes: 1/2" to 6"" (−10). Nobody
   is ruled out on size.
+
+## Client cards approved on his word (30 Sep)
+
+*His words: "All that I have marked clients you can approve".* Five waiting cards were marked
+client by him. Four approved through the app's own approve route, one at a time, each checked
+in the directory and still there 20 seconds later: ARUN EXECELLO, MIL INDUSTRIES LTD, COMFAIR
+SYSTEMS AND SERVICES PVT LTD, PIPE HANGERS & SUPPORTS PVT LTD. The fifth, ARUDRA ENGG PVT LTD,
+was the approved Arudra Engineers Pvt Ltd under another spelling (his standing rule: the same
+company) and held nothing the approved card lacks — so its spelling went onto the approved card's
+"Also written as" and the waiting copy was discarded, rather than approving a second card.
