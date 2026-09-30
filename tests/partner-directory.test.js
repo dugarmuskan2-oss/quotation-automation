@@ -153,7 +153,8 @@ describe('rankFor — where a partner is beats not knowing where they are', () =
         // (unknown 0, far -10). The gaps are what pin the rule. Everything except the
         // distance term is identical across the three, so the other terms cancel.
         const s = scoresByCompany(rows);
-        expect(s.BlankCo - s.FarCo).toBe(5);    // blank -5 vs far -10
+        // Delhi is 2,190 km from Chennai: -15 since 30 Sep ("farther is lower past 250 km too").
+        expect(s.BlankCo - s.FarCo).toBe(10);   // blank -5 vs very far -15
         expect(s.NearCo - s.BlankCo).toBe(40);  // near +35 vs blank -5
     });
 

@@ -27,6 +27,8 @@ const {
 const contactsLib = require('../utils/contacts');
 const removals = require('../utils/removals');
 const anthropic = require('../utils/anthropic');
+const towns = require('../utils/towns');
+const townPlaces = require('../town-places');
 const MAX_PENDING = contactsLib.MAX_PENDING;
 
 // One address belongs to ONE company. Say which one already has it, so the owner can act
@@ -130,8 +132,14 @@ module.exports = function createContactsRouter({ storage, openai }) {
 
     router.get('/contacts', async (req, res) => {
         try {
-            const dir = await loadDirectory();
-            const pending = await loadPending();
+            // Where his towns are on the map comes with every read, so the "who can I buy this
+            // from" panel — which re-reads before each ask — always measures with the latest.
+            // A town file that cannot be read must not stop the directory loading, and must not
+            // look like "no towns placed" either: it is flagged, and the 24 built-in towns carry on.
+            const [dir, pending, placed] = await Promise.all([
+                loadDirectory(), loadPending(),
+                towns.loadPlaces(storage).then((places) => ({ places }), () => ({ places: {}, error: true })),
+            ]);
             // A read-only deployment sees only the shared roles (transporter, other) — dealers,
             // manufacturers and fabricators belong to the main site alone. The change log is
             // suppressed rather than filtered: an entry like "Deleted ABC Manufacturing" would
@@ -141,6 +149,8 @@ module.exports = function createContactsRouter({ storage, openai }) {
             res.json({
                 contacts, changes, pending,
                 readonly: DIRECTORY_READONLY,
+                places: placed.places,
+                placesError: !!placed.error,
                 // Should always be empty now the rule is enforced on write. Sent anyway so a
                 // duplicate that pre-dates it cannot sit there unnoticed, quietly splitting
                 // one firm's history across two cards.
@@ -168,6 +178,42 @@ module.exports = function createContactsRouter({ storage, openai }) {
         });
         return true;
     }
+
+    // ── placing a town on the map (town-places.js) ──────────────────────────────
+    //
+    // Two steps, never one: the lookup only ever LISTS what the map knows by that name, and a
+    // town is kept only when he picks one. The map puts the wrong town first often enough
+    // ("Sikandrabad" comes back as Secunderabad, and both are on his cards) that taking its
+    // first answer would be a guessed distance.
+    router.post('/contacts/town-lookup', express.json(), async (req, res) => {
+        if (blockedByReadonly(res)) return;
+        const name = String((req.body || {}).name || '').trim().slice(0, 60);
+        if (!townPlaces.placeKey(name)) return res.status(400).json({ error: 'Name the town to look up.' });
+        try {
+            const places = await towns.loadPlaces(storage);
+            const have = places[townPlaces.placeKey(name)];
+            if (townPlaces.validPlace(have)) return res.json({ saved: have });
+            res.json({ candidates: await towns.lookupTown(name) });
+        } catch (error) {
+            const status = error.kind === 'busy' ? 429 : error.kind === 'unreachable' ? 502 : 500;
+            res.status(status).json({ error: error.kind ? error.message : 'Could not look that town up: ' + error.message });
+        }
+    });
+
+    router.post('/contacts/town-place', express.json(), async (req, res) => {
+        if (blockedByReadonly(res)) return;
+        const body = req.body || {};
+        const name = String(body.name || '').trim().slice(0, 60);
+        const place = towns.placeFromPick(name, body.candidate);
+        if (!name || !townPlaces.validPlace(place)) {
+            return res.status(400).json({ error: 'That pick has no position or state — nothing was saved.' });
+        }
+        try {
+            res.json({ place: await towns.addPlace(storage, place) });
+        } catch (error) {
+            res.status(500).json({ error: 'Could not save the town: ' + error.message });
+        }
+    });
 
     // Upsert ONE partner (merged into the stored list by id — no whole-list writes).
     // `fields` narrows the write to just what the user touched, so a second tab editing a

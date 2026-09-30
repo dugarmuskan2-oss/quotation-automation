@@ -88,11 +88,36 @@
         if (p.city && out.indexOf(p.city) === -1) out.push(p.city);
         return out;
     }
+    /**
+     * Where a piece of text is on the map: one of the 24 towns above, or a town he has placed
+     * since (town-places.js, looked up once on OpenStreetMap). Whole words only — "Salem Road,
+     * Namakkal" is not Salem — and never a pick when two different towns are named. Without
+     * town-places.js loaded it is the old reading, so nothing measures differently by accident.
+     *   → { name, lat, lon, state, looked } | { ambiguous: [...] } | null
+     */
+    function placeFor(text) {
+        var tp = window.townPlaces;
+        if (tp && tp.placeText) return tp.placeText(aliasTown(text), COORD);
+        var c = matchCity(text);
+        return c ? { name: c, lat: COORD[c][0], lon: COORD[c][1], state: '', looked: false } : null;
+    }
+    /** The old spellings on his cards read as the town they are: NASIK is Nashik, HYDRABAD Hyderabad. */
+    function aliasTown(text) {
+        return str(text).replace(/[A-Za-z]+/g, function (w) {
+            var a = TOWN_ALIAS[w.toLowerCase()];
+            return a ? a.replace(/\b[a-z]/g, function (c) { return c.toUpperCase(); }) : w;
+        });
+    }
+    function placeKm(a, b) {
+        if (!a || !b || a.ambiguous || b.ambiguous) return null;
+        return Math.round(haversineKm([a.lat, a.lon], [b.lat, b.lon]) * 1.25 / 10) * 10;
+    }
     function nearestBranch(p, site) {
         var best = null;
         branchNames(p).forEach(function (name) {
-            var km = kmBetween(matchCity(name) || name, site);
-            if (km !== null && (!best || km < best.km)) best = { name: name, km: km };
+            var at = /pan india/i.test(name) ? null : placeFor(name);
+            var km = /pan india/i.test(name) ? 0 : placeKm(at, site);
+            if (km !== null && (!best || km < best.km)) best = { name: name, km: km, place: at };
         });
         return best;
     }
@@ -268,6 +293,10 @@
         // `raw` as well as `t`: spotting a town the table does not hold leans on the capital
         // letter the customer typed, and `t` has already been lowercased.
         var place = readPlaces(t, raw);
+        // A town outside the 24 that he has since put on the map is measured like any other —
+        // the finder and the in-quote panel must read one enquiry the same way.
+        var placed = place.unknown ? placeFor(place.unknown) : null;
+        if (placed && !placed.ambiguous) place = { site: placed.name, pickup: place.pickup, unknown: '' };
         return {
             items: merged, types: types,
             site: place.site || HOME, siteAssumed: !place.site, pickup: place.pickup,
@@ -275,6 +304,7 @@
             // named" there was the harm: it gave a reason NOT to check, and then handed a
             // Chennai dealer "right by the site" for a delivery 400 km away.
             siteUnknown: place.unknown,
+            sitePlace: placed && !placed.ambiguous ? placed : undefined,
             tons: kgTotal / 1000, known: kgTotal > 0,
             brands: readBrands(raw),
             freight: /transport|freight|lorry|truck|part load|full load/.test(t) || !!place.pickup,
@@ -449,27 +479,43 @@
     // otherwise an untouched card outranks one you took the trouble to fill in, and the
     // directory quietly rewards leaving it blank. Unknown sits between near and far.
     function scoreDistance(p, need, why) {
-        var site = matchCity(need.site) || need.site;
+        if (/pan india/i.test(str(need.site))) { why.push(['neutral', 'Delivery is Pan India — distance not scored']); return 0; }
+        // The in-quote panel works the delivery town out once and hands it over; the finder
+        // hands over the town it read.
+        var site = need.sitePlace !== undefined ? need.sitePlace : placeFor(need.site);
+        if (site && site.ambiguous) site = null;
         // Three different reasons a distance cannot be worked out, and they all used to read
         // as "No city on their card — add one". A dealer whose card plainly said Erode was
         // told to add a city he had already added, and lost 5 points for it.
         //
         // 1. The DELIVERY town is one we cannot place. Nobody's fault, nobody scored — and it
         //    must not hand every Chennai dealer "right by the site" either.
-        var unplaceableSite = need.siteUnknown || (site && !COORD[site] && !/pan india/i.test(site) ? site : '');
-        if (unplaceableSite) {
-            why.push(['warn', unplaceableSite + ' is not a town I can measure — distance not scored']);
+        var unplaceableSite = need.siteUnknown || (!site && str(need.site) ? str(need.site) : '');
+        if (unplaceableSite || !site) {
+            why.push(['warn', (unplaceableSite || 'The delivery town') + ' is not a town I can measure — distance not scored']);
             return 0;
         }
         var towns = branchNames(p).filter(Boolean);
         // 2. Their card really is blank. That costs them, and saying so is the point.
         if (!towns.length) { why.push(['warn', 'No city on their card — add one and this ranks properly']); return -5; }
         var nb = nearestBranch(p, site);
-        // 3. Their town is filled in, just not one of the 24 the distance table holds.
-        if (!nb) { why.push(['neutral', 'Their city (' + towns[0] + ') is not in my distance list — distance not scored']); return 0; }
-        if (nb.km <= 60) { why.push(['ok', 'In ' + nb.name + ' — right by the site']); return 35; }
-        if (nb.km <= 250) { why.push(['ok', nb.name + ' branch, ' + nb.km + ' km from site']); return 20; }
-        why.push(['warn', nb.name + ' — ' + nb.km + ' km away, freight will hurt']); return -10;
+        // 3. Their town is filled in, just not placed on the map yet. Nothing is guessed: it is
+        //    named, and placing it is one press on their card.
+        if (!nb) {
+            var tpd = window.townPlaces, unread = tpd && tpd.savedError && tpd.savedError();
+            why.push([unread ? 'warn' : 'neutral', 'Their city (' + towns[0] + ') is not in my distance list — distance not scored'
+                + (unread ? '. Your placed towns could not be read just now' : tpd ? '. Open their card to put it on the map' : '')]);
+            return 0;
+        }
+        // A town looked up on the map carries its state, so a wrong pick shows ("Tarapur, Maharashtra").
+        var where = nb.name + (nb.place && nb.place.looked && nb.place.state ? ', ' + nb.place.state : '');
+        // Farther is lower all the way out. Past 250 km everything used to score the same −10,
+        // so a maker in Hosur (330 km) and one in UP (2,160 km) tied for a Chennai delivery.
+        if (nb.km <= 60) { why.push(['ok', 'In ' + where + ' — right by the site']); return 35; }
+        if (nb.km <= 250) { why.push(['ok', where + ' branch, ' + nb.km + ' km from site']); return 20; }
+        if (nb.km <= 600) { why.push(['neutral', where + ' — ' + nb.km + ' km away']); return 5; }
+        if (nb.km <= 1200) { why.push(['warn', where + ' — ' + nb.km + ' km away, freight will hurt']); return -5; }
+        why.push(['warn', where + ' — ' + nb.km + ' km away, freight will hurt a lot']); return -15;
     }
 
     /**
@@ -655,6 +701,10 @@
                 D.duplicates = d.duplicates || [];
                 D.sameName = d.sameName || [];
                 D.readonly = !!d.readonly;
+                // Where his placed towns are. A file that could not be read is said, not
+                // mistaken for "no towns placed": the 24 built-in towns still measure.
+                if (window.townPlaces) window.townPlaces.setSaved(d.places || {}, d.placesError
+                    ? 'Your placed towns could not be read just now — only the 24 built-in towns are measured.' : '');
                 D.loaded = true; D.loadError = '';
             })
             .catch(function (e) {
@@ -1442,10 +1492,16 @@
         var need = S.find.need;
         var h = '<div class="pd-read">' + readBack(need) + '</div>';
         if (need.types.length) {
+            // The same Makers / Dealers / All choice as the in-quote panel, and the same filter,
+            // so the two places never give two different lists for one enquiry.
             var sup = rankFor('material', need);
-            h += '<div class="pd-sec">Send it to</div>'
-                + rankListHtml(sup.filter(function (r) { return !r.blocked; }), need, { kind: 'material' })
-                + ruledOutHtml(sup.filter(function (r) { return r.blocked; }));
+            var counts = roleCounts(sup);
+            var shown = filterByRole(sup, roleShown);
+            var offered = shown.filter(function (r) { return !r.blocked; });
+            h += '<div class="pd-sec">Send it to</div>' + roleChipsHtml(counts)
+                + (!offered.length && roleShown !== 'all' && counts.all ? roleEmptyHtml(counts)
+                    : rankListHtml(offered, need, { kind: 'material' }))
+                + ruledOutHtml(shown.filter(function (r) { return r.blocked; }));
         }
         if (need.freight && need.site) {
             var from = need.pickup || HOME;
@@ -1471,6 +1527,8 @@
                 + ' — not a town I can measure, so distance was left out of the scoring</span>'
             : '<span class="pd-tag">Deliver to: <b>' + esc(need.site) + '</b>'
                 + (need.siteAssumed ? ' — <b>assumed</b>, no place named' : '') + '</span>';
+        var tpr = window.townPlaces;
+        if (tpr && tpr.savedError && tpr.savedError()) tags += '<span class="pd-tag pd-error">' + esc(tpr.savedError()) + '</span>';
         return '<p class="pd-tiny" style="margin-bottom:6px;">What was understood — correct the text and ask again if this is wrong:</p>' + tags;
     }
 
@@ -1652,6 +1710,24 @@
         return out.sort();
     }
 
+    /**
+     * "📍 Put on map" beside a town the distance list cannot measure yet. Only for a town already
+     * in its clean form — "CHETNA FACTORY" is not a town, and looking up "Chetna" would place a
+     * village of that name. What the town box holds is never changed by this.
+     */
+    function placeItHtml(town) {
+        var tp = window.townPlaces;
+        town = str(town);
+        var clean = townKey(town);
+        // Case does not matter ("MURBAD" is Murbad); extra words do ("CHETNA FACTORY" is not a town).
+        if (!tp || D.readonly || !town || !clean || lower(clean) !== lower(town)) return '';
+        if (tp.savedError && tp.savedError()) return '';    // cannot tell what is placed — say so, do not offer
+        var at = placeFor(town);
+        if (at && !at.ambiguous) return '';
+        return '<button type="button" class="pd-linkish pd-placeit" data-pd-placetown="' + esc(clean) + '"'
+            + ' title="Look it up once on the map, so suppliers here are measured">📍 Put on map</button>';
+    }
+
     function peopleBlock(p) {
         var list = people(p);
         var groups = groupByBranch(list);
@@ -1681,7 +1757,10 @@
         });
         rest.sort(function (a, b) { return (a.branch ? 0 : 1) - (b.branch ? 0 : 1); });
         var count = rest.length + 1;
-        return '<div class="pd-sec">Contacts<span class="pd-sp"></span><span class="pd-tiny">'
+        var tpl = window.townPlaces;
+        return (tpl && !D.readonly ? tpl.stripHtml(p.id)
+                + (tpl.savedError && tpl.savedError() ? '<p class="pd-error">' + esc(tpl.savedError()) + '</p>' : '') : '')
+            + '<div class="pd-sec">Contacts<span class="pd-sp"></span><span class="pd-tiny">'
             + list.length + ' ' + (list.length === 1 ? 'person' : 'people')
             + (count > 1 ? ' · ' + count + ' branches' : '') + '</span>'
             + '<span class="pd-sp"></span>'
@@ -1693,7 +1772,7 @@
             // "(head office)" after it, not two labelled boxes in a section of their own.
             + '<div class="pd-branchgrp">'
             + '<div class="pd-branch-head">'
-            + townPicker('head', p.city, 'Head office town')
+            + townPicker('head', p.city, 'Head office town') + placeItHtml(p.city)
             + '<input class="pd-area" data-pd-k="area" value="' + esc(p.area || '') + '" placeholder="Area — e.g. Ambattur" aria-label="Head office area">'
             + '<span class="pd-tiny">(head office)</span>'
             + (headRows.length ? '<span class="pd-sp"></span><span class="pd-tiny">' + headRows.length + '</span>' : '')
@@ -1898,7 +1977,7 @@
         return '<div class="pd-branchgrp">'
             + '<div class="pd-branch-head">'
             + (g.branch
-                ? townPicker('rename:' + g.branch, g.branch, 'Branch town')
+                ? townPicker('rename:' + g.branch, g.branch, 'Branch town') + placeItHtml(g.branch)
                 : (g.fresh
                     ? townPicker('fresh:' + at, '', 'Branch town')
                     // Nobody has said where these people sit. Typing a town here puts ALL of
@@ -3763,6 +3842,10 @@
     }
 
     function bindListAndCard(app) {
+        // The finder's Makers / Dealers / All — the same choice the in-quote panel keeps.
+        each(app, '[data-pd-roleshow]', function (el) {
+            el.onclick = function () { roleShown = el.getAttribute('data-pd-roleshow'); render(); };
+        });
         each(app, '[data-pd-open]', function (el) {
             var go = function () {
                 // Opening someone else closes this one — same question, same three answers.
@@ -4163,7 +4246,16 @@
             if (isNew) v = townKey(v) || v;
             if (!v) { render(); return; }
             setTown(where, v);
+            // A town new to his list is looked up on the map straight after it goes on the card —
+            // the card first, so a map that is down never costs him the town he typed. The card
+            // keeps its own Save; placing the town writes only the town list, never the card.
+            var tp = window.townPlaces, at = placeFor(v);
+            if (isNew && tp && !D.readonly && townKey(v) === v && !(at && !at.ambiguous)) tp.startPick(v, render, '', p.id);
         };
+        each(card, '[data-pd-placetown]', function (el) {
+            el.onclick = function () { if (window.townPlaces) window.townPlaces.startPick(el.getAttribute('data-pd-placetown'), render, '', p.id); };
+        });
+        if (window.townPlaces) window.townPlaces.bindStrip(card, render);
     }
 
     function bindSupply(card, p, save) {
@@ -4484,25 +4576,91 @@
     // opts: { kind:'transport'|'material', pickup, drop, kg, types:[], items:[], site }
     // onAddChip(chipText): ONE chip = ONE email — several addresses in a chip are CC'd
     // together (same firm); separate chips are separate emails (firms never meet).
+    // Two choices the panel remembers for the visit, kept HERE and not in the panel: the
+    // Enquiry tab redraws its whole page on many actions, and a choice held in the panel's own
+    // HTML would be lost the moment it did.
+    //   roleShown — *his words: "show me manufacturers closest to chennai" / "Same logic for
+    //               dealers also."* 'all', 'maker' or 'dealer'.
+    //   deliverTo — the town he picked for a Ship To that could not be placed, by that Ship To.
+    var roleShown = 'all';
+    var deliverTo = {};
+
+    /** Only makers, only dealers, or everyone. One filter, used by the panel and the finder alike. */
+    function filterByRole(rows, choice) {
+        if (choice === 'maker') return rows.filter(function (r) { return r.p.role === 'manufacturer'; });
+        if (choice === 'dealer') return rows.filter(function (r) { return r.p.role === 'dealer'; });
+        return rows;
+    }
+    function roleCounts(rows) {
+        var ok = rows.filter(function (r) { return !r.blocked; });
+        return { all: ok.length, maker: filterByRole(ok, 'maker').length, dealer: filterByRole(ok, 'dealer').length };
+    }
+    function roleChipsHtml(counts) {
+        var chip = function (v, label) {
+            return '<button type="button" class="pd-chip' + (roleShown === v ? ' on' : '') + '" data-pd-roleshow="' + v + '">'
+                + label + ' ' + counts[v] + '</button>';
+        };
+        return '<div class="pd-row pd-roleshow">' + chip('maker', 'Makers') + chip('dealer', 'Dealers') + chip('all', 'All') + '</div>';
+    }
+    /** "No makers fit" must not read as "nobody fits" when dealers do. */
+    function roleEmptyHtml(counts) {
+        var other = roleShown === 'maker' ? 'dealer' : 'maker';
+        var n = counts[other];
+        return '<p class="pd-muted" style="margin:6px 0;">No ' + (roleShown === 'maker' ? 'makers' : 'dealers') + ' fit this one'
+            + (n ? ' — ' + n + ' ' + (other === 'maker' ? 'maker' : 'dealer') + (n === 1 ? ' does' : 's do')
+                + '. <button type="button" data-pd-roleshow="' + other + '">Show ' + (other === 'maker' ? 'makers' : 'dealers') + '</button>'
+                : '.') + '</p>';
+    }
+
+    /**
+     * Where a material enquiry is going. A Ship To the map knows is used as it is; one it does
+     * not know asks which town (never quietly Chennai); a blank one is Chennai, and says so.
+     */
+    function deliverySite(opts) {
+        var text = str(opts.drop) || str(opts.site);
+        var chosen = text ? deliverTo[lower(text)] : '';
+        var place = placeFor(chosen || text || HOME);
+        var ok = place && !place.ambiguous ? place : null;
+        return {
+            site: ok ? ok.name : (text || HOME), sitePlace: ok,
+            siteAssumed: !text, siteText: text, siteChosen: !!chosen,
+            siteUnknown: text && !ok ? text : '',
+        };
+    }
+    /** Every town the map can measure — the 24 built in, and the ones he has placed. */
+    function placedTownNames() {
+        var names = Object.keys(COORD);
+        var tp = window.townPlaces;
+        if (tp && tp.savedNames) tp.savedNames().forEach(function (n) {
+            if (!names.some(function (x) { return lower(x) === lower(n); })) names.push(n);
+        });
+        return names.sort(function (a, b) { return lower(a) < lower(b) ? -1 : 1; });
+    }
+
     function renderSuggestPanel(container, opts, onAddChip) {
         if (!container) return;
+        // Re-drawn from what is already loaded — a choice of Makers or of a delivery town costs
+        // no second read, and so can never be painted over by a slower one.
         var go = function () {
+            if (D.loadError) { container.innerHTML = '<div class="pd-panel"><p class="pd-error">' + esc(D.loadError) + ' Nothing is missing — try again.</p></div>'; return; }
             var town = function (v) { return str(v) ? (matchCity(v) || str(v)) : ''; };
-            var drop = town(opts.drop) || town(opts.site);
             // A freight box opens with both towns empty. Falling back to Chennai there made
             // the panel announce "Chennai → Chennai" and rule out most of his lorry firms;
             // for a material enquiry the home city is still the sensible default.
             var isFreight = opts.kind === 'transport';
             var need = {
                 types: opts.types || [], items: opts.items || [],
-                site: drop || (isFreight ? '' : HOME),
                 tons: (opts.kg || 0) / 1000, known: (opts.kg || 0) > 0,
             };
+            if (isFreight) need.site = town(opts.drop) || town(opts.site);
+            else Object.assign(need, deliverySite(opts));
             var from = town(opts.pickup) || (isFreight ? '' : HOME);
-            var rows = rankFor(opts.kind === 'transport' ? 'transport' : 'material', need, from);
-            if (D.loadError) { container.innerHTML = '<div class="pd-panel"><p class="pd-error">' + esc(D.loadError) + ' Nothing is missing — try again.</p></div>'; return; }
-            container.innerHTML = panelHtml(rows, opts, need, from);
-            bindPanel(container, rows, onAddChip);
+            var all = rankFor(isFreight ? 'transport' : 'material', need, from);
+            // The SAME filtered list goes to the drawing and to the buttons: "✉ Choose who to
+            // email" finds its firm by position, and two different lists would open the wrong firm.
+            var rows = isFreight ? all : filterByRole(all, roleShown);
+            container.innerHTML = panelHtml(rows, opts, need, from, isFreight ? null : roleCounts(all));
+            bindPanel(container, rows, onAddChip, go, need);
         };
         // Always re-read before suggesting. This panel is asked for by hand, once in a
         // while — a cached copy risks suggesting a partner a colleague has since changed
@@ -4520,17 +4678,31 @@
             }
             return 'Read from this box: <b>' + esc(from) + '</b> → <b>' + esc(need.site) + '</b> · ' + weight;
         }
+        var to = need.siteUnknown
+            ? ' · to <b>' + esc(need.siteUnknown) + '</b> — not a town I can measure. Deliver to: '
+                + '<select data-pd-deliverto="1"><option value="">pick the town…</option>'
+                + placedTownNames().map(function (n) { return '<option>' + esc(n) + '</option>'; }).join('') + '</select>'
+            : ' · to <b>' + esc(need.site) + (need.sitePlace && need.sitePlace.looked && need.sitePlace.state ? ', ' + esc(need.sitePlace.state) : '') + '</b>'
+                + (need.siteAssumed ? ' (assumed — no Ship To on the quote)' : '')
+                + (need.siteChosen ? ' (you picked it for "' + esc(need.siteText) + '")' : '');
+        var tp = window.townPlaces;
+        var warn = tp && tp.savedError && tp.savedError()
+            ? '<br><span class="pd-error">' + esc(tp.savedError()) + '</span>' : '';
         return 'Read from the enquiry: <b>' + esc(typeNames(need.types) || 'no pipe type') + '</b> · '
-            + weight + ' · to <b>' + esc(need.site) + '</b>';
+            + weight + to
+            + (roleShown !== 'all' ? ' · <b>showing ' + (roleShown === 'maker' ? 'makers' : 'dealers') + ' only</b>' : '')
+            + warn;
     }
 
-    function panelHtml(rows, opts, need, from) {
+    function panelHtml(rows, opts, need, from, counts) {
         var head = panelHead(opts, need, from);
         var good = rows.filter(function (r) { return !r.blocked; });
         var out = rows.filter(function (r) { return r.blocked; });
+        var none = counts && roleShown !== 'all' && counts.all ? roleEmptyHtml(counts) : deadEndHtml(need, opts);
         return '<div class="pd-panel"><p class="pd-tiny" style="margin-bottom:8px;">' + head + '</p>'
+            + (counts ? roleChipsHtml(counts) : '')
             + (good.length ? good.map(function (r, i) { return panelCard(r, i); }).join('')
-                : deadEndHtml(need, opts))
+                : none)
             + (out.length ? '<p class="pd-tiny" style="margin:8px 0 5px;">Not suggested — but shown, so you can overrule it:</p>'
                 + out.map(function (r, i) { return panelCard(r, good.length + i); }).join('') : '')
             + '<p class="pd-tiny" style="margin-top:8px;">People at one firm go on <b>one</b> email, Cc\'d together. Different firms are <b>separate</b> emails — they never see each other.</p></div>';
@@ -4568,7 +4740,17 @@
             + '</div><div class="pd-picker" data-pd-picker="' + idx + '" hidden></div></div>';
     }
 
-    function bindPanel(container, rows, onAddChip) {
+    function bindPanel(container, rows, onAddChip, rerun, need) {
+        each(container, '[data-pd-roleshow]', function (el) {
+            el.onclick = function () { roleShown = el.getAttribute('data-pd-roleshow'); if (rerun) rerun(); };
+        });
+        each(container, '[data-pd-deliverto]', function (el) {
+            el.onchange = function () {
+                if (!el.value || !need || !need.siteText) return;
+                deliverTo[lower(need.siteText)] = el.value;   // never written to the quote itself
+                if (rerun) rerun();
+            };
+        });
         each(container, '[data-pd-goto-directory]', function (el) {
             el.onclick = function () {
                 S.tab = 'add';                            // the Add tab, not the bare list
@@ -4816,6 +4998,10 @@
                  listPickerHtml: listPickerHtml, filterList: filterList, listChosen: listChosen, sameInList: sameInList,
                  townPicker: townPicker, productOptions: productOptions, newToLists: newToLists, nearlyThe: nearlyThe,
                  bindTowns: bindTowns, closeListOutside: closeListOutside, facetSelect: facetSelect,
+                 // Nearest makers and dealers (30 Sep): towns on the map, and Makers / Dealers / All.
+                 placeFor: placeFor, townKey: townKey, filterByRole: filterByRole, roleCounts: roleCounts,
+                 deliverySite: deliverySite, panelHtml: panelHtml, placeItHtml: placeItHtml,
+                 setRoleShown: function (v) { roleShown = v; },
                  _state: function () { return { S: S, D: D }; } },
     };
 })();

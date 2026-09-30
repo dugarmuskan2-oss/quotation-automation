@@ -84,6 +84,10 @@ const CONFIG_KEY_GOOGLE_FIRMS         = 'google-firms.json';
  *  readings cost real money to produce and cannot be re-made from the cards.
  *  Written by tools/phone-book-save.js, read by tools/prepare-card.js. */
 const CONFIG_KEY_PHONE_BOOK           = 'phone-book.json';
+/** Where each town he has placed is on the map ({ places: { key: { name, lat, lon, state, … } } }).
+ *  Looked up once on OpenStreetMap and picked by him (see town-places.js). Shared by both setups:
+ *  a town is in the same place whoever is quoting. */
+const CONFIG_KEY_TOWN_PLACES         = 'town-places.json';
 /** People who can log in: [{ name, email, hash }]. Managed with tools/manage-users.js. */
 const CONFIG_KEY_USERS                = 'users.json';
 
@@ -156,6 +160,7 @@ module.exports = {
     CONFIG_KEY_STAFF_LIST,
     CONFIG_KEY_CONTACTS,
     CONFIG_KEY_CONTACTS_PENDING,
+    CONFIG_KEY_TOWN_PLACES,
     CONFIG_KEY_GOOGLE_FIRMS,
     CONFIG_KEY_PHONE_BOOK,
     CONFIG_KEY_USERS,
