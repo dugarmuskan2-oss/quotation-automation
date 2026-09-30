@@ -2148,3 +2148,25 @@ Two cards did not pass the last check cleanly and were saved for a written reaso
 
 **A fault in the APP:** utils/contacts.js `sameFirmName` treats SAKTHI and SAKTHI HI TECH as
 one firm, but the card view links by exact name only, so Balaji's SAKTHI shows no link.
+
+## The eighth ten (30 Sep)
+
+Tamilnadu Engg. Enterprises · Sv Tech Engineering · GB Commercial Traders · Matal & Tube
+Industries · Steel & Metal · Sri Keshva Traders · Everest Metal · Prince Engg Company ·
+EMCO&CO · Seven Star Aircon.
+
+51 changes, all saved; 16 questions on the cards. All ten passed every check. Re-checked 20
+seconds after the save.
+
+- **All ten** had "BOMBAY HARDWARE — supplier to them", rewritten in the same shape as the
+  seventh ten. The other suppliers his pages name (MST, JPI, Jindal Pipe, SICAZEN / SICAGEN,
+  Vardhman, Khandelwal Steel, A.P Treder, Mahavir, Pradeep) each got their own line.
+- **One Jindal question covers four cards:** "JINDAL PIPE IND" (Tamilnadu), "JINDAL PIPES
+  INDUSTING" (Sv Tech), "jindal pipe" (Everest), "JPI" (GB). One answer settles all four.
+- **Towns not guessed:** GB (Hosur?) and Everest (Trichy?) ask. Prince keeps "Tiruvallur",
+  which no approved card has yet — approving it adds that town to his list.
+- **Prince:** "Sreevatsa Venkateswara" is written as his "SREEVATSA", which shows unlinked,
+  as on Wootz. Adding SREEVATSA to that card's "Also written as" would link it.
+- The same Bombay line is still on 4 waiting cards in the ninth ten (Khandelwal, National
+  Fire Armour, Sree Mazhi, Kumar Agro) and on 4 approved cards (SARANYA, M.A ENTERPRISES,
+  MICRON ELECTRIALS, shree venus). Approved cards are left for him.
