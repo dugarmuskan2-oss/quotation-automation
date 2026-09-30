@@ -2249,7 +2249,7 @@ forward".** The card checks no longer ask either question.
 
 *His words: "check the internet. What kinds of pipes does Zenith make" … "populate accordingly".*
 On the waiting **Zenith Steel Pipes** card only: trade set to manufacturer (his own note already
-said "THEY MAKE API MATERIAL"); pipe types ERW and GI; three product rows added — ERW pipe
+said "THEY MAKE API MATERIAL"); pipe types ERW and GI; four product rows added — HSAW pipe (spiral welded, 18" to 100", the movable mill near Trichy; added a moment later at his "you didnt add HSAW?"), ERW pipe
 (black, 1/2" to 20", Tarapur), GI pipe (1/2" to 10", Tarapur), Square / Rectangular (hollow
 sections); and one plain note with the website/annual-report facts: plants, the HSAW spiral
 mill near Trichy, Khopoli locked out since Nov 2013, sales down from Rs 119 cr to Rs 50 cr,
