@@ -2198,3 +2198,24 @@ million: about a fifth less, with every check kept.
 One card did not pass the last check cleanly and was saved for a written reason: **Tubes
 India** has no line for his Y.M ENTERPRISE page ("2.THEY ALSO BUY FROM TUBES (INDIA)"). Nothing
 was removed; the line is simply not added yet. It is left for him.
+
+## Apollo's factories, from its own annual report (30 Sep)
+
+*His words: "Can you check where APL Apollo factory is exactly" … "no check on the internet" …
+"lets go ahead" … "you can add the address you found on the card too".*
+
+On the approved **APL APOLLO TUBES LIMITED** card only (logged in Recent changes as "Your
+instruction", with Undo; re-checked 20 seconds after the save):
+
+- **4 factory branches added** from the APL Apollo Annual Report 2025-26 (BSE, 21 Aug 2026),
+  each with its full address: Chegunta (Medak, Telangana — the report's "Hyderabad" unit),
+  Malur (Kolar, Karnataka), Simga (Chhattisgarh, APL Apollo Building Products) and Umm Al
+  Quwain (UAE, APL Apollo Tubes Company LLC).
+- **One note** with the report's address for every factory already on his card (Sikandrabad ×3,
+  Hosur, Murbad, Raipur, Bengaluru = Attibele), and that Dujana is no longer a plant.
+- **Nothing of his was changed.** His 21 branch rows and 38 notes are byte for byte as they
+  were — including his note calling GAZIABAD a factory, which the website lists as an office.
+- The note is a plain note on purpose. Opened as "APL APOLLO TUBES LIMITED — …" it was read as a
+  line about another firm and drew under "Their factory" pointing at this same card.
+- Chegunta, Malur and Simga are placed on the map (the town list now holds 41 towns).
+  Umm Al Quwain is outside India and stays unmeasured.
