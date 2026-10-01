@@ -20,7 +20,8 @@ require('dotenv').config();
 const storage = require('./storage');
 const { createLineItemId, parseFlexibleNumber, calculateLineItem } = require('./utils/calculations');
 const { applyPriceListWeights } = require('./utils/pipeWeights');
-const { applyPriceListRates, staleListTypes } = require('./utils/priceList');
+const { applyPriceListRates } = require('./utils/priceList');
+const { bookFromDoc } = require('./utils/priceListBook');
 const {
     ENTITY_QUOTATION,
     ENTITY_GMAIL_MSG_MARKER,
@@ -182,12 +183,14 @@ const createConfigRouter     = require('./routes/config');
 const createQuotationsRouter = require('./routes/quotations');
 const createGmailRouter      = require('./routes/gmail');
 const createContactsRouter   = require('./routes/contacts');
+const createPriceListsRouter = require('./routes/priceLists');
 
 app.use('/api', createRatesRouter({ openai, upload, storage, ratesDir }));
 app.use('/api', createConfigRouter({ storage }));
 app.use('/api', createQuotationsRouter({ ddbDocClient, ddbTableName, storage }));
 app.use('/api', createGmailRouter());
 app.use('/api', createContactsRouter({ storage, openai }));
+app.use('/api', createPriceListsRouter({ storage, openai }));
 
 // API Routes
 
@@ -369,18 +372,17 @@ SIZE MATCHING RULES — apply when reading rate-file rows:
 - VERIFY the match against the row's NB and/or OD columns: 1/2"=15NB/21.3mm, 3/4"=20NB/26.7, 1"=25NB/33.4, 1-1/4"=32NB/42.2, 1-1/2"=40NB/48.3, 2"=50NB/60.3, 2-1/2"=65NB/73, 3"=80NB/88.9, 3-1/2"=90NB/101.6, 4"=100NB/114.3, 5"=125NB/141.3, 6"=150NB/168.3, 8"=200NB/219.1. If the NB/OD does not agree with the size you identified, you are reading the WRONG ROW — re-match.
 - Sanity check before returning: within the same pipe type and the same schedule/class, the rate always INCREASES with size. If a larger pipe came out cheaper than a smaller one, a row was misread — re-match those items.`;
 
-// Price every GI / ERW / Seamless line from the uploaded price-list spreadsheets; the AI's rate is
-// kept beside it (aiUnitRate) for checking but never used. A line the list cannot price is left
-// blank for a person to fill. If the tables cannot be read at all, every line goes blank too —
+// Price every GI / ERW / Seamless line from the LIVE (checked) in-app price lists; the AI's rate is
+// kept beside it (aiUnitRate) for checking but never used. A line the list cannot price — or whose
+// list has edits not yet checked — is left blank for a person to fill. If the tables cannot be read at all, every line goes blank too —
 // an unchecked AI rate must never reach a quote just because the lookup failed.
 async function priceLinesFromPriceList(lineItems) {
     try {
-        const book = await storage.loadPipePrices();
-        const stale = staleListTypes(book, await storage.getAllRateMappings());
-        return applyPriceListRates(book, lineItems, calculateLineItem, stale);
+        const book = bookFromDoc(await storage.loadPriceLists());
+        return applyPriceListRates(book, lineItems, calculateLineItem);
     } catch (e) {
         console.warn('Price-list lookup failed, leaving every rate blank:', e.message);
-        const out = applyPriceListRates({}, lineItems, calculateLineItem, []);
+        const out = applyPriceListRates({}, lineItems, calculateLineItem);
         out.priceCheck.error = e.message;
         return out;
     }

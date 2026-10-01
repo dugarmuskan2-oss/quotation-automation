@@ -127,7 +127,7 @@ const PUBLIC_FILES = new Set([
     '/logo.png', '/favicon.ico', '/styles.css', '/login.html',
     '/utils/pipeWeights.js', '/gmail-ingest/descriptionFormatter.js',
     '/weight-calculator.js', '/enquiry-preparer.js', '/freight-tab-weight-editor.js',
-    '/quote-enquiry-tab.js', '/register.js', '/partner-directory.js', '/town-places.js',
+    '/quote-enquiry-tab.js', '/register.js', '/partner-directory.js', '/town-places.js', '/price-list.js',
 ]);
 
 // Endpoints a customer's quote link genuinely needs, and the machine-to-machine ones that carry

@@ -23,7 +23,7 @@
 
 const fs   = require('fs');
 const path = require('path');
-const { configKey, PIPE_WEIGHTS_FILE, PIPE_PRICES_FILE } = require('../utils/constants');
+const { configKey, PIPE_WEIGHTS_FILE, PRICE_LISTS_FILE } = require('../utils/constants');
 
 // ─── Base directory ───────────────────────────────────────────────────────────
 // On Vercel only /tmp is writable; everywhere else use the project root.
@@ -341,8 +341,8 @@ async function getAllRateMappings() {
 }
 
 // ── Tables parsed from the user's price lists, stored as JSON beside the rate files:
-// pipe weights (size -> kg/m) and pipe prices (size -> rate per metre), each shaped
-// { gi:{}, erw:{}, seamless:{}, updatedAt:{} } — same S3 / GCS / local layering as the rate index.
+// pipe weights (size -> kg/m) and the in-app price lists — same S3 / GCS / local layering as the
+// rate index.
 async function loadRatesJson(fileName) {
     try {
         if (useAWS && s3Client) {
@@ -385,8 +385,11 @@ async function saveRatesJson(fileName, data) {
 
 const loadPipeWeights = () => loadRatesJson(PIPE_WEIGHTS_FILE);
 const savePipeWeights = (weights) => saveRatesJson(PIPE_WEIGHTS_FILE, weights);
-const loadPipePrices  = () => loadRatesJson(PIPE_PRICES_FILE);
-const savePipePrices  = (prices) => saveRatesJson(PIPE_PRICES_FILE, prices);
+const loadPriceLists  = () => loadRatesJson(PRICE_LISTS_FILE);
+const savePriceLists  = (doc) => saveRatesJson(PRICE_LISTS_FILE, doc);
+// A replaced live version, kept so the prices on any past date can be looked up.
+const savePriceListHistory = (type, version) => upload(Buffer.from(JSON.stringify(version), 'utf8'),
+    type + '-v' + version.version + '.json', 'price-list-history');
 
 /**
  * Stream a file directly into an HTTP response (efficient for large files).
@@ -447,7 +450,8 @@ module.exports = {
     // Pipe weight table
     loadPipeWeights,
     savePipeWeights,
-    // Pipe price table
-    loadPipePrices,
-    savePipePrices,
+    // In-app price lists
+    loadPriceLists,
+    savePriceLists,
+    savePriceListHistory,
 };

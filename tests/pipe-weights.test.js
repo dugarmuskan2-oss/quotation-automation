@@ -282,10 +282,14 @@ describe('_test.weightKey & findCol', () => {
 describe('source guard — routes/rates.js wires up the weight sheet import', () => {
     const src = fs.readFileSync(path.join(__dirname, '..', 'routes', 'rates.js'), 'utf8');
 
-    test('requires ../utils/pipeWeights (buildWeightMap + parseCsv)', () => {
+    // A spreadsheet now becomes the DRAFT price list; the kg/m table is rebuilt from it only when
+    // it is checked and goes live (routes/priceLists.js), so buildWeightMap moved there.
+    test('requires ../utils/pipeWeights (parseCsv); the kg/m table is rebuilt when a list goes live', () => {
         expect(src).toContain("require('../utils/pipeWeights')");
-        expect(src).toContain('buildWeightMap');
         expect(src).toContain('parseCsv');
+        expect(src).toContain('saveDraft(');
+        const live = fs.readFileSync(path.join(__dirname, '..', 'routes', 'priceLists.js'), 'utf8');
+        expect(live).toMatch(/buildWeightMap\(live\.rows\)/);
     });
 
     test('SPREADSHEET_EXTS covers .csv/.xlsx/.xls', () => {

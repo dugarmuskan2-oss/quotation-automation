@@ -11,8 +11,8 @@ const path     = require('path');
 const fs       = require('fs');
 const xlsx     = require('xlsx');
 const { toFile } = require('openai/uploads');
-const { buildWeightMap, parseCsv } = require('../utils/pipeWeights');
-const { buildPriceMap, buildSeamlessCostMap, SEAMLESS_COST } = require('../utils/priceList');
+const { parseCsv } = require('../utils/pipeWeights');
+const { saveDraft } = require('../utils/priceListBook');
 
 const MAX_OPENAI_FILE_MB = 100;
 const SPREADSHEET_EXTS = ['.csv', '.xlsx', '.xls'];
@@ -105,49 +105,39 @@ module.exports = function createRatesRouter({ openai, upload, storage, ratesDir 
         return null;
     }
 
-    /** Replace one pipe type's table inside a stored { gi, erw, seamless, updatedAt } file. */
-    async function storeTableForType(load, save, pipeType, map) {
-        const all = await load();
-        all[pipeType] = map;
-        all.updatedAt = Object.assign({}, all.updatedAt, { [pipeType]: new Date().toISOString() });
-        await save(all);
-    }
-
     /**
-     * Parse a spreadsheet price list into the stored size -> kg/m table AND the size -> rate table.
-     * The rate table is what prices every GI / ERW / Seamless line at generation, so a sheet whose
-     * rate column cannot be found fails the upload rather than leaving stale prices in place.
+     * A spreadsheet upload REPLACES the draft of that price list. It never goes live by itself:
+     * like any edit, it must be printed, checked and marked Checked on the Price List page.
      */
-    async function importPriceListSheet(file, buffer, ext) {
+    async function importPriceListSheet(file, buffer, ext, editedBy) {
         const pipeType = pipeTypeFromName(file.originalname);
         if (!pipeType) {
             throw new Error(`Could not tell which pipe type "${file.originalname}" is — include GI, ERW, or Seamless in the file name.`);
         }
-        const rows = readSheetRows(buffer, ext);
-        const weightMap = buildWeightMap(rows);
-        const priceMap = buildPriceMap(rows, pipeType);
-        if (!Object.keys(priceMap).length) {
-            throw new Error(`No prices found in "${file.originalname}" — check the rate column has numbers.`);
-        }
-        if (Object.keys(weightMap).length) {
-            await storeTableForType(storage.loadPipeWeights, storage.savePipeWeights, pipeType, weightMap);
-        }
-        await storeTableForType(storage.loadPipePrices, storage.savePipePrices, pipeType, priceMap);
-        if (pipeType === 'seamless') {
-            await storeTableForType(storage.loadPipePrices, storage.savePipePrices, SEAMLESS_COST, buildSeamlessCostMap(rows));
-        }
-        return { pipeType, count: Object.keys(weightMap).length, priceCount: Object.keys(priceMap).length };
+        const doc = saveDraft(await storage.loadPriceLists(), pipeType, readSheetRows(buffer, ext),
+            { editedBy, source: 'upload: ' + file.originalname });
+        await storage.savePriceLists(doc);
+        return { pipeType, rows: doc.lists[pipeType].draft.rows.length - 1 };
+    }
+
+    /** What the upload did, in words — a spreadsheet only became a draft, and must say so. */
+    function uploadMessage(results) {
+        const drafts = results.filter(r => r.draftImport).map(r => r.draftImport.pipeType.toUpperCase());
+        const base = `${results.length} rate file(s) uploaded successfully`;
+        if (!drafts.length) return base;
+        return base + `. ${drafts.join(', ')} saved as a DRAFT price list — open the Price List page, print it, ` +
+            'check it and click Checked. Until then those lines get no prices on new quotes.';
     }
 
     /** Process a single uploaded rate file end-to-end. */
-    async function processSingleRateFile(file) {
+    async function processSingleRateFile(file, editedBy) {
         const fileExt = path.extname(file.originalname).toLowerCase();
         const buffer  = readUploadedBuffer(file);
 
-        // A spreadsheet is a price list the APP reads prices and kg/m from — parsed + stored, not sent to OpenAI.
+        // A spreadsheet becomes the DRAFT of that price list — parsed + stored, not sent to OpenAI.
         if (SPREADSHEET_EXTS.includes(fileExt)) {
-            const { pipeType, count, priceCount } = await importPriceListSheet(file, buffer, fileExt);
-            return { filename: file.originalname, originalName: file.originalname, size: file.size, weightImport: { pipeType, count, priceCount } };
+            const { pipeType, rows } = await importPriceListSheet(file, buffer, fileExt, editedBy);
+            return { filename: file.originalname, originalName: file.originalname, size: file.size, draftImport: { pipeType, rows } };
         }
 
         if (fileExt !== '.pdf') {
@@ -189,7 +179,7 @@ module.exports = function createRatesRouter({ openai, upload, storage, ratesDir 
 
         for (const file of req.files) {
             try {
-                const result = await processSingleRateFile(file);
+                const result = await processSingleRateFile(file, (req.user && req.user.who) || '');
                 results.push(result);
             } catch (fileError) {
                 errors.push({ filename: file.originalname || 'Unknown', error: fileError.message });
@@ -205,7 +195,7 @@ module.exports = function createRatesRouter({ openai, upload, storage, ratesDir 
 
         res.json({
             success:   true,
-            message:   `${results.length} rate file(s) uploaded successfully`,
+            message:   uploadMessage(results),
             filenames: results.map(r => r.filename),
             count:     results.length,
             errors:    errors.length > 0 ? errors : undefined,

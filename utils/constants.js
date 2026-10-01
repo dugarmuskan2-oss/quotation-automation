@@ -61,7 +61,9 @@ const CONFIG_KEY_REGRET_MESSAGE       = 'regret-message.txt';
 
 // Tables parsed from the uploaded price-list spreadsheets, stored in the rates folder.
 const PIPE_WEIGHTS_FILE = 'pipe-weights.json';   // size -> kg/m
-const PIPE_PRICES_FILE  = 'pipe-prices.json';    // size -> rate per metre
+const PRICE_LISTS_FILE  = 'price-lists.json';    // the in-app price lists: live + draft per type
+// Told whenever a price list is changed and checked.
+const PRICE_LIST_NOTIFY_EMAIL = 'info@dscpipes.com';
 const CONFIG_KEY_DEFAULT_SIGNATURE    = 'default-signature.txt';
 /** Remembered freight-enquiry recipients + pickup/drop points (for instant suggestions). */
 const CONFIG_KEY_FREIGHT_SUGGESTIONS  = 'freight-suggestions.json';
@@ -162,7 +164,8 @@ module.exports = {
     CONFIG_KEY_DEFAULT_EMAIL_MESSAGE,
     CONFIG_KEY_REGRET_MESSAGE,
     PIPE_WEIGHTS_FILE,
-    PIPE_PRICES_FILE,
+    PRICE_LISTS_FILE,
+    PRICE_LIST_NOTIFY_EMAIL,
     CONFIG_KEY_DEFAULT_SIGNATURE,
     CONFIG_KEY_FREIGHT_SUGGESTIONS,
     CONFIG_KEY_SUPPLIER_SUGGESTIONS,

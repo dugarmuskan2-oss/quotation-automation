@@ -1,6 +1,6 @@
 'use strict';
 
-// Pipe prices read from the user's own price-list spreadsheets (GI / ERW / Seamless).
+// Pipe prices looked up in the in-app price lists (GI / ERW / Seamless — see priceListBook.js).
 //
 // The AI used to read the rate out of the PDF price lists itself, and nothing checked it: a row
 // slip, a wrong class ("C class heavy duty" quoted at Medium, DSC-2787) or the wrong column went
@@ -69,13 +69,13 @@ function priceListTypeOf(pipeType) {
 const OUTCOME = {
     PRICED: 'priced',                   // rate taken from the price list
     NOT_A_LISTED_TYPE: 'not-a-listed-type', // not GI / ERW / Seamless (flange, fitting, plate…)
-    NO_PRICE_LIST: 'no-price-list',     // that list's spreadsheet has never been uploaded
-    LIST_OUT_OF_DATE: 'list-out-of-date', // a newer PDF was uploaded after the spreadsheet
+    NO_PRICE_LIST: 'no-price-list',     // that list has never been checked and made live
+    LIST_BEING_CHANGED: 'list-being-changed', // that list has edits not yet checked — no prices until it is
     SIZE_NOT_IN_LIST: 'size-not-in-list', // the size/class the AI read is not a row in the sheet
 };
 
 // Look one line up. Pure: says what the price is and why, changes nothing.
-function checkLinePrice(book, staleTypes, li) {
+function checkLinePrice(book, li) {
     const description = String(li.originalDescription || li.description || '');
     const type = priceListTypeOf(li.identifiedPipeType);
     const { size, cls } = parseDescription(description);
@@ -84,13 +84,14 @@ function checkLinePrice(book, staleTypes, li) {
         aiPrice: String(li.unitRate == null ? '' : li.unitRate) };
     let outcome;
     if (!type) outcome = OUTCOME.NOT_A_LISTED_TYPE;
+    else if ((book.pending || []).includes(type)) outcome = OUTCOME.LIST_BEING_CHANGED;
     else if (!book[type] || !Object.keys(book[type]).length) outcome = OUTCOME.NO_PRICE_LIST;
-    else if (staleTypes.includes(type)) outcome = OUTCOME.LIST_OUT_OF_DATE;
     else if (!key || !Object.prototype.hasOwnProperty.call(book[type], key)) outcome = OUTCOME.SIZE_NOT_IN_LIST;
     else {
         const costs = type === 'seamless' ? (book[SEAMLESS_COST] || {}) : {};
         const listCost = Object.prototype.hasOwnProperty.call(costs, key) ? costs[key] : null;
-        return Object.assign(base, { outcome: OUTCOME.PRICED, listPrice: book[type][key], listCost });
+        return Object.assign(base, { outcome: OUTCOME.PRICED, listPrice: book[type][key], listCost,
+            listVersion: (book.versions || {})[type] || null });
     }
     return Object.assign(base, { outcome, listPrice: null });
 }
@@ -101,11 +102,11 @@ function checkLinePrice(book, staleTypes, li) {
 //
 // Runs at GENERATION time only, before anyone has typed a rate. Never point it at a saved quote —
 // a rate there may be a hand correction.
-function applyPriceListRates(book, lineItems, recalc, staleTypes) {
+function applyPriceListRates(book, lineItems, recalc) {
     const checks = [];
     const lines = (Array.isArray(lineItems) ? lineItems : []).map(li => {
         if (!li || typeof li !== 'object') return li;
-        const check = checkLinePrice(book || {}, staleTypes || [], li);
+        const check = checkLinePrice(book || {}, li);
         checks.push(check);
         // The AI's own seamless cost is dropped like its rate — only the sheet's figure is used.
         const extra = { aiUnitRate: check.aiPrice, rateCheck: check.outcome, costRate: check.listCost ? String(check.listCost) : '' };
@@ -116,26 +117,8 @@ function applyPriceListRates(book, lineItems, recalc, staleTypes) {
     });
     const counts = {};
     checks.forEach(c => { counts[c.outcome] = (counts[c.outcome] || 0) + 1; });
-    return { lineItems: lines, priceCheck: { checkedAt: new Date().toISOString(), counts, lines: checks } };
+    return { lineItems: lines, priceCheck: { checkedAt: new Date().toISOString(), listVersions: (book && book.versions) || {}, counts, lines: checks } };
 }
 
-// Price lists whose spreadsheet is older than the PDF of the same type. A newer PDF means the
-// prices probably changed and the spreadsheet was not re-uploaded — using it would quote old rates.
-// The two are normally uploaded together, in either order, so a PDF up to 12 hours newer is fine.
-const SAME_UPLOAD_GRACE_MS = 12 * 60 * 60 * 1000;
-function staleListTypes(book, rateMappings) {
-    const updated = (book && book.updatedAt) || {};
-    const stale = [];
-    (Array.isArray(rateMappings) ? rateMappings : []).forEach(m => {
-        const type = priceListTypeOf(m.originalName || m.s3Key);
-        const pdfAt = Date.parse(m.createdAt || '');
-        const sheetAt = Date.parse(updated[type] || '');
-        if (type && Number.isFinite(pdfAt) && Number.isFinite(sheetAt) && pdfAt - sheetAt > SAME_UPLOAD_GRACE_MS && !stale.includes(type)) {
-            stale.push(type);
-        }
-    });
-    return stale;
-}
-
-module.exports = { buildPriceMap, buildSeamlessCostMap, SEAMLESS_COST, applyPriceListRates, staleListTypes, priceListTypeOf, OUTCOME,
+module.exports = { buildPriceMap, buildSeamlessCostMap, SEAMLESS_COST, applyPriceListRates, priceListTypeOf, OUTCOME,
     _test: { checkLinePrice, RATE_COLUMN } };
