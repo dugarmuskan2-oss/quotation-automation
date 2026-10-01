@@ -151,19 +151,66 @@
         el.title = ch && !ch.added ? 'Was: ' + ch.from : (ch && ch.added ? 'New row' : '');
     }
 
-    function addRow() {
+    // ── Rows, the Google Sheets way: right-click a row → insert above / below, or delete. ─────
+    // Nothing is saved until Save changes, and "Undo unsaved" brings a deleted row back.
+    function insertRow(at) {
         if (!state.rows) return;
-        state.rows.push(state.rows[0].map(function () { return ''; }));
+        flushFocusedCell();
+        state.rows.splice(at, 0, state.rows[0].map(function () { return ''; }));
         state.dirty = true;
         render();
+        var first = document.querySelector('.pl-cell[data-r="' + at + '"][data-c="0"]');
+        if (first) first.focus();
     }
 
     function deleteRow(r) {
-        if (!confirm('Delete row ' + r + '?')) return;
+        if (!state.rows || r < 1) return;
+        flushFocusedCell();
         state.rows.splice(r, 1);
         state.dirty = true;
         render();
     }
+
+    function closeRowMenu() {
+        var m = $('plRowMenu');
+        if (m) m.remove();
+    }
+
+    // r = the row right-clicked (0 = the heading row, which can only have a row inserted below it).
+    function openRowMenu(x, y, r) {
+        closeRowMenu();
+        var items = r === 0
+            ? [['Insert 1 row below', function () { insertRow(1); }]]
+            : [['Insert 1 row above', function () { insertRow(r); }],
+               ['Insert 1 row below', function () { insertRow(r + 1); }],
+               ['Delete row', function () { deleteRow(r); }]];
+        var menu = document.createElement('div');
+        menu.id = 'plRowMenu';
+        menu.className = 'pl-menu';
+        items.forEach(function (it) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.textContent = it[0];
+            b.onclick = function () { closeRowMenu(); it[1](); };
+            menu.appendChild(b);
+        });
+        document.body.appendChild(menu);
+        // Keep the menu on screen near the pointer, as a spreadsheet does.
+        menu.style.left = Math.min(x, window.innerWidth - menu.offsetWidth - 8) + 'px';
+        menu.style.top = Math.min(y, window.innerHeight - menu.offsetHeight - 8) + 'px';
+    }
+
+    function onTableContextMenu(e) {
+        if (state.busy) return;
+        var tr = e.target.closest('tr');
+        if (!tr || !tr.hasAttribute('data-row')) return;
+        e.preventDefault();
+        openRowMenu(e.clientX, e.clientY, +tr.getAttribute('data-row'));
+    }
+
+    document.addEventListener('mousedown', function (e) { if (!e.target.closest('#plRowMenu')) closeRowMenu(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeRowMenu(); });
+    window.addEventListener('scroll', closeRowMenu, true);
 
     function switchList(key) {
         if (key === state.type) return;
@@ -212,17 +259,18 @@
         }
         var header = state.rows[0];
         var liveByKey = liveCellsByKey();
-        var head = '<tr><th>#</th>' + header.map(function (h) { return '<th>' + esc(h) + '</th>'; }).join('') + '<th></th></tr>';
+        var head = '<tr data-row="0"><th>#</th>' + header.map(function (h) { return '<th>' + esc(h) + '</th>'; }).join('') + '</tr>';
         var body = state.rows.slice(1).map(function (row, i) {
             var r = i + 1;
-            return '<tr><td class="pl-n">' + r + '</td>' + header.map(function (_, c) {
+            return '<tr data-row="' + r + '"><td class="pl-n">' + r + '</td>' + header.map(function (_, c) {
                 var ch = cellChange(liveByKey, header, row, c);
                 var bg = ch ? (ch.added ? '#e3f6e3' : '#fff3b0') : '';
                 var title = ch && !ch.added ? 'Was: ' + ch.from : (ch && ch.added ? 'New row' : '');
                 return '<td><input class="pl-cell" data-r="' + r + '" data-c="' + c + '" value="' + esc(row[c]) + '" style="background:' + bg + '" title="' + esc(title) + '"></td>';
-            }).join('') + '<td><button type="button" class="pl-del" data-del="' + r + '" title="Delete row">✕</button></td></tr>';
+            }).join('') + '</tr>';
         }).join('');
-        return '<div class="pl-table-wrap"><table class="pl-table"><thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>';
+        return '<p class="pl-hint">Right-click a row to insert a row above or below, or delete it.</p>' +
+            '<div class="pl-table-wrap"><table class="pl-table"><thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>';
     }
 
     function render() {
@@ -248,7 +296,6 @@
             '<div class="pl-actions">' +
                 '<button type="button" class="upload-btn" id="plSaveBtn">💾 Save changes</button>' +
                 '<button type="button" class="upload-btn pl-secondary" id="plUndoBtn">↶ Undo unsaved</button>' +
-                '<button type="button" class="upload-btn pl-secondary" id="plAddBtn">➕ Add row</button>' +
                 '<button type="button" class="upload-btn pl-secondary" id="plPrintBtn">🖨️ Print for checking</button>' +
                 '<button type="button" class="upload-btn pl-secondary" id="plCsvBtn">⬇️ Download Excel (CSV)</button>' +
                 (l.draft ? '<button type="button" class="upload-btn pl-danger" id="plDiscardBtn">🗑️ Discard changes</button>' : '') +
@@ -260,7 +307,7 @@
             tableHtml();
         wire(app);
         renderStatus();
-        ['plAddBtn', 'plCsvBtn', 'plDiscardBtn', 'plPdfBtn'].forEach(function (id) { if ($(id)) $(id).disabled = !!state.busy; });
+        ['plCsvBtn', 'plDiscardBtn', 'plPdfBtn'].forEach(function (id) { if ($(id)) $(id).disabled = !!state.busy; });
     }
 
     function wire(app) {
@@ -268,10 +315,10 @@
         app.querySelectorAll('.pl-cell').forEach(function (el) {
             el.addEventListener('input', function () { onCellInput(el); });
         });
-        app.querySelectorAll('.pl-del').forEach(function (b) { b.onclick = function () { deleteRow(+b.getAttribute('data-del')); }; });
+        var table = app.querySelector('.pl-table');
+        if (table) table.addEventListener('contextmenu', onTableContextMenu);
         if ($('plSaveBtn')) $('plSaveBtn').onclick = saveDraft;
         if ($('plUndoBtn')) $('plUndoBtn').onclick = undoUnsaved;
-        if ($('plAddBtn')) $('plAddBtn').onclick = addRow;
         if ($('plPrintBtn')) $('plPrintBtn').onclick = printDraft;
         if ($('plCsvBtn')) $('plCsvBtn').onclick = downloadCsv;
         if ($('plDiscardBtn')) $('plDiscardBtn').onclick = discardDraft;
@@ -357,7 +404,10 @@
         '.pl-table-wrap{overflow:auto;max-height:70vh;border:1px solid #ddd}' +
         '.pl-table{border-collapse:collapse;font-size:13px;width:100%}.pl-table th{position:sticky;top:0;background:#eef0f4;color:#222;font-weight:600;padding:6px;border:1px solid #ddd;white-space:nowrap}' +
         '.pl-table td{border:1px solid #eee;padding:0}.pl-cell{width:100%;min-width:60px;border:none;padding:5px;font-size:13px;box-sizing:border-box}' +
-        '.pl-n{padding:0 6px!important;color:#999;text-align:right}.pl-del{border:none;background:none;color:#c0392b;cursor:pointer}' +
+        '.pl-n{padding:0 6px!important;color:#999;text-align:right}.pl-hint{font-size:12px;color:#777;margin:4px 0}' +
+        '.pl-menu{position:fixed;z-index:10000;background:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.18);padding:4px 0;min-width:190px}' +
+        '.pl-menu button{display:block;width:100%;text-align:left;background:none;border:none;padding:8px 16px;font-size:14px;cursor:pointer;color:#222}' +
+        '.pl-menu button:hover{background:#f1f3f4}' +
         '.pl-empty{color:#888;padding:20px;text-align:center}';
     var styleEl = document.createElement('style');
     styleEl.textContent = CSS;
