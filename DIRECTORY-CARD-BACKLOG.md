@@ -2344,3 +2344,24 @@ they also have something in their product range*). Waiting copy discarded.
 Left for him, not asked: approved SHRI SHAKTHI STEEL AND PIPE (Apollo dealer, 9843612233) and
 waiting SHREE SAKTHI STEEL (JSL sub dealer, 8056106044) — spelling alike but different numbers
 and brands, so kept apart.
+
+## The twelfth ten (1 Oct)
+
+durgaenterprises1979@gmail.com · Madras Steels · mahaveer_tube@rediffmail.com ·
+shrivardhmantube@rediffmail.com · jindal_pipes@yahoo.com · alisteelandtubes@gmail.com ·
+Tubesindia · Mkk Metal · goyaltpthyd1@gmail.com · Speedelexpress.
+
+Seven saved (189 checked changes; 14 questions), re-checked 20 s later: DURGA ENTERPRISES
+(Hyderabad), MADRAS STEEL TUBES (MST; 72 lines from the firms that buy from it), SHREE MAHAVEER
+TUBE CO., SHRI VARDHMAN TUBE CO., MKK METAL (maker, Ranipet factory), goyaltpthyd1@gmail.com
+(left as is but for its Office row; one question), SPEEDEL EXPRESS.
+
+Three were copies of approved cards, joined and discarded under his standing rule:
+- jindal_pipes@yahoo.com → JINDAL PIPE INDUSTRIES: his PD (16) Chennai dealer page lines 0-5 —
+  MUKESH (OWNERS, 91766 31209, jindal_pipes@yahoo.com), RAJKUMAR (SADAYANKUPPAM (GK)), VASU, the
+  4216 4489 office line, KRISHNA's 25245912 / 8878669711 and "Chq Collect Person"; the page under
+  Filed under.
+- alisteelandtubes@gmail.com → ALI STEEL AND TUBES CO: aka ALI STEEL, his P(12) and P(20) pages,
+  25229701, 9444929701 and the email on the Office row, six lines (two transporters, four
+  buyers) and the website. His approved Apollo line left as it was.
+- Tubesindia → TUBES INDIA: marketing@ and response@tubesindia.co.in on the Office row.
