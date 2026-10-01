@@ -1,5 +1,5 @@
 /**
- * price-list.js — the in-app Price List (💰 tool): ERW / GI / Seamless.
+ * price-list.js — the in-app Price List (ERW / GI / Seamless), inside the configuration section.
  *
  * The ONE copy of the prices quotes are made from. Editing makes a DRAFT; quotes keep using the
  * LIVE list. The draft is printed, checked, and only "Checked" makes it live (and emails the
@@ -229,12 +229,12 @@
         var app = $('priceListApp');
         if (!app) return;
         if (state.loadError) {
-            app.innerHTML = '<h1>💰 Price List</h1><div class="pl-status pl-none">❌ Could not load the price lists: ' + esc(state.loadError) +
+            app.innerHTML = '<h2>Price List</h2><div class="pl-status pl-none">❌ Could not load the price lists: ' + esc(state.loadError) +
                 ' <button type="button" class="upload-btn" style="width:auto;padding:5px 12px;" id="plRetry">Try again</button></div>';
             $('plRetry').onclick = load;
             return;
         }
-        if (!state.view) { app.innerHTML = '<h1>💰 Price List</h1><p class="pl-empty">Loading price lists…</p>'; return; }
+        if (!state.view) { app.innerHTML = '<h2>Price List</h2><p class="pl-empty">Loading price lists…</p>'; return; }
         var l = list();
         var tabs = TYPES.map(function (t) {
             var pending = state.view.lists[t.key].draft ? ' <span class="pl-dot" title="Changes waiting to be checked">●</span>' : '';
@@ -242,7 +242,7 @@
         }).join('');
         var busy = state.busy ? ' <span class="pl-busy">Working…</span>' : '';
         app.innerHTML =
-            '<h1>💰 Price List</h1>' +
+            '<h2>Price List</h2>' +
             '<div class="pl-tabs">' + tabs + '</div>' +
             '<div id="plStatus">' + statusHtml() + '</div>' +
             '<div class="pl-actions">' +
@@ -324,42 +324,25 @@
         setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
     }
 
-    // ── Tool-tab switching (register.js / partner-directory.js pattern) ───────────────────────
-    var OTHER_APPS = ['quotationApp', 'weightCalculatorApp', 'enquiryPreparerApp', 'registerApp', 'partnerDirectoryApp'];
-    var OTHER_BUTTONS = ['mainToolQuotationButton', 'mainToolWeightButton', 'mainToolEnquiryButton', 'mainToolRegisterButton', 'mainToolDirectoryButton'];
-    var OTHER_SWITCHERS = ['switchToQuotationTab', 'switchToWeightTab', 'switchToEnquiryTab', 'switchToRegisterTab', 'switchToDirectoryTab'];
-
-    function hidePriceList() {
-        if ($('priceListApp')) $('priceListApp').style.display = 'none';
-        if ($('mainToolPriceListButton')) $('mainToolPriceListButton').classList.remove('main-tools-button--active');
+    // ── Lives inside the configuration section: load the first time that section is opened ───
+    function loadWhenShown() {
+        var box = $('configContent');
+        if (!box || box.style.display === 'none' || state.view || state.busy === 'load') return;
+        state.busy = 'load';
+        load().then(function () { state.busy = ''; render(); });
     }
 
-    function wrapSwitchers() {
-        OTHER_SWITCHERS.forEach(function (name) {
-            var original = window[name];
-            if (typeof original !== 'function' || original._plWrapped) return;
-            var wrapped = function () {
-                if (state.dirty && !confirm('You have unsaved price-list changes. Leave them?')) return;
-                original.apply(this, arguments);
-                hidePriceList();
-            };
-            wrapped._plWrapped = true;
-            window[name] = wrapped;
-        });
+    function watchConfigToggle() {
+        var original = window.toggleConfigSection;
+        if (typeof original !== 'function' || original._plWrapped) return;
+        var wrapped = function () { original.apply(this, arguments); loadWhenShown(); };
+        wrapped._plWrapped = true;
+        window.toggleConfigSection = wrapped;
+        loadWhenShown();
     }
 
-    function switchToPriceListTab() {
-        OTHER_APPS.forEach(function (id) { if ($(id)) $(id).style.display = 'none'; });
-        OTHER_BUTTONS.forEach(function (id) { if ($(id)) $(id).classList.remove('main-tools-button--active'); });
-        if ($('priceListApp')) $('priceListApp').style.display = '';
-        if ($('mainToolPriceListButton')) $('mainToolPriceListButton').classList.add('main-tools-button--active');
-        if (!state.dirty) load(); else render();
-    }
-
-    // Other tools wrap their switchers on DOMContentLoaded too; wrapping after them (load) means
-    // ours sits outermost and every tool's switcher hides this page.
-    if (document.readyState === 'complete') wrapSwitchers();
-    else window.addEventListener('load', wrapSwitchers);
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watchConfigToggle);
+    else watchConfigToggle();
     window.addEventListener('beforeunload', function (e) { if (state.dirty) { e.preventDefault(); e.returnValue = ''; } });
 
     var CSS = '.pl-tabs{display:flex;gap:6px;margin:8px 0 12px}' +
@@ -372,7 +355,7 @@
         '.pl-check{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px;border:2px solid #2e7d32;border-radius:6px;margin:8px 0}' +
         '.pl-check .upload-btn{width:auto;padding:7px 14px;background:#2e7d32}.pl-check input{padding:5px;margin-left:6px}' +
         '.pl-table-wrap{overflow:auto;max-height:70vh;border:1px solid #ddd}' +
-        '.pl-table{border-collapse:collapse;font-size:13px;width:100%}.pl-table th{position:sticky;top:0;background:#eef0f4;padding:6px;border:1px solid #ddd;white-space:nowrap}' +
+        '.pl-table{border-collapse:collapse;font-size:13px;width:100%}.pl-table th{position:sticky;top:0;background:#eef0f4;color:#222;font-weight:600;padding:6px;border:1px solid #ddd;white-space:nowrap}' +
         '.pl-table td{border:1px solid #eee;padding:0}.pl-cell{width:100%;min-width:60px;border:none;padding:5px;font-size:13px;box-sizing:border-box}' +
         '.pl-n{padding:0 6px!important;color:#999;text-align:right}.pl-del{border:none;background:none;color:#c0392b;cursor:pointer}' +
         '.pl-empty{color:#888;padding:20px;text-align:center}';
@@ -380,6 +363,5 @@
     styleEl.textContent = CSS;
     document.head.appendChild(styleEl);
 
-    window.switchToPriceListTab = switchToPriceListTab;
     window.priceListPage = { load: load, _state: state };
 })();

@@ -77,7 +77,7 @@
         freight-tab-weight-editor.js ... the quote card's Freight tab
         quote-enquiry-tab.js ........... the quote card's supplier Enquiry tab
         register.js .................... the Enquiry Register tool
-        price-list.js .................. the Price List tool (ERW / GI / Seamless — draft, check, live)
+        price-list.js .................. the Price List, inside the configuration section (draft, check, live)
 
         The three biggest blocks left in this file are the approval list, the PDF
         builder, and the margin desk. They are the candidates if more is moved out.
@@ -148,15 +148,6 @@
         <button
             type="button"
             class="main-tools-button"
-            id="mainToolPriceListButton"
-            onclick="switchToPriceListTab()"
-            title="Price List"
-        >
-            <span>💰</span>
-        </button>
-        <button
-            type="button"
-            class="main-tools-button"
             id="mainToolPeopleButton"
             onclick="location.href='/people.html'"
             title="People — who can sign in"
@@ -182,6 +173,8 @@
             </div>
             
             <div id="configContent" style="display: none; margin-top: 16px;">
+                <!-- Price List (ERW / GI / Seamless — draft, check, live) — drawn by price-list.js -->
+                <div id="priceListApp" style="margin-bottom: 24px;"></div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
                     <!-- Rate File Upload (Multiple) -->
                     <div>
@@ -825,8 +818,6 @@
 
     <!-- Partner Directory — dealers/manufacturers/transporters/fabricators (partner-directory.js renders it) -->
     <div class="container" id="partnerDirectoryApp" style="display: none;"></div>
-    <!-- Price List — drawn by price-list.js -->
-    <div class="container" id="priceListApp" style="display: none;"></div>
 
     <!-- Enquiry Register — the live report (mirrors the Google Sheet layout) -->
     <div class="container" id="registerApp" style="display: none;">
@@ -12086,7 +12077,7 @@
     <script src="register.js?v=20260722-5"></script>
     <script src="town-places.js?v=20261001-2"></script>
     <script src="partner-directory.js?v=20261001-6"></script>
-    <script src="price-list.js?v=20261001-1"></script>
+    <script src="price-list.js?v=20261001-3"></script>
 </body>
 </html>
 
