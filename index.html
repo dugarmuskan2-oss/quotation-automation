@@ -77,6 +77,7 @@
         freight-tab-weight-editor.js ... the quote card's Freight tab
         quote-enquiry-tab.js ........... the quote card's supplier Enquiry tab
         register.js .................... the Enquiry Register tool
+        price-list.js .................. the Price List tool (ERW / GI / Seamless — draft, check, live)
 
         The three biggest blocks left in this file are the approval list, the PDF
         builder, and the margin desk. They are the candidates if more is moved out.
@@ -86,7 +87,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quotation Generator</title>
     
-    <link rel="stylesheet" href="styles.css?v=20261001-1">
+    <link rel="stylesheet" href="styles.css?v=20261001-2">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
@@ -143,6 +144,15 @@
             title="Partner Directory"
         >
             <span>📇</span>
+        </button>
+        <button
+            type="button"
+            class="main-tools-button"
+            id="mainToolPriceListButton"
+            onclick="switchToPriceListTab()"
+            title="Price List"
+        >
+            <span>💰</span>
         </button>
         <button
             type="button"
@@ -815,6 +825,8 @@
 
     <!-- Partner Directory — dealers/manufacturers/transporters/fabricators (partner-directory.js renders it) -->
     <div class="container" id="partnerDirectoryApp" style="display: none;"></div>
+    <!-- Price List — drawn by price-list.js -->
+    <div class="container" id="priceListApp" style="display: none;"></div>
 
     <!-- Enquiry Register — the live report (mirrors the Google Sheet layout) -->
     <div class="container" id="registerApp" style="display: none;">
@@ -3194,8 +3206,10 @@
             };
             const clonedLineItems = cloneLineItems(preparedLineItems);
             currentCreationLineItems = clonedLineItems;
+            currentCreationPriceCheck = (quotationData && quotationData._priceCheck) || null;
             if (creationFolderId && creationFolderState[creationFolderId]) {
                 creationFolderState[creationFolderId].lineItems = clonedLineItems;
+                creationFolderState[creationFolderId].priceCheck = currentCreationPriceCheck;
             }
             displayQuotation(preparedQuotationData, !!creationFolderId);
         }
@@ -3655,9 +3669,9 @@
                                    data-field="unitRate"
                                    data-pipe-type="${pipeType}"
                                    data-row-id="${rowId}"
-                                   value="${item.unitRate}" 
-                                   min="0" 
-                                   step="0.01" style="width: 80px;">
+                                   value="${item.unitRate}"
+                                   min="0"
+                                   step="0.01" style="width: 80px;${unitRateMissing(item) ? ' background:#fde2e2; border:1px solid #d33;' : ''}"${unitRateMissing(item) ? ' title="Not priced from the price list — enter the rate"' : ''}>
                         </td>
                         <td class="col-margin">
                             <div class="margin-cell-wrap">
@@ -5673,7 +5687,12 @@
             return headerClone;
         }
 
-        function buildQuotationData(quotationHeaderValues, tableClone, headerClone, sourceLineItems) {
+        // A line the price list could not price arrives with NO rate — shown blank and red, never 0.
+        function unitRateMissing(item) {
+            return String(item && item.unitRate != null ? item.unitRate : '').trim() === '';
+        }
+
+        function buildQuotationData(quotationHeaderValues, tableClone, headerClone, sourceLineItems, priceCheck) {
             const {
                 quotationDate,
                 customerName,
@@ -5703,6 +5722,7 @@
                 tableHTML: tableClone.outerHTML,
                 headerHTML: headerClone.outerHTML, // Store full header HTML with current values
                 lineItems: structuredLineItems,
+                priceCheck: priceCheck || null,
                 termsText: termsText,
                 shipTo: shipTo,
                 preparedBy: preparedBy,
@@ -5806,7 +5826,7 @@
             const quotationHeader = document.getElementById('creationQuotationHeader');
             const headerClone = cloneQuotationHeaderWithValues(quotationHeader);
             
-            const quotationData = buildQuotationData(quotationHeaderValues, tableClone, headerClone, currentCreationLineItems);
+            const quotationData = buildQuotationData(quotationHeaderValues, tableClone, headerClone, currentCreationLineItems, currentCreationPriceCheck);
             quotationData.emailContent = document.getElementById('emailContent')?.value || lastEmailContent || '';
             quotationData.emailContentHtml = lastEmailHtmlContent || '';
             quotationData.fileContent = lastFileContent || '';
@@ -5908,7 +5928,7 @@
                 }
             }
             quotationHeaderValues.quoteNumber = quoteNumber;
-            const quotationData = buildQuotationData(quotationHeaderValues, tableClone, headerClone, folderState.lineItems);
+            const quotationData = buildQuotationData(quotationHeaderValues, tableClone, headerClone, folderState.lineItems, folderState.priceCheck);
             quotationData.emailContent = folderState.emailContent || '';
             quotationData.emailContentHtml = folderState.emailContentHtml || '';
             quotationData.fileContent = folderState.fileContent || '';
@@ -11520,6 +11540,8 @@
         }
         syncApprovedQuotationsGlobal();
         let currentCreationLineItems = [];
+        // The price-list check from the last generation (per line: which row priced it, or why none did).
+        let currentCreationPriceCheck = null;
         let lastEmailContent = '';
         let lastFileContent = '';
         let lastEmailHtmlContent = '';
@@ -12054,7 +12076,7 @@
     <script src="enquiry-preparer.js?v=20260529-1"></script>
     <!-- The same kg/m lookup the server uses, so the Freight panel can fill blanks on quotes
          generated before the backfill existed. One copy of the matching rules, not two. -->
-    <script src="utils/pipeWeights.js?v=20260902-1"></script>
+    <script src="utils/pipeWeights.js?v=20261001-1"></script>
     <!-- The same description formatter Gmail-ingested quotes use server-side, so the Freight
          tab's own enquiry table can show a transporter "8" NB X 6.35mm thk -- ERW" instead of
          the AI's raw code "8X6.35". One copy of the formatting rules, not a third one. -->
@@ -12063,7 +12085,8 @@
     <script src="quote-enquiry-tab.js?v=20260903-1"></script>
     <script src="register.js?v=20260722-5"></script>
     <script src="town-places.js?v=20261001-2"></script>
-    <script src="partner-directory.js?v=20261001-5"></script>
+    <script src="partner-directory.js?v=20261001-6"></script>
+    <script src="price-list.js?v=20261001-1"></script>
 </body>
 </html>
 

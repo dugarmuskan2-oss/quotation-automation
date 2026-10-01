@@ -1577,3 +1577,5 @@
 .pd-ailine { margin: -2px 0 8px; color: #5b3e8c; }
 #partnerDirectoryApp select.pd-brkind, select.pd-brkind { width: auto; max-width: 190px; font-size: 12px; padding: 4px 6px; }
 #partnerDirectoryApp select.pd-state, select.pd-state { width: auto; max-width: 170px; font-size: 12px; padding: 4px 6px; }
+#partnerDirectoryApp select.pd-move, select.pd-move { width: auto; max-width: 200px; font-size: 12px; padding: 4px 6px; }
+#partnerDirectoryApp .pd-branch-head [data-pd-addpersonat] { white-space: nowrap; }

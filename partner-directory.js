@@ -2026,8 +2026,11 @@
         // with Pankaj in it. The head office is a branch; the men filed there belong in it.
         var headKey = placeKey(p.city);
         var headRows = [], rest = [];
+        // One place on the card: everyone is there. "No branch set" only means something when
+        // there is more than one branch they could be in.
+        var onePlace = cardPlaces(p).length < 2;
         groups.forEach(function (g) {
-            if (headKey && placeKey(g.branch) === headKey) headRows = headRows.concat(g.rows);
+            if ((headKey && placeKey(g.branch) === headKey) || (onePlace && !str(g.branch))) headRows = headRows.concat(g.rows);
             else rest.push(g);
         });
         // A branch with nobody in it yet — DELHI, TRICHY, COIMBATORE, VELLORE — used to vanish
@@ -2066,12 +2069,13 @@
             + '<input class="pd-area" data-pd-k="area" value="' + esc(p.area || '') + '" placeholder="Area — e.g. Ambattur" aria-label="Head office area">'
             + (hasStateBox(p) ? placeAreaHtml(p.area, p.city) : '')
             + '<span class="pd-tiny">(head office)</span>'
+            + '<button class="pd-addline" data-pd-addpersonat="' + esc(p.city || '') + '">+ person here</button>'
             + (headRows.length ? '<span class="pd-sp"></span><span class="pd-tiny">' + headRows.length + '</span>' : '')
             + '</div>'
             + '<div class="pd-branch-where">'
             + '<input data-pd-k="address" value="' + esc(p.address || '') + '" placeholder="Full address (optional)" style="grid-column:1/-1;">'
             + '</div>'
-            + headRows.map(function (r) { return personCard(r.c, r.i); }).join('')
+            + headRows.map(function (r) { return personCard(r.c, r.i, p); }).join('')
             + '</div>'
             + rest.map(function (g) { return branchGroup(p, g, true); }).join('')
             + '<button class="pd-addline" data-pd-addperson="1">+ Add another person</button>'
@@ -2254,7 +2258,7 @@
 
     /** One branch: its name, where it is, and everyone who sits there. */
     function branchGroup(p, g, showHead) {
-        if (!showHead) return g.rows.map(function (r) { return personCard(r.c, r.i); }).join('');
+        if (!showHead) return g.rows.map(function (r) { return personCard(r.c, r.i, p); }).join('');
         // The branch as recorded in "where they are", if it is recorded at all. A branch can
         // exist only on the people, having come out of a heading in the notes, and it still
         // gets a full block — otherwise the address has nowhere to be typed.
@@ -2281,6 +2285,7 @@
             + (named ? '<input class="pd-area" data-pd-br="' + at + '" data-pd-k="area" value="' + esc(townArea(p, b.city) || '') + '" placeholder="Area — e.g. Ambattur" aria-label="Branch area"' + (at === -1 ? ' disabled' : '') + '>' : '')
             + (named && at !== -1 && hasStateBox(p) ? placeAreaHtml(townArea(p, b.city), b.city) : '')
             + (named && at !== -1 ? branchKindSelect(p, b.city) : '')
+            + (g.branch ? '<button class="pd-addline" data-pd-addpersonat="' + esc(g.branch) + '">+ person here</button>' : '')
             + '<span class="pd-sp"></span><span class="pd-tiny">' + g.rows.length + '</span>'
             + (at !== -1 ? '<button class="pd-del" data-pd-delbranch="' + at + '">✕</button>' : '')
             + '</div>'
@@ -2290,7 +2295,7 @@
                     + (at === -1 ? '<button class="pd-addline" data-pd-listbranch="' + esc(g.branch) + '">Add its address</button>' : '')
                     + '</div>'
                 : '')
-            + g.rows.map(function (r) { return personCard(r.c, r.i); }).join('')
+            + g.rows.map(function (r) { return personCard(r.c, r.i, p); }).join('')
             + '</div>';
     }
 
@@ -2327,7 +2332,37 @@
         return c;
     }
 
-    function personCard(person, i) {
+    /**
+     * The places a person can sit on this card: the head office town, each branch town, and any
+     * branch a person already carries that is not listed yet — one each, whatever the spelling.
+     */
+    function cardPlaces(p) {
+        var out = [], seen = {};
+        var add = function (v, head) { var k = placeKey(v); if (!k || seen[k]) return; seen[k] = 1; out.push({ value: str(v), head: !!head }); };
+        add(p.city, true);
+        (p.branches || []).forEach(function (b) { add(b.city); });
+        people(p).forEach(function (c) { add(c.branch); });
+        return out;
+    }
+    /**
+     * Which branch a person is in. *His words (1 Oct): "why are there two branch options? … If
+     * they are under one branch, they are automatically that branch."* The block a person sits
+     * in IS their branch; this list only moves them to another block, and only shows when the
+     * card has more than one place to move to.
+     */
+    function moveSelect(p, c, i) {
+        var places = cardPlaces(p);
+        if (places.length < 2) return '';
+        var now = placeKey(c.branch), opts = '';
+        if (!now) opts += '<option value="" selected>No branch yet — move to…</option>';
+        places.forEach(function (x) {
+            opts += '<option value="' + esc(x.value) + '"' + (placeKey(x.value) === now ? ' selected' : '') + '>'
+                + esc(x.value) + (x.head ? ' (head office)' : '') + '</option>';
+        });
+        return '<select class="pd-move" data-pd-pc="' + i + '" data-pd-k="branch" aria-label="Which branch this person is in">' + opts + '</select>';
+    }
+
+    function personCard(person, i, p) {
         var c = withOneOfEach(person);
         var lineRows = function (kind, labels, arr) {
             return (arr || []).map(function (x, j) {
@@ -2342,7 +2377,7 @@
         return '<div class="pd-person"><div class="pd-person-top">'
             + '<input data-pd-pc="' + i + '" data-pd-k="name" value="' + esc(c.name) + '" placeholder="Name">'
             + '<input data-pd-pc="' + i + '" data-pd-k="role" value="' + esc(c.role || '') + '" placeholder="Their job — e.g. Owner, Sales">'
-            + '<input data-pd-pc="' + i + '" data-pd-k="branch" list="pdCardBranches" value="' + esc(c.branch || '') + '" placeholder="Which branch">'
+            + (p ? moveSelect(p, c, i) : '')
             + (i === 0 ? '<span class="pd-pill">Main</span>' : '<button class="pd-del" data-pd-delperson="' + i + '">✕</button>') + '</div>'
             + '<div class="pd-person-cols"><div>' + lineRows('ph', PHONE_LABELS, c.phones) + '</div>'
             + '<div>' + lineRows('em', EMAIL_LABELS, c.emails) + '</div></div>'
@@ -4428,7 +4463,7 @@
                 else if (el.hasAttribute('data-pd-em')) {
                     if (!acceptEmail(el, c, Number(el.getAttribute('data-pd-em')), k)) return;
                 } else c[k] = el.value;
-                save(false, ['people']);
+                save(k === 'branch', ['people']);
             };
         });
         // A branch that came out of a heading in the notes exists on the PEOPLE but is not
@@ -4443,7 +4478,9 @@
                 save(true, ['branches']);
             };
         });
-        on(card, '[data-pd-addperson]', function () { p.people.push({ name: '', role: '', branch: '', phones: [{ label: 'Mobile', v: '' }], emails: [{ label: 'Work', v: '' }] }); save(true, ['people']); });
+        var addPerson = function (branch) { p.people.push({ name: '', role: '', branch: str(branch), phones: [{ label: 'Mobile', v: '' }], emails: [{ label: 'Work', v: '' }] }); save(true, ['people']); };
+        on(card, '[data-pd-addperson]', function () { addPerson(p.city); });
+        each(card, '[data-pd-addpersonat]', function (el) { el.onclick = function () { addPerson(el.getAttribute('data-pd-addpersonat')); }; });
         /**
          * Renaming a branch header renames it everywhere on the card.
          *
