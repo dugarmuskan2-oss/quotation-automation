@@ -2383,3 +2383,23 @@ Secunderabad — Hyderabad; Wadiaram — Chegunta), kept in their own file area-
 unplaced rather than guessed — the map gave only a road, a lake or nothing near the town
 (Vichoor, Sadayankuppam, Sathangadu; "Hosur" under Bangalore, which is a town of its own), or the
 card's town box holds a state (Faridabad under "Haryana", Rourkela under "odisha").
+
+## Branches from his town lines (1 Oct)
+
+*His words: "If they are under one branch, they are automatically that branch. If in google
+contacts something is written as Chennai / XYZ. It means XYZ belongs to Chennai Branch."* On the
+29 approved cards with more than one town, 503 people had no branch. Each was read against his
+own contact pages (a town on its own line puts everyone below it in that branch) and re-checked
+independently; the list went to him on a review page first.
+
+Applied on 14 cards (155 changes, re-checked 20 s later, one Recent-changes entry with Undo per
+card): 135 placed as reviewed, and his answers for the 18 open ones — *"add to both branches"*
+for people under two towns (Ved Prakash, Jasbant Agarwal, Palanivel, and at Ramco Vijayaragavan,
+Ganesh and Kali Rajan: a copy of the row in the second branch), office rows holding several
+towns' numbers split so each branch keeps its own (MSL, Ramco, Ismt, TATA, Kamachi), and on
+JINDAL PIPE INDUSTRIES *"add the branch"*: Jyoti Nagar (godown), with Arasu, Ramraj, Ramesh and
+Krishna in both Chennai and Jyoti Nagar and Vasu in Jyoti Nagar.
+
+Left as they were: 350 — 285 came from email and are on none of his contact pages, 65 have no
+town line above them. Seen in passing, not changed: MSL's Bombay board "/78" (022-24902578) and
+Kamachi's Mount Road mobile 9841743432 are on his pages but not on the cards.
