@@ -2297,3 +2297,12 @@ SYSTEMS AND SERVICES PVT LTD, PIPE HANGERS & SUPPORTS PVT LTD. The fifth, ARUDRA
 was the approved Arudra Engineers Pvt Ltd under another spelling (his standing rule: the same
 company) and held nothing the approved card lacks — so its spelling went onto the approved card's
 "Also written as" and the waiting copy was discarded, rather than approving a second card.
+
+## Clients approved on sight (1 Oct)
+
+*His words: "If you think something is a client, approve it automatically moving forward. Or give
+me the list and I can tick whatever is the client. No need to work hard on these either. Dont use
+tokens to correct these."* Eight waiting firms that are plainly pipe BUYERS (project, EPC and
+plant firms) were set to client and approved through the app's own approve route, no other
+corrections: DENIELI INDIA, WIPRO, Balmer Lawrie, GMR Group, Express Infrastructure, URCC,
+Airmech, Doosan. All in the directory and still there 20 seconds later.
