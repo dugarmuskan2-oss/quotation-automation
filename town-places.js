@@ -48,6 +48,27 @@
             && inIndia(Number(p.lat), Number(p.lon));
     }
 
+    // ── Areas (1 Oct) ─────────────────────────────────────────────────────────────
+    // *His words: "and map the distance from the area"*. A part of town ("Ambattur" in Chennai) is
+    // placed the same way, but kept in its OWN file (area-places.json), never among the towns: the
+    // town code already live reads every entry in the town file as a town, and one area there
+    // stopped it drawing the directory. An area keeps its digits ("Sector 4" is not "Sector 63").
+    function areaPart(s) { return str(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+    function areaKey(area, town) { return areaPart(area) + ' in ' + placeKey(town); }
+    function validArea(p) {
+        return !!p && !!areaPart(p.name) && !!placeKey(p.town) && !!str(p.state) && !!str(p.source)
+            && inIndia(Number(p.lat), Number(p.lon));
+    }
+    var savedAreaMap = {};
+    function setSavedAreas(areas) { savedAreaMap = (areas && typeof areas === 'object') ? areas : {}; }
+    function savedArea(area, town) {
+        var p = savedAreaMap[areaKey(area, town)];
+        return validArea(p) ? p : null;
+    }
+    function savedAreas() {
+        return Object.keys(savedAreaMap).map(function (k) { return savedAreaMap[k]; }).filter(validArea);
+    }
+
     // ── What the browser knows (set from GET /contacts on every directory read) ──────
     var saved = {};
     var savedError = '';
@@ -85,6 +106,7 @@
         savedNames().forEach(function (n) {
             if (pool.some(function (x) { return placeKey(x.name) === placeKey(n); })) return;
             var p = savedPlace(n);
+            if (!p) return;      // a name whose own key holds nothing usable is not a town
             pool.push({ name: p.name, lat: Number(p.lat), lon: Number(p.lon), state: str(p.state), looked: true });
         });
         var hits = [];
@@ -109,8 +131,21 @@
         });
         var names = [];
         hits.forEach(function (h) { if (names.indexOf(h.c.name) === -1) names.push(h.c.name); });
-        if (!names.length) return null;
         if (names.length > 1) return { ambiguous: names };
+        // A placed area counts only beside its own town ("Ambattur, Chennai"). An area alone is never
+        // taken: a card whose town is "Kattoor" (Kerala) must not become Kattoor in Coimbatore.
+        var townName = names[0] || '';
+        var areas = !townName ? [] : savedAreas().filter(function (a) {
+            if (placeKey(a.town) !== placeKey(townName)) return false;
+            var re = new RegExp('(^|[^a-z0-9])' + areaPart(a.name).split(' ').join('[^a-z0-9]+') + '(?![a-z0-9])', 'i');
+            return re.test(t);
+        });
+        // Exactly one area named — two named is not a pick, and the town is used instead.
+        if (areas.length === 1) {
+            var a = areas[0];
+            return { name: a.name + ', ' + a.town, lat: Number(a.lat), lon: Number(a.lon), state: str(a.state), looked: true, area: true };
+        }
+        if (!names.length) return null;
         var c = hits[0].c;
         return { name: c.name, lat: c.lat, lon: c.lon, state: c.state, looked: c.looked };
     }
@@ -193,6 +228,26 @@
         }).then(function () { busy = false; redraw(); });
     }
 
+    /**
+     * Put an area on the map: one press. The server looks it up and keeps the match nearest the
+     * town (within 60 km), so a "Kattoor" in another district is never taken. Nothing to pick.
+     */
+    function startAreaPick(area, town, near, redraw, owner) {
+        area = str(area); town = str(town);
+        if (!area || !town || busy) return;
+        var label = area + ', ' + town;
+        busy = true;
+        pick = { name: label, owner: str(owner), status: 'looking', options: [], msg: '' };
+        redraw();
+        post('/contacts/area-place', { area: area, town: town, near: near }).then(function (d) {
+            if (d.place) savedAreaMap[areaKey(d.place.name, d.place.town)] = d.place;
+            pick = { name: label, owner: str(owner), status: 'done', options: [],
+                msg: label + ' is on the map' + (d.km != null ? ', ' + d.km + ' km from the middle of ' + town : '') + '. Distances are measured from it now.' };
+        }).catch(function (e) {
+            pick = { name: label, owner: str(owner), status: 'error', options: [], msg: e.message };
+        }).then(function () { busy = false; redraw(); });
+    }
+
     function choose(i, redraw) {
         if (busy || !pick || pick.status !== 'choose') return;
         var c = pick.options[i];
@@ -265,6 +320,8 @@
     return {
         placeKey: placeKey, validPlace: validPlace, inIndia: inIndia,
         setSaved: setSaved, savedPlace: savedPlace, savedNames: savedNames,
+        areaPart: areaPart, areaKey: areaKey, validArea: validArea, setSavedAreas: setSavedAreas,
+        savedArea: savedArea, savedAreas: savedAreas, startAreaPick: startAreaPick,
         savedError: function () { return savedError; },
         placeText: placeText, kmApart: kmApart,
         startPick: startPick, stripHtml: stripHtml, bindStrip: bindStrip, isBusy: isBusy,

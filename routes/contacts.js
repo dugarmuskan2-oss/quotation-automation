@@ -66,7 +66,7 @@ function str(v) { return String(v == null ? '' : v).trim(); }
  * which is right: reading a fresh brochure into a card IS checking it.
  */
 const REVIEWED_FIELDS = ['company', 'gst', 'categories', 'role', 'roleOther', 'city', 'address', 'branches', 'types',
-    'moq', 'products', 'rules', 'routes', 'vehicles', 'partLoad', 'reach', 'area', 'notes', 'people', 'images'];
+    'moq', 'products', 'rules', 'routes', 'vehicles', 'partLoad', 'reach', 'area', 'state', 'notes', 'people', 'images'];
 
 /**
  * What to call a card in the log. A card can be approved with no firm name at all — an
@@ -137,9 +137,11 @@ module.exports = function createContactsRouter({ storage, openai }) {
             // from" panel — which re-reads before each ask — always measures with the latest.
             // A town file that cannot be read must not stop the directory loading, and must not
             // look like "no towns placed" either: it is flagged, and the 24 built-in towns carry on.
-            const [dir, pending, placed] = await Promise.all([
+            const [dir, pending, placed, areaList] = await Promise.all([
                 loadDirectory(), loadPending(),
                 towns.loadPlaces(storage).then((places) => ({ places }), () => ({ places: {}, error: true })),
+                // Parts of town, from their own file. Unreadable = measured from the town, flagged.
+                towns.loadAreas(storage).then((areas) => ({ areas }), () => ({ areas: {}, error: true })),
             ]);
             // A read-only deployment sees only the shared roles (transporter, other) — dealers,
             // manufacturers and fabricators belong to the main site alone. The change log is
@@ -152,6 +154,8 @@ module.exports = function createContactsRouter({ storage, openai }) {
                 readonly: DIRECTORY_READONLY,
                 places: placed.places,
                 placesError: !!placed.error,
+                areas: areaList.areas,
+                areasError: !!areaList.error,
                 // Should always be empty now the rule is enforced on write. Sent anyway so a
                 // duplicate that pre-dates it cannot sit there unnoticed, quietly splitting
                 // one firm's history across two cards.
@@ -230,6 +234,31 @@ module.exports = function createContactsRouter({ storage, openai }) {
         } catch (error) {
             const status = error.kind === 'busy' ? 429 : error.kind === 'unreachable' ? 502 : 500;
             res.status(status).json({ error: error.kind ? error.message : 'Could not look that town up: ' + error.message });
+        }
+    });
+
+    // A part of town, placed in one press: the match nearest its town (within 60 km) is kept.
+    // `near` is the town's own position as the page knows it; checked to be in India.
+    router.post('/contacts/area-place', express.json(), async (req, res) => {
+        if (blockedByReadonly(res)) return;
+        const body = req.body || {};
+        const area = String(body.area || '').trim().slice(0, 60), town = String(body.town || '').trim().slice(0, 60);
+        const near = { lat: Number(body.near && body.near.lat), lon: Number(body.near && body.near.lon) };
+        if (!townPlaces.areaPart(area) || !townPlaces.placeKey(town) || !townPlaces.inIndia(near.lat, near.lon)) {
+            return res.status(400).json({ error: 'Give the area and a town that is on the map.' });
+        }
+        try {
+            const areas = await towns.loadAreas(storage);
+            const have = areas[townPlaces.areaKey(area, town)];
+            if (townPlaces.validArea(have)) return res.json({ place: have, km: null });
+            const found = await towns.lookupArea(area, town, near);
+            if (!found.length) return res.status(404).json({ error: 'The map knows no "' + area + '" within ' + towns.AREA_KM + ' km of ' + town + ' — distance is measured from the town.' });
+            const c = found[0];
+            const place = Object.assign(towns.placeFromPick(area, c), { kind: 'area', town });
+            res.json({ place: await towns.addArea(storage, place), km: c.km });
+        } catch (error) {
+            const status = error.kind === 'busy' ? 429 : error.kind === 'unreachable' ? 502 : 500;
+            res.status(status).json({ error: error.kind ? error.message : 'Could not place that area: ' + error.message });
         }
     });
 

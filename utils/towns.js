@@ -13,7 +13,7 @@
  * placed is never looked up again.
  */
 
-const { CONFIG_KEY_TOWN_PLACES } = require('./constants');
+const { CONFIG_KEY_TOWN_PLACES, CONFIG_KEY_AREA_PLACES } = require('./constants');
 const townPlaces = require('../town-places');
 
 const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
@@ -28,15 +28,20 @@ class MapError extends Error {
     constructor(kind, message) { super(message); this.kind = kind; }
 }
 
-function parsePlaces(content) {
+function parseBox(content, box) {
     if (!content) return {};
     const blob = JSON.parse(content);                 // a broken file throws; it is not "no towns"
-    return (blob && blob.places && typeof blob.places === 'object') ? blob.places : {};
+    return (blob && blob[box] && typeof blob[box] === 'object') ? blob[box] : {};
 }
+const parsePlaces = (content) => parseBox(content, 'places');
 
-async function loadPlaces(storage) {
-    return parsePlaces(await storage.readText(CONFIG_KEY_TOWN_PLACES));
-}
+// The two lists kept the same way: towns in town-places.json, parts of town in area-places.json.
+const TOWNS = { file: CONFIG_KEY_TOWN_PLACES, box: 'places', key: (p) => townPlaces.placeKey(p.name), valid: townPlaces.validPlace };
+const AREAS = { file: CONFIG_KEY_AREA_PLACES, box: 'areas', key: (p) => townPlaces.areaKey(p.name, p.town), valid: townPlaces.validArea };
+
+async function loadList(storage, list) { return parseBox(await storage.readText(list.file), list.box); }
+async function loadPlaces(storage) { return loadList(storage, TOWNS); }
+async function loadAreas(storage) { return loadList(storage, AREAS); }
 
 /**
  * Add towns to the list. Storage has no "write only if unchanged", so two saves close together
@@ -49,31 +54,32 @@ async function loadPlaces(storage) {
  */
 const SETTLE_MS = 1500;
 
-async function writeAndCheck(storage, list) {
-    const places = await loadPlaces(storage);
-    list.forEach((p) => { places[townPlaces.placeKey(p.name)] = p; });
-    await storage.saveText(CONFIG_KEY_TOWN_PLACES, JSON.stringify({ places }));
+async function writeAndCheck(storage, kind, list) {
+    const held = await loadList(storage, kind);
+    list.forEach((p) => { held[kind.key(p)] = p; });
+    await storage.saveText(kind.file, JSON.stringify({ [kind.box]: held }));
 }
-async function allThere(storage, list) {
-    const back = await loadPlaces(storage);
-    return list.every((p) => JSON.stringify(back[townPlaces.placeKey(p.name)]) === JSON.stringify(p));
+async function allThere(storage, kind, list) {
+    const back = await loadList(storage, kind);
+    return list.every((p) => JSON.stringify(back[kind.key(p)]) === JSON.stringify(p));
 }
 
-async function addPlaces(storage, list, settleMs) {
-    if (!list.length || !list.every(townPlaces.validPlace)) throw new Error('a place has no position or state on the map');
+async function addToList(storage, kind, list, settleMs) {
+    if (!list.length || !list.every(kind.valid)) throw new Error('a place has no position or state on the map');
     const settle = settleMs == null ? SETTLE_MS : settleMs;
     for (let attempt = 0; attempt < 3; attempt++) {
-        await writeAndCheck(storage, list);
-        if (!(await allThere(storage, list))) continue;
+        await writeAndCheck(storage, kind, list);
+        if (!(await allThere(storage, kind, list))) continue;
         await wait(settle);
-        if (await allThere(storage, list)) return list;
+        if (await allThere(storage, kind, list)) return list;
     }
     throw new Error('the town list kept changing while saving — press again');
 }
 
-async function addPlace(storage, place, settleMs) {
-    return (await addPlaces(storage, [place], settleMs))[0];
-}
+async function addPlaces(storage, list, settleMs) { return addToList(storage, TOWNS, list, settleMs); }
+async function addPlace(storage, place, settleMs) { return (await addPlaces(storage, [place], settleMs))[0]; }
+async function addAreas(storage, list, settleMs) { return addToList(storage, AREAS, list, settleMs); }
+async function addArea(storage, area, settleMs) { return (await addAreas(storage, [area], settleMs))[0]; }
 
 /** One map result, cut down to what a pick needs to show and keep. */
 function toCandidate(r) {
@@ -145,6 +151,64 @@ function lookupTown(name, fetchImpl) {
     return run;
 }
 
+/**
+ * Where a part of town is: looked up as "Ambattur, Chennai" and the match NEAREST the town kept,
+ * within 60 km — a "Kattoor" in another district is never taken. Parts of town are suburbs and
+ * neighbourhoods, which the settlement filter used for towns leaves out, so it is not used here.
+ */
+const AREA_KM = 60;
+function kmBetween(a, b) {
+    const rad = Math.PI / 180, dLat = (b.lat - a.lat) * rad, dLon = (b.lon - a.lon) * rad;
+    const x = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLon / 2) ** 2;
+    return 2 * 6371 * Math.asin(Math.min(1, Math.sqrt(x)));
+}
+function areaCandidate(r) {
+    const a = r.address || {};
+    return {
+        name: str(a.suburb || a.neighbourhood || a.quarter || a.village || a.hamlet || a.town || a.city || r.name),
+        district: str(a.state_district || a.county || a.district), state: str(a.state),
+        lat: Number(r.lat), lon: Number(r.lon), osm: str(r.osm_type) + ':' + str(r.osm_id), label: str(r.display_name),
+    };
+}
+/**
+ * Only a PLACE carrying the area's own name counts. Roads, lakes, cemeteries and stations come
+ * back too, and nearest-first took them: "Hosur, Bangalore" came back as Hosur Road in the middle
+ * of Bangalore (Hosur is its own town, 40 km off), "Sadayankuppam" as a lake.
+ */
+const AREA_CATEGORIES = new Set(['place', 'boundary']);
+function isAreaMatch(r, area) {
+    if (!r || !AREA_CATEGORIES.has(str(r.category))) return false;
+    const want = townPlaces.areaPart(area);
+    if (!want) return false;
+    return (' ' + townPlaces.areaPart(r.name) + ' ').indexOf(' ' + want + ' ') !== -1;
+}
+async function lookupArea(area, town, near, fetchImpl) {
+    const run = queue.then(async () => {
+        const gap = GAP_MS - (Date.now() - lastCall);
+        if (gap > 0) await wait(gap);
+        lastCall = Date.now();
+        const url = NOMINATIM + '?' + new URLSearchParams({
+            q: str(area) + ', ' + str(town), countrycodes: 'in', addressdetails: '1', format: 'jsonv2', limit: '8',
+        }).toString();
+        let res;
+        try {
+            res = await (fetchImpl || fetch)(url, { headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' } });
+        } catch (e) {
+            throw new MapError('unreachable', 'the map could not be reached — the area stays on the card, distance is measured from the town');
+        }
+        if (res.status === 429) throw new MapError('busy', 'the map is busy — try again in a minute');
+        if (!res.ok) throw new MapError('unreachable', 'the map answered with an error (' + res.status + ') — distance is measured from the town');
+        const rows = await res.json();
+        return (Array.isArray(rows) ? rows : []).filter((r) => isAreaMatch(r, area)).map(areaCandidate)
+            .filter((c) => c.state && townPlaces.inIndia(c.lat, c.lon))
+            .map((c) => Object.assign(c, { km: Math.round(kmBetween(near, c)) }))
+            .filter((c) => c.km <= AREA_KM)
+            .sort((x, y) => x.km - y.km);
+    });
+    queue = run.catch(() => {});
+    return run;
+}
+
 /** A pick from the browser, checked before it is kept. The stored place names no person. */
 function placeFromPick(name, c) {
     return {
@@ -157,5 +221,5 @@ function placeFromPick(name, c) {
     };
 }
 
-module.exports = { loadPlaces, addPlace, addPlaces, lookupTown, placeFromPick, MapError, USER_AGENT,
-    _test: { toCandidate, parsePlaces, oneOfEachTown, reset: () => { found.clear(); lastCall = 0; queue = Promise.resolve(); } } };
+module.exports = { loadPlaces, addPlace, addPlaces, loadAreas, addArea, addAreas, lookupTown, lookupArea, AREA_KM, placeFromPick, MapError, USER_AGENT,
+    _test: { toCandidate, parsePlaces, oneOfEachTown, isAreaMatch, reset: () => { found.clear(); lastCall = 0; queue = Promise.resolve(); } } };

@@ -189,7 +189,8 @@ const BRANCH_KINDS = ['factory', 'office', 'godown'];
 function sanitizeBranches(list) {
     return (Array.isArray(list) ? list : [])
         .map(b => ({ city: str(b && b.city), area: str(b && b.area), address: str(b && b.address),
-            ...(BRANCH_KINDS.includes(str(b && b.kind)) ? { kind: str(b.kind) } : {}) }))
+            ...(BRANCH_KINDS.includes(str(b && b.kind)) ? { kind: str(b.kind) } : {}),
+            ...(str(b && b.state) ? { state: str(b.state) } : {}) }))
         .filter(b => b.city || b.area || b.address)
         .slice(0, 200);
 }
@@ -266,6 +267,8 @@ function sanitizePartner(input) {
         // cards. *His answer, asked once: "all same".*
         aka: sanitizeStrings(src.aka, 40),
         people: sanitizePeople(src.people),
+        // The head office's state — only when he picks one; the page reads it off the town otherwise.
+        ...(str(src.state) ? { state: str(src.state) } : {}),
         city: str(src.city),
         // The part of town, beside the town: *"make sure area is added next to the city"*.
         area: str(src.area),
@@ -306,6 +309,24 @@ function sanitizePartner(input) {
  * stored record is kept. That is what stops a second tab — holding a copy loaded minutes ago
  * — from replacing a colleague's edit to a different part of the same firm.
  */
+/** Card fields sanitizePartner leaves out entirely when blank. */
+const BLANK_DROPPED_FIELDS = ['state'];
+
+/** The head office town changed (spelling and case aside). */
+function townMoved(was, now) {
+    const k = (s) => str(s).toLowerCase().replace(/[^a-z0-9]/g, '');
+    return !!k(was) && k(was) !== k(now);
+}
+/**
+ * A state picked for the old town does not follow the firm to a new one — Chennai's "Tamil Nadu"
+ * stayed on a firm moved to Mumbai. Whichever path moved it (the card, an approved email, the Add
+ * tab, an older tab): the state goes, unless a different one was picked with the move.
+ */
+function dropStateOnTownMove(before, after) {
+    if (before && after && str(after.state) && townMoved(before.city, after.city) && str(after.state) === str(before.state)) delete after.state;
+    return after;
+}
+
 function mergePartner(list, incoming, fields) {
     const contacts = (Array.isArray(list) ? list : []).slice(0, MAX_CONTACTS);
     const wanted = sanitizePartner(incoming);
@@ -333,12 +354,14 @@ function mergePartner(list, incoming, fields) {
     // the caller not updated — the safe reading is "write nothing", never "write everything":
     // falling through to the wholesale branch there would let a stale copy replace a
     // colleague's work, which is the one thing this argument exists to prevent.
-    if (!Array.isArray(fields)) return settle(wanted, idx);
-    const only = fields.filter(f => typeof f === 'string' && f in wanted);
+    if (!Array.isArray(fields)) return settle(dropStateOnTownMove(contacts[idx], wanted), idx);
+    // A field the clean copy leaves out when blank (state) is CLEARED when named, never skipped:
+    // skipping it kept a Tamil Nadu state on a firm he had just moved to Mumbai.
+    const only = fields.filter(f => typeof f === 'string' && (f in wanted || BLANK_DROPPED_FIELDS.includes(f)));
     const merged = Object.assign({}, contacts[idx]);
-    only.forEach(f => { merged[f] = wanted[f]; });
+    only.forEach(f => { if (f in wanted) merged[f] = wanted[f]; else delete merged[f]; });
     merged.checked = wanted.checked;           // any edit stamps last-edited
-    return settle(merged, idx);
+    return settle(dropStateOnTownMove(contacts[idx], merged), idx);
 }
 
 /**
@@ -852,6 +875,8 @@ function keepWhatWasAddedSince(before, incoming, fields) {
             kept.push(missing.length + ' ' + f);
             return;
         }
+        // A state belongs to its town: when the town has moved, the old one is not carried over.
+        if (f === 'state' && townMoved(before.city, out.city)) return;
         // Everything that is not a list: a stored answer is never replaced by a blank one.
         if (!saysSomething(out[f]) && saysSomething(before[f])) {
             out[f] = before[f];
@@ -1028,7 +1053,7 @@ function mergePreviews(base, extra) {
     // A name read from the notes beats one made up from an email domain, so "Md4" gives way
     // to "MD4 STEELS". Every other box only fills a blank — a stored answer is never replaced.
     out.company = betterCompanyName(out.company, from.company, out);
-    ['role', 'roleOther', 'city', 'area', 'address', 'vehicles', 'moq', 'partLoad', 'reach'].forEach(f => {
+    ['role', 'roleOther', 'state', 'city', 'area', 'address', 'vehicles', 'moq', 'partLoad', 'reach'].forEach(f => {
         if (!saysSomething(out[f]) && saysSomething(from[f])) out[f] = from[f];
     });
     return out;
@@ -1665,7 +1690,7 @@ function pushChange(changes, entry) {
 function diffLines(before, now) {
     const out = [], b = before || {};
     const was = k => str(b[k]);
-    [['company', 'Company'], ['city', 'City'], ['area', 'Area'], ['address', 'Address'], ['vehicles', 'Vehicles']]
+    [['company', 'Company'], ['state', 'State'], ['city', 'City'], ['area', 'Area'], ['address', 'Address'], ['vehicles', 'Vehicles']]
         .forEach(([k, label]) => { if (was(k) !== str(now[k])) out.push({ label, from: was(k), to: str(now[k]) }); });
     const reachWas = sanitizeReach(b.reach).map(k => REACH_WORDS[k]).join(', ');
     const reachNow = sanitizeReach(now.reach).map(k => REACH_WORDS[k]).join(', ');

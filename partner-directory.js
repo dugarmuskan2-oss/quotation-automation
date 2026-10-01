@@ -134,10 +134,31 @@
      */
     function measuredPlaces(p) {
         var want = p.role === 'manufacturer' ? 'factory' : (p.role === 'dealer' ? 'godown' : '');
-        var list = (p.branches || []).filter(function (b) { return str(b.city); })
-            .map(function (b) { return { name: str(b.city), kind: branchKind(b) }; });
+        // One entry per town (imports repeat towns over several rows). A town where ANY row is a
+        // factory (for a maker) or godown (for a dealer) counts as one, and its distance is taken
+        // from the area of THAT row — never from the office's area beside it. The head office's
+        // row is hidden on the card when a branch shares its town, so its Area box wins among
+        // rows of the same kind. A blank twin row cannot pull the distance back to the middle.
+        var list = [];
+        var add = function (key, name, row) {
+            var had = list.filter(function (x) { return x.key === key; })[0];
+            if (!had) list.push({ key: key, name: name, rows: [row] });
+            else if (row.head) had.rows.unshift(row); else had.rows.push(row);
+        };
+        (p.branches || []).filter(function (b) { return str(b.city); }).forEach(function (b) {
+            add(placeKey(b.city), str(b.city), { kind: branchKind(b), area: str(b.area) });
+        });
         // The main town is a place like any other, read the same way — "SIDCO works" is a works.
-        if (p.city && !list.some(function (x) { return x.name === p.city; })) list.push({ name: p.city, kind: branchKind({ city: p.city, address: p.address }) });
+        if (p.city) add(placeKey(p.city), p.city, { kind: branchKind({ city: p.city, address: p.address }), area: str(p.area), head: true });
+        list.forEach(function (x) {
+            var kinds = x.rows.map(function (r) { return r.kind; }).filter(Boolean);
+            x.kind = want && kinds.indexOf(want) !== -1 ? want : (kinds[0] || '');
+            // That kind's own area first, then a row nobody has typed a kind for. Never a row
+            // that says it is something else.
+            var same = x.kind ? x.rows.filter(function (r) { return r.kind === x.kind; }) : x.rows;
+            var unsaid = x.rows.filter(function (r) { return !r.kind; });
+            x.area = ((same.concat(unsaid).filter(function (r) { return r.area; })[0]) || {}).area || '';
+        });
         if (want) {
             var pick = list.filter(function (x) { return x.kind === want; });
             if (pick.length) return pick;
@@ -149,10 +170,61 @@
         measuredPlaces(p).forEach(function (x) {
             var name = x.name;
             var at = /pan india/i.test(name) ? null : placeFor(name);
+            // Measured from the area when it is on the map — "Ambattur, Chennai", not the middle of Chennai.
+            var tp = window.townPlaces, ar = x.area && at && !at.ambiguous && tp && tp.savedArea ? tp.savedArea(x.area, at.name) : null;
+            if (ar) at = { name: ar.name + ', ' + at.name, lat: Number(ar.lat), lon: Number(ar.lon), state: str(ar.state), looked: true, area: true };
             var km = /pan india/i.test(name) ? 0 : placeKm(at, site);
-            if (km !== null && (!best || km < best.km)) best = { name: name, km: km, place: at, kind: x.kind };
+            if (km !== null && (!best || km < best.km)) best = { name: ar ? at.name : name, km: km, place: at, kind: x.kind };
         });
         return best;
+    }
+
+    // ── State · Town · Area (1 Oct) ─────────────────────────────────────────────
+    // *His words: "For dealers and manufacturers, lets do State, City and area" … "and map the
+    // distance from the area".* The state is read off the town unless he picks one: a town on the
+    // map already knows its state, and the 24 built-in towns are listed here. Nothing is written
+    // to a card until he picks.
+    var INDIA_STATES = ['Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
+        'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur',
+        'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana',
+        'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal', 'Andaman and Nicobar Islands', 'Chandigarh',
+        'Dadra and Nagar Haveli and Daman and Diu', 'Delhi', 'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry'];
+    var COORD_STATE = { Chennai: 'Tamil Nadu', Coimbatore: 'Tamil Nadu', Madurai: 'Tamil Nadu', Trichy: 'Tamil Nadu', Salem: 'Tamil Nadu',
+        Vellore: 'Tamil Nadu', Hosur: 'Tamil Nadu', Bangalore: 'Karnataka', Hubli: 'Karnataka', Hyderabad: 'Telangana', Kochi: 'Kerala',
+        Pune: 'Maharashtra', Mumbai: 'Maharashtra', Nashik: 'Maharashtra', Nagpur: 'Maharashtra', Ahmedabad: 'Gujarat', Bhavnagar: 'Gujarat',
+        Rajkot: 'Gujarat', Surat: 'Gujarat', Vadodara: 'Gujarat', Delhi: 'Delhi', Kolkata: 'West Bengal', Raipur: 'Chhattisgarh', Goa: 'Goa' };
+    /** The state a town is in, if the map or the built-in list knows it. Never guessed. */
+    function stateOfTown(town) {
+        var at = str(town) ? placeFor(town) : null;
+        if (!at || at.ambiguous) return '';
+        return str(at.state) || COORD_STATE[at.name] || '';
+    }
+    /** A place's state: his pick, else the town's. */
+    function stateOf(place) { return str(place && place.state) || stateOfTown(place && place.city); }
+    function hasStateBox(p) { return p && (p.role === 'dealer' || p.role === 'manufacturer'); }
+    /** The State box, before the town. Blank until he picks — showing what the town says meanwhile. */
+    function stateSelect(attr, picked, town) {
+        var read = stateOfTown(town);
+        return '<select class="pd-state" ' + attr + ' aria-label="State">'
+            + '<option value=""' + (picked ? '' : ' selected') + '>' + (read && !picked ? esc(read) + ' (from town)' : '— state —') + '</option>'
+            + INDIA_STATES.map(function (st) { return '<option' + (picked === st ? ' selected' : '') + '>' + st + '</option>'; }).join('')
+            + '</select>';
+    }
+    /** A branch town's area: the first row of that town that has one (imports repeat towns). */
+    function townArea(p, town) {
+        var k = placeKey(town), hit = (p.branches || []).filter(function (b) { return placeKey(b.city) === k && str(b.area); })[0];
+        return hit ? str(hit.area) : '';
+    }
+    /** "📍" beside an area the map has not got yet, once its town is on the map. */
+    function placeAreaHtml(area, town) {
+        var tp = window.townPlaces;
+        area = str(area);
+        if (!tp || !tp.startAreaPick || D.readonly || !area || !str(town)) return '';
+        var at = placeFor(town);
+        if (!at || at.ambiguous || !isFinite(at.lat)) return '';
+        if (tp.savedArea(area, at.name)) return '';
+        return '<button type="button" class="pd-linkish pd-placeit" data-pd-placearea="' + esc(area) + '" data-pd-areatown="' + esc(at.name)
+            + '" data-pd-lat="' + at.lat + '" data-pd-lon="' + at.lon + '" title="Put this area on the map — distance is then measured from it">📍 Area on map</button>';
     }
 
     // ── IS 1239 Part 1 — each NB size carries its OWN thickness per class ─────
@@ -380,6 +452,19 @@
         return out;
     }
 
+    /**
+     * The one placed area an enquiry names — inside the delivery town when one is named. Two
+     * areas named, or one name placed in two towns, is not a pick: nothing is returned.
+     */
+    function areaNamed(raw, town) {
+        var tp = window.townPlaces;
+        if (!tp || !tp.savedAreas) return null;
+        var t = ' ' + lower(raw) + ' ', hits = tp.savedAreas().filter(function (a) {
+            if (str(town) && tp.placeKey(a.town) !== tp.placeKey(town)) return false;
+            return new RegExp('(^|[^a-z0-9])' + tp.areaPart(a.name).split(' ').join('[^a-z0-9]+') + '(?![a-z0-9])').test(t);
+        });
+        return hits.length === 1 ? hits[0] : null;
+    }
     function readEnquiry(text) {
         var raw = String(text || ''), t = ' ' + raw.toLowerCase() + ' ';
         var ctx = readTypesAndClass(t);
@@ -399,6 +484,10 @@
         // the finder and the in-quote panel must read one enquiry the same way.
         var placed = place.unknown ? placeFor(place.unknown) : null;
         if (placed && !placed.ambiguous) place = { site: placed.name, pickup: place.pickup, unknown: '' };
+        // A part of town he has put on the map, named in the enquiry ("delivery at Ambattur"):
+        // measured from it, not from the middle of the town.
+        var ar = areaNamed(raw, place.site);
+        if (ar) place = { site: ar.name + ', ' + ar.town, pickup: place.pickup, unknown: '' };
         return {
             items: merged, types: types,
             site: place.site || HOME, siteAssumed: !place.site, pickup: place.pickup,
@@ -866,7 +955,7 @@
         branches: 'The branches', types: 'The pipe types', products: 'The product range',
         rules: 'The price rules', routes: 'The routes', moq: 'The minimum order',
         vehicles: 'The vehicles', notes: 'The notes', fromEnquiry: 'The check-me flag',
-        partLoad: 'Part load', reach: 'How far they go', area: 'The area',
+        partLoad: 'Part load', reach: 'How far they go', area: 'The area', state: 'The state',
     };
     function saveFailedWhat() {
         var named = (D.saveWhat || []).map(function (k) { return FIELD_LABEL[k]; }).filter(Boolean);
@@ -885,7 +974,9 @@
                 // Where his placed towns are. A file that could not be read is said, not
                 // mistaken for "no towns placed": the 24 built-in towns still measure.
                 if (window.townPlaces) window.townPlaces.setSaved(d.places || {}, d.placesError
-                    ? 'Your placed towns could not be read just now — only the 24 built-in towns are measured.' : '');
+                    ? 'Your placed towns could not be read just now — only the 24 built-in towns are measured.'
+                    : (d.areasError ? 'Your placed areas could not be read just now — distance is from the middle of each town.' : ''));
+                if (window.townPlaces && window.townPlaces.setSavedAreas) window.townPlaces.setSavedAreas(d.areas || {});
                 D.loaded = true; D.loadError = '';
             })
             .catch(function (e) {
@@ -1190,7 +1281,7 @@
     }
 
     // ── State for the tool page ───────────────────────────────────────────────
-    var S = { tab: 'dir', filter: 'all', facet: { town: '', product: '', brand: '', load: '', reach: '' }, listOpen: null, rangeOn: {}, openId: null, openPending: null, openChange: null,
+    var S = { tab: 'dir', filter: 'all', facet: { state: '', town: '', product: '', brand: '', load: '', reach: '' }, listOpen: null, rangeOn: {}, openId: null, openPending: null, openChange: null,
               find: { text: '', state: 'idle', need: null, note: '' }, busy: {}, add: freshAdd(),
               confirmDelete: '',     // the card whose "are you sure?" is on screen
               dirty: {}, clean: {}, saveNote: '', confirmLeave: '', leaveThen: null, ask: null,
@@ -1397,13 +1488,16 @@
     // "fabricators too". A maker IS its brand, and a lorry firm has no products either — it
     // has a load instead: *"transporters will have load -- part also/ full only"*. And
     // *"Clients and others dont need any filters"*.
-    var FACET_LABEL = { town: 'Any town', product: 'Any product', brand: 'Any brand', load: 'Any load', reach: 'Any distance' };
-    var FACET_NOUN = { town: 'town', product: 'product', brand: 'brand', load: 'load type', reach: 'distance' };
+    var FACET_LABEL = { state: 'Any state', town: 'Any town', product: 'Any product', brand: 'Any brand', load: 'Any load', reach: 'Any distance' };
+    var FACET_NOUN = { state: 'state', town: 'town', product: 'product', brand: 'brand', load: 'load type', reach: 'distance' };
 
     function facetsFor(kind) {
         if (kind === 'client' || kind === 'other') return [];
         if (kind === 'transporter') return ['town', 'load', 'reach'];
-        if (kind === 'manufacturer' || kind === 'fabricator') return ['town', 'product'];
+        if (kind === 'fabricator') return ['town', 'product'];
+        // State only where he asked for it: dealers and makers.
+        if (kind === 'manufacturer') return ['state', 'town', 'product'];
+        if (kind === 'dealer') return ['state', 'town', 'product', 'brand'];
         return ['town', 'product', 'brand'];
     }
 
@@ -1444,6 +1538,12 @@
      */
     function facetValues(p, f) {
         if (f === 'town') return branchNames(p).map(townKey).filter(Boolean);
+        if (f === 'state') {
+            // A branch row in the head office town is hidden on the card: the head office State box speaks for it.
+            var hk = placeKey(p.city);
+            var sts = [stateOf(p)].concat((p.branches || []).filter(function (b) { return !hk || placeKey(b.city) !== hk; }).map(stateOf)).filter(Boolean);
+            return sts.filter(function (x, n) { return sts.indexOf(x) === n; });
+        }
         if (f === 'brand') return brandsOnCard(p);
         // The card's own words for the part-load box; a box nobody answered is blank, not "no".
         if (f === 'load') return p.partLoad === true ? ['Takes part load'] : (p.partLoad === false ? ['Full load only'] : []);
@@ -1961,8 +2061,10 @@
             // "(head office)" after it, not two labelled boxes in a section of their own.
             + '<div class="pd-branchgrp">'
             + '<div class="pd-branch-head">'
+            + (hasStateBox(p) ? stateSelect('data-pd-statehead="1"', str(p.state), p.city) : '')
             + townPicker('head', p.city, 'Head office town') + placeItHtml(p.city)
             + '<input class="pd-area" data-pd-k="area" value="' + esc(p.area || '') + '" placeholder="Area — e.g. Ambattur" aria-label="Head office area">'
+            + (hasStateBox(p) ? placeAreaHtml(p.area, p.city) : '')
             + '<span class="pd-tiny">(head office)</span>'
             + (headRows.length ? '<span class="pd-sp"></span><span class="pd-tiny">' + headRows.length + '</span>' : '')
             + '</div>'
@@ -2165,6 +2267,8 @@
         var named = g.branch || g.fresh;
         return '<div class="pd-branchgrp">'
             + '<div class="pd-branch-head">'
+            + (g.branch && at !== -1 && hasStateBox(p) ? stateSelect('data-pd-statetown="' + esc(g.branch) + '"',
+                str(((p.branches || []).filter(function (x) { return placeKey(x.city) === placeKey(g.branch) && str(x.state); })[0] || {}).state), g.branch) : '')
             + (g.branch
                 ? townPicker('rename:' + g.branch, g.branch, 'Branch town') + placeItHtml(g.branch)
                 : (g.fresh
@@ -2174,7 +2278,8 @@
                     : '<input class="pd-branch-name" data-pd-branchall="1" list="pdCardBranches"'
                         + ' value="" placeholder="No branch set — type one to move these ' + g.rows.length
                         + ' here" aria-label="Give these people a branch">'))
-            + (named ? '<input class="pd-area" data-pd-br="' + at + '" data-pd-k="area" value="' + esc(b.area || '') + '" placeholder="Area — e.g. Ambattur" aria-label="Branch area"' + (at === -1 ? ' disabled' : '') + '>' : '')
+            + (named ? '<input class="pd-area" data-pd-br="' + at + '" data-pd-k="area" value="' + esc(townArea(p, b.city) || '') + '" placeholder="Area — e.g. Ambattur" aria-label="Branch area"' + (at === -1 ? ' disabled' : '') + '>' : '')
+            + (named && at !== -1 && hasStateBox(p) ? placeAreaHtml(townArea(p, b.city), b.city) : '')
             + (named && at !== -1 ? branchKindSelect(p, b.city) : '')
             + '<span class="pd-sp"></span><span class="pd-tiny">' + g.rows.length + '</span>'
             + (at !== -1 ? '<button class="pd-del" data-pd-delbranch="' + at + '">✕</button>' : '')
@@ -3994,7 +4099,7 @@
             };
         });
         LISTS.facet = function (f, v) { S.facet[f] = v; render(); };
-        on(app, '[data-pd-facetclear]', function () { S.facet = { town: '', product: '', brand: '', load: '', reach: '' }; render(); });
+        on(app, '[data-pd-facetclear]', function () { S.facet = { state: '', town: '', product: '', brand: '', load: '', reach: '' }; render(); });
         bindFinder(app); bindAdd(app); bindListAndCard(app); bindChanges(app);
         bindListPickers(app);
     }
@@ -4210,6 +4315,7 @@
                 else if (k === 'aka') p.aka = v.split(',').map(function (x) { return str(x); }).filter(Boolean);
                 else p[k] = v;
                 save(k === 'role' || k === 'company', [k]);
+                if (k === 'area' && hasStateBox(p)) refreshAreaButton(el, p, v, p.city);
             };
         });
         // How far they go: every ticked box, in the list's own order.
@@ -4444,7 +4550,20 @@
             };
         });
         each(card, '[data-pd-br]', function (el) {
-            el.onchange = function () { p.branches[Number(el.getAttribute('data-pd-br'))][el.getAttribute('data-pd-k')] = el.value; save(false, ['branches']); };
+            el.onchange = function () {
+                var b = p.branches[Number(el.getAttribute('data-pd-br'))], k = el.getAttribute('data-pd-k');
+                // One Area box per town: rows of that town showing this area (or none) take the new
+                // one. A row holding a DIFFERENT area (a factory in Ambattur beside an office in
+                // Guindy) is not on screen, so it is never overwritten.
+                if (k === 'area') {
+                    var shown = townArea(p, b.city);
+                    (p.branches || []).forEach(function (x) {
+                        if (placeKey(x.city) === placeKey(b.city) && (!str(x.area) || str(x.area) === shown)) x.area = el.value;
+                    });
+                } else b[k] = el.value;
+                save(false, ['branches']);
+                if (k === 'area' && hasStateBox(p)) refreshAreaButton(el, p, el.value, b.city);
+            };
         });
         each(card, '[data-pd-delbranch]', function (el) {
             el.onclick = function () { askRemoval('branch', p.branches[Number(el.getAttribute('data-pd-delbranch'))]); };
@@ -4463,17 +4582,33 @@
      * branch always has — so nobody is left in a group of their own under the old name.
      * "＋ Add another…" asks on the page; what he types is tidied the way the list is.
      */
+    function bindAreaButton(el, p) {
+        el.onclick = function () {
+            if (!window.townPlaces) return;
+            window.townPlaces.startAreaPick(el.getAttribute('data-pd-placearea'), el.getAttribute('data-pd-areatown'),
+                { lat: Number(el.getAttribute('data-pd-lat')), lon: Number(el.getAttribute('data-pd-lon')) }, render, p.id);
+        };
+    }
+    /** A just-typed area gets its map button at once — without redrawing the card, so the cursor stays put. */
+    function refreshAreaButton(input, p, area, town) {
+        var next = input.nextElementSibling;
+        if (next && next.hasAttribute('data-pd-placearea')) next.parentNode.removeChild(next);
+        var html = placeAreaHtml(area, town);
+        if (!html) return;
+        input.insertAdjacentHTML('afterend', html);
+        bindAreaButton(input.nextElementSibling, p);
+    }
     function bindTowns(card, p, save) {
         var moveTo = function (was, now) {
             (p.people || []).forEach(function (c) { if (was && str(c.branch) === was) c.branch = now; });
         };
         var setTown = function (where, v) {
-            if (where === 'head') { moveTo(str(p.city), v); p.city = v; save(true, ['city', 'people']); return; }
+            if (where === 'head') { moveTo(str(p.city), v); p.city = v; delete p.state; save(true, ['city', 'people', 'state']); return; }
             if (where.indexOf('rename:') === 0) {
                 var was = where.slice(7);
                 if (!v || v === was) { render(); return; }
                 moveTo(was, v);
-                (p.branches || []).forEach(function (b) { if (str(b.city) === was) b.city = v; });
+                (p.branches || []).forEach(function (b) { if (str(b.city) === was) { b.city = v; delete b.state; } });
                 save(true, ['people', 'branches']);
                 return;
             }
@@ -4492,6 +4627,18 @@
             var tp = window.townPlaces, at = placeFor(v);
             if (isNew && tp && !D.readonly && townKey(v) === v && !(at && !at.ambiguous)) tp.startPick(v, render, '', p.id);
         };
+        // State: his pick on the head office, or on every row of one branch town.
+        each(card, '[data-pd-statehead]', function (el) {
+            el.onchange = function () { if (el.value) p.state = el.value; else delete p.state; save(false, ['state']); };
+        });
+        each(card, '[data-pd-statetown]', function (el) {
+            el.onchange = function () {
+                var town = placeKey(el.getAttribute('data-pd-statetown')), v = el.value;
+                (p.branches || []).forEach(function (b) { if (placeKey(b.city) === town) { if (v) b.state = v; else delete b.state; } });
+                save(false, ['branches']);
+            };
+        });
+        each(card, '[data-pd-placearea]', function (el) { bindAreaButton(el, p); });
         each(card, '[data-pd-placetown]', function (el) {
             el.onclick = function () { if (window.townPlaces) window.townPlaces.startPick(el.getAttribute('data-pd-placetown'), render, '', p.id); };
         });
@@ -5354,6 +5501,7 @@
                  sizeSpan: sizeSpan, rangeParts: rangeParts, scoreSizes: scoreSizes, sizeLineHtml: sizeLineHtml,
                  isRangeLine: isRangeLine, withSize: withSize, inchLabel: inchLabel,
                  // Free fixes and the AI check (30 Sep).
+                 stateOfTown: stateOfTown, stateOf: stateOf, stateSelect: stateSelect, placeAreaHtml: placeAreaHtml, nearestBranch: nearestBranch,
                  familiesOf: familiesOf, matchProduct: matchProduct, branchKind: branchKind, measuredPlaces: measuredPlaces,
                  undecided: undecided, applyAi: applyAi, aiNeedKey: aiNeedKey, cardSig: cardSig, aiState: function () { return ai; },
                  _state: function () { return { S: S, D: D }; } },

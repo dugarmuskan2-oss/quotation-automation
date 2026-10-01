@@ -1576,3 +1576,4 @@
 .pd-szrange { border: 1px solid rgba(0,0,0,.18); background: #fff; border-radius: 6px; cursor: pointer; font-size: 12px; padding: 2px 6px; }
 .pd-ailine { margin: -2px 0 8px; color: #5b3e8c; }
 #partnerDirectoryApp select.pd-brkind, select.pd-brkind { width: auto; max-width: 190px; font-size: 12px; padding: 4px 6px; }
+#partnerDirectoryApp select.pd-state, select.pd-state { width: auto; max-width: 170px; font-size: 12px; padding: 4px 6px; }
