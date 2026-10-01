@@ -164,7 +164,37 @@ async function readWithClaude({ prompt, fileBase64, fileName }) {
     return text;
 }
 
+/**
+ * A short judgement returned as JSON — the "Ask AI" supplier check (30 Sep). *His words: "whatever
+ * the free thing cant figure, the AI helps".* Many small calls, each read by a person deciding
+ * who to email, so: Claude Opus 5.5 (cheaper per token than the model above) at LOW effort — a
+ * classification, not a reading of twenty years of shorthand — with the answer held to a schema.
+ * If Claude declines, the server-side fallback answers instead of a bare refusal.
+ * Anything short of a clean answer throws, and the page says the check failed (check #4).
+ */
+const CHECK_MODEL = 'claude-opus-5-5';
+
+async function judgeWithClaude({ prompt, schema, maxTokens, timeoutMs }) {
+    const c = client();
+    if (!c) throw new Error('the Claude key is missing (ANTHROPIC_API_KEY)');
+    const res = await c.beta.messages.create({
+        model: CHECK_MODEL,
+        max_tokens: maxTokens || 8000,
+        betas: ['server-side-fallback-2026-07-01'],
+        fallbacks: 'default',
+        output_config: { effort: 'low', format: { type: 'json_schema', schema } },
+        messages: [{ role: 'user', content: [{ type: 'text', text: prompt }] }],
+    }, { timeout: timeoutMs || 45000, maxRetries: 0 });
+    if (res && res.stop_reason === 'refusal') throw new Error('Claude declined to check these firms');
+    if (res && res.stop_reason === 'max_tokens') throw new Error('the answer ran out of room');
+    const text = textOf(res);
+    if (!text) throw new Error('Claude returned nothing');
+    return { answer: JSON.parse(text), usage: res.usage || null, model: res.model };
+}
+
 module.exports = {
+    judgeWithClaude,
+    CHECK_MODEL,
     accountProblem,
     readLongWithClaude,
     readWithClaude,

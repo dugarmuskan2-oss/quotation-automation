@@ -29,6 +29,7 @@ const removals = require('../utils/removals');
 const anthropic = require('../utils/anthropic');
 const towns = require('../utils/towns');
 const townPlaces = require('../town-places');
+const supplierMatch = require('../utils/supplierMatch');
 const MAX_PENDING = contactsLib.MAX_PENDING;
 
 // One address belongs to ONE company. Say which one already has it, so the owner can act
@@ -178,6 +179,38 @@ module.exports = function createContactsRouter({ storage, openai }) {
         });
         return true;
     }
+
+    // ── "Ask AI": the firms the free rules could not decide (utils/supplierMatch.js) ──
+    //
+    // The page sends which firms and what the enquiry asks; the cards themselves are read HERE,
+    // from storage, so what Claude judges is what is saved, not a copy the browser holds. The
+    // read-only site is refused: it hides dealers and makers, and a verdict would name them.
+    router.post('/contacts/ai-match', express.json({ limit: '200kb' }), async (req, res) => {
+        if (blockedByReadonly(res)) return;
+        if (!anthropic.isAvailable()) return res.status(503).json({ error: 'The AI check is not switched on here (no Claude key).' });
+        const body = req.body || {};
+        const ids = (Array.isArray(body.ids) ? body.ids : []).map((x) => String(x || '')).filter(Boolean).slice(0, supplierMatch.MAX_CARDS);
+        const need = body.need && typeof body.need === 'object' ? {
+            types: (Array.isArray(body.need.types) ? body.need.types : []).map(String).slice(0, 10),
+            items: (Array.isArray(body.need.items) ? body.need.items : []).slice(0, 40).map((li) => ({
+                product: String((li && li.product) || '').slice(0, 200),
+                inches: li && typeof li.inches === 'number' ? li.inches : null,
+            })),
+        } : null;
+        if (!need || !ids.length) return res.status(400).json({ error: 'Nothing to check.' });
+        try {
+            const [dir, pending] = await Promise.all([loadDirectory(), loadPending()]);
+            const byId = {};
+            dir.contacts.forEach((c) => { if (c && c.id) byId[c.id] = c; });
+            pending.forEach((it) => { if (it && it.preview) { byId[it.preview.id || ('p_new_' + it.id)] = it.preview; byId['p_new_' + it.id] = it.preview; } });
+            const cards = ids.filter((id) => byId[id]).map((id) => ({ id, card: byId[id] }));
+            const out = await supplierMatch.matchSuppliers({ need, cards, judge: anthropic.judgeWithClaude });
+            res.json(out);
+        } catch (error) {
+            const busy = anthropic.accountProblem(error);
+            res.status(busy ? 503 : 502).json({ error: (busy ? 'The AI service is busy or unavailable — ' : 'The AI check failed — ') + error.message });
+        }
+    });
 
     // ── placing a town on the map (town-places.js) ──────────────────────────────
     //

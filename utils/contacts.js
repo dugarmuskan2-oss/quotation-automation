@@ -183,9 +183,13 @@ function allEmails(partner) {
 
 // ── branches, products, notes ────────────────────────────────────────────────
 
+/** What a branch is, ticked by him: a factory, an office or a godown. Kept only when ticked. */
+const BRANCH_KINDS = ['factory', 'office', 'godown'];
+
 function sanitizeBranches(list) {
     return (Array.isArray(list) ? list : [])
-        .map(b => ({ city: str(b && b.city), area: str(b && b.area), address: str(b && b.address) }))
+        .map(b => ({ city: str(b && b.city), area: str(b && b.area), address: str(b && b.address),
+            ...(BRANCH_KINDS.includes(str(b && b.kind)) ? { kind: str(b.kind) } : {}) }))
         .filter(b => b.city || b.area || b.address)
         .slice(0, 200);
 }

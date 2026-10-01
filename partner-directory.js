@@ -112,12 +112,45 @@
         if (!a || !b || a.ambiguous || b.ambiguous) return null;
         return Math.round(haversineKm([a.lat, a.lon], [b.lat, b.lon]) * 1.25 / 10) * 10;
     }
+    /**
+     * What a branch is: his tick if he made one, else what its own words say ("FACTORY RAIPUR",
+     * "CHENNAI (office)", "JYOTI NAGAR GODOWN"). Blank when neither says.
+     */
+    function branchKind(b) {
+        var k = str(b && b.kind);
+        if (k) return k;
+        var t = lower((b && b.address) + ' ' + (b && b.city));
+        // Only words that plainly mean a works — "Unit No. 402" is an office address.
+        if (/\b(factory|plant|works)\b/.test(t)) return 'factory';
+        if (/\b(godown|warehouse|yard|stock ?point)\b/.test(t)) return 'godown';
+        if (/\b(office|h\.?\s?o|head office|corporate|regional)\b/.test(t)) return 'office';
+        return '';
+    }
+    /**
+     * The places a supplier is measured from. A maker ships from its FACTORY and a dealer from its
+     * GODOWN, so when a card has any of those, only they count — Apollo's Chennai sales office
+     * made it "right by the site" for Chennai while its nearest mill is Hosur, 330 km away.
+     * With none marked, every place on the card counts, as before.
+     */
+    function measuredPlaces(p) {
+        var want = p.role === 'manufacturer' ? 'factory' : (p.role === 'dealer' ? 'godown' : '');
+        var list = (p.branches || []).filter(function (b) { return str(b.city); })
+            .map(function (b) { return { name: str(b.city), kind: branchKind(b) }; });
+        // The main town is a place like any other, read the same way — "SIDCO works" is a works.
+        if (p.city && !list.some(function (x) { return x.name === p.city; })) list.push({ name: p.city, kind: branchKind({ city: p.city, address: p.address }) });
+        if (want) {
+            var pick = list.filter(function (x) { return x.kind === want; });
+            if (pick.length) return pick;
+        }
+        return list;
+    }
     function nearestBranch(p, site) {
         var best = null;
-        branchNames(p).forEach(function (name) {
+        measuredPlaces(p).forEach(function (x) {
+            var name = x.name;
             var at = /pan india/i.test(name) ? null : placeFor(name);
             var km = /pan india/i.test(name) ? 0 : placeKm(at, site);
-            if (km !== null && (!best || km < best.km)) best = { name: name, km: km, place: at };
+            if (km !== null && (!best || km < best.km)) best = { name: name, km: km, place: at, kind: x.kind };
         });
         return best;
     }
@@ -275,6 +308,8 @@
     /** Which pipe family a product row is, by its name: GI, ERW or Seamless, else none. */
     function rowFamily(pr) {
         var t = lower(pr && pr.p);
+        if (/stainless|\bss\b/.test(t)) return 'ss';
+        if (/\balloy\b/.test(t)) return 'alloy';
         if (/\bgi\b|galvani/.test(t)) return 'gi';
         if (/seamless|\bsmls\b/.test(t)) return 'seamless';
         if (/\berw\b/.test(t)) return 'erw';
@@ -475,15 +510,22 @@
 
     // ── Ranking: rules with a sentence per point ──────────────────────────────
 
-    function matchProduct(p, needName) {
-        var nw = lower(needName).split(/\s+/).filter(function (w) { return w.length > 1; });
-        var best = null, top = 0;
-        (p.products || []).forEach(function (pr) {
-            var pw = lower(pr.p + ' ' + pr.spec);
-            var hits = nw.filter(function (w) { return pw.indexOf(w) !== -1; }).length;
+    /**
+     * The product row an enquiry line is about: same pipe family first ("HEAVY METAL" was counted
+     * as heavy GI because the word "heavy" was found inside it), then the one whose words — whole
+     * words only — match best. A line whose family cannot be read matches nothing.
+     */
+    function matchProduct(p, needName, needType) {
+        var fam = lower(needType) || lower((readTypesAndClass(' ' + lower(needName) + ' ') || {}).type);
+        if (!fam) return null;
+        var nw = lower(needName).split(/[^a-z0-9]+/).filter(function (w) { return w.length > 1; });
+        var best = null, top = -1;
+        (p.products || []).filter(function (pr) { return rowFamily(pr) === fam; }).forEach(function (pr) {
+            var pw = ' ' + lower(pr.p + ' ' + pr.spec).replace(/[^a-z0-9]+/g, ' ') + ' ';
+            var hits = nw.filter(function (w) { return pw.indexOf(' ' + w + ' ') !== -1; }).length;
             if (hits > top) { top = hits; best = pr; }
         });
-        return top ? best : null;
+        return best;
     }
 
     // The quote side hands its pipe types over in lower case ('gi', 'erw', 'seamless'). Print
@@ -494,13 +536,29 @@
         }).join(sep || ' + ');
     }
 
+    /**
+     * The pipe families a card deals in: its Pipe types box, but only real families (a box reading
+     * "Pipes" or "Steel Items" says nothing about which), plus the families its product rows name.
+     */
+    function familiesOf(p) {
+        var out = [];
+        var add = function (f) { if (f && out.indexOf(f) === -1) out.push(f); };
+        (p.types || []).forEach(function (t) { if (PIPE_TYPES.some(function (k) { return lower(k) === lower(t); })) add(lower(t)); });
+        (p.products || []).forEach(function (pr) { add(rowFamily(pr)); });
+        return out;
+    }
+
     function scoreTypes(p, need, why) {
-        var have = (p.types || []).map(lower);
+        var have = familiesOf(p);
         var wanted = (need.types || []).map(lower);
         if (!wanted.length) { why.push(['neutral', 'No pipe type given — cannot match on product']); return { pts: 0, blocked: false }; }
         var hits = wanted.filter(function (t) { return have.indexOf(t) !== -1; });
         if (!hits.length && have.length) { why.push(['bad', 'Does not deal in ' + typeNames(need.types, ' / ')]); return { pts: 0, blocked: true }; }
-        if (!have.length) { why.push(['neutral', 'No pipe types on their card yet']); return { pts: 0, blocked: false }; }
+        if (!have.length) {
+            var said = (p.types || []).filter(Boolean);
+            why.push(['neutral', said.length ? 'Their card says "' + said.join(', ') + '" — which pipes is not stated' : 'No pipe types on their card yet']);
+            return { pts: 0, blocked: false };
+        }
         if (hits.length === wanted.length) { why.push(['ok', 'Deals in ' + typeNames(need.types)]); return { pts: 40, blocked: false }; }
         why.push(['warn', 'Only does ' + typeNames(hits, ', ') + ' of ' + typeNames(need.types, ' / ')]);
         return { pts: 20, blocked: false };
@@ -522,7 +580,7 @@
         }
         var rows = [];
         (need.items || []).forEach(function (it) {
-            var pr = matchProduct(p, it.product);
+            var pr = matchProduct(p, it.product, it.type);
             if (!pr) return;
             var e = rows.filter(function (x) { return x.row === pr; })[0];
             if (!e) { e = { row: pr, tons: 0 }; rows.push(e); }
@@ -534,11 +592,22 @@
             why.push(['ok', 'No minimum in the way']); return 10;
         }
         var pts = 0;
-        var can = rows.filter(function (e) { return e.tons >= (e.row.moq || 0); });
-        var cant = rows.filter(function (e) { return e.tons < (e.row.moq || 0); });
+        // A row with no minimum typed has no minimum to clear — "you clear the minimum" was said
+        // over rows where nobody had entered one.
+        var unset = rows.filter(function (e) { return !(e.row.moq > 0); });
+        var can = rows.filter(function (e) { return e.row.moq > 0 && e.tons >= e.row.moq; });
+        var cant = rows.filter(function (e) { return e.row.moq > 0 && e.tons < e.row.moq; });
         if (can.length) { pts += cant.length ? 12 : 25; why.push(['ok', 'Stocks ' + can.map(function (e) { return e.row.p; }).join(', ') + ' — you clear the minimum']); }
+        if (unset.length) {
+            var names = unset.map(function (e) { return e.row.p; }).join(', ');
+            var tons = unset.reduce(function (t, e) { return t + e.tons; }, 0);
+            if (p.moq > 0 && tons < p.moq) { pts -= 30; why.push(['warn', 'Under their minimum — they ask for ' + p.moq + ' T, this is ' + tons.toFixed(2) + ' T']); }
+            else if (p.moq > 0) { pts += 25; why.push(['ok', 'Stocks ' + names + ' — you clear their ' + p.moq + ' T minimum']); }
+            else if (unconfirmedCard(p)) { pts += 5; why.push(['neutral', 'Stocks ' + names + ' — minimum not recorded, worth asking']); }
+            else { pts += 15; why.push(['ok', 'Stocks ' + names + ' — no minimum on their card']); }
+        }
         cant.forEach(function (e) { pts -= 30; why.push(['warn', 'Under their minimum — ' + e.row.p + ' needs ' + e.row.moq + ' T, you have ' + e.tons.toFixed(2) + ' T']); });
-        can.forEach(function (e) { if (e.row.rule) why.push(['note', e.row.p + ': ' + e.row.rule]); });
+        can.concat(unset).forEach(function (e) { if (e.row.rule) why.push(['note', e.row.p + ': ' + e.row.rule]); });
         return pts;
     }
 
@@ -575,7 +644,8 @@
             return 0;
         }
         // A town looked up on the map carries its state, so a wrong pick shows ("Tarapur, Maharashtra").
-        var where = nb.name + (nb.place && nb.place.looked && nb.place.state ? ', ' + nb.place.state : '');
+        var where = nb.name + (nb.place && nb.place.looked && nb.place.state ? ', ' + nb.place.state : '')
+            + (nb.kind ? ' (' + nb.kind + ')' : '');
         // Farther is lower all the way out. Past 250 km everything used to score the same −10,
         // so a maker in Hosur (330 km) and one in UP (2,160 km) tied for a Chennai delivery.
         if (nb.km <= 60) { why.push(['ok', 'In ' + where + ' — right by the site']); return 35; }
@@ -764,9 +834,26 @@
     /** Rank the loaded directory for one need. kind: 'material' | 'transport'. */
     function rankFor(kind, need, from) {
         var pool = D.contacts.filter(function (p) { return worthScoring(p, kind, need); });
-        return pool.map(function (p) {
+        var rows = pool.map(function (p) {
             return kind === 'transport' ? scoreTransporter(p, need, from) : scoreSupplier(p, need);
-        }).sort(function (a, b) { return b.score - a.score; });
+        });
+        // Dealers and makers still waiting for his approval are suggested too, marked as waiting —
+        // sixty cards sat in the queue and never appeared. Material only, main site only.
+        if (kind !== 'transport' && !D.readonly) {
+            var held = {};
+            D.contacts.forEach(function (c) { held[c.id] = 1; held['name:' + nameKey(c.company)] = 1; });
+            (D.pending || []).map(function (it) { return it && it.preview; }).filter(function (p) {
+                // An "update someone you have" item is the approved card plus a little — the firm
+                // is already in the list, once.
+                return p && (p.role === 'dealer' || p.role === 'manufacturer') && str(p.company)
+                    && !p.matchId && !held[p.id] && !held['name:' + nameKey(p.company)];
+            }).forEach(function (p) {
+                var r = scoreSupplier(p, need);
+                r.waiting = true;
+                rows.push(r);
+            });
+        }
+        return rows.sort(function (a, b) { return b.score - a.score; });
     }
 
     // ── Data layer ────────────────────────────────────────────────────────────
@@ -1627,10 +1714,11 @@
             return '<div class="pd-card"><div class="pd-rank"><span class="pd-rank-n">' + (i + 1) + '</span>'
                 + '<div style="flex:1;min-width:0;"><div class="pd-row"><b>' + esc(r.p.company) + '</b>'
                 + '<span class="pd-pill">' + esc(roleLabel(r.p)) + '</span>'
-                + (isRegular(r.p) ? '<span class="pd-pill pd-pill-good">Regular</span>' : '') + '</div>'
+                + (isRegular(r.p) ? '<span class="pd-pill pd-pill-good">Regular</span>' : '')
+                + (r.waiting ? '<span class="pd-pill">Waiting for your approval</span>' : '') + '</div>'
                 + '<p class="pd-tiny">' + esc([mainName(r.p), mainEmail(r.p), mainPhone(r.p)].filter(Boolean).join(' · ')) + '</p>'
                 + '<div>' + r.why.map(function (w) { return '<span class="pd-why pd-why-' + w[0] + '">' + esc(w[1]) + '</span>'; }).join('') + '</div></div>'
-                + '<button data-pd-open="' + esc(r.p.id) + '">Open card</button></div></div>';
+                + (r.waiting ? '' : '<button data-pd-open="' + esc(r.p.id) + '">Open card</button>') + '</div></div>';
         }).join('');
     }
 
@@ -1641,7 +1729,7 @@
                 var bad = r.why.filter(function (w) { return w[0] === 'bad'; });
                 return '<div class="pd-card pd-out"><div class="pd-row"><b>' + esc(r.p.company) + '</b>'
                     + '<span class="pd-pill">' + esc(roleLabel(r.p)) + '</span>'
-                    + '<span class="pd-sp"></span><button data-pd-open="' + esc(r.p.id) + '">Open card</button></div>'
+                    + '<span class="pd-sp"></span>' + (r.waiting ? '<span class="pd-pill">Waiting for your approval</span>' : '<button data-pd-open="' + esc(r.p.id) + '">Open card</button>') + '</div>'
                     + '<div>' + bad.map(function (w) { return '<span class="pd-why pd-why-bad">' + esc(w[1]) + '</span>'; }).join('') + '</div></div>';
             }).join('');
     }
@@ -1813,6 +1901,20 @@
         if (at && !at.ambiguous) return '';
         return '<button type="button" class="pd-linkish pd-placeit" data-pd-placetown="' + esc(clean) + '"'
             + ' title="Look it up once on the map, so suppliers here are measured">📍 Put on map</button>';
+    }
+
+    /** Factory / Office / Godown on each branch. Until he ticks one, the choice shows what its own words say. */
+    //
+    // One town can sit on a card more than once (imports repeated them), and the page shows it once.
+    // So the choice reads every row for that town, and a tick is written onto all of them.
+    function branchKindSelect(p, town) {
+        var rows = (p.branches || []).filter(function (x) { return str(x.city) === str(town); });
+        var ticked = rows.map(function (x) { return str(x.kind); }).filter(Boolean)[0] || '';
+        var read = rows.map(branchKind).filter(Boolean)[0] || '';
+        var opt = function (v, label) { return '<option value="' + v + '"' + (ticked === v ? ' selected' : '') + '>' + label + '</option>'; };
+        return '<select class="pd-brkind" data-pd-brkind="' + esc(town) + '" aria-label="What this branch is">'
+            + opt('', read && !ticked ? 'Looks like: ' + read : 'Factory / office / godown?')
+            + opt('factory', 'Factory') + opt('office', 'Office') + opt('godown', 'Godown') + '</select>';
     }
 
     function peopleBlock(p) {
@@ -2073,6 +2175,7 @@
                         + ' value="" placeholder="No branch set — type one to move these ' + g.rows.length
                         + ' here" aria-label="Give these people a branch">'))
             + (named ? '<input class="pd-area" data-pd-br="' + at + '" data-pd-k="area" value="' + esc(b.area || '') + '" placeholder="Area — e.g. Ambattur" aria-label="Branch area"' + (at === -1 ? ' disabled' : '') + '>' : '')
+            + (named && at !== -1 ? branchKindSelect(p, b.city) : '')
             + '<span class="pd-sp"></span><span class="pd-tiny">' + g.rows.length + '</span>'
             + (at !== -1 ? '<button class="pd-del" data-pd-delbranch="' + at + '">✕</button>' : '')
             + '</div>'
@@ -4333,6 +4436,13 @@
         });
         bindTowns(card, p, save);
         on(card, '[data-pd-addbranch]', function () { (p.branches = p.branches || []).push({ city: '', area: '', address: '' }); save(true, ['branches']); });
+        each(card, '[data-pd-brkind]', function (el) {
+            el.onchange = function () {
+                var town = el.getAttribute('data-pd-brkind'), v = el.value;
+                (p.branches || []).forEach(function (b) { if (str(b.city) === town) { if (v) b.kind = v; else delete b.kind; } });
+                save(false, ['branches']);
+            };
+        });
         each(card, '[data-pd-br]', function (el) {
             el.onchange = function () { p.branches[Number(el.getAttribute('data-pd-br'))][el.getAttribute('data-pd-k')] = el.value; save(false, ['branches']); };
         });
@@ -4791,8 +4901,78 @@
         return read ? Object.assign({}, li, { inches: li.inches != null ? li.inches : read.inches, type: li.type || read.type }) : li;
     }
 
+    // ── "Ask AI": the firms the free rules could not decide (30 Sep) ───────────────
+    //
+    // *His words: "all the free things can be free. whatever the free thing cant figure, the AI
+    // helps. Same button."* The free ranking shows at once. Then the firms it could not decide —
+    // no pipe family on the card, or no size lines for the family asked — go to the server, where
+    // Claude reads each card and must quote it. Answers are kept for the visit, per enquiry, so a
+    // redraw or a second press never pays twice; one ask runs at a time per enquiry.
+    var ai = { cache: {}, running: {}, status: {} };
+    function aiNeedKey(need) {
+        return JSON.stringify([(need.types || []).map(lower).sort(), (need.items || []).map(function (li) { return [str(li.product), li.inches]; })]);
+    }
+    /** A card's own content, so an edited card is asked about again. */
+    function cardSig(p) {
+        var t = JSON.stringify([p.id, p.types, p.products, p.notes, p.categories]), h = 0;
+        for (var i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0;
+        return str(p.id) + '#' + h;
+    }
+    function undecided(r, need) {
+        if (r.blocked) return false;
+        if (!familiesOf(r.p).length) return true;
+        var sized = (need.items || []).some(function (li) { return li.inches != null && li.type; });
+        return sized && !r.why.some(function (w) { return /^(Makes |Not on their card:)/.test(w[1]); });
+    }
+    var AI_WORD = {
+        yes: ['ok', 15, 'AI: makes it'], no: ['warn', -15, 'AI: not this'],
+        maybe: ['neutral', 0, 'AI: maybe'], not_on_card: ['neutral', 0, 'AI: their card does not say what they supply'],
+    };
+    function applyAi(rows, need) {
+        var got = ai.cache[aiNeedKey(need)] || {};
+        rows.forEach(function (r) {
+            var v = got[cardSig(r.p)];
+            if (!v || !AI_WORD[v.verdict]) return;
+            var w = AI_WORD[v.verdict];
+            r.score += w[1];
+            r.ai = v.verdict;
+            r.why.push([w[0], w[2] + (v.quote ? ' — “' + v.quote + '”' : (v.why && v.verdict !== 'not_on_card' ? ' — ' + v.why : ''))]);
+        });
+        rows.sort(function (a, b) { return b.score - a.score; });
+    }
+    function startAi(key, need, todo, rerun) {
+        var sigs = {};
+        todo.forEach(function (r) { sigs[str(r.p.id)] = cardSig(r.p); });
+        ai.running[key] = true;
+        ai.status[key] = { state: 'checking', n: todo.length };
+        fetch(apiBase() + '/contacts/ai-match', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                need: { types: need.types || [], items: (need.items || []).map(function (li) { return { product: str(li.product), inches: li.inches != null ? li.inches : null }; }) },
+                ids: todo.map(function (r) { return r.p.id; }),
+            }),
+        }).then(function (r) {
+            return r.json().catch(function () { return {}; }).then(function (d) { if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status)); return d; });
+        }).then(function (d) {
+            var into = ai.cache[key] = ai.cache[key] || {};
+            Object.keys(d.verdicts || {}).forEach(function (id) { if (sigs[id]) into[sigs[id]] = d.verdicts[id]; });
+            ai.status[key] = { state: 'done', n: d.checked || 0, capped: d.capped || 0 };
+        }).catch(function (e) {
+            ai.status[key] = { state: 'failed', msg: e.message };
+        }).then(function () { ai.running[key] = false; if (ai.shown === key) rerun(); });
+    }
+    function aiLineHtml(key) {
+        var st = ai.status[key];
+        if (!st) return '';
+        if (st.state === 'checking') return '<p class="pd-tiny pd-ailine">✨ The AI is reading ' + st.n + ' card' + (st.n === 1 ? '' : 's') + ' the free rules could not decide…</p>';
+        if (st.state === 'failed') return '<p class="pd-error">The AI check failed — ' + esc(str(st.msg).replace(/[.\s]+$/, '')) + '. The list below is the free ranking. Press Ask AI again to retry.</p>';
+        return st.n ? '<p class="pd-tiny pd-ailine">✨ The AI read ' + st.n + ' card' + (st.n === 1 ? '' : 's') + ' the free rules could not decide'
+            + (st.capped ? ' (the first ' + st.n + '; ' + st.capped + ' more not read)' : '') + '.</p>' : '';
+    }
+
     function renderSuggestPanel(container, opts, onAddChip) {
         if (!container) return;
+        var pressed = true;      // a fresh press may retry a check that failed; a redraw may not
         // Re-drawn from what is already loaded — a choice of Makers or of a delivery town costs
         // no second read, and so can never be painted over by a slower one.
         var go = function () {
@@ -4810,10 +4990,21 @@
             else Object.assign(need, deliverySite(opts));
             var from = town(opts.pickup) || (isFreight ? '' : HOME);
             var all = rankFor(isFreight ? 'transport' : 'material', need, from);
+            var aiKey = '';
+            if (!isFreight && !D.readonly && (need.types || []).length) {
+                aiKey = aiNeedKey(need);
+                ai.shown = aiKey;
+                if (pressed && ai.status[aiKey] && ai.status[aiKey].state === 'failed') delete ai.status[aiKey];
+                applyAi(all, need);
+                var asked = ai.cache[aiKey] || {};
+                var todo = all.filter(function (r) { return undecided(r, need) && !asked[cardSig(r.p)]; }).slice(0, 25);
+                if (todo.length && !ai.running[aiKey] && !(ai.status[aiKey] && ai.status[aiKey].state === 'failed')) startAi(aiKey, need, todo, go);
+            }
+            pressed = false;
             // The SAME filtered list goes to the drawing and to the buttons: "✉ Choose who to
             // email" finds its firm by position, and two different lists would open the wrong firm.
             var rows = isFreight ? all : filterByRole(all, roleShown);
-            container.innerHTML = panelHtml(rows, opts, need, from, isFreight ? null : roleCounts(all));
+            container.innerHTML = panelHtml(rows, opts, need, from, isFreight ? null : roleCounts(all), aiKey);
             bindPanel(container, rows, onAddChip, go, need);
         };
         // Always re-read before suggesting. This panel is asked for by hand, once in a
@@ -4848,12 +5039,13 @@
             + warn;
     }
 
-    function panelHtml(rows, opts, need, from, counts) {
+    function panelHtml(rows, opts, need, from, counts, aiKey) {
         var head = panelHead(opts, need, from);
         var good = rows.filter(function (r) { return !r.blocked; });
         var out = rows.filter(function (r) { return r.blocked; });
         var none = counts && roleShown !== 'all' && counts.all ? roleEmptyHtml(counts) : deadEndHtml(need, opts);
         return '<div class="pd-panel"><p class="pd-tiny" style="margin-bottom:8px;">' + head + '</p>'
+            + (aiKey ? aiLineHtml(aiKey) : '')
             + (counts ? roleChipsHtml(counts) : '')
             + (good.length ? good.map(function (r, i) { return panelCard(r, i); }).join('')
                 : none)
@@ -4884,7 +5076,8 @@
             + '<span class="pd-rank-n">' + (r.blocked ? '–' : idx + 1) + '</span>'
             + '<div style="flex:1;min-width:0;"><div class="pd-row"><b>' + esc(r.p.company) + '</b>'
             + '<span class="pd-pill">' + esc(roleLabel(r.p)) + '</span>'
-            + (isRegular(r.p) ? '<span class="pd-pill pd-pill-good">Regular</span>' : '') + '</div>'
+            + (isRegular(r.p) ? '<span class="pd-pill pd-pill-good">Regular</span>' : '')
+            + (r.waiting ? '<span class="pd-pill">Waiting for your approval</span>' : '') + '</div>'
             + '<p class="pd-tiny">' + esc([mainName(r.p), mainEmail(r.p), mainPhone(r.p)].filter(Boolean).join(' · ')) + '</p>'
             + '<div>' + r.why.map(function (w) { return '<span class="pd-why pd-why-' + w[0] + '">' + esc(w[1]) + '</span>'; }).join('') + '</div></div>'
             // It sends nothing — it opens the list of who at the firm to put on the enquiry.
@@ -5160,6 +5353,9 @@
                  // Size lines and ranges (30 Sep).
                  sizeSpan: sizeSpan, rangeParts: rangeParts, scoreSizes: scoreSizes, sizeLineHtml: sizeLineHtml,
                  isRangeLine: isRangeLine, withSize: withSize, inchLabel: inchLabel,
+                 // Free fixes and the AI check (30 Sep).
+                 familiesOf: familiesOf, matchProduct: matchProduct, branchKind: branchKind, measuredPlaces: measuredPlaces,
+                 undecided: undecided, applyAi: applyAi, aiNeedKey: aiNeedKey, cardSig: cardSig, aiState: function () { return ai; },
                  _state: function () { return { S: S, D: D }; } },
     };
 })();
