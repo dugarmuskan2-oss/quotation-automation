@@ -2365,3 +2365,21 @@ Three were copies of approved cards, joined and discarded under his standing rul
   25229701, 9444929701 and the email on the Office row, six lines (two transporters, four
   buyers) and the website. His approved Apollo line left as it was.
 - Tubesindia → TUBES INDIA: marketing@ and response@tubesindia.co.in on the Office row.
+
+## The last four (1 Oct)
+
+aashitsugla@gmail.com · goodscarriers.mds@gmail.com · rti2290@yahoo.com · alivalves79@gmail.com.
+All four saved (22 checked changes; 7 questions), re-checked 20 s later: GOODS CARRIERS (Mettur
+transporter: MR.MONAS, MR.MUTHU, MR.PETER, SUGANYA; Chemplast line), ROAD TRANSHIPERS (Jindal
+India and Utkarsh transporter: MR.ASHISH, MR.KRISHNA). aashitsugla@ and alivalves79@ are on
+none of his pages: only their nameless row became "Office", and one question each (the broker
+AASHIT on Jindal India; S.ABBAS &CO's alivalves@vsnl.net). This finishes the 34 that were left.
+
+## Areas on the map (1 Oct)
+
+*His words: "and map the distance from the area".* After the push, the areas already on dealer
+and maker cards were looked up once: 5 placed (Ambattur, Anna Nagar, Madhavaram — Chennai;
+Secunderabad — Hyderabad; Wadiaram — Chegunta), kept in their own file area-places.json. 10 left
+unplaced rather than guessed — the map gave only a road, a lake or nothing near the town
+(Vichoor, Sadayankuppam, Sathangadu; "Hosur" under Bangalore, which is a town of its own), or the
+card's town box holds a state (Faridabad under "Haryana", Rourkela under "odisha").
