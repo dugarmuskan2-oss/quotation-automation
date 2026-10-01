@@ -2306,3 +2306,15 @@ tokens to correct these."* Eight waiting firms that are plainly pipe BUYERS (pro
 plant firms) were set to client and approved through the app's own approve route, no other
 corrections: DENIELI INDIA, WIPRO, Balmer Lawrie, GMR Group, Express Infrastructure, URCC,
 Airmech, Doosan. All in the directory and still there 20 seconds later.
+
+## The tenth ten — first of the last 34 (1 Oct)
+
+Shiv Shakthi Steel Tube · Santosh Steel · AMK · Market Metal Zone · R&V Tube Sales · Trichk AMK ·
+Hussain Enterprises · Lehri Brothers · Siddachal Trading · Anand Seamless.
+
+Seven saved (43 checked changes; 8 questions), re-checked 20 s later. Four Apollo dealers
+(Shiv Shakthi, Santosh, AMK, Market Metal Zone) got the approved Apollo line and trade dealer.
+Three were copies of approved cards, folded and discarded under his standing rule (spelling is
+the same company; *"Metech is Metec. i already said so"*): AMK and TRICHK AMK → approved TRICHY
+AMK (gained aka AMK and TRICHK AMK, and 7540097939, 9994253333, amkindustry@yahoo.com on its
+Office row); R &V TUBE SALES → approved R &V TUBE SALES (nothing new on the copy). No clients.
