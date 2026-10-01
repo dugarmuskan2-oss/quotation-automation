@@ -43,13 +43,16 @@ function assertListType(type) {
     if (!LIST_TYPES.includes(type)) throw new Error(`Unknown price list "${type}" — use erw, gi or seamless.`);
 }
 
-// Every cell as trimmed text; drops fully blank rows; row 0 must be a header.
+// Every cell as trimmed text; drops fully blank rows and columns; row 0 must be a header.
 function cleanRows(rows) {
     if (!Array.isArray(rows) || rows.length < 2) throw new Error('A price list needs a header row and at least one price row.');
     const width = Math.max(...rows.map(r => (Array.isArray(r) ? r.length : 0)));
-    return rows
+    const grid = rows
         .map(r => Array.from({ length: width }, (_, i) => String(Array.isArray(r) && r[i] != null ? r[i] : '').trim()))
         .filter((r, i) => i === 0 || r.some(c => c !== ''));
+    // A column with no heading and nothing in it is not part of the list (a stray trailing comma).
+    const keep = grid[0].map((_, c) => grid.some(r => r[c] !== ''));
+    return grid.map(r => r.filter((_, c) => keep[c]));
 }
 
 // A list we cannot price from must never be saved — buildPriceMap throws on a missing rate column.
