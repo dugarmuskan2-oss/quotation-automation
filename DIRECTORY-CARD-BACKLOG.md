@@ -2318,3 +2318,29 @@ Three were copies of approved cards, folded and discarded under his standing rul
 the same company; *"Metech is Metec. i already said so"*): AMK and TRICHK AMK → approved TRICHY
 AMK (gained aka AMK and TRICHK AMK, and 7540097939, 9994253333, amkindustry@yahoo.com on its
 Office row); R &V TUBE SALES → approved R &V TUBE SALES (nothing new on the copy). No clients.
+
+## The eleventh ten (1 Oct)
+
+Kalai Traders · Mokshiind · Jindalindia · Unionroadwaysltd · Evergreenseamless · Crayon Rooting &
+Structure · Saroj Steel · Steel & Metal Agency · Shree Sakthi Steel · bharattubes@rediffmail.com.
+
+The single reviewer for all ten was cut off four times, so each card now gets its own reviewer.
+Five saved (35 checked changes; 7 questions), re-checked 20 s later: EVERGREEN SEAMLESS PIPES
+&TUBES PVT LTD, CRAYON ROOTING & STRUCTURE, SAROJ STEEL, SHREE SAKTHI STEEL, BHARAT TUBES
+CORPORATION (was bharattubes@rediffmail.com). Crayon, Saroj and Shree Sakthi got the JSL colour
+coated sheet line the right way round and a Sheets product row.
+
+Not saved, his own work kept: he approved KALAI TRADERS while it was being checked (the checked
+change — the person's name "R.VELMURUGAN" in place of the Google label — was not applied), and
+he was editing MOKSHI, JINDAL INDIA and UNION ROADWAYS himself (rev 5, 7, 3), so the checked
+versions were not written over his.
+
+STEEL & METAL AGENCY → approved STEEL & METAL (spelling rule; same Akbari family; email
+steel_metal_a@). Gained aka STEEL & METAL AGENCY, his colour-coated page under Filed under,
+9952954110 and "MR. TAHA - ( SON OF SOAB AKBARI)" on the tahe akbari row, the JSL Sheets row and
+the JSL sub-dealer line. Trade client → dealer by his rule (buys from Bombay H/W = client *unless
+they also have something in their product range*). Waiting copy discarded.
+
+Left for him, not asked: approved SHRI SHAKTHI STEEL AND PIPE (Apollo dealer, 9843612233) and
+waiting SHREE SAKTHI STEEL (JSL sub dealer, 8056106044) — spelling alike but different numbers
+and brands, so kept apart.
