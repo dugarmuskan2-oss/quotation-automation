@@ -92,33 +92,48 @@ function findCol(header, regexes) {
     return -1;
 }
 
-// Build { "size|class" -> kgPerMeter } from a price list's rows (first row = header).
-// kg/m column is the one headed KG/MTR / kg/m / kg per meter, else the last column.
-function buildWeightMap(rows) {
-    if (!Array.isArray(rows) || rows.length < 2) return {};
-    const header = rows[0];
+// Turns a price-list row into its "size|class" key, reading the columns named in the header.
+// Shared by the kg/m table and the price table so a size can never key one way for weight and
+// another way for price. Returns null for a row with no size.
+function makeRowKeyer(header) {
     const iInch = findCol(header, [/^inch$/, /inch/]);
     const iSize = findCol(header, [/^size$/]);
     const iClass = findCol(header, [/light.*medium.*heavy|light\/medium|medium.*heavy|^class$/]);
     const iSch = findCol(header, [/^sch$/, /schedule/]);
     const iWall = findCol(header, [/wall.*thick|^thickness/]);
-    const iKg = findCol(header, [/kg\s*\/?\s*(m|mtr|meter|metre)/]);
-    const kgCol = iKg >= 0 ? iKg : header.length - 1;
-    const map = {};
-    for (let r = 1; r < rows.length; r++) {
-        const row = rows[r] || [];
+    return function rowKey(row) {
         const size = iInch >= 0 ? row[iInch] : (iSize >= 0 ? row[iSize] : row[0]);
+        if (size == null || String(size).trim() === '') return null;
         // Class first, then schedule, then WALL THICKNESS — the 8"-and-up ERW/GI rows leave the
         // class cell empty and are distinguished only by their wall, so without that fallback
         // every large-bore row of one size shares a key and all but the last are lost.
         const clsCell = cellOrBlank(iClass >= 0 ? row[iClass] : '');
         const schCell = cellOrBlank(iSch >= 0 ? row[iSch] : '');
         const wallCell = cellOrBlank(iWall >= 0 ? row[iWall] : '');
-        const cls = clsCell || schCell || wallCell;
-        const kg = parseFloat(String(row[kgCol] == null ? '' : row[kgCol]).replace(/,/g, '').trim());
-        if (size == null || String(size).trim() === '') continue;
-        if (!Number.isFinite(kg) || kg <= 0) continue;
-        map[weightKey(size, cls)] = kg;
+        return weightKey(size, clsCell || schCell || wallCell);
+    };
+}
+
+// A positive number from a sheet cell ("1,208" -> 1208), else NaN.
+function cellNumber(v) {
+    const n = parseFloat(String(v == null ? '' : v).replace(/,/g, '').trim());
+    return Number.isFinite(n) && n > 0 ? n : NaN;
+}
+
+// Build { "size|class" -> kgPerMeter } from a price list's rows (first row = header).
+// kg/m column is the one headed KG/MTR / kg/m / kg per meter, else the last column.
+function buildWeightMap(rows) {
+    if (!Array.isArray(rows) || rows.length < 2) return {};
+    const header = rows[0];
+    const rowKey = makeRowKeyer(header);
+    const iKg = findCol(header, [/kg\s*\/?\s*(m|mtr|meter|metre)/]);
+    const kgCol = iKg >= 0 ? iKg : header.length - 1;
+    const map = {};
+    for (let r = 1; r < rows.length; r++) {
+        const row = rows[r] || [];
+        const key = rowKey(row);
+        const kg = cellNumber(row[kgCol]);
+        if (key && Number.isFinite(kg)) map[key] = kg;
     }
     return map;
 }
@@ -235,6 +250,10 @@ const api = {
     lookupKgPerMeter,
     mapForPipeType,
     applyPriceListWeights,
+    makeRowKeyer,
+    cellNumber,
+    weightKey,
+    findCol,
     _test: { normSize, normClass, weightKey, findCol },
 };
 

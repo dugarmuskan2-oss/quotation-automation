@@ -116,6 +116,8 @@ function buildQuotationToSave({ aiResult, quoteNumber, termsText, emailContent, 
         adminStatus: 'awaiting',
         adminNote: '',
         itemSummary: buildItemSummary(aiResult.lineItems || []),
+        // Per line: what the AI read, which price-list row priced it, or why none did.
+        priceCheck: aiResult._priceCheck || null,
         enquiryFiles: Array.isArray(enquiryFiles) ? enquiryFiles : [],
         // Originals not forwarded as-is (e.g. an oversized PDF whose text was
         // extracted) — shown as non-clickable info chips on the card.

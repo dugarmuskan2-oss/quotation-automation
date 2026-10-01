@@ -58,6 +58,10 @@ const CONFIG_KEY_DEFAULT_EMAIL_MESSAGE = 'default-email-message.txt';
 // The reply sent when an enquiry is regretted. Editable in Settings like the two above —
 // it used to be hardcoded, so changing a word needed a code change.
 const CONFIG_KEY_REGRET_MESSAGE       = 'regret-message.txt';
+
+// Tables parsed from the uploaded price-list spreadsheets, stored in the rates folder.
+const PIPE_WEIGHTS_FILE = 'pipe-weights.json';   // size -> kg/m
+const PIPE_PRICES_FILE  = 'pipe-prices.json';    // size -> rate per metre
 const CONFIG_KEY_DEFAULT_SIGNATURE    = 'default-signature.txt';
 /** Remembered freight-enquiry recipients + pickup/drop points (for instant suggestions). */
 const CONFIG_KEY_FREIGHT_SUGGESTIONS  = 'freight-suggestions.json';
@@ -154,6 +158,8 @@ module.exports = {
     CONFIG_KEY_DEFAULT_MARGINS,
     CONFIG_KEY_DEFAULT_EMAIL_MESSAGE,
     CONFIG_KEY_REGRET_MESSAGE,
+    PIPE_WEIGHTS_FILE,
+    PIPE_PRICES_FILE,
     CONFIG_KEY_DEFAULT_SIGNATURE,
     CONFIG_KEY_FREIGHT_SUGGESTIONS,
     CONFIG_KEY_SUPPLIER_SUGGESTIONS,

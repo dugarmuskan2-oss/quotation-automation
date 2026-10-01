@@ -20,6 +20,7 @@ require('dotenv').config();
 const storage = require('./storage');
 const { createLineItemId, parseFlexibleNumber, calculateLineItem } = require('./utils/calculations');
 const { applyPriceListWeights } = require('./utils/pipeWeights');
+const { applyPriceListRates, staleListTypes } = require('./utils/priceList');
 const {
     ENTITY_QUOTATION,
     ENTITY_GMAIL_MSG_MARKER,
@@ -368,6 +369,23 @@ SIZE MATCHING RULES — apply when reading rate-file rows:
 - VERIFY the match against the row's NB and/or OD columns: 1/2"=15NB/21.3mm, 3/4"=20NB/26.7, 1"=25NB/33.4, 1-1/4"=32NB/42.2, 1-1/2"=40NB/48.3, 2"=50NB/60.3, 2-1/2"=65NB/73, 3"=80NB/88.9, 3-1/2"=90NB/101.6, 4"=100NB/114.3, 5"=125NB/141.3, 6"=150NB/168.3, 8"=200NB/219.1. If the NB/OD does not agree with the size you identified, you are reading the WRONG ROW — re-match.
 - Sanity check before returning: within the same pipe type and the same schedule/class, the rate always INCREASES with size. If a larger pipe came out cheaper than a smaller one, a row was misread — re-match those items.`;
 
+// Price every GI / ERW / Seamless line from the uploaded price-list spreadsheets; the AI's rate is
+// kept beside it (aiUnitRate) for checking but never used. A line the list cannot price is left
+// blank for a person to fill. If the tables cannot be read at all, every line goes blank too —
+// an unchecked AI rate must never reach a quote just because the lookup failed.
+async function priceLinesFromPriceList(lineItems) {
+    try {
+        const book = await storage.loadPipePrices();
+        const stale = staleListTypes(book, await storage.getAllRateMappings());
+        return applyPriceListRates(book, lineItems, calculateLineItem, stale);
+    } catch (e) {
+        console.warn('Price-list lookup failed, leaving every rate blank:', e.message);
+        const out = applyPriceListRates({}, lineItems, calculateLineItem, []);
+        out.priceCheck.error = e.message;
+        return out;
+    }
+}
+
 async function handleGenerateQuotation({ emailContent, fileContent, instructions, enquiryFileId, enquiryFileIds, enquiryImageDataUrl, enquiryImageDataUrls, reasoningEffort }, res) {
     try {
         // All enquiry images (a photographed requirement can span several photos).
@@ -631,6 +649,9 @@ async function handleGenerateQuotation({ emailContent, fileContent, instructions
             console.warn('kg/m backfill skipped:', e.message);
         }
 
+        const priced = await priceLinesFromPriceList(quotationData.lineItems);
+        quotationData.lineItems = priced.lineItems;
+
         // Set quotation date if not provided
         if (!quotationData.quotationDate) {
             const today = new Date();
@@ -644,6 +665,7 @@ async function handleGenerateQuotation({ emailContent, fileContent, instructions
         res.json({
             ...quotationData,
             _kgFill: kgFill,          // what the price-list backfill did, so it is never invisible
+            _priceCheck: priced.priceCheck, // per line: what the AI read, which price-list row priced it, or why none did
             _ai: {
                 raw: responseText,
                 model: 'gpt-5.2',

@@ -129,6 +129,18 @@ function adminPct(value) {
 }
 
 /**
+ * Re-derive final rate and total after a margin change, keeping every other field on the line
+ * (calculateLineItem returns a fixed shape and would drop costRate and the price-list check).
+ * A line the price list could not price has NO rate — it stays blank for staff, never 0.
+ */
+function recalcKeepingFields(item) {
+    if (String(item.unitRate == null ? '' : item.unitRate).trim() === '') {
+        return { ...item, finalRate: '', lineTotal: '' };
+    }
+    return { ...item, ...calculateLineItem(item) };
+}
+
+/**
  * Stamp the admin's per-pipe-type margin decisions onto line items.
  * adminMargins shape: { seamless: {mode:'price'|'cost', pct}, erw: {pct}, gi: {pct} }
  *  - Seamless 'price' mode: quote at the price-list rate (margin 0 — the list
@@ -164,7 +176,7 @@ function stampAdminMargins(lineItems, adminMargins) {
         } else {
             return next;   // unknown type — staff decides (admin note carries intent)
         }
-        return calculateLineItem(next);
+        return recalcKeepingFields(next);
     });
 }
 

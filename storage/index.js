@@ -23,7 +23,7 @@
 
 const fs   = require('fs');
 const path = require('path');
-const { configKey } = require('../utils/constants');
+const { configKey, PIPE_WEIGHTS_FILE, PIPE_PRICES_FILE } = require('../utils/constants');
 
 // ─── Base directory ───────────────────────────────────────────────────────────
 // On Vercel only /tmp is writable; everywhere else use the project root.
@@ -340,50 +340,53 @@ async function getAllRateMappings() {
     return loadRateIndex();
 }
 
-// ── Pipe weight table (size -> kg/m per pipe type) parsed from the user's price
-// lists. Stored as a single JSON object { gi:{}, erw:{}, seamless:{} } — same
-// S3 / GCS / local layering as the rate index.
-async function loadPipeWeights() {
+// ── Tables parsed from the user's price lists, stored as JSON beside the rate files:
+// pipe weights (size -> kg/m) and pipe prices (size -> rate per metre), each shaped
+// { gi:{}, erw:{}, seamless:{}, updatedAt:{} } — same S3 / GCS / local layering as the rate index.
+async function loadRatesJson(fileName) {
     try {
         if (useAWS && s3Client) {
             try {
-                const buffer = await _s3Read('rates/pipe-weights.json');
-                const data = JSON.parse(buffer.toString('utf8'));
+                const data = JSON.parse((await _s3Read('rates/' + fileName)).toString('utf8'));
                 if (data && typeof data === 'object') return data;
             } catch (error) {
                 const is404 = error.name === 'NoSuchKey' || error.$metadata?.httpStatusCode === 404;
-                if (!is404) console.warn('loadPipeWeights: parse error, returning empty:', error.message);
+                if (!is404) console.warn('loadRatesJson(' + fileName + '): parse error, returning empty:', error.message);
             }
             return {};
         }
         if (useGoogleCloud && bucket) {
             try {
-                const buffer = await _gcsRead('rates/pipe-weights.json');
-                const data = JSON.parse(buffer.toString('utf8'));
+                const data = JSON.parse((await _gcsRead('rates/' + fileName)).toString('utf8'));
                 if (data && typeof data === 'object') return data;
             } catch (error) {
-                if (error.code !== 404) console.warn('loadPipeWeights: parse error, returning empty:', error.message);
+                if (error.code !== 404) console.warn('loadRatesJson(' + fileName + '): parse error, returning empty:', error.message);
             }
             return {};
         }
-        const p = path.join(baseDir, 'pipe-weights.json');
+        const p = path.join(baseDir, fileName);
         if (fs.existsSync(p)) {
             const data = JSON.parse(fs.readFileSync(p, 'utf8'));
             return (data && typeof data === 'object') ? data : {};
         }
         return {};
     } catch (error) {
-        console.warn('loadPipeWeights: returning empty due to error:', error.message);
+        console.warn('loadRatesJson(' + fileName + '): returning empty due to error:', error.message);
         return {};
     }
 }
 
-async function savePipeWeights(weights) {
-    const json = JSON.stringify(weights || {}, null, 2);
-    if (useAWS && s3Client)       return _s3Upload(Buffer.from(json, 'utf8'), 'pipe-weights.json', 'rates');
-    if (useGoogleCloud && bucket) return _gcsUpload(Buffer.from(json, 'utf8'), 'pipe-weights.json', 'rates');
-    fs.writeFileSync(path.join(baseDir, 'pipe-weights.json'), json, 'utf8');
+async function saveRatesJson(fileName, data) {
+    const buf = Buffer.from(JSON.stringify(data || {}, null, 2), 'utf8');
+    if (useAWS && s3Client)       return _s3Upload(buf, fileName, 'rates');
+    if (useGoogleCloud && bucket) return _gcsUpload(buf, fileName, 'rates');
+    fs.writeFileSync(path.join(baseDir, fileName), buf.toString('utf8'), 'utf8');
 }
+
+const loadPipeWeights = () => loadRatesJson(PIPE_WEIGHTS_FILE);
+const savePipeWeights = (weights) => saveRatesJson(PIPE_WEIGHTS_FILE, weights);
+const loadPipePrices  = () => loadRatesJson(PIPE_PRICES_FILE);
+const savePipePrices  = (prices) => saveRatesJson(PIPE_PRICES_FILE, prices);
 
 /**
  * Stream a file directly into an HTTP response (efficient for large files).
@@ -444,4 +447,7 @@ module.exports = {
     // Pipe weight table
     loadPipeWeights,
     savePipeWeights,
+    // Pipe price table
+    loadPipePrices,
+    savePipePrices,
 };

@@ -59,8 +59,11 @@ function buildItemRowHTML(item, rowIndex, lineTotal, pipeType) {
     const quantityStr = escapeHtmlForTable(item.quantity);
     const unitRateStr = escapeHtmlForTable(item.unitRate || '');
     const marginStr = escapeHtmlForTable(item.marginPercent || '');
-    const finalRateStr = escapeHtmlForTable(String(Math.round(parseFloat(item.finalRate) || 0)));
-    const amountStr = String(Math.round(Number(lineTotal)));
+    // No rate = the price list could not price this line. Show it blank and red, not ₹0.
+    const noRate = String(item.unitRate == null ? '' : item.unitRate).trim() === '';
+    const finalRateStr = noRate ? '' : escapeHtmlForTable(String(Math.round(parseFloat(item.finalRate) || 0)));
+    const amountStr = noRate ? '' : String(Math.round(Number(lineTotal)));
+    const rateStyle = noRate ? 'width:80px;background:#fde2e2;border:1px solid #d33;' : 'width:80px;';
     const dataPipeType = pipeType != null ? ' data-pipe-type="' + escapeHtmlForTable(pipeType) + '"' : '';
     const lineItemIdAttr = ' data-line-item-id="' + escapeHtmlForTable(item.lineItemId || createLineItemId()) + '"';
     return (
@@ -68,7 +71,7 @@ function buildItemRowHTML(item, rowIndex, lineTotal, pipeType) {
         '<td></td>' +
         '<td><input type="text" class="editable-field" data-field="originalDescription" value="' + desc + '" placeholder="Enter description" style="width:100%;border:none;background:transparent;"></td>' +
         '<td><span data-field="quantity">' + quantityStr + '</span></td>' +
-        '<td class="col-base-rate">₹<input type="number" class="editable-field" data-field="unitRate" value="' + unitRateStr + '" min="0" step="0.01" style="width:80px;"></td>' +
+        '<td class="col-base-rate">₹<input type="number" class="editable-field" data-field="unitRate" value="' + unitRateStr + '" min="0" step="0.01" style="' + rateStyle + '"' + (noRate ? ' title="Not in the price list — enter the rate"' : '') + '></td>' +
         '<td class="col-margin"><input type="number" class="editable-field" data-field="marginPercent" value="' + marginStr + '" min="0" step="0.01" style="width:60px;"></td>' +
         '<td><span class="rate-per-mtr">₹' + finalRateStr + '</span></td>' +
         '<td><span class="line-total">₹' + amountStr + '</span></td>' +

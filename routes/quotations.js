@@ -361,7 +361,7 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
             // pressed Save/Approve/Send or ran the reply sweep, taking the wording with it. The same
             // overwrite un-deleted soft-deleted quotes and dropped freight enquiry records.
             // Always take the stored values; ignore whatever the client sent.
-            const SERVER_OWNED = ['revisionRequests', 'extraNotes', 'deleted', 'deletedAt', 'freightEnquiries', 'transporterReplyIn', 'supplierEnquiries', 'enquirySentBodies'];
+            const SERVER_OWNED = ['revisionRequests', 'extraNotes', 'deleted', 'deletedAt', 'freightEnquiries', 'transporterReplyIn', 'supplierEnquiries', 'enquirySentBodies', 'priceCheck'];
             if (stored) {
                 SERVER_OWNED.forEach(function (field) {
                     if (Object.prototype.hasOwnProperty.call(stored, field)) quotation[field] = stored[field];
