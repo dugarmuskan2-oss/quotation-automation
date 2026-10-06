@@ -12,7 +12,7 @@
 // Keys are built by the same code as the kg/m table (makeRowKeyer / parseDescription), so a size
 // can never match one way for weight and another way for price.
 
-const { makeRowKeyer, cellNumber, findCol, parseDescription, weightKey } = require('./pipeWeights');
+const { mapColumnByKey, findCol, parseDescription, weightKey } = require('./pipeWeights');
 
 // Which money column is the rate, per list. ERW and GI carry "Cost/Meter" and, beside it, "Price"
 // (about 5% higher) — the rate is Cost/Meter, never Price. Seamless uses "Price per Meter"; its
@@ -34,26 +34,14 @@ function buildPriceMap(rows, pipeType) {
         const want = pipeType === 'seamless' ? '"Price per Meter"' : '"Cost/Meter"';
         throw new Error(`No ${want} column found in the ${pipeType.toUpperCase()} price list.`);
     }
-    return mapColumn(rows, iRate);
+    return mapColumnByKey(rows, iRate);
 }
 
 // Seamless only: { "size|class" -> Cost/Meter }. Empty when the sheet has no cost column.
 function buildSeamlessCostMap(rows) {
     if (!Array.isArray(rows) || rows.length < 2) return {};
     const iCost = findCol(rows[0], COST_COLUMN);
-    return iCost < 0 ? {} : mapColumn(rows, iCost);
-}
-
-function mapColumn(rows, col) {
-    const rowKey = makeRowKeyer(rows[0]);
-    const map = {};
-    for (let r = 1; r < rows.length; r++) {
-        const row = rows[r] || [];
-        const key = rowKey(row);
-        const rate = cellNumber(row[col]);
-        if (key && Number.isFinite(rate)) map[key] = rate;
-    }
-    return map;
+    return iCost < 0 ? {} : mapColumnByKey(rows, iCost);
 }
 
 // 'seamless' | 'erw' | 'gi' | null from a line's pipe type text.

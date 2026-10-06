@@ -101,7 +101,7 @@ function makeRowKeyer(header) {
     const iClass = findCol(header, [/light.*medium.*heavy|light\/medium|medium.*heavy|^class$/]);
     const iSch = findCol(header, [/^sch$/, /schedule/]);
     const iWall = findCol(header, [/wall.*thick|^thickness/]);
-    return function rowKey(row) {
+    function rowKey(row) {
         const size = iInch >= 0 ? row[iInch] : (iSize >= 0 ? row[iSize] : row[0]);
         if (size == null || String(size).trim() === '') return null;
         // Class first, then schedule, then WALL THICKNESS — the 8"-and-up ERW/GI rows leave the
@@ -111,7 +111,38 @@ function makeRowKeyer(header) {
         const schCell = cellOrBlank(iSch >= 0 ? row[iSch] : '');
         const wallCell = cellOrBlank(iWall >= 0 ? row[iWall] : '');
         return weightKey(size, clsCell || schCell || wallCell);
+    }
+    // The Size column of a seamless list also names what a row is known as: "8" X 80 (X)",
+    // "20" X SCH 20 / STD", "18" X SCH 30/XS". So an enquiry for "20" STD" or "8" XS" is that
+    // row. These are read from the list itself — nothing is assumed about which schedule STD is.
+    rowKey.aliases = function (row) {
+        const size = iInch >= 0 ? row[iInch] : (iSize >= 0 ? row[iSize] : row[0]);
+        const text = String(iSize >= 0 ? row[iSize] : '').toUpperCase();
+        if (size == null || String(size).trim() === '' || !text) return [];
+        const out = [];
+        if (/\bSTD\b/.test(text)) out.push(weightKey(size, 'std'));
+        if (/\(X\)|(^|[^X])XS\b/.test(text)) out.push(weightKey(size, 'xs'));
+        return out;
     };
+    return rowKey;
+}
+
+// Fill a map from one column: each row under its own key, then under its aliases where no row
+// of that exact name exists (a list's own "12" X STD" row always beats an alias).
+function mapColumnByKey(rows, col) {
+    const rowKey = makeRowKeyer(rows[0]);
+    const map = {};
+    const aliasHits = [];
+    for (let r = 1; r < rows.length; r++) {
+        const row = rows[r] || [];
+        const key = rowKey(row);
+        const value = cellNumber(row[col]);
+        if (!key || !Number.isFinite(value)) continue;
+        map[key] = value;
+        rowKey.aliases(row).forEach(a => aliasHits.push([a, value]));
+    }
+    aliasHits.forEach(([a, value]) => { if (!Object.prototype.hasOwnProperty.call(map, a)) map[a] = value; });
+    return map;
 }
 
 // A positive number from a sheet cell ("1,208" -> 1208), else NaN.
@@ -125,17 +156,8 @@ function cellNumber(v) {
 function buildWeightMap(rows) {
     if (!Array.isArray(rows) || rows.length < 2) return {};
     const header = rows[0];
-    const rowKey = makeRowKeyer(header);
     const iKg = findCol(header, [/kg\s*\/?\s*(m|mtr|meter|metre)/]);
-    const kgCol = iKg >= 0 ? iKg : header.length - 1;
-    const map = {};
-    for (let r = 1; r < rows.length; r++) {
-        const row = rows[r] || [];
-        const key = rowKey(row);
-        const kg = cellNumber(row[kgCol]);
-        if (key && Number.isFinite(kg)) map[key] = kg;
-    }
-    return map;
+    return mapColumnByKey(rows, iKg >= 0 ? iKg : header.length - 1);
 }
 
 // Pull { size, cls } from a quote line description.
@@ -148,7 +170,12 @@ function buildWeightMap(rows) {
 // The size is taken from the FRONT of the code, and the class from what follows the final "X" —
 // splitting on the first "X" turns "21/2XM" into size "21" and loses every fraction size.
 function parseDescription(description) {
-    const raw = String(description == null ? '' : description);
+    // Notes in brackets are not part of the size: "(Rate per Kg - 105)", "(China make)",
+    // "(14.27THK)", "(OD 42.2)". A bracket of bare digits stays — "16X5.5(6.0)" is the AI's wall.
+    // A wall written after a schedule ("Sch 40 7.11mm thk") is the schedule's own wall; drop it.
+    const raw = String(description == null ? '' : description)
+        .replace(/\([^()]*[A-Za-z][^()]*\)/g, ' ')
+        .replace(/(SCH(?:EDULE)?\.?\s*\d+)\s+[\d.]+\s*MM(\s*THK)?/i, '$1');
     const t = raw.toUpperCase().replace(/["”]/g, '').replace(/\s+/g, '')
         .replace(/--?(ERW|GI|SEAMLESS).*$/, '')
         .replace(/MMTHK$/, '').replace(/THK$/, '').replace(/MM$/, '');
@@ -251,6 +278,7 @@ const api = {
     mapForPipeType,
     applyPriceListWeights,
     makeRowKeyer,
+    mapColumnByKey,
     cellNumber,
     weightKey,
     findCol,
