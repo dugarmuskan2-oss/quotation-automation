@@ -2403,3 +2403,32 @@ Krishna in both Chennai and Jyoti Nagar and Vasu in Jyoti Nagar.
 Left as they were: 350 — 285 came from email and are on none of his contact pages, 65 have no
 town line above them. Seen in passing, not changed: MSL's Bombay board "/78" (022-24902578) and
 Kamachi's Mount Road mobile 9841743432 are on his pages but not on the cards.
+
+## His answers to the waiting cards' questions (6 Oct)
+
+He answered the 28 open questions and one removal in the chat. Acted on, each card checked
+independently and re-checked 20 s after saving:
+- BHARAT TUBES CORPORATION: Bhagwan Bharat / Bhagwan Agarwal (9391067789) is MR. S.B AGARWAL — two
+  more mobiles; the Jindal India dealer page; lines for JINDAL INDIA LTD, MECHTHERM ENERGY and
+  PS CONSTRUCTION PVT LTD.
+- DURGA ENTERPRISES: Durga Steel is the same firm (aka; Eshwarr Kumar Kabra OWNER, "HE IS COUSIN
+  OF MANISH KABARA"); the "dugarenterprises1979@" slip taken off.
+- MADRAS STEEL TUBES: name kept; MR. DEEPAK SIR 9940492018 added; "M/S MADRAS TUBES" on KRR
+  ENGINEERING is MST (aka, line).
+- MKK METAL: aka MKK METPRO; RENAATUS, SREE MAHIZH and TUBE SYNDICATE lines; MR.DHANDAPANI at the
+  Ranipet factory; the Zenith Kopolo line now names Zenith Steel Pipes. Floflex: not connected.
+- goyaltpthyd1@ → Goyal Transport Services (Jindal Steel Tubes' transporter, two numbers).
+- aashitsugla@ → AASHIT, Jindal India's broker (Vishal Pipes not added: he was asked about Jindal
+  India only).
+- GOODS CARRIERS: Vedanta and Emami lines; Suganya is Chemplast's — off the people, her words
+  kept inside the CHEMPLAST line.
+- EVERGREEN: Evergreen H / W is the same firm (aka); his Baqir Brothers and Juzar Sales lines on
+  "Mr. Mannan". Pune godown: not sure, left as it was.
+- CRAYON: Gaurabh "probably shifted" — noted on his row.
+- SHRI VARDHMAN TUBE CO. joined into the approved VARDHAMAN ("same firms"): people, numbers,
+  Vichoor godown, and 10 lines (5 from the waiting card, R&G, RENAATUS, MERIT, DSM ISPAT, TR (17)).
+  The P(21) line was left: it does not say which firm "HE" is.
+- alivalves79@gmail.com → added to the approved S.ABBAS &CO, waiting copy discarded.
+- Sreevatsa Venkateswara: the "E-mail - Signataure" note removed (his yes).
+- "Not sure" ones dropped (Raja Steel copy, Speedel Kerala town, RTI Transport, Visha's Shakthi);
+  JSL = Jindal Saw (as built).
