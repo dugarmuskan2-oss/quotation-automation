@@ -2448,3 +2448,28 @@ mention on his pages, checked independently, and put in the queue for his approv
   referred by MR. JERNAUS of Pslltd. Questions: is Jagadeesh at ADS; which town.
 The first save was undone by an approval in flight (the queue file is read and written whole);
 added again and re-checked.
+
+## Products from the page a firm is filed under (7 Oct)
+
+*His words: "no let the search only consider what is already on the card. From the headers, add
+to the details of the card -- the search looks at that".* The search no longer reads the Filed-under
+headings itself (code). Instead, where one of his own purchase/dealer pages names a product kind
+the card's product range lacked, a row was added — product from the app's list, Specification =
+the heading's words (filing code and "PURCHASE DEP" left off; the full heading stays in Filed under).
+Nothing on any card was changed or removed. Approved cards via the app's save, each logged in
+Recent changes (Undo).
+- MARKET METAL ZONE: Square / Rectangular — "SQUAR PIPE"
+- R.K STEEL: ERW pipe — "ERW MFG (SCAFFOLDING TUBE)"
+- Jindal Quality Tubular: SS pipe — "STAINLESS STEEL - DEALER & MFG"
+- ALI STEEL AND TUBES CO: ERW pipe — "ERW PIPES (DEALER)"; Square / Rectangular — "SQUAR PIPE"
+- APL APOLLO TUBES LIMITED: ERW pipe — "ERW MFG (SCAFFOLDING TUBE)"
+- BOMBAY HARDWARE: Fittings — "PVC/UPVC/HDPE PIPE & FITTING (UPVC)"
+- MAHARASHTRA SEAMLESS LTD: Coating — "COATING & OTHER JOB WORK"
+- MADRAS STEEL TUBES: ERW pipe — "ERW PIPES (DEALER)"
+- SHREE MAHAVEER TUBE CO. (waiting): ERW pipe — "ERW PIPES (DEALER)"; ERW pipe — "IS 9295 / AIR
+  HEATER BS 6223 & ERW BOILER TUBES"
+- CHETNA STEEL: no row — its "Scaffolding Tube" row already says it; the search now reads
+  scaffolding tube as ERW (his page files it under "ERW MFG (SCAFFOLDING TUBE)").
+For the other cards: pages that name only a make ("TATA PRODUCT", "APOLLO DEALER", "JINDAL STAR"),
+"STEEL ITEMS", "LARGER DIA" or a stockist town were not turned into rows — no product kind to name.
+A new card filed under a P(n)/PD(n) page should get the same row when it is built.

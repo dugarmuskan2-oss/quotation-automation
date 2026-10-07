@@ -408,7 +408,8 @@
         if (/\balloy\b/.test(t)) return 'alloy';
         if (/\bgi\b|galvani/.test(t)) return 'gi';
         if (/seamless|\bsmls\b/.test(t)) return 'seamless';
-        if (/\berw\b/.test(t)) return 'erw';
+        // His own page files scaffolding tube under ERW: "P(13) PURCHASE DEP - ERW MFG (SCAFFOLDING TUBE)".
+        if (/\berw\b|scaffold/.test(t)) return 'erw';
         return '';
     }
     /** The families a row counts for: an alloy pipe IS a seamless pipe. */
@@ -740,34 +741,6 @@
     }
 
     /**
-     * His own Filed-under pages that say what a firm sells: "P(12) PURCHASE DEP - ERW PIPES
-     * (DEALER)", "PD (16) PIPE DEALER (STOCKIST)- CHENNAI". A maker's or customer's page
-     * ("SNO 12 APL APOLLO (ALL DETAILS)") lists who deals with THAT firm, not what this one
-     * sells, and a transporter's page ("TR …") is about lorries. *His words: "Filed under often
-     * shows what products they sell or details about the company. Also incorporate these".*
-     */
-    function ownHeadings(p) {
-        return (p.categories || []).map(str).filter(function (h) {
-            if (!h || /^\W*(sno|tr)\b/i.test(h)) return false;
-            return /^\W*p\s*d?\s*\(\s*\d+\s*\)/i.test(h) || /\bpurchase\b|dealer|stockist|distributor|manufactur|\bmfg\b/i.test(h);
-        });
-    }
-    /** A page heading without its codes: "P(12) PURCHASE DEP - ERW PIPES (DEALER) - P(12)" → "ERW PIPES (DEALER)". */
-    function headingShort(h) {
-        return str(String(h || '').replace(/[^\x20-\x7E]/g, ' ')
-            .replace(/\bp\s*d?\s*\(\s*\d+\s*\)/gi, ' ').replace(/\btotal\s+\d+\s*pg\b/gi, ' ')
-            .replace(/\bpurchase\b\s*-?\s*(?:dep(?:t|artment)?\b\.?)?/gi, ' ')
-            .replace(/\s+/g, ' ').replace(/^[\s\-.]+|[\s\-.]+$/g, '').replace(/^\(\s*([^()]*?)\s*\)$/, '$1'));
-    }
-    /** The families his own pages name for a firm, each with the page that names it. */
-    function headingFamilies(p) {
-        var out = {};
-        ownHeadings(p).forEach(function (h) {
-            rowFamilies({ p: headingShort(h) }).forEach(function (f) { if (!out[f]) out[f] = headingShort(h); });
-        });
-        return out;
-    }
-    /**
      * The standards a text names, written one way: "IS:1239 / 3589" is IS 1239 and IS 3589,
      * "ASME SA-179" and "A179" are A179, "API 5L", "YST 310". A number followed by a unit
      * ("size is 150 nb") is a size, not a standard.
@@ -811,7 +784,7 @@
     }
 
     function scoreTypes(p, need, why) {
-        var have = familiesOf(p), head = headingFamilies(p);
+        var have = familiesOf(p);
         var wanted = (need.types || []).map(lower);
         if (!wanted.length) {
             var look = (need.words || []).concat(need.specs || []);
@@ -819,12 +792,9 @@
                 : 'No pipe type given — cannot match on product']);
             return { pts: 0, blocked: false };
         }
-        // The page he filed them under says it as plainly as their Pipe types box: R.K Steel sits
-        // on his ERW and square-pipe purchase pages with nothing typed in the box. A page only
-        // ever adds — not being on the ERW page rules nobody out.
-        var hits = wanted.filter(function (t) { return have.indexOf(t) !== -1 || head[t]; });
+        var hits = wanted.filter(function (t) { return have.indexOf(t) !== -1; });
         // Alloy asked, a seamless mill on file: it may roll alloy — offered, not promised.
-        if (!hits.length && wanted.length === 1 && wanted[0] === 'alloy' && (have.indexOf('seamless') !== -1 || head.seamless)) {
+        if (!hits.length && wanted.length === 1 && wanted[0] === 'alloy' && have.indexOf('seamless') !== -1) {
             why.push(['neutral', 'Seamless on their card — alloy not stated, worth asking']);
             return { pts: 15, blocked: false };
         }
@@ -845,10 +815,8 @@
             why.push(['neutral', said.length ? 'Their card says "' + said.join(', ') + '" — which pipes is not stated' : 'No pipe types on their card yet']);
             return { pts: 0, blocked: false };
         }
-        var paged = hits.filter(function (t) { return have.indexOf(t) === -1; });
-        var page = paged.length ? ' — on your "' + head[paged[0]] + '" page' : '';
-        if (hits.length === wanted.length) { why.push(['ok', 'Deals in ' + typeNames(need.types) + page]); return { pts: 40, blocked: false }; }
-        why.push(['warn', 'Only does ' + typeNames(hits, ', ') + ' of ' + typeNames(need.types, ' / ') + page]);
+        if (hits.length === wanted.length) { why.push(['ok', 'Deals in ' + typeNames(need.types)]); return { pts: 40, blocked: false }; }
+        why.push(['warn', 'Only does ' + typeNames(hits, ', ') + ' of ' + typeNames(need.types, ' / ')]);
         return { pts: 20, blocked: false };
     }
 
@@ -1000,40 +968,29 @@
         var words = (need && need.words) || [];
         if ((need.types || []).length || !words.length) return { pts: 0, hit: false };
         var rows = (p.products || []).filter(function (pr) { return str(pr.p) || str(pr.spec); });
-        // His Filed-under pages name what they sell too ("AIR HEATER … BOILER TUBES").
-        var pages = ownHeadings(p).map(function (h) { return { p: headingShort(h), page: true }; });
-        if (!rows.length && !pages.length) { why.push(['neutral', 'No products on their card — cannot match "' + words.join(' ') + '"']); return { pts: 0, hit: false }; }
+        if (!rows.length) { why.push(['neutral', 'No products on their card — cannot match "' + words.join(' ') + '"']); return { pts: 0, hit: false }; }
         var best = null, top = 0;
-        rows.concat(pages).forEach(function (pr) {
+        rows.forEach(function (pr) {
             var pw = lower(str(pr.p) + ' ' + str(pr.spec)).split(/[^a-z0-9]+/).filter(Boolean).map(singularWord);
             var hits = words.filter(function (w) { return pw.indexOf(singularWord(w)) !== -1; });
             if (hits.length > top) { top = hits.length; best = { pr: pr, hits: hits }; }
         });
         if (!best) { why.push(['neutral', 'Nothing on their card says "' + words.join(' ') + '"']); return { pts: 0, hit: false }; }
-        why.push(['ok', (best.pr.page ? 'On your "' + best.pr.p + '" page' : 'Their card lists ' + (str(best.pr.p) || 'a product')) + ' — "' + best.hits.join(' ') + '"']);
+        why.push(['ok', 'Their card lists ' + (str(best.pr.p) || 'a product') + ' — "' + best.hits.join(' ') + '"']);
         return { pts: Math.min(40, 20 + 10 * (best.hits.length - 1)), hit: true };
     }
 
     /**
      * The standard an enquiry names — IS 9295, BS 6223, SA-179, API 5L — found on a product
-     * row or on one of his Filed-under pages. Only ever a plus: a blank spec box says nothing.
+     * row of the card. Only ever a plus: a blank spec box says nothing.
      */
     function scoreSpecs(p, need, why) {
         var want = (need && need.specs) || [];
         if (!want.length) return 0;
-        var found = [], page = '';
-        (p.products || []).map(function (pr) { return { text: str(pr.p) + ' ' + str(pr.spec), page: '' }; })
-            .concat(ownHeadings(p).map(function (h) { return { text: h, page: headingShort(h) }; }))
-            .forEach(function (r) {
-                var codes = specCodes(r.text);
-                want.forEach(function (w) {
-                    if (codes.indexOf(w) === -1 || found.indexOf(w) !== -1) return;
-                    found.push(w);
-                    if (r.page && !page) page = r.page;
-                });
-            });
+        var codes = specCodes((p.products || []).map(function (pr) { return str(pr.p) + ' ' + str(pr.spec); }).join(' ; '));
+        var found = want.filter(function (w) { return codes.indexOf(w) !== -1; });
         if (!found.length) return 0;
-        why.push(['ok', 'Names ' + found.join(', ') + (page ? ' — on your "' + page + '" page' : ' on their card')]);
+        why.push(['ok', 'Names ' + found.join(', ') + ' on their card']);
         return 20;
     }
 
@@ -5437,7 +5394,7 @@
         if (r.blocked) return false;
         // No kind read: whoever the enquiry's own words did not find on their card.
         if (!(need.types || []).length) return !r.wordHit;
-        if (!familiesOf(r.p).length && !Object.keys(headingFamilies(r.p)).length) return true;
+        if (!familiesOf(r.p).length) return true;
         var sized = (need.items || []).some(function (li) { return li.inches != null && li.type; });
         return sized && !r.why.some(function (w) { return /^(Makes |Not on their card:)/.test(w[1]); });
     }
@@ -5847,7 +5804,7 @@
         // holds edits the same way and had none of the guard, so F5 threw them away silently.
         hasUnsavedWork: function () { return Object.keys(S.dirty).length > 0; },
         _test: { readEnquiry: readEnquiry, rankFor: rankFor, matchCity: matchCity, kmBetween: kmBetween,
-                 specCodes: specCodes, ownHeadings: ownHeadings, headingShort: headingShort, headingFamilies: headingFamilies,
+                 specCodes: specCodes,
                  applyFind: applyFind, looksLikeFirmName: looksLikeFirmName,
                  focusKey: focusKey, saveFailedWhat: saveFailedWhat,
                  refreshWaitingBadge: refreshWaitingBadge,
