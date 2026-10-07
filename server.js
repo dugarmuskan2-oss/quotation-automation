@@ -19,7 +19,8 @@ require('dotenv').config();
 
 const storage = require('./storage');
 const { createLineItemId, parseFlexibleNumber, calculateLineItem } = require('./utils/calculations');
-const { applyPriceListWeights } = require('./utils/pipeWeights');
+const { applyPriceListWeights, lookupKgPerMeter } = require('./utils/pipeWeights');
+const { UNIT_AND_ITEM_RULES, markNonPipeItems, convertKgQuantities, keepMissingQuantitiesBlank } = require('./utils/quantityUnits');
 const { applyPriceListRates } = require('./utils/priceList');
 const { bookFromDoc } = require('./utils/priceListBook');
 const {
@@ -537,7 +538,7 @@ async function handleGenerateQuotation({ emailContent, fileContent, instructions
         // The detailed extraction rules (JSON shape, kg/meter, sizing, sheet selection, etc.) live
         // in the configurable system instructions — the single source of truth. This user-message
         // line only points to them + names the rate files, so it can't contradict them.
-        const promptText = `Follow the system instructions exactly. Extract EVERY item from the enquiry below — do not skip or ignore any item, regardless of type. For each item, match the rate AND the kg/meter from the ${uploadedFileIds.length} uploaded PDF rate file(s)${rateFileListText} by reading the PDFs directly, and return ONLY the JSON exactly as specified in the system instructions.`;
+        const promptText = `Follow the system instructions exactly. Extract EVERY item from the enquiry below — do not skip or ignore any item, regardless of type. For each item, match the rate AND the kg/meter from the ${uploadedFileIds.length} uploaded PDF rate file(s)${rateFileListText} by reading the PDFs directly, and return ONLY the JSON exactly as specified in the system instructions, with a "unit" on every line item.${UNIT_AND_ITEM_RULES}`;
 
         const userContentParts = [
             {
@@ -628,8 +629,12 @@ async function handleGenerateQuotation({ emailContent, fileContent, instructions
             quotationData.lineItems = [];
         }
 
+        // The unit each line was asked in — calculateLineItem keeps a fixed shape and drops it.
+        const askedUnits = quotationData.lineItems.map(item => (item && item.unit) || '');
+
         // Calculate final rates and line totals if not provided
         quotationData.lineItems = quotationData.lineItems.map(item => calculateLineItem(item));
+        markNonPipeItems(quotationData.lineItems);
 
         // kg/m now comes from the price list wherever the price list has it, and from the AI only
         // for sizes the sheets do not carry. Measured against published pipe tables, the sheet is
@@ -640,8 +645,9 @@ async function handleGenerateQuotation({ emailContent, fileContent, instructions
         // yet. The Freight panel still fills blanks only, so it can never undo a hand correction.
         // Never let this break generation — a quote with some blank weights beats no quote.
         let kgFill = { filled: 0, corrected: 0, agreed: 0, keptFromAi: 0, unknown: 0, changes: [] };
+        let weightMaps = {};
         try {
-            const weightMaps = await storage.loadPipeWeights();
+            weightMaps = await storage.loadPipeWeights();
             kgFill = applyPriceListWeights(weightMaps, quotationData.lineItems);
             if (kgFill.corrected) {
                 console.log('kg/m: price list corrected ' + kgFill.corrected + ' AI weight(s): '
@@ -651,8 +657,13 @@ async function handleGenerateQuotation({ emailContent, fileContent, instructions
             console.warn('kg/m backfill skipped:', e.message);
         }
 
+        // A quantity asked in kg becomes metres by the PRICE LIST's kg/m only (never the AI's).
+        const kgToMetres = convertKgQuantities(quotationData.lineItems, askedUnits,
+            li => lookupKgPerMeter(weightMaps, li.identifiedPipeType, li.originalDescription));
+
         const priced = await priceLinesFromPriceList(quotationData.lineItems);
         quotationData.lineItems = priced.lineItems;
+        keepMissingQuantitiesBlank(quotationData.lineItems);
 
         // Set quotation date if not provided
         if (!quotationData.quotationDate) {
@@ -668,6 +679,7 @@ async function handleGenerateQuotation({ emailContent, fileContent, instructions
             ...quotationData,
             _kgFill: kgFill,          // what the price-list backfill did, so it is never invisible
             _priceCheck: priced.priceCheck, // per line: what the AI read, which price-list row priced it, or why none did
+            _kgToMetres: kgToMetres,        // kg lines turned into metres, and how many had no list weight
             _ai: {
                 raw: responseText,
                 model: 'gpt-5.2',

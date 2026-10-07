@@ -53,6 +53,14 @@ function computeGrandTotalFromLineItems(lineItems) {
  * @param {string} [pipeType] - pipe type for data-pipe-type attribute (for grouping)
  * @returns {string} HTML for one <tr class="item-row"> with 7 <td>s
  */
+// A quantity asked in kg is shown in metres with the enquiry's figure on hover; one the price list
+// had no kg/m for has no quantity at all — blank and red, never a guessed 6 m.
+function quantityAttrs(item) {
+    const asked = item.enquiryQty ? ' title="Enquiry asked: ' + escapeHtmlForTable(item.enquiryQty) + '"' : '';
+    const missing = String(item.quantity == null ? '' : item.quantity).trim() === '';
+    return asked + (missing ? ' style="display:inline-block;min-width:60px;min-height:18px;background:#fde2e2;border:1px solid #d33;"' : '');
+}
+
 function buildItemRowHTML(item, rowIndex, lineTotal, pipeType) {
     const formattedDesc = formatItemDescriptionByPipeType(item) || item.originalDescription || item.identifiedPipeType || '';
     const desc = escapeHtmlForTable(formattedDesc);
@@ -70,7 +78,7 @@ function buildItemRowHTML(item, rowIndex, lineTotal, pipeType) {
         '<tr class="item-row"' + dataPipeType + lineItemIdAttr + '>' +
         '<td></td>' +
         '<td><input type="text" class="editable-field" data-field="originalDescription" value="' + desc + '" placeholder="Enter description" style="width:100%;border:none;background:transparent;"></td>' +
-        '<td><span data-field="quantity">' + quantityStr + '</span></td>' +
+        '<td><span data-field="quantity"' + quantityAttrs(item) + '>' + quantityStr + '</span></td>' +
         '<td class="col-base-rate">₹<input type="number" class="editable-field" data-field="unitRate" value="' + unitRateStr + '" min="0" step="0.01" style="' + rateStyle + '"' + (noRate ? ' title="Not in the price list — enter the rate"' : '') + '></td>' +
         '<td class="col-margin"><input type="number" class="editable-field" data-field="marginPercent" value="' + marginStr + '" min="0" step="0.01" style="width:60px;"></td>' +
         '<td><span class="rate-per-mtr">₹' + finalRateStr + '</span></td>' +

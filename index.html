@@ -3664,9 +3664,9 @@
                                    data-field="quantity"
                                    data-pipe-type="${pipeType}"
                                    data-row-id="${rowId}"
-                                   value="${item.quantity}" 
-                                   min="0" 
-                                   step="1">
+                                   value="${item.quantity}"
+                                   min="0"
+                                   step="1"${quantityCellExtras(item)}>
                         </td>
                         <td class="col-base-rate">
                             ₹<input type="number" 
@@ -5690,6 +5690,14 @@
             });
 
             return headerClone;
+        }
+
+        // A quantity asked in kg arrives in metres (converted by the price list's kg/m); hovering
+        // shows what the enquiry said. One the list had no kg/m for arrives blank and red.
+        function quantityCellExtras(item) {
+            const asked = item && item.enquiryQty ? ' title="Enquiry asked: ' + escapeHtml(item.enquiryQty) + '"' : '';
+            const missing = String(item && item.quantity != null ? item.quantity : '').trim() === '';
+            return asked + (missing ? ' style="background:#fde2e2; border:1px solid #d33;"' : '');
         }
 
         // A line the price list could not price arrives with NO rate — shown blank and red, never 0.

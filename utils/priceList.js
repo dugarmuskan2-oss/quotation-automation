@@ -13,6 +13,7 @@
 // can never match one way for weight and another way for price.
 
 const { mapColumnByKey, findCol, parseDescription, weightKey } = require('./pipeWeights');
+const { isNonPipeItem } = require('./quantityUnits');
 
 // Which money column is the rate, per list. ERW and GI carry "Cost/Meter" and, beside it, "Price"
 // (about 5% higher) — the rate is Cost/Meter, never Price. Seamless uses "Price per Meter"; its
@@ -71,7 +72,8 @@ function checkLinePrice(book, li) {
     const base = { description, pipeType: li.identifiedPipeType || '', list: type, size, cls, key,
         aiPrice: String(li.unitRate == null ? '' : li.unitRate) };
     let outcome;
-    if (!type) outcome = OUTCOME.NOT_A_LISTED_TYPE;
+    // An angle or a bar filed under a pipe type must never take a pipe's price.
+    if (!type || isNonPipeItem(description)) outcome = OUTCOME.NOT_A_LISTED_TYPE;
     else if ((book.pending || []).includes(type)) outcome = OUTCOME.LIST_BEING_CHANGED;
     else if (!book[type] || !Object.keys(book[type]).length) outcome = OUTCOME.NO_PRICE_LIST;
     else if (!key || !Object.prototype.hasOwnProperty.call(book[type], key)) outcome = OUTCOME.SIZE_NOT_IN_LIST;
@@ -99,7 +101,7 @@ function applyPriceListRates(book, lineItems, recalc) {
         // The AI's own seamless cost is dropped like its rate — only the sheet's figure is used.
         const extra = { aiUnitRate: check.aiPrice, rateCheck: check.outcome, costRate: check.listCost ? String(check.listCost) : '' };
         if (check.outcome === OUTCOME.PRICED) {
-            return Object.assign(recalc(Object.assign({}, li, { unitRate: String(check.listPrice) })), extra);
+            return Object.assign({}, li, recalc(Object.assign({}, li, { unitRate: String(check.listPrice) })), extra);
         }
         return Object.assign({}, li, { unitRate: '', finalRate: '', lineTotal: '' }, extra);
     });
