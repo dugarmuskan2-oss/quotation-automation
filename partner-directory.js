@@ -132,8 +132,8 @@
      * made it "right by the site" for Chennai while its nearest mill is Hosur, 330 km away.
      * With none marked, every place on the card counts, as before.
      */
-    function measuredPlaces(p) {
-        var want = p.role === 'manufacturer' ? 'factory' : (p.role === 'dealer' ? 'godown' : '');
+    function measuredPlaces(p, everyPlace) {
+        var want = everyPlace ? '' : (p.role === 'manufacturer' ? 'factory' : (p.role === 'dealer' ? 'godown' : ''));
         // One entry per town (imports repeat towns over several rows). A town where ANY row is a
         // factory (for a maker) or godown (for a dealer) counts as one, and its distance is taken
         // from the area of THAT row — never from the office's area beside it. The head office's
@@ -165,9 +165,23 @@
         }
         return list;
     }
-    function nearestBranch(p, site) {
+    /**
+     * The nearest place a firm supplies from. Only: the towns given (where its matching rows say
+     * it makes the product); else its factories (maker) or godowns (dealer); else every place —
+     * also when none of its factories or godowns can be put on the map, so a godown typed as
+     * "JYOTI NAGAR GODOWN" no longer leaves Bombay Hardware unmeasured.
+     */
+    function nearestBranch(p, site, only) {
+        var keys = (only || []).map(placeKey);
+        if (keys.length) {
+            var made = nearestOf(measuredPlaces(p, true).filter(function (x) { return keys.indexOf(x.key) !== -1; }), site);
+            if (made) { made.making = true; return made; }
+        }
+        return nearestOf(measuredPlaces(p), site) || nearestOf(measuredPlaces(p, true), site);
+    }
+    function nearestOf(list, site) {
         var best = null;
-        measuredPlaces(p).forEach(function (x) {
+        list.forEach(function (x) {
             var name = x.name;
             var at = /pan india/i.test(name) ? null : placeFor(name);
             // Measured from the area when it is on the map — "Ambattur, Chennai", not the middle of Chennai.
@@ -377,9 +391,19 @@
         return (whole ? whole + (f ? '-' + f : '') : f) + '"';
     }
     function spanLabel(sp) { return sp.lo === sp.hi ? inchLabel(sp.hi) : (sp.lo ? inchLabel(sp.lo) : 'up') + ' to ' + inchLabel(sp.hi); }
-    /** Which pipe family a product row is, by its name: GI, ERW or Seamless, else none. */
+    /**
+     * Which family a product row is, by its name. Fittings, valves, sheets and coating come
+     * first: "GI FITTING" is a fitting, not GI pipe — a fittings dealer used to rank second for a
+     * GI pipe enquiry on the strength of the two letters (7 Oct test of twelve enquiries).
+     */
     function rowFamily(pr) {
         var t = lower(pr && pr.p);
+        if (/fitting|valve|flange|elbow|\bbends?\b|coupling/.test(t)) return 'fitting';
+        if (/coating|lining/.test(t)) return 'coating';
+        if (/sheet|roofing|\bppgi\b|\bppgl\b|colou?r\s*coat|purlin/.test(t)) return 'sheets';
+        if (/square|rectangular|\bshs\b|\brhs\b|hollow\s*section/.test(t)) return 'square';
+        if (/\bhsaw\b|spiral|\bssaw\b/.test(t)) return 'hsaw';
+        if (/\blsaw\b/.test(t)) return 'lsaw';
         if (/stainless|\bss\b/.test(t)) return 'ss';
         if (/\balloy\b/.test(t)) return 'alloy';
         if (/\bgi\b|galvani/.test(t)) return 'gi';
@@ -387,20 +411,42 @@
         if (/\berw\b/.test(t)) return 'erw';
         return '';
     }
+    /** The families a row counts for: an alloy pipe IS a seamless pipe. */
+    function rowFamilies(pr) {
+        var f = rowFamily(pr);
+        return f === 'alloy' ? ['alloy', 'seamless'] : (f ? [f] : []);
+    }
+    /** Families that are pipe a pipe enquiry can be about. Fittings and coating never are. */
+    var FAMILY_LABEL = { gi: 'GI', erw: 'ERW', seamless: 'Seamless', ss: 'SS', ms: 'MS', alloy: 'Alloy',
+        hsaw: 'HSAW (spiral)', lsaw: 'LSAW', square: 'Square / Rectangular', sheets: 'Sheets' };
 
+    // Sheets a document lives on, not sheets a roof is made of — "as per attached excel sheet"
+    // turned a GI pipe enquiry into a sheets enquiry (7 Oct review).
+    var DOC_SHEET = /\b(?:attached|enclosed|excel|xls|data|spec(?:ification)?|price|rate|google|work|cost(?:ing)?|bom|enquiry|tally|comparison)\s+sheets?\b|\bsheets?\s+(?:attached|enclosed)\b/g;
     function readTypesAndClass(t) {
-        var type = '';
+        t = String(t || '').replace(DOC_SHEET, ' ');
+        var type = '', weak = false;
+        // Most particular first: "galvanised roofing sheets" are sheets, "GI square pipe" is a
+        // hollow section, "alloy P11" is alloy (which a seamless mill may also roll).
         if (/\bss\b|stainless|\b304\b|\b316\b|a312/.test(t)) type = 'SS';
+        else if (/\balloy\b|\bp(?:5|9|11|22|91)\b|a335/.test(t)) type = 'Alloy';
+        else if (/colou?r\s*coat|roofing|\bppgi\b|\bppgl\b|\bsheets?\b/.test(t)) type = 'Sheets';
+        else if (/square|rectangular|\bshs\b|\brhs\b|hollow\s*section/.test(t)) type = 'Square';
+        else if (/\bhsaw\b|spiral|\bssaw\b/.test(t)) type = 'HSAW';
+        else if (/\blsaw\b/.test(t)) type = 'LSAW';
         else if (/\bgi\b|galvani/.test(t)) type = 'GI';
         else if (/\berw\b/.test(t)) type = 'ERW';
-        else if (/seamless|a106|\bp11\b|\bp22\b|sch\s*\d/.test(t)) type = 'Seamless';
+        else if (/seamless|a106/.test(t)) type = 'Seamless';
+        // "SCH 40" alone hints at seamless but does not say it: a line that only has it takes the
+        // kind of the line before ("Alloy steel pipe P11, 4 inch SCH 80").
+        else if (/sch\s*\d/.test(t)) { type = 'Seamless'; weak = true; }
         var cls = '';
         var sch = t.match(/sch(?:edule)?\.?\s*(\d{2,3})/);
         if (sch) cls = 'sch ' + sch[1];
         else if (/heavy/.test(t)) cls = 'heavy';
         else if (/medium/.test(t)) cls = 'medium';
         else if (/light/.test(t)) cls = 'light';
-        return { type: type, cls: cls };
+        return { type: type, cls: cls, weak: weak };
     }
 
     // Tonnes and kg are checked before metres so "mtr" can never be read as "mt".
@@ -409,6 +455,13 @@
         if (mT) return { kind: 'T', val: parseFloat(mT[1]) };
         var mK = t.match(/(\d[\d,]*(?:\.\d+)?)\s*(?:kgs?(?![a-z])|kilo)/);
         if (mK) return { kind: 'kg', val: parseFloat(mK[1].replace(/,/g, '')) };
+        // "2 km" of line pipe is a length; "site is 40 km from Chennai" is a distance and must not
+        // become 248 T of pipe (7 Oct review).
+        var mKm = t.match(/(\d+(?:\.\d+)?)\s*kms?(?![a-z])/);
+        if (mKm) {
+            var near = t.slice(Math.max(0, mKm.index - 24), mKm.index + mKm[0].length + 24);
+            if (!/\bfrom\b|\baway\b|distance|radius|located|site\s+is|\(|\)/.test(near)) return { kind: 'm', val: parseFloat(mKm[1]) * 1000 };
+        }
         var mM = t.match(/(\d[\d,]*(?:\.\d+)?)\s*(?:mtrs?|met(?:er|re)s?|rmt|m(?![a-z]))/);
         if (mM) return { kind: 'm', val: parseFloat(mM[1].replace(/,/g, '')) };
         return { kind: '', val: 0 };
@@ -417,11 +470,16 @@
     function readLine(frag, ctx) {
         var t = ' ' + frag.toLowerCase() + ' ';
         var tc = readTypesAndClass(t);
-        var type = tc.type || ctx.type;
-        if (!type) return null;
-        var sm = t.match(/(\d+[-\s]\d+\/\d+|\d+\/\d+|\d+(?:\.\d+)?)\s*(?:"|”|inch(?:es)?|nb\b)/);
+        // A line with no kind read still carries its size and quantity: "API 5L line pipe 10 inch,
+        // 2 km" used to lose both along with the kind.
+        var type = (tc.type && !tc.weak ? tc.type : '') || ctx.type || tc.type || '';
+        var SIZE = '(\\d+[-\\s]\\d+\\/\\d+|\\d+\\/\\d+|\\d+(?:\\.\\d+)?)';
+        var range = t.match(new RegExp(SIZE + '\\s*(?:"|”|inch(?:es)?)?\\s*(?:to|–)\\s*' + SIZE + '\\s*(?:"|”|inch(?:es)?|nb\\b)'));
+        var sm = range ? null : t.match(/(\d+[-\s]\d+\/\d+|\d+\/\d+|\d+(?:\.\d+)?)\s*(?:"|”|inch(?:es)?|nb\b)/);
         var q = readQty(t);
-        return { type: type, cls: tc.cls || ctx.cls, inches: sm ? sizeToInches(sm[1].trim()) : null, kind: q.kind, val: q.val };
+        var lo = range ? sizeToInches(range[1].trim()) : (sm ? sizeToInches(sm[1].trim()) : null);
+        var hi = range ? sizeToInches(range[2].trim()) : null;
+        return { type: type, cls: tc.cls || ctx.cls, inches: lo, inchesHi: hi != null && hi !== lo ? hi : null, kind: q.kind, val: q.val };
     }
 
     function resolveLine(li) {
@@ -434,8 +492,9 @@
             var perM = (table && li.inches !== null) ? table[String(li.inches)] : null;
             if (perM) kg = li.val * perM;
         }
-        var name = (li.type + ' ' + (li.cls || '')).trim();
-        return { product: name, type: li.type, cls: li.cls, inches: li.inches, kg: kg };
+        var name = (li.type + ' ' + (li.cls || '')).trim()
+            || (li.inches !== null ? (li.inchesHi ? spanLabel({ lo: li.inches, hi: li.inchesHi }) : inchLabel(li.inches)) + ' pipe' : '');
+        return { product: name, type: li.type, cls: li.cls, inches: li.inches, inchesHi: li.inchesHi || null, kg: kg };
     }
 
     // "12 MT seamless sch 80, 6 inch" arrives as two clauses — fold quantity into the sized one.
@@ -465,15 +524,57 @@
         });
         return hits.length === 1 ? hits[0] : null;
     }
+    function areaIsPickup(t, ar) {
+        var i = t.search(new RegExp('(^|[^a-z0-9])' + window.townPlaces.areaPart(ar.name).split(' ').join('[^a-z0-9]+') + '(?![a-z0-9])'));
+        return i >= 0 && PICKUP_WORDS.test(t.slice(Math.max(0, i - 24), i + 1));
+    }
+    /**
+     * Where it loads, when that is a placed area ("from Ambattur") or a placed town outside the 24
+     * ("from Sriperumbudur"): the words after from/ex, up to "to" or a comma (7 Oct review).
+     */
+    function pickupNamed(raw, t) {
+        var tp = window.townPlaces;
+        if (tp && tp.savedAreas) {
+            var hits = tp.savedAreas().filter(function (a) { return areaIsPickup(t, a); });
+            if (hits.length === 1) return hits[0].town;
+        }
+        var m = /\b(?:from|ex)\s+([A-Za-z][A-Za-z .]{1,30}?)(?=\s+to\b|,|\.|;|$)/i.exec(String(raw || ''));
+        var at = m ? placeFor(m[1]) : null;
+        return at && !at.ambiguous ? at.name.split(',').pop().trim() : '';
+    }
+    var NOT_PRODUCT_WORD = /^(need|needed|required?|requirement|please|pls|kindly|quote|quotation|rate|rates|price|send|offer|supply|supplies|pipes?|tubes?|delivery|deliver|delivered|despatch|dispatch|site|at|to|from|the|of|for|and|with|in|on|by|or|a|an|mtrs?|meters?|metres?|rmt|kms?|tons?|tonnes?|mt|kgs?|nos?|qty|quantity|inch|inches|nb|od|mm|thk|thick|thickness|sch|schedule|lorry|truck|load|loads|small|big|ex|only|urgent|asap|immediately|stock|available|material|materials|item|items|size|sizes|length|lengths|grade|make|brand|any|our|your|we|you|is|are|be|this|that|it|heavy|medium|light|class|black|hy|lt|dear|sir|sirs|madam|hi|hello|good|morning|afternoon|evening|regards|thanks|thank|thanking|warm|best|earliest|below|above|following|mentioned|have|has|plant|factory|project|request|transport|transportation|freight|tempo|trailers?|containers?|vehicles?|ft|feet|wheeler|taurus|lcv|part|full|trip|attached|enclosed|excel|sheet)$/;
+    /** "plates" and "PLATE", "valves" and "Valves": one word (7 Oct review). */
+    function singularWord(w) { return w.length > 3 && !/ss$/.test(w) ? w.replace(/s$/, '') : w; }
+    /** The words of an enquiry that can only be about the product: no units, numbers, places or filler. */
+    function enquiryWords(raw, place) {
+        var placeWords = [place.site, place.pickup, place.unknown].concat(Object.keys(COORD)).join(' ').toLowerCase().split(/[^a-z0-9]+/);
+        var out = [];
+        lower(raw).split(/[^a-z0-9]+/).forEach(function (w) {
+            if (w.length < 2 || /^\d+(\.\d+)?$/.test(w) || NOT_PRODUCT_WORD.test(w) || placeWords.indexOf(w) !== -1) return;
+            if (/^\d+(mm|m|mtrs?|t|kg|km)$/.test(w) || /^\d+x\d+/.test(w)) return;
+            w = singularWord(w);
+            if (out.indexOf(w) === -1) out.push(w);
+        });
+        return out.slice(0, 12);
+    }
     function readEnquiry(text) {
         var raw = String(text || ''), t = ' ' + raw.toLowerCase() + ' ';
         var ctx = readTypesAndClass(t);
+        // A clause with no kind of its own belongs to the clause before it ("GI pipe 2 inch 300 m,
+        // 3 inch 100 m"), not to whichever kind ranks first in the whole text (7 Oct review).
+        var last = '';
         var items = raw.split(/,|;|\n|\+|\band\b/i).map(str).filter(Boolean)
-            .map(function (f) { return readLine(f, ctx); })
-            .filter(function (li) { return li && (li.kind || li.inches !== null); });
+            .map(function (f) {
+                var li = readLine(f, { type: last || (ctx.weak ? '' : ctx.type), cls: ctx.cls });
+                var own = readTypesAndClass(' ' + lower(f) + ' ');
+                if (own.type && !own.weak) last = own.type;
+                return li;
+            })
+            // A line with no kind is kept only for its size — "lorry to Chennai, 12 MT" is a load, not a product.
+            .filter(function (li) { return li && (li.type ? (li.kind || li.inches !== null) : li.inches !== null); });
         var merged = mergeClauses(items).map(resolveLine);
         var types = [];
-        merged.forEach(function (li) { if (types.indexOf(li.type) === -1) types.push(li.type); });
+        merged.forEach(function (li) { if (li.type && types.indexOf(li.type) === -1) types.push(li.type); });
         if (!types.length && ctx.type) types.push(ctx.type);
         var kgTotal = merged.reduce(function (s, li) { return s + (li.kg || 0); }, 0);
         if (!kgTotal) { var q = readQty(t); if (q.kind === 'T') kgTotal = q.val * 1000; else if (q.kind === 'kg') kgTotal = q.val; }
@@ -486,7 +587,10 @@
         if (placed && !placed.ambiguous) place = { site: placed.name, pickup: place.pickup, unknown: '' };
         // A part of town he has put on the map, named in the enquiry ("delivery at Ambattur"):
         // measured from it, not from the middle of the town.
+        // An area named right after "from" is where it loads, not where it goes.
+        if (!place.pickup) place.pickup = pickupNamed(raw, t);
         var ar = areaNamed(raw, place.site);
+        if (ar && areaIsPickup(t, ar)) { place = { site: place.site, pickup: place.pickup || ar.town, unknown: place.unknown }; ar = null; }
         if (ar) place = { site: ar.name + ', ' + ar.town, pickup: place.pickup, unknown: '' };
         return {
             items: merged, types: types,
@@ -498,7 +602,11 @@
             sitePlace: placed && !placed.ambiguous ? placed : undefined,
             tons: kgTotal / 1000, known: kgTotal > 0,
             brands: readBrands(raw),
-            freight: /transport|freight|lorry|truck|part load|full load/.test(t) || !!place.pickup,
+            // The enquiry's own product words, for when no pipe kind could be read from it
+            // ("API 5L line pipe") — matched against what each card says it supplies.
+            words: types.length ? [] : enquiryWords(raw, place),
+            text: raw.slice(0, 600),
+            freight: /transport|freight|lorry|truck|tempo|vehicle|trailer|container|part load|full load|\bace\b|pick\s*up|mini\s*truck|\b407\b/.test(t) || !!place.pickup,
             empty: looksLikeNothing(t, types, place.pickup),
         };
     }
@@ -565,9 +673,11 @@
      * Only 24 towns are in it, so this is the common case, not the rare one.
      */
     function unknownPlaceNamed(text) {
-        var m = /(?:deliver(?:y|ed)?|despatch|dispatch|ship(?:ment)?)\s*(?:at|to|in)?\s*[:\-]?\s*([A-Z][a-zA-Z]{2,})/
-            .exec(String(text || ''));
-        return m ? m[1] : '';
+        var NOT_A_PLACE = /^(monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|immediately|urgently|january|february|march|april|may|june|july|august|september|october|november|december|within|before|after|next|by)$/i;
+        var cands = [/\bfrom\s+[A-Za-z ,.]{2,40}?\s+to\s+([A-Z][a-zA-Z]{2,})/, /(?:deliver(?:y|ed)?|despatch|dispatch|ship(?:ment)?)\s*(?:at|to|in)?\s*[:\-]?\s*([A-Z][a-zA-Z]{2,})/]
+            .map(function (re) { var m = re.exec(String(text || '')); return m ? m[1] : ''; })
+            .filter(function (w) { return w && !NOT_A_PLACE.test(w); });
+        return cands.filter(function (w) { var at = placeFor(w); return at && !at.ambiguous; })[0] || cands[0] || '';
     }
 
     /**
@@ -609,7 +719,7 @@
         if (!fam) return null;
         var nw = lower(needName).split(/[^a-z0-9]+/).filter(function (w) { return w.length > 1; });
         var best = null, top = -1;
-        (p.products || []).filter(function (pr) { return rowFamily(pr) === fam; }).forEach(function (pr) {
+        (p.products || []).filter(function (pr) { return rowFamilies(pr).indexOf(fam) !== -1; }).forEach(function (pr) {
             var pw = ' ' + lower(pr.p + ' ' + pr.spec).replace(/[^a-z0-9]+/g, ' ') + ' ';
             var hits = nw.filter(function (w) { return pw.indexOf(' ' + w + ' ') !== -1; }).length;
             if (hits > top) { top = hits; best = pr; }
@@ -621,7 +731,7 @@
     // them the way the trade writes them, not the way the code happens to store them.
     function typeNames(types, sep) {
         return (types || []).map(function (t) {
-            return PIPE_TYPES.filter(function (k) { return lower(k) === lower(t); })[0] || str(t);
+            return PIPE_TYPES.filter(function (k) { return lower(k) === lower(t); })[0] || FAMILY_LABEL[lower(t)] || str(t);
         }).join(sep || ' + ');
     }
 
@@ -632,16 +742,44 @@
     function familiesOf(p) {
         var out = [];
         var add = function (f) { if (f && out.indexOf(f) === -1) out.push(f); };
-        (p.types || []).forEach(function (t) { if (PIPE_TYPES.some(function (k) { return lower(k) === lower(t); })) add(lower(t)); });
-        (p.products || []).forEach(function (pr) { add(rowFamily(pr)); });
+        // A card whose every product is a fitting, valve, coating or sheet: the "GI" in its Pipe types
+        // box is about those, not pipe. S.ABBAS (GI fittings, valves) came second for GI pipe on it.
+        var rowFams = [].concat.apply([], (p.products || []).map(rowFamilies));
+        var named = (p.products || []).filter(function (pr) { return str(pr.p) || str(pr.spec); });
+        var onlyNonPipe = named.length && named.every(function (pr) {
+            var f = rowFamilies(pr); return f.length && f.every(function (x) { return ['fitting', 'coating', 'sheets'].indexOf(x) !== -1; });
+        });
+        if (!onlyNonPipe) (p.types || []).forEach(function (t) { if (PIPE_TYPES.some(function (k) { return lower(k) === lower(t); })) add(lower(t)); });
+        rowFams.forEach(add);
+        if (out.indexOf('alloy') !== -1) add('seamless');
         return out;
     }
 
     function scoreTypes(p, need, why) {
         var have = familiesOf(p);
         var wanted = (need.types || []).map(lower);
-        if (!wanted.length) { why.push(['neutral', 'No pipe type given — cannot match on product']); return { pts: 0, blocked: false }; }
+        if (!wanted.length) {
+            why.push(['neutral', (need.words || []).length ? 'No pipe type given — looking for "' + need.words.join(' ') + '" on their card instead'
+                : 'No pipe type given — cannot match on product']);
+            return { pts: 0, blocked: false };
+        }
         var hits = wanted.filter(function (t) { return have.indexOf(t) !== -1; });
+        // Alloy asked, a seamless mill on file: it may roll alloy — offered, not promised.
+        if (!hits.length && wanted.length === 1 && wanted[0] === 'alloy' && have.indexOf('seamless') !== -1) {
+            why.push(['neutral', 'Seamless on their card — alloy not stated, worth asking']);
+            return { pts: 15, blocked: false };
+        }
+        // Only a pipe family that is not the one asked rules a card out. A card listing only square
+        // sections, sheets, fittings or coating says nothing about round pipe: APL Apollo (square
+        // only on its card) was ruled out of every GI enquiry (7 Oct review).
+        var PIPE_FAMS = ['gi', 'erw', 'seamless', 'ss', 'alloy', 'hsaw', 'lsaw', 'ms'];
+        var pipeHave = have.filter(function (f) { return PIPE_FAMS.indexOf(f) !== -1; });
+        var wantsPipe = wanted.some(function (w) { return PIPE_FAMS.indexOf(w) !== -1; });
+        if (!hits.length && have.length && wantsPipe && !pipeHave.length) {
+            var hard = have.some(function (f) { return ['fitting', 'coating', 'sheets'].indexOf(f) !== -1; }) && have.indexOf('square') === -1;
+            why.push([hard ? 'warn' : 'neutral', 'Their card lists only ' + typeNames(have, ', ') + ' — ' + typeNames(need.types, ' / ') + ' not stated']);
+            return { pts: hard ? -20 : 0, blocked: false };
+        }
         if (!hits.length && have.length) { why.push(['bad', 'Does not deal in ' + typeNames(need.types, ' / ')]); return { pts: 0, blocked: true }; }
         if (!have.length) {
             var said = (p.types || []).filter(Boolean);
@@ -678,6 +816,10 @@
         if (!rows.length) {
             if (p.moq > need.tons) { why.push(['warn', 'Under their minimum — they ask for ' + p.moq + ' T, this is ' + need.tons.toFixed(2) + ' T']); return -30; }
             if (!p.moq && unconfirmedCard(p)) { why.push(['neutral', 'Minimum not recorded — worth asking']); return 0; }
+            // With no pipe kind read, nothing on their card was matched, so there is nothing a
+            // minimum could be "not in the way" of — it gave every blank card +10 and tied forty
+            // firms (7 Oct test). With a kind read and dealt in, it still says what it always said.
+            if (!(need.types || []).length && (need.words || []).length) return 0;
             why.push(['ok', 'No minimum in the way']); return 10;
         }
         var pts = 0;
@@ -703,7 +845,7 @@
     // Not knowing where someone is must never score BETTER than knowing they are far —
     // otherwise an untouched card outranks one you took the trouble to fill in, and the
     // directory quietly rewards leaving it blank. Unknown sits between near and far.
-    function scoreDistance(p, need, why) {
+    function scoreDistance(p, need, why, making) {
         if (/pan india/i.test(str(need.site))) { why.push(['neutral', 'Delivery is Pan India — distance not scored']); return 0; }
         // The in-quote panel works the delivery town out once and hands it over; the finder
         // hands over the town it read.
@@ -723,18 +865,19 @@
         var towns = branchNames(p).filter(Boolean);
         // 2. Their card really is blank. That costs them, and saying so is the point.
         if (!towns.length) { why.push(['warn', 'No city on their card — add one and this ranks properly']); return -5; }
-        var nb = nearestBranch(p, site);
+        var nb = nearestBranch(p, site, making);
         // 3. Their town is filled in, just not placed on the map yet. Nothing is guessed: it is
         //    named, and placing it is one press on their card.
         if (!nb) {
             var tpd = window.townPlaces, unread = tpd && tpd.savedError && tpd.savedError();
-            why.push([unread ? 'warn' : 'neutral', 'Their city (' + towns[0] + ') is not in my distance list — distance not scored'
+            var named = measuredPlaces(p).map(function (x) { return x.name; }).filter(function (n) { return !placeFor(n); })[0] || towns[0];
+            why.push([unread ? 'warn' : 'neutral', 'Their town (' + named + ') is not in my distance list — distance not scored'
                 + (unread ? '. Your placed towns could not be read just now' : tpd ? '. Open their card to put it on the map' : '')]);
             return 0;
         }
         // A town looked up on the map carries its state, so a wrong pick shows ("Tarapur, Maharashtra").
         var where = nb.name + (nb.place && nb.place.looked && nb.place.state ? ', ' + nb.place.state : '')
-            + (nb.kind ? ' (' + nb.kind + ')' : '');
+            + (nb.making ? ' (makes it there)' : (nb.kind ? ' (' + nb.kind + ')' : ''));
         // Farther is lower all the way out. Past 250 km everything used to score the same −10,
         // so a maker in Hosur (330 km) and one in UP (2,160 km) tied for a Chennai delivery.
         if (nb.km <= 60) { why.push(['ok', 'In ' + where + ' — right by the site']); return 35; }
@@ -779,11 +922,52 @@
 
     function scoreSupplier(p, need) {
         var why = [], wrongRole = roleBlock(p, 'material', why), types = scoreTypes(p, need, why);
-        var score = types.pts + (types.blocked ? 0 : scoreMinimums(p, need, why))
-            + scoreDistance(p, need, why) + scoreBrand(p, need, why) + scoreSizes(p, need, why)
+        var words = scoreProductWords(p, need, why);
+        var score = types.pts + words.pts + (types.blocked ? 0 : scoreMinimums(p, need, why))
+            + scoreDistance(p, need, why, makingTowns(p, need)) + scoreBrand(p, need, why) + scoreSizes(p, need, why)
             + scoreHistoryAndNotes(p, why);
         var blocked = types.blocked || wrongRole;
-        return { p: p, score: blocked ? -999 + score : score, why: why, blocked: blocked };
+        return { p: p, score: blocked ? -999 + score : score, why: why, blocked: blocked, wordHit: words.hit };
+    }
+
+    /**
+     * No pipe kind could be read ("API 5L line pipe", "MS channels"), so the enquiry's own words
+     * are looked for on each card's product rows. Whole words only.
+     */
+    function scoreProductWords(p, need, why) {
+        var words = (need && need.words) || [];
+        if ((need.types || []).length || !words.length) return { pts: 0, hit: false };
+        var rows = (p.products || []).filter(function (pr) { return str(pr.p) || str(pr.spec); });
+        if (!rows.length) { why.push(['neutral', 'No products on their card — cannot match "' + words.join(' ') + '"']); return { pts: 0, hit: false }; }
+        var best = null, top = 0;
+        rows.forEach(function (pr) {
+            var pw = lower(pr.p + ' ' + pr.spec).split(/[^a-z0-9]+/).filter(Boolean).map(singularWord);
+            var hits = words.filter(function (w) { return pw.indexOf(singularWord(w)) !== -1; });
+            if (hits.length > top) { top = hits.length; best = { pr: pr, hits: hits }; }
+        });
+        if (!best) { why.push(['neutral', 'Nothing on their card says "' + words.join(' ') + '"']); return { pts: 0, hit: false }; }
+        why.push(['ok', 'Their card lists ' + (str(best.pr.p) || 'a product') + ' — "' + best.hits.join(' ') + '"']);
+        return { pts: Math.min(40, 20 + 10 * (best.hits.length - 1)), hit: true };
+    }
+
+    /**
+     * Where a maker makes what is asked: the branch towns its matching product rows name
+     * ("GI pipe — MED & HEAVY (Hyderabad factory)", "ERW pipe … — TARAPUR"). Empty when the rows
+     * name none, and then the nearest factory of any kind is used, as before.
+     */
+    function makingTowns(p, need) {
+        var fams = (need.types || []).map(lower);
+        if (!fams.length) return [];
+        var text = (p.products || []).filter(function (pr) {
+            return rowFamilies(pr).some(function (f) { return fams.indexOf(f) !== -1; });
+        }).map(function (pr) { return ' ' + aliasTown(str(pr.p) + ' ' + str(pr.spec)).toLowerCase() + ' '; }).join(' ');
+        if (!text.trim()) return [];
+        var out = [];
+        (p.branches || []).forEach(function (b) {
+            var c = str(b.city);
+            if (c && out.indexOf(c) === -1 && new RegExp('[^a-z]' + lower(c).replace(/[^a-z ]/g, '').split(' ').join('[^a-z]+') + '[^a-z]').test(text)) out.push(c);
+        });
+        return out;
     }
 
     /**
@@ -823,16 +1007,18 @@
      */
     function scoreSizes(p, need, why) {
         var items = (need && need.items || []).filter(function (li) { return li && li.inches != null && li.type; });
+        var covers = function (spans, v) { return spans.filter(function (sp) { return v >= sp.lo - 1e-9 && v <= sp.hi + 1e-9; })[0]; };
         var fits = [], misses = [];
         items.forEach(function (li) {
             var fam = lower(li.type);
             var spans = [];
-            (p.products || []).filter(function (pr) { return rowFamily(pr) === fam; }).forEach(function (pr) {
+            (p.products || []).filter(function (pr) { return rowFamilies(pr).indexOf(fam) !== -1; }).forEach(function (pr) {
                 (pr.sizes || []).forEach(function (line) { var sp = sizeSpan(line); if (sp) spans.push(sp); });
             });
             if (!spans.length) return;
-            var hit = spans.filter(function (sp) { return li.inches >= sp.lo - 1e-9 && li.inches <= sp.hi + 1e-9; })[0];
-            var label = inchLabel(li.inches) + ' ' + typeNames([li.type]);
+            // A range asked ("1/2\" to 4\"") fits only when both ends are on their card.
+            var hit = covers(spans, li.inches) && (li.inchesHi == null || covers(spans, li.inchesHi)) ? covers(spans, li.inchesHi != null ? li.inchesHi : li.inches) : null;
+            var label = (li.inchesHi != null ? spanLabel({ lo: li.inches, hi: li.inchesHi }) : inchLabel(li.inches)) + ' ' + typeNames([li.type]);
             if (hit) fits.push(label + ' (their range ' + spanLabel(hit) + ')');
             else misses.push(label + ' — their ' + typeNames([li.type]) + ' sizes: ' + spans.map(spanLabel).filter(function (x, n, all) { return all.indexOf(x) === n; }).join(', '));
         });
@@ -854,20 +1040,68 @@
      * most carriers did not go there, and ruled the rest out — which reads as a broken
      * directory. No towns means no route rule, for everyone alike.
      */
+    /** A place read as its town: "Madhavaram" (a placed area) is Chennai, "Bombay" is Mumbai. */
+    var STATE_WORDS = /,?\s*-?\s*\b(andhra pradesh|arunachal pradesh|assam|bihar|chhattisgarh|goa|gujarat|haryana|himachal pradesh|jharkhand|karnataka|kerala|madhya pradesh|maharashtra|manipur|meghalaya|mizoram|nagaland|odisha|orissa|punjab|rajasthan|sikkim|tamil\s*nadu|telangana|tripura|uttar pradesh|uttarakhand|west bengal)\b/gi;
+    function townOfPlace(v) {
+        v = str(v).replace(/\b\d{3}\s?\d{3}\b/g, ' ').replace(STATE_WORDS, ' ').replace(/[-–,]+\s*$/, '').replace(/\s+/g, ' ').trim();
+        var c = matchCity(v);
+        if (c) return lower(c);
+        var tp = window.townPlaces, k = tp && tp.areaPart ? tp.areaPart(v) : '';
+        var area = k && tp.savedAreas ? tp.savedAreas().filter(function (a) { return tp.areaPart(a.name) === k; }) : [];
+        if (area.length === 1) return lower(matchCity(area[0].town) || area[0].town);
+        return lower(aliasTown(str(v)));
+    }
+    /**
+     * Route rows first; then the towns the firm has offices in; then how far it goes (his ticks).
+     * A carrier with nothing on file is a call to make, not a firm that "does not run" the route:
+     * that rule ruled out almost every lorry firm he has (7 Oct test).
+     */
     function scoreRoute(p, from, to, why) {
         if (!from || !to) { why.push(['neutral', 'Fill in the pickup and delivery towns and I can rank on route']); return { pts: 0, blocked: false }; }
-        var norm = function (v) { return lower(matchCity(v) || v); };
-        var exact = (p.routes || []).filter(function (r) { return norm(r.from) === lower(from) && norm(r.to) === lower(to); })[0];
+        var f = townOfPlace(from), t = townOfPlace(to);
+        var routes = p.routes || [];
+        var exact = routes.filter(function (r) { return townOfPlace(r.from) === f && townOfPlace(r.to) === t; })[0];
         if (exact) { why.push(['ok', 'Runs ' + from + ' → ' + to + ' regularly']); return { pts: 45, blocked: false }; }
-        if ((p.routes || []).some(function (r) { return norm(r.from) === lower(from); })) { why.push(['warn', 'Loads from ' + from + ', but not to ' + to]); return { pts: 22, blocked: false }; }
-        if (/pan india/i.test(branchNames(p).join(' '))) { why.push(['warn', 'No regular ' + from + ' → ' + to + ', but runs a national network']); return { pts: 8, blocked: false }; }
-        why.push(['bad', 'Does not run ' + from + ' → ' + to]);
-        return { pts: 0, blocked: true };
+        var offices = branchNames(p).map(townOfPlace);
+        var reach = reachOf(p);
+        var a = placeFor(from), b = placeFor(to), km = a && b && !a.ambiguous && !b.ambiguous ? placeKm(a, b) : null;
+        var sameTown = f === t, near = sameTown || (km !== null && km <= 100);
+        var fitsReach = (sameTown && reach.indexOf('city') !== -1) || (near && reach.indexOf('local') !== -1);
+        var local = fitsReach;
+        if (local && offices.indexOf(f) !== -1) {
+            why.push(['ok', 'Local carrier in ' + from + ' — ' + reach.map(function (k) { return REACH_LABEL[k]; }).join(', ')]); return { pts: 40, blocked: false };
+        }
+        if (f !== t && offices.indexOf(f) !== -1 && offices.indexOf(t) !== -1) { why.push(['ok', 'Has offices at both ends — ' + from + ' and ' + to]); return { pts: 35, blocked: false }; }
+        if (routes.some(function (r) { return townOfPlace(r.from) === f; })) { why.push(['warn', 'Loads from ' + from + ', but not to ' + to]); return { pts: 22, blocked: false }; }
+        if (routes.some(function (r) { return townOfPlace(r.to) === t; })) { why.push(['ok', 'Goes to ' + to + ' (a route on their card)']); return { pts: 22, blocked: false }; }
+        if (local) { why.push(['ok', 'Does local trips — ' + reach.map(function (k) { return REACH_LABEL[k]; }).join(', ')]); return { pts: 25, blocked: false }; }
+        if (offices.indexOf(f) !== -1) { why.push(['neutral', 'Has an office in ' + from]); return { pts: 15, blocked: false }; }
+        if (/pan india/i.test(branchNames(p).join(' ')) || reach.indexOf('many') !== -1) { why.push(['warn', 'No regular ' + from + ' → ' + to + ', but runs to many cities']); return { pts: 8, blocked: false }; }
+        // Routes on file, and none of them — nor an office, nor a tick — touches this trip: a
+        // Delhi–Mumbai fleet is not offered a Chennai–Madurai load as a live option.
+        var placeable = function (x) { var at = matchCity(x) || placeFor(townOfPlace(x)); return !!at && !at.ambiguous; };
+        var usable = routes.filter(function (r) { return placeable(r.from) && placeable(r.to); });
+        if (usable.length) { why.push(['bad', 'Does not run ' + from + ' → ' + to]); return { pts: 0, blocked: true }; }
+        why.push(['neutral', 'No routes or towns on their card — worth a call']);
+        return { pts: 0, blocked: false };
     }
 
     function scoreLoadSize(p, need, why) {
         if (!need.known) { why.push(['neutral', 'No weight given — part load vs full truck not checked']); return 0; }
-        if (need.tons >= 9) { why.push(['ok', need.tons.toFixed(1) + ' T is a full truck — their strength']); return 15; }
+        // What their Vehicles box says they run, when it says.
+        var v = lower(p.vehicles), caps = [];
+        String(p.vehicles || '').replace(/(\d+(?:\.\d+)?)\s*(?:t\b|tons?|tonnes?|mt\b)/gi, function (m0, n) { caps.push(parseFloat(n)); return m0; });
+        var small = /tempo|\bace\b|bolero|belero|pick\s*up|pickup|\b407\b|mini\s*truck|dost|eicher/.test(v);
+        var big = /lorry|truck|trailer|taurus|\b(1[0-9]|2[0-9])\s*wheel|multi\s*axle/.test(v) || caps.some(function (c) { return c >= 9; });
+        // The tonnages they wrote: "1 VECHILE (BELERO - 1.5 TON)" takes neither 9 T nor 2 T.
+        var most = caps.length ? Math.max.apply(null, caps) : 0;
+        if (most && most < need.tons && !/lorry|truck|trailer|taurus|wheel|axle/.test(v)) { why.push(['warn', 'Their vehicles carry up to ' + most + ' T (' + str(p.vehicles) + ') — this is ' + need.tons.toFixed(1) + ' T']); return -15; }
+        if (need.tons >= 9) {
+            if (small && !big) { why.push(['warn', 'Their vehicles look small (' + str(p.vehicles) + ') for ' + need.tons.toFixed(1) + ' T']); return -15; }
+            if (big) { why.push(['ok', need.tons.toFixed(1) + ' T is a full truck — they run ' + str(p.vehicles)]); return 15; }
+            why.push(['ok', need.tons.toFixed(1) + ' T is a full truck — their strength']); return 15;
+        }
+        if (need.tons <= 3 && small) { why.push(['ok', 'Has small vehicles (' + str(p.vehicles) + ') — fits ' + need.tons.toFixed(1) + ' T']); return 20; }
         // Three states, and the middle one matters most. "Full loads only" is a -30 verdict
         // and "takes part load" a +25 green tick; a box nobody has answered must be neither.
         // It used to be read off the card's origin instead of off the box, so an approved
@@ -928,16 +1162,16 @@
         });
         // Dealers and makers still waiting for his approval are suggested too, marked as waiting —
         // sixty cards sat in the queue and never appeared. Material only, main site only.
-        if (kind !== 'transport' && !D.readonly) {
+        if (!D.readonly) {
             var held = {};
             D.contacts.forEach(function (c) { held[c.id] = 1; held['name:' + nameKey(c.company)] = 1; });
             (D.pending || []).map(function (it) { return it && it.preview; }).filter(function (p) {
                 // An "update someone you have" item is the approved card plus a little — the firm
                 // is already in the list, once.
-                return p && (p.role === 'dealer' || p.role === 'manufacturer') && str(p.company)
-                    && !p.matchId && !held[p.id] && !held['name:' + nameKey(p.company)];
+                var right = kind === 'transport' ? p && p.role === 'transporter' : p && (p.role === 'dealer' || p.role === 'manufacturer');
+                return right && str(p.company) && !p.matchId && !held[p.id] && !held['name:' + nameKey(p.company)];
             }).forEach(function (p) {
-                var r = scoreSupplier(p, need);
+                var r = kind === 'transport' ? scoreTransporter(p, need, from) : scoreSupplier(p, need);
                 r.waiting = true;
                 rows.push(r);
             });
@@ -1765,7 +1999,7 @@
     function finderResults() {
         var need = S.find.need;
         var h = '<div class="pd-read">' + readBack(need) + '</div>';
-        if (need.types.length) {
+        if (need.types.length || (need.words || []).length) {
             // The same Makers / Dealers / All choice as the in-quote panel, and the same filter,
             // so the two places never give two different lists for one enquiry.
             var sup = rankFor('material', need);
@@ -2755,7 +2989,7 @@
     }
 
     /** The distinctive words of a firm's name — trade words are too common to identify it. */
-    var TRADE_WORD = /^(pipe|pipes|steel|steels|tube|tubes|metal|metals|trading|traders?|industries|industry|enterprises?|corporation|agencies|agency|engineering|engineers?|systems?|solutions?|india|indian|pvt|private|ltd|limited|co|company|and|the|of)$/i;
+    var TRADE_WORD = /^(pipe|pipes|steel|steels|tube|tubes|seamless|galvani[sz]ed|spiral|welded|alloys?|hollow|sections?|sheets?|roofing|coatings?|metal|metals|trading|traders?|industries|industry|enterprises?|corporation|agencies|agency|engineering|engineers?|systems?|solutions?|india|indian|pvt|private|ltd|limited|co|company|and|the|of)$/i;
     function firmWords(name) {
         return str(name).split(/[^A-Za-z0-9]+/)
             .filter(function (w) { return w.length > 3 && !TRADE_WORD.test(w); })
@@ -5094,7 +5328,7 @@
     // redraw or a second press never pays twice; one ask runs at a time per enquiry.
     var ai = { cache: {}, running: {}, status: {} };
     function aiNeedKey(need) {
-        return JSON.stringify([(need.types || []).map(lower).sort(), (need.items || []).map(function (li) { return [str(li.product), li.inches]; })]);
+        return JSON.stringify([(need.types || []).map(lower).sort(), (need.items || []).map(function (li) { return [str(li.product), li.inches]; }), need.words || []]);
     }
     /** A card's own content, so an edited card is asked about again. */
     function cardSig(p) {
@@ -5104,6 +5338,8 @@
     }
     function undecided(r, need) {
         if (r.blocked) return false;
+        // No kind read: whoever the enquiry's own words did not find on their card.
+        if (!(need.types || []).length) return !r.wordHit;
         if (!familiesOf(r.p).length) return true;
         var sized = (need.items || []).some(function (li) { return li.inches != null && li.type; });
         return sized && !r.why.some(function (w) { return /^(Makes |Not on their card:)/.test(w[1]); });
@@ -5132,7 +5368,7 @@
         fetch(apiBase() + '/contacts/ai-match', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                need: { types: need.types || [], items: (need.items || []).map(function (li) { return { product: str(li.product), inches: li.inches != null ? li.inches : null }; }) },
+                need: { types: need.types || [], text: str(need.text), items: (need.items || []).map(function (li) { return { product: str(li.product), inches: li.inches != null ? li.inches : null }; }) },
                 ids: todo.map(function (r) { return r.p.id; }),
             }),
         }).then(function (r) {
@@ -5167,15 +5403,23 @@
             // for a material enquiry the home city is still the sensible default.
             var isFreight = opts.kind === 'transport';
             var need = {
-                types: opts.types || [], items: (opts.items || []).map(withSize),
+                types: (opts.types || []).map(lower).filter(function (t, i, a) { return t && a.indexOf(t) === i; }), items: (opts.items || []).map(withSize),
                 tons: (opts.kg || 0) / 1000, known: (opts.kg || 0) > 0,
             };
+            // A quote whose lines name a kind the quote side does not ("HSAW", "square hollow
+            // section") is read the way the finder reads an enquiry.
+            if (!isFreight) {
+                var lineText = (opts.items || []).map(function (li) { return str(li && li.product); }).join(', ');
+                need.items.forEach(function (li) { if (li.type && need.types.indexOf(lower(li.type)) === -1) need.types.push(lower(li.type)); });
+                need.text = lineText.slice(0, 600);
+                need.words = need.types.length ? [] : enquiryWords(lineText, { site: '', pickup: '', unknown: '' });
+            }
             if (isFreight) need.site = town(opts.drop) || town(opts.site);
             else Object.assign(need, deliverySite(opts));
             var from = town(opts.pickup) || (isFreight ? '' : HOME);
             var all = rankFor(isFreight ? 'transport' : 'material', need, from);
             var aiKey = '';
-            if (!isFreight && !D.readonly && (need.types || []).length) {
+            if (!isFreight && !D.readonly && ((need.types || []).length || (need.words || []).length)) {
                 aiKey = aiNeedKey(need);
                 ai.shown = aiKey;
                 if (pressed && ai.status[aiKey] && ai.status[aiKey].state === 'failed') delete ai.status[aiKey];

@@ -196,6 +196,8 @@ module.exports = function createContactsRouter({ storage, openai }) {
         const ids = (Array.isArray(body.ids) ? body.ids : []).map((x) => String(x || '')).filter(Boolean).slice(0, supplierMatch.MAX_CARDS);
         const need = body.need && typeof body.need === 'object' ? {
             types: (Array.isArray(body.need.types) ? body.need.types : []).map(String).slice(0, 10),
+            // The enquiry as typed, for when no pipe kind could be read from it ("API 5L line pipe").
+            text: String(body.need.text || '').slice(0, 600),
             items: (Array.isArray(body.need.items) ? body.need.items : []).slice(0, 40).map((li) => ({
                 product: String((li && li.product) || '').slice(0, 200),
                 inches: li && typeof li.inches === 'number' ? li.inches : null,

@@ -27,6 +27,14 @@ function scrub(text) {
         .replace(/(\+?\d[\d\s-]{7,}\d)/g, '[number]');
 }
 
+/** The enquiry as written: emails and phone numbers out, but "IS 1239-2004" and "15 20 25 NB" kept. */
+function scrubEnquiry(text) {
+    return str(text)
+        .replace(/[^\s@]+@[^\s@]+\.[^\s@]+/g, '[email]')
+        .replace(/(?:\+?91[\s-]?|\b0)?\b[6-9]\d{4}[\s-]?\d{5}\b/g, '[number]')
+        .replace(/\b0\d{2,4}[\s-]\d{6,8}\b/g, '[number]');
+}
+
 function sizeText(s) {
     return ['nb', 'inch', 'od', 'thk'].map((k) => (str(s && s[k]) ? k + ' ' + str(s[k]) : '')).filter(Boolean).join(', ');
 }
@@ -63,7 +71,8 @@ function cardText(p) {
 function needText(need) {
     const items = (need.items || []).map((li) => str(li.product) + (li.inches != null ? ' [' + li.inches + ' inch]' : '')).filter(Boolean);
     return 'PIPE TYPE(S): ' + ((need.types || []).join(', ') || 'not stated')
-        + (items.length ? '\nLINES: ' + items.join(' ; ') : '');
+        + (items.length ? '\nLINES: ' + items.join(' ; ') : '')
+        + (str(need.text) ? '\nTHE ENQUIRY AS WRITTEN: ' + scrubEnquiry(need.text) : '');
 }
 
 const hash = (v) => crypto.createHash('sha1').update(typeof v === 'string' ? v : JSON.stringify(v)).digest('hex').slice(0, 16);
