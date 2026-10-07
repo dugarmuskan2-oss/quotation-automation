@@ -2432,3 +2432,19 @@ independently and re-checked 20 s after saving:
 - Sreevatsa Venkateswara: the "E-mail - Signataure" note removed (his yes).
 - "Not sure" ones dropped (Raja Steel copy, Speedel Kerala town, RTI Transport, Visha's Shakthi);
   JSL = Jindal Saw (as built).
+
+## MST's transporters and coater get cards (7 Oct)
+
+*His words: "create cards for all these transporters and coatings under MST".* Three firms named on
+MADRAS STEEL TUBES had no card (PERIYADAVAR PARCEL SERVICE already had one). Each built from every
+mention on his pages, checked independently, and put in the queue for his approval:
+- MSR TAILOR (transporter; also M.S.R TRAILOR SERVICE / MSR TRANSPORT): MR. JUSTIN, MR.GANESAN
+  ("ONLY FOR PSL"), DIVYA, MR.ANNOP, MANISH AGARWAL; carries for MST, MEGA ENGG, VATECH and Pslltd.
+  One question: is Manish Agarwal theirs or PSL's? MR.ANNOP's 9-digit 944075301 left off.
+- VELLU (transporter, local, "2VAN"): carries for MST and BOMBAY HARDWARE. One question: same man
+  as MR.VELU (9790868832) on TR(1)?
+- ADS (coating job work): JAGADEESH 9597422220 and the ADS emails; MST "buys coating work from"
+  ADS (worded so it shows under They sell to — "Coating" read backwards on the coater's own card);
+  referred by MR. JERNAUS of Pslltd. Questions: is Jagadeesh at ADS; which town.
+The first save was undone by an approval in flight (the queue file is read and written whole);
+added again and re-checked.
