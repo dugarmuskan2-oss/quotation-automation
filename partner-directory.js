@@ -401,7 +401,7 @@
         if (/fitting|valve|flange|elbow|\bbends?\b|coupling/.test(t)) return 'fitting';
         if (/coating|lining/.test(t)) return 'coating';
         if (/sheet|roofing|\bppgi\b|\bppgl\b|colou?r\s*coat|purlin/.test(t)) return 'sheets';
-        if (/square|rectangular|\bshs\b|\brhs\b|hollow\s*section/.test(t)) return 'square';
+        if (/squar(?:e|es)?\b|rectangular|\bshs\b|\brhs\b|hollow\s*section/.test(t)) return 'square';
         if (/\bhsaw\b|spiral|\bssaw\b/.test(t)) return 'hsaw';
         if (/\blsaw\b/.test(t)) return 'lsaw';
         if (/stainless|\bss\b/.test(t)) return 'ss';
@@ -548,9 +548,12 @@
     /** The words of an enquiry that can only be about the product: no units, numbers, places or filler. */
     function enquiryWords(raw, place) {
         var placeWords = [place.site, place.pickup, place.unknown].concat(Object.keys(COORD)).join(' ').toLowerCase().split(/[^a-z0-9]+/);
-        var out = [];
-        lower(raw).split(/[^a-z0-9]+/).forEach(function (w) {
+        var out = [], toks = lower(raw).split(/[^a-z0-9]+/);
+        toks.forEach(function (w, i) {
             if (w.length < 2 || /^\d+(\.\d+)?$/.test(w) || NOT_PRODUCT_WORD.test(w) || placeWords.indexOf(w) !== -1) return;
+            // The letters of a standard ("BS 6223", "SA-179", "A106", "API 5L") are read by specCodes.
+            if (/^(is|bs|en|din|jis|sa|astm|asme|api|yst)$/.test(w) && /^(s?a)?\d|^5(l|ct)$/.test(toks[i + 1] || '')) return;
+            if (/^a\d{2,4}$/.test(w) || (/^5(l|ct)$/.test(w) && toks[i - 1] === 'api')) return;
             if (/^\d+(mm|m|mtrs?|t|kg|km)$/.test(w) || /^\d+x\d+/.test(w)) return;
             w = singularWord(w);
             if (out.indexOf(w) === -1) out.push(w);
@@ -606,6 +609,7 @@
             // ("API 5L line pipe") — matched against what each card says it supplies.
             words: types.length ? [] : enquiryWords(raw, place),
             text: raw.slice(0, 600),
+            specs: specCodes(raw),
             freight: /transport|freight|lorry|truck|tempo|vehicle|trailer|container|part load|full load|\bace\b|pick\s*up|mini\s*truck|\b407\b/.test(t) || !!place.pickup,
             empty: looksLikeNothing(t, types, place.pickup),
         };
@@ -736,6 +740,57 @@
     }
 
     /**
+     * His own Filed-under pages that say what a firm sells: "P(12) PURCHASE DEP - ERW PIPES
+     * (DEALER)", "PD (16) PIPE DEALER (STOCKIST)- CHENNAI". A maker's or customer's page
+     * ("SNO 12 APL APOLLO (ALL DETAILS)") lists who deals with THAT firm, not what this one
+     * sells, and a transporter's page ("TR …") is about lorries. *His words: "Filed under often
+     * shows what products they sell or details about the company. Also incorporate these".*
+     */
+    function ownHeadings(p) {
+        return (p.categories || []).map(str).filter(function (h) {
+            if (!h || /^\W*(sno|tr)\b/i.test(h)) return false;
+            return /^\W*p\s*d?\s*\(\s*\d+\s*\)/i.test(h) || /\bpurchase\b|dealer|stockist|distributor|manufactur|\bmfg\b/i.test(h);
+        });
+    }
+    /** A page heading without its codes: "P(12) PURCHASE DEP - ERW PIPES (DEALER) - P(12)" → "ERW PIPES (DEALER)". */
+    function headingShort(h) {
+        return str(String(h || '').replace(/[^\x20-\x7E]/g, ' ')
+            .replace(/\bp\s*d?\s*\(\s*\d+\s*\)/gi, ' ').replace(/\btotal\s+\d+\s*pg\b/gi, ' ')
+            .replace(/\bpurchase\b\s*-?\s*(?:dep(?:t|artment)?\b\.?)?/gi, ' ')
+            .replace(/\s+/g, ' ').replace(/^[\s\-.]+|[\s\-.]+$/g, '').replace(/^\(\s*([^()]*?)\s*\)$/, '$1'));
+    }
+    /** The families his own pages name for a firm, each with the page that names it. */
+    function headingFamilies(p) {
+        var out = {};
+        ownHeadings(p).forEach(function (h) {
+            rowFamilies({ p: headingShort(h) }).forEach(function (f) { if (!out[f]) out[f] = headingShort(h); });
+        });
+        return out;
+    }
+    /**
+     * The standards a text names, written one way: "IS:1239 / 3589" is IS 1239 and IS 3589,
+     * "ASME SA-179" and "A179" are A179, "API 5L", "YST 310". A number followed by a unit
+     * ("size is 150 nb") is a size, not a standard.
+     */
+    function specCodes(text) {
+        var t = ' ' + lower(text) + ' ', out = [], m;
+        var add = function (c) { c = c.toUpperCase(); if (out.indexOf(c) === -1) out.push(c); };
+        var UNIT = '(?!\\s*(?:mm|nb|mtrs?|met(?:er|re)s?|m\\b|kgs?|t\\b|mt|tons?|tonnes?|inch|"|nos?|od|dia))';
+        var std = new RegExp('\\b(is|bs|en|din|jis)\\s*[-:.]?\\s*(\\d{3,5})' + UNIT + '((?:\\s*[\\/&]\\s*\\d{3,5}' + UNIT + ')*)', 'g');
+        while ((m = std.exec(t))) {
+            add(m[1] + ' ' + m[2]);
+            (m[3].match(/\d{3,5}/g) || []).forEach(function (n) { add(m[1] + ' ' + n); });
+        }
+        var mat = new RegExp('\\b(?:(?:astm|asme)\\s*s?a|sa)\\s*-?\\s*(\\d{2,4})\\b' + UNIT + '|\\ba(\\d{2,4})\\b', 'g');
+        while ((m = mat.exec(t))) add('A' + (m[1] || m[2]));
+        var api = /\bapi\s*-?\s*(5l|5ct)\b/g;
+        while ((m = api.exec(t))) add('API ' + m[1]);
+        var yst = /\byst\s*-?\s*(\d{3})\b/g;
+        while ((m = yst.exec(t))) add('YST ' + m[1]);
+        return out;
+    }
+
+    /**
      * The pipe families a card deals in: its Pipe types box, but only real families (a box reading
      * "Pipes" or "Steel Items" says nothing about which), plus the families its product rows name.
      */
@@ -756,16 +811,20 @@
     }
 
     function scoreTypes(p, need, why) {
-        var have = familiesOf(p);
+        var have = familiesOf(p), head = headingFamilies(p);
         var wanted = (need.types || []).map(lower);
         if (!wanted.length) {
-            why.push(['neutral', (need.words || []).length ? 'No pipe type given — looking for "' + need.words.join(' ') + '" on their card instead'
+            var look = (need.words || []).concat(need.specs || []);
+            why.push(['neutral', look.length ? 'No pipe type given — looking for "' + look.join(' ') + '" on their card instead'
                 : 'No pipe type given — cannot match on product']);
             return { pts: 0, blocked: false };
         }
-        var hits = wanted.filter(function (t) { return have.indexOf(t) !== -1; });
+        // The page he filed them under says it as plainly as their Pipe types box: R.K Steel sits
+        // on his ERW and square-pipe purchase pages with nothing typed in the box. A page only
+        // ever adds — not being on the ERW page rules nobody out.
+        var hits = wanted.filter(function (t) { return have.indexOf(t) !== -1 || head[t]; });
         // Alloy asked, a seamless mill on file: it may roll alloy — offered, not promised.
-        if (!hits.length && wanted.length === 1 && wanted[0] === 'alloy' && have.indexOf('seamless') !== -1) {
+        if (!hits.length && wanted.length === 1 && wanted[0] === 'alloy' && (have.indexOf('seamless') !== -1 || head.seamless)) {
             why.push(['neutral', 'Seamless on their card — alloy not stated, worth asking']);
             return { pts: 15, blocked: false };
         }
@@ -781,13 +840,15 @@
             return { pts: hard ? -20 : 0, blocked: false };
         }
         if (!hits.length && have.length) { why.push(['bad', 'Does not deal in ' + typeNames(need.types, ' / ')]); return { pts: 0, blocked: true }; }
-        if (!have.length) {
+        if (!hits.length) {
             var said = (p.types || []).filter(Boolean);
             why.push(['neutral', said.length ? 'Their card says "' + said.join(', ') + '" — which pipes is not stated' : 'No pipe types on their card yet']);
             return { pts: 0, blocked: false };
         }
-        if (hits.length === wanted.length) { why.push(['ok', 'Deals in ' + typeNames(need.types)]); return { pts: 40, blocked: false }; }
-        why.push(['warn', 'Only does ' + typeNames(hits, ', ') + ' of ' + typeNames(need.types, ' / ')]);
+        var paged = hits.filter(function (t) { return have.indexOf(t) === -1; });
+        var page = paged.length ? ' — on your "' + head[paged[0]] + '" page' : '';
+        if (hits.length === wanted.length) { why.push(['ok', 'Deals in ' + typeNames(need.types) + page]); return { pts: 40, blocked: false }; }
+        why.push(['warn', 'Only does ' + typeNames(hits, ', ') + ' of ' + typeNames(need.types, ' / ') + page]);
         return { pts: 20, blocked: false };
     }
 
@@ -819,7 +880,7 @@
             // With no pipe kind read, nothing on their card was matched, so there is nothing a
             // minimum could be "not in the way" of — it gave every blank card +10 and tied forty
             // firms (7 Oct test). With a kind read and dealt in, it still says what it always said.
-            if (!(need.types || []).length && (need.words || []).length) return 0;
+            if (!(need.types || []).length && ((need.words || []).length || (need.specs || []).length)) return 0;
             why.push(['ok', 'No minimum in the way']); return 10;
         }
         var pts = 0;
@@ -922,12 +983,13 @@
 
     function scoreSupplier(p, need) {
         var why = [], wrongRole = roleBlock(p, 'material', why), types = scoreTypes(p, need, why);
-        var words = scoreProductWords(p, need, why);
-        var score = types.pts + words.pts + (types.blocked ? 0 : scoreMinimums(p, need, why))
+        var words = scoreProductWords(p, need, why), specs = scoreSpecs(p, need, why);
+        var score = types.pts + words.pts + specs + (types.blocked ? 0 : scoreMinimums(p, need, why))
             + scoreDistance(p, need, why, makingTowns(p, need)) + scoreBrand(p, need, why) + scoreSizes(p, need, why)
+
             + scoreHistoryAndNotes(p, why);
         var blocked = types.blocked || wrongRole;
-        return { p: p, score: blocked ? -999 + score : score, why: why, blocked: blocked, wordHit: words.hit };
+        return { p: p, score: blocked ? -999 + score : score, why: why, blocked: blocked, wordHit: words.hit || specs > 0 };
     }
 
     /**
@@ -938,16 +1000,41 @@
         var words = (need && need.words) || [];
         if ((need.types || []).length || !words.length) return { pts: 0, hit: false };
         var rows = (p.products || []).filter(function (pr) { return str(pr.p) || str(pr.spec); });
-        if (!rows.length) { why.push(['neutral', 'No products on their card — cannot match "' + words.join(' ') + '"']); return { pts: 0, hit: false }; }
+        // His Filed-under pages name what they sell too ("AIR HEATER … BOILER TUBES").
+        var pages = ownHeadings(p).map(function (h) { return { p: headingShort(h), page: true }; });
+        if (!rows.length && !pages.length) { why.push(['neutral', 'No products on their card — cannot match "' + words.join(' ') + '"']); return { pts: 0, hit: false }; }
         var best = null, top = 0;
-        rows.forEach(function (pr) {
-            var pw = lower(pr.p + ' ' + pr.spec).split(/[^a-z0-9]+/).filter(Boolean).map(singularWord);
+        rows.concat(pages).forEach(function (pr) {
+            var pw = lower(str(pr.p) + ' ' + str(pr.spec)).split(/[^a-z0-9]+/).filter(Boolean).map(singularWord);
             var hits = words.filter(function (w) { return pw.indexOf(singularWord(w)) !== -1; });
             if (hits.length > top) { top = hits.length; best = { pr: pr, hits: hits }; }
         });
         if (!best) { why.push(['neutral', 'Nothing on their card says "' + words.join(' ') + '"']); return { pts: 0, hit: false }; }
-        why.push(['ok', 'Their card lists ' + (str(best.pr.p) || 'a product') + ' — "' + best.hits.join(' ') + '"']);
+        why.push(['ok', (best.pr.page ? 'On your "' + best.pr.p + '" page' : 'Their card lists ' + (str(best.pr.p) || 'a product')) + ' — "' + best.hits.join(' ') + '"']);
         return { pts: Math.min(40, 20 + 10 * (best.hits.length - 1)), hit: true };
+    }
+
+    /**
+     * The standard an enquiry names — IS 9295, BS 6223, SA-179, API 5L — found on a product
+     * row or on one of his Filed-under pages. Only ever a plus: a blank spec box says nothing.
+     */
+    function scoreSpecs(p, need, why) {
+        var want = (need && need.specs) || [];
+        if (!want.length) return 0;
+        var found = [], page = '';
+        (p.products || []).map(function (pr) { return { text: str(pr.p) + ' ' + str(pr.spec), page: '' }; })
+            .concat(ownHeadings(p).map(function (h) { return { text: h, page: headingShort(h) }; }))
+            .forEach(function (r) {
+                var codes = specCodes(r.text);
+                want.forEach(function (w) {
+                    if (codes.indexOf(w) === -1 || found.indexOf(w) !== -1) return;
+                    found.push(w);
+                    if (r.page && !page) page = r.page;
+                });
+            });
+        if (!found.length) return 0;
+        why.push(['ok', 'Names ' + found.join(', ') + (page ? ' — on your "' + page + '" page' : ' on their card')]);
+        return 20;
     }
 
     /**
@@ -1999,7 +2086,7 @@
     function finderResults() {
         var need = S.find.need;
         var h = '<div class="pd-read">' + readBack(need) + '</div>';
-        if (need.types.length || (need.words || []).length) {
+        if (need.types.length || (need.words || []).length || (need.specs || []).length) {
             // The same Makers / Dealers / All choice as the in-quote panel, and the same filter,
             // so the two places never give two different lists for one enquiry.
             var sup = rankFor('material', need);
@@ -2155,7 +2242,7 @@
             + '<input data-pd-k="' + key + '" value="' + esc(value == null ? '' : value) + '"' + (ph ? ' placeholder="' + esc(ph) + '"' : '') + '></div>';
     }
 
-    var PHONE_LABELS = ['Mobile', 'WhatsApp', 'Office', 'Direct', 'Home'];
+    var PHONE_LABELS = ['Mobile', 'Landline', 'WhatsApp', 'Office', 'Direct', 'Home'];
     var EMAIL_LABELS = ['Work', 'Sales', 'Accounts', 'Personal'];
 
     /**
@@ -2608,8 +2695,11 @@
         var lineRows = function (kind, labels, arr) {
             return (arr || []).map(function (x, j) {
                 return '<div class="pd-cline">'
-                    + '<select data-pd-pc="' + i + '" data-pd-' + kind + '="' + j + '" data-pd-k="label">'
-                    + labels.map(function (l) { return '<option' + (x.label === l ? ' selected' : '') + '>' + l + '</option>'; }).join('')
+                    + '<select data-pd-pc="' + i + '" data-pd-' + kind + '="' + j + '" data-pd-k="label"' + (str(x.label) ? ' title="' + esc(x.label) + '"' : '') + '>'
+                    // A label the list does not hold ("Chennai office board", "Fax") is shown as
+                    // itself — it used to show as "Mobile", the first choice (84 landlines did).
+                    + (str(x.label) && labels.indexOf(x.label) === -1 ? [x.label] : []).concat(labels)
+                        .map(function (l) { return '<option' + (x.label === l ? ' selected' : '') + '>' + esc(l) + '</option>'; }).join('')
                     + '</select>'
                     + '<input data-pd-pc="' + i + '" data-pd-' + kind + '="' + j + '" data-pd-k="v" value="' + esc(x.v) + '">'
                     + '<button class="pd-del" data-pd-del' + kind + '="' + i + ':' + j + '">✕</button></div>';
@@ -5335,7 +5425,7 @@
     // redraw or a second press never pays twice; one ask runs at a time per enquiry.
     var ai = { cache: {}, running: {}, status: {} };
     function aiNeedKey(need) {
-        return JSON.stringify([(need.types || []).map(lower).sort(), (need.items || []).map(function (li) { return [str(li.product), li.inches]; }), need.words || []]);
+        return JSON.stringify([(need.types || []).map(lower).sort(), (need.items || []).map(function (li) { return [str(li.product), li.inches]; }), need.words || [], need.specs || []]);
     }
     /** A card's own content, so an edited card is asked about again. */
     function cardSig(p) {
@@ -5347,7 +5437,7 @@
         if (r.blocked) return false;
         // No kind read: whoever the enquiry's own words did not find on their card.
         if (!(need.types || []).length) return !r.wordHit;
-        if (!familiesOf(r.p).length) return true;
+        if (!familiesOf(r.p).length && !Object.keys(headingFamilies(r.p)).length) return true;
         var sized = (need.items || []).some(function (li) { return li.inches != null && li.type; });
         return sized && !r.why.some(function (w) { return /^(Makes |Not on their card:)/.test(w[1]); });
     }
@@ -5419,6 +5509,7 @@
                 var lineText = (opts.items || []).map(function (li) { return str(li && li.product); }).join(', ');
                 need.items.forEach(function (li) { if (li.type && need.types.indexOf(lower(li.type)) === -1) need.types.push(lower(li.type)); });
                 need.text = lineText.slice(0, 600);
+                need.specs = specCodes(lineText);
                 need.words = need.types.length ? [] : enquiryWords(lineText, { site: '', pickup: '', unknown: '' });
             }
             if (isFreight) need.site = town(opts.drop) || town(opts.site);
@@ -5426,7 +5517,7 @@
             var from = town(opts.pickup) || (isFreight ? '' : HOME);
             var all = rankFor(isFreight ? 'transport' : 'material', need, from);
             var aiKey = '';
-            if (!isFreight && !D.readonly && ((need.types || []).length || (need.words || []).length)) {
+            if (!isFreight && !D.readonly && ((need.types || []).length || (need.words || []).length || (need.specs || []).length)) {
                 aiKey = aiNeedKey(need);
                 ai.shown = aiKey;
                 if (pressed && ai.status[aiKey] && ai.status[aiKey].state === 'failed') delete ai.status[aiKey];
@@ -5756,6 +5847,7 @@
         // holds edits the same way and had none of the guard, so F5 threw them away silently.
         hasUnsavedWork: function () { return Object.keys(S.dirty).length > 0; },
         _test: { readEnquiry: readEnquiry, rankFor: rankFor, matchCity: matchCity, kmBetween: kmBetween,
+                 specCodes: specCodes, ownHeadings: ownHeadings, headingShort: headingShort, headingFamilies: headingFamilies,
                  applyFind: applyFind, looksLikeFirmName: looksLikeFirmName,
                  focusKey: focusKey, saveFailedWhat: saveFailedWhat,
                  refreshWaitingBadge: refreshWaitingBadge,
