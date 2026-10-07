@@ -2586,14 +2586,21 @@
      */
     function moveSelect(p, c, i) {
         var places = cardPlaces(p);
-        if (places.length < 2) return '';
         var now = placeKey(c.branch), opts = '';
-        if (!now) opts += '<option value="" selected>No branch yet — move to…</option>';
+        // *His words (7 Oct): "this UI isnt very intuitive"* — he picked a labelled branch chip on
+        // each person: tap it, pick a branch. A one-town card has nowhere to move to, so the chip
+        // just says where they are.
+        if (places.length < 2) {
+            var here = str(c.branch) || str(p.city);
+            return here ? '<span class="pd-branchchip pd-branchchip-fixed" title="Their branch">📍 ' + esc(here) + '</span>' : '<span></span>';
+        }
+        if (!now) opts += '<option value="" selected>No branch yet</option>';
         places.forEach(function (x) {
             opts += '<option value="' + esc(x.value) + '"' + (placeKey(x.value) === now ? ' selected' : '') + '>'
                 + esc(x.value) + (x.head ? ' (head office)' : '') + '</option>';
         });
-        return '<select class="pd-move" data-pd-pc="' + i + '" data-pd-k="branch" aria-label="Which branch this person is in">' + opts + '</select>';
+        return '<label class="pd-branchchip' + (now ? '' : ' pd-branchchip-none') + '" title="Their branch — pick another to move them">📍 <span class="pd-branchchip-lbl">Branch</span>'
+            + '<select class="pd-move" data-pd-pc="' + i + '" data-pd-k="branch" aria-label="Which branch this person is in">' + opts + '</select></label>';
     }
 
     function personCard(person, i, p) {
