@@ -2891,6 +2891,20 @@
             return wrapper.innerHTML;
         }
 
+        // The quote's own items table inside a card. A card holds OTHER tables before it: a note or
+        // revision ask pasted from Excel or Gmail is a table too, and it sits ABOVE the quote. Taking
+        // "the first table" then picked the note — the screen dressed it up as a quote table, and Save
+        // stored the note as the quote and lost the items (DSC-2277, 4 Aug). Notes are never the quote.
+        const NOT_THE_QUOTE_TABLE = '.mdk-admin-strip, .rev-ask-strip';
+        function quoteTableIn(root) {
+            if (!root) return null;
+            const tables = root.querySelectorAll('table');
+            for (let i = 0; i < tables.length; i++) {
+                if (!tables[i].closest(NOT_THE_QUOTE_TABLE)) return tables[i];
+            }
+            return null;
+        }
+
         // For notes and revision asks — content the user pastes, often copied from the app's OWN
         // screens. sanitizeEmailHtmlForPreview keeps class and id (an email preview wants them,
         // and a stranger's class names match nothing of ours). Our own markup is different: our
@@ -3180,7 +3194,7 @@
             if (!quotation || !folderContent) {
                 return;
             }
-            const quotationTable = folderContent.querySelector('.approval-quotation table') || folderContent.querySelector('table');
+            const quotationTable = quoteTableIn(folderContent.querySelector('.approval-quotation') || folderContent);
             if (!quotationTable) {
                 return;
             }
@@ -4229,7 +4243,9 @@
             if (!container) {
                 return;
             }
-            const tableBody = container.querySelector('tbody');
+            // The quote's table, not a pasted note's table sitting above it (see quoteTableIn).
+            const table = container.tagName === 'TABLE' ? container : quoteTableIn(container);
+            const tableBody = table ? table.querySelector('tbody') : container.querySelector('tbody');
             if (!tableBody) {
                 return;
             }
@@ -5054,7 +5070,7 @@
             if (!folder) return;
             var folderContent = folder.querySelector('.quotation-folder-content');
             if (!folderContent) return;
-            var table = folderContent.querySelector('table');
+            var table = quoteTableIn(folderContent.querySelector('.approval-quotation') || folderContent);
             var tbody = table ? table.querySelector('tbody') : null;
             if (!tbody) return;
             var rowId = 'freight-approval-' + quotationId + '-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
@@ -5096,9 +5112,7 @@
 
                 // Scope to the quotation table only (not email preview tables in the side panel)
                 const approvalQuotation = folderContent.querySelector('.approval-quotation');
-                const quotationTable = approvalQuotation
-                    ? approvalQuotation.querySelector('table')
-                    : folderContent.querySelector('table');
+                const quotationTable = quoteTableIn(approvalQuotation || folderContent);
                 const itemRows = quotationTable
                     ? Array.from(quotationTable.querySelectorAll('tbody tr')).filter(function(row) {
                         return !row.classList.contains('pipe-type-header')
@@ -8494,7 +8508,7 @@
                 // Find the table in this quotation — scope to .approval-quotation so we
                 // never accidentally pick up a <table> inside the email preview side panel.
                 const _aqDiv = folderContent.querySelector('.approval-quotation');
-                const table = _aqDiv ? _aqDiv.querySelector('table') : folderContent.querySelector('table');
+                const table = quoteTableIn(_aqDiv || folderContent);
                 if (table) {
                     // Check if table header has Actions column, if not add it
                     const headerRow = table.querySelector('thead tr');
@@ -9069,7 +9083,7 @@
             if (!folderContent) return;
             
             const _aqDiv2 = folderContent.querySelector('.approval-quotation');
-            const table = (_aqDiv2 ? _aqDiv2.querySelector('table') : folderContent.querySelector('table'));
+            const table = quoteTableIn(_aqDiv2 || folderContent);
             if (!table) return;
 
             const tbody = table.querySelector('tbody');
@@ -9362,7 +9376,7 @@
             
             // Update table HTML — scope to .approval-quotation to avoid grabbing email preview tables
             const _aqDiv3 = updatedContent.querySelector('.approval-quotation');
-            const tableElement = _aqDiv3 ? _aqDiv3.querySelector('table') : updatedContent.querySelector('table');
+            const tableElement = quoteTableIn(_aqDiv3 || updatedContent);
             if (tableElement) {
                 quotation.tableHTML = tableElement.outerHTML;
             }
@@ -9800,7 +9814,7 @@
                 quotation.headerHTML = headerElement.outerHTML;
             }
             const _aqDiv4 = updatedContent.querySelector('.approval-quotation');
-            const tableElement = _aqDiv4 ? _aqDiv4.querySelector('table') : updatedContent.querySelector('table');
+            const tableElement = quoteTableIn(_aqDiv4 || updatedContent);
             if (tableElement) {
                 quotation.tableHTML = tableElement.outerHTML;
             }
@@ -9982,7 +9996,7 @@
                 
                 // Update table HTML with current values — scope to .approval-quotation
                 const _aqDiv5 = updatedContent.querySelector('.approval-quotation');
-                const tableElement = _aqDiv5 ? _aqDiv5.querySelector('table') : updatedContent.querySelector('table');
+                const tableElement = quoteTableIn(_aqDiv5 || updatedContent);
                 if (tableElement) {
                     quotation.tableHTML = tableElement.outerHTML;
                 }
@@ -11049,7 +11063,7 @@
                         input.textContent = input.value;
                     }
                 });
-                const tableElement = folderContent.querySelector('.approval-quotation table') || folderContent.querySelector('table');
+                const tableElement = quoteTableIn(folderContent.querySelector('.approval-quotation') || folderContent);
                 if (tableElement) {
                     quotation.tableHTML = tableElement.outerHTML;
                     tableForPdfHeaders = tableElement;
