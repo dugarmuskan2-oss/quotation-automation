@@ -30,7 +30,7 @@ const REMOVABLE = {
 };
 
 /** The ones that sit INSIDE a person or a product, so they need `at` to be found. */
-const NESTED = ['phone', 'email', 'size', 'brand'];
+const NESTED = ['phone', 'email', 'size', 'brand', 'std'];
 
 /**
  * The makes in one product's Brand box — one per comma, as he typed them.
@@ -55,6 +55,20 @@ function findBrandRow(card, want, brand) {
         && lower(p && p.spec) === lower(want && want.spec)
         && makesOf(p).some((m) => lower(m) === lower(brand)));
     if (want && want.make !== undefined) return rows.filter((p) => lower(p.make) === lower(want.make))[0] || null;
+    return rows.length === 1 ? rows[0] : null;
+}
+
+/** The items in one product's Specification box — one per comma, like the makes. */
+function stdOf(product) {
+    return str(product && product.std).split(',').map(str).filter(Boolean);
+}
+
+/** The product row a specification item sits on — the same care as findBrandRow. */
+function findStdRow(card, want, item) {
+    const rows = (card.products || []).filter((p) => lower(p && p.p) === lower(want && want.p)
+        && lower(p && p.spec) === lower(want && want.spec)
+        && stdOf(p).some((m) => lower(m) === lower(item)));
+    if (want && want.std !== undefined) return rows.filter((p) => lower(p.std) === lower(want.std))[0] || null;
     return rows.length === 1 ? rows[0] : null;
 }
 
@@ -103,6 +117,8 @@ function describeRemoval(req) {
             + (req.at && req.at.product ? ' from ' + str(req.at.product.p) : '') + on;
         case 'brand': return 'Remove the brand ' + str(req.value)
             + (req.at && req.at.product && str(req.at.product.p) ? ' from ' + str(req.at.product.p) : '') + on;
+        case 'std': return 'Remove the specification ' + str(req.value)
+            + (req.at && req.at.product && str(req.at.product.p) ? ' from ' + str(req.at.product.p) : '') + on;
         default: {
             const meta = REMOVABLE[req.what];
             const label = meta ? meta.name(req.value) : '';
@@ -147,6 +163,7 @@ function applyRemoval(card, req) {
     }
 
     if (req.what === 'brand') return removeBrand(card, req);
+    if (req.what === 'std') return removeStd(card, req);
 
     const meta = REMOVABLE[req.what];
     if (!meta) return { changed: false, reason: 'nothing to do' };
@@ -165,6 +182,17 @@ function removeBrand(card, req) {
     const at = makes.findIndex((m) => lower(m) === lower(req.value));
     if (at === -1) return { changed: false, reason: 'it has already gone' };
     product.make = makes.slice(0, at).concat(makes.slice(at + 1)).join(', ');
+    return { changed: true };
+}
+
+/** One item out of one product's Specification box, found by its words — never by its place. */
+function removeStd(card, req) {
+    const product = findStdRow(card, req.at && req.at.product, req.value);
+    if (!product) return { changed: false, reason: 'it has already gone, or that product row has changed since' };
+    const items = stdOf(product);
+    const at = items.findIndex((m) => lower(m) === lower(req.value));
+    if (at === -1) return { changed: false, reason: 'it has already gone' };
+    product.std = items.slice(0, at).concat(items.slice(at + 1)).join(', ');
     return { changed: true };
 }
 
@@ -187,5 +215,5 @@ function isMarked(requests, what, value, at) {
 }
 
 module.exports = {
-    REMOVABLE, removalRequest, describeRemoval, applyRemoval, isMarked, samePerson, sizeName, makesOf,
+    REMOVABLE, removalRequest, describeRemoval, applyRemoval, isMarked, samePerson, sizeName, makesOf, stdOf,
 };

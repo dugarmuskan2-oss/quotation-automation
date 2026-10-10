@@ -255,8 +255,8 @@
         { nb: '125', inch: '5"', od: '139.7', light: '', medium: '4.85', heavy: '5.4' },
         { nb: '150', inch: '6"', od: '165.1', light: '', medium: '4.85', heavy: '5.4' },
     ];
-    function specClass(spec) {
-        var s = lower(spec);
+    function specClass(pr) {
+        var s = lower(stdOf(pr).join(' ') + ' ' + str(pr && pr.spec));
         if (/heavy/.test(s)) return 'heavy';
         if (/medium/.test(s)) return 'medium';
         if (/light/.test(s)) return 'light';
@@ -277,6 +277,16 @@
     // Sizes, factory and grade stay in the Specification box beside it.
     // GP and GR added on his word: "GI Pipes already exists. GR Pipes and GP Pipes."
     var PRODUCT_NAMES = ['GI pipe', 'GP pipe', 'GR pipe', 'ERW pipe', 'Seamless pipe', 'Square / Rectangular', 'Fittings', 'Valves', 'Sheets', 'Coating'];
+    // *His words: "the specifications are still not itemised or in a drop down"* — and "ok" to
+    // starting the list with the common pipe standards as well as the ones on his cards. One
+    // item per standard, class or grade, picked like a brand. Anything else comes in through
+    // "＋ Add" and is offered on every card from then on. Factory, length and the rest stay in
+    // the free-text Details box under it.
+    var SPEC_NAMES = ['IS 1239', 'IS 1161', 'IS 3589', 'IS 4923', 'IS 3601', 'IS 4270', 'IS 9295', 'BS 1387',
+        'EN 10255', 'EN 10210', 'EN 10216', 'EN 10217', 'EN 10219', 'ASTM A53', 'ASTM A106', 'ASTM A179', 'ASTM A192',
+        'ASTM A210', 'ASTM A252', 'ASTM A312', 'ASTM A333', 'ASTM A335', 'ASTM A500', 'ASTM A671', 'ASTM A672',
+        'API 5L', 'API 5CT', 'DIN 2391', 'DIN 2448', 'YST 210', 'YST 240', 'YST 310', 'YST 355',
+        'Light', 'Medium', 'Heavy', 'SCH 10', 'SCH 20', 'SCH 40', 'SCH 80', 'SCH 160', 'XS', 'XXS', 'P11', 'P22', 'P91'];
     function roleLabel(p) {
         if (p && p.role === 'other') return str(p.roleOther) || 'Other';
         return ROLE_LABEL[p && p.role] || 'Other';
@@ -725,7 +735,7 @@
         var nw = lower(needName).split(/[^a-z0-9]+/).filter(function (w) { return w.length > 1; });
         var best = null, top = -1;
         (p.products || []).filter(function (pr) { return rowFamilies(pr).indexOf(fam) !== -1; }).forEach(function (pr) {
-            var pw = ' ' + lower(pr.p + ' ' + pr.spec).replace(/[^a-z0-9]+/g, ' ') + ' ';
+            var pw = ' ' + lower(rowText(pr)).replace(/[^a-z0-9]+/g, ' ') + ' ';
             var hits = nw.filter(function (w) { return pw.indexOf(' ' + w + ' ') !== -1; }).length;
             if (hits > top) { top = hits; best = pr; }
         });
@@ -745,23 +755,35 @@
      * "ASME SA-179" and "A179" are A179, "API 5L", "YST 310". A number followed by a unit
      * ("size is 150 nb") is a size, not a standard.
      */
-    function specCodes(text) {
-        var t = ' ' + lower(text) + ' ', out = [], m;
+    function specCodes(text) { return specParts(text).codes; }
+    function specParts(text) {
+        var t = ' ' + lower(text) + ' ', out = [];
         var add = function (c) { c = c.toUpperCase(); if (out.indexOf(c) === -1) out.push(c); };
         var UNIT = '(?!\\s*(?:mm|nb|mtrs?|met(?:er|re)s?|m\\b|kgs?|t\\b|mt|tons?|tonnes?|inch|"|nos?|od|dia))';
         var std = new RegExp('\\b(is|bs|en|din|jis)\\s*[-:.]?\\s*(\\d{3,5})' + UNIT + '((?:\\s*[\\/&]\\s*\\d{3,5}' + UNIT + ')*)', 'g');
-        while ((m = std.exec(t))) {
-            add(m[1] + ' ' + m[2]);
-            (m[3].match(/\d{3,5}/g) || []).forEach(function (n) { add(m[1] + ' ' + n); });
-        }
+        t = t.replace(std, function (all, k, n, more) {
+            add(k + ' ' + n);
+            (more.match(/\d{3,5}/g) || []).forEach(function (x) { add(k + ' ' + x); });
+            return ' ';
+        });
         var mat = new RegExp('\\b(?:(?:astm|asme)\\s*s?a|sa)\\s*-?\\s*(\\d{2,4})\\b' + UNIT + '|\\ba(\\d{2,4})\\b', 'g');
-        while ((m = mat.exec(t))) add('A' + (m[1] || m[2]));
-        var api = /\bapi\s*-?\s*(5l|5ct)\b/g;
-        while ((m = api.exec(t))) add('API ' + m[1]);
-        var yst = /\byst\s*-?\s*(\d{3})\b/g;
-        while ((m = yst.exec(t))) add('YST ' + m[1]);
-        return out;
+        t = t.replace(mat, function (all, a, b) { add('A' + (a || b)); return ' '; });
+        t = t.replace(/\bapi\s*-?\s*(5l|5ct)\b/g, function (all, c) { add('API ' + c); return ' '; });
+        t = t.replace(/\byst\s*-?\s*(\d{3})\b/g, function (all, c) { add('YST ' + c); return ' '; });
+        return { codes: out, rest: t.replace(/\b(astm|asme)\b/g, ' ').replace(/[^a-z0-9]+/g, '') };
     }
+    /** One specification item however it is written: "SA-179" = "ASTM A179", "SCH40" = "SCH 40". */
+    function sameSpec(a, b) {
+        if (!str(a) || !str(b)) return false;
+        var x = specParts(a), y = specParts(b);
+        return x.codes.slice().sort().join('|') === y.codes.slice().sort().join('|') && x.rest === y.rest;
+    }
+    /** The items in one product's Specification box — one per comma, the way the Brand box keeps makes. */
+    function stdOf(pr) {
+        return str(pr && pr.std).split(',').map(function (m) { return str(m); }).filter(Boolean);
+    }
+    /** Everything a product row says about itself, for the search to read. */
+    function rowText(pr) { return str(pr && pr.p) + ' ' + str(pr && pr.spec) + ' ' + stdOf(pr).join(' '); }
 
     /**
      * The pipe families a card deals in: its Pipe types box, but only real families (a box reading
@@ -773,7 +795,7 @@
         // A card whose every product is a fitting, valve, coating or sheet: the "GI" in its Pipe types
         // box is about those, not pipe. S.ABBAS (GI fittings, valves) came second for GI pipe on it.
         var rowFams = [].concat.apply([], (p.products || []).map(rowFamilies));
-        var named = (p.products || []).filter(function (pr) { return str(pr.p) || str(pr.spec); });
+        var named = (p.products || []).filter(function (pr) { return str(pr.p) || str(pr.spec) || str(pr.std); });
         var onlyNonPipe = named.length && named.every(function (pr) {
             var f = rowFamilies(pr); return f.length && f.every(function (x) { return ['fitting', 'coating', 'sheets'].indexOf(x) !== -1; });
         });
@@ -967,11 +989,11 @@
     function scoreProductWords(p, need, why) {
         var words = (need && need.words) || [];
         if ((need.types || []).length || !words.length) return { pts: 0, hit: false };
-        var rows = (p.products || []).filter(function (pr) { return str(pr.p) || str(pr.spec); });
+        var rows = (p.products || []).filter(function (pr) { return str(pr.p) || str(pr.spec) || str(pr.std); });
         if (!rows.length) { why.push(['neutral', 'No products on their card — cannot match "' + words.join(' ') + '"']); return { pts: 0, hit: false }; }
         var best = null, top = 0;
         rows.forEach(function (pr) {
-            var pw = lower(str(pr.p) + ' ' + str(pr.spec)).split(/[^a-z0-9]+/).filter(Boolean).map(singularWord);
+            var pw = lower(rowText(pr)).split(/[^a-z0-9]+/).filter(Boolean).map(singularWord);
             var hits = words.filter(function (w) { return pw.indexOf(singularWord(w)) !== -1; });
             if (hits.length > top) { top = hits.length; best = { pr: pr, hits: hits }; }
         });
@@ -987,7 +1009,7 @@
     function scoreSpecs(p, need, why) {
         var want = (need && need.specs) || [];
         if (!want.length) return 0;
-        var codes = specCodes((p.products || []).map(function (pr) { return str(pr.p) + ' ' + str(pr.spec); }).join(' ; '));
+        var codes = specCodes((p.products || []).map(rowText).join(' ; '));
         var found = want.filter(function (w) { return codes.indexOf(w) !== -1; });
         if (!found.length) return 0;
         why.push(['ok', 'Names ' + found.join(', ') + ' on their card']);
@@ -1559,7 +1581,7 @@
     }
 
     // ── State for the tool page ───────────────────────────────────────────────
-    var S = { tab: 'dir', filter: 'all', facet: { state: '', town: '', product: '', brand: '', load: '', reach: '' }, listOpen: null, rangeOn: {}, openId: null, openPending: null, openChange: null,
+    var S = { tab: 'dir', filter: 'all', facet: { state: '', town: '', product: '', spec: '', brand: '', load: '', reach: '' }, listOpen: null, rangeOn: {}, openId: null, openPending: null, openChange: null,
               find: { text: '', state: 'idle', need: null, note: '' }, busy: {}, add: freshAdd(),
               confirmDelete: '',     // the card whose "are you sure?" is on screen
               dirty: {}, clean: {}, saveNote: '', confirmLeave: '', leaveThen: null, ask: null,
@@ -1766,17 +1788,17 @@
     // "fabricators too". A maker IS its brand, and a lorry firm has no products either — it
     // has a load instead: *"transporters will have load -- part also/ full only"*. And
     // *"Clients and others dont need any filters"*.
-    var FACET_LABEL = { state: 'Any state', town: 'Any town', product: 'Any product', brand: 'Any brand', load: 'Any load', reach: 'Any distance' };
-    var FACET_NOUN = { state: 'state', town: 'town', product: 'product', brand: 'brand', load: 'load type', reach: 'distance' };
+    var FACET_LABEL = { state: 'Any state', town: 'Any town', product: 'Any product', spec: 'Any specification', brand: 'Any brand', load: 'Any load', reach: 'Any distance' };
+    var FACET_NOUN = { state: 'state', town: 'town', product: 'product', spec: 'specification', brand: 'brand', load: 'load type', reach: 'distance' };
 
     function facetsFor(kind) {
         if (kind === 'client' || kind === 'other') return [];
         if (kind === 'transporter') return ['town', 'load', 'reach'];
         if (kind === 'fabricator') return ['town', 'product'];
         // State only where he asked for it: dealers and makers.
-        if (kind === 'manufacturer') return ['state', 'town', 'product'];
-        if (kind === 'dealer') return ['state', 'town', 'product', 'brand'];
-        return ['town', 'product', 'brand'];
+        if (kind === 'manufacturer') return ['state', 'town', 'product', 'spec'];
+        if (kind === 'dealer') return ['state', 'town', 'product', 'spec', 'brand'];
+        return ['town', 'product', 'spec', 'brand'];
     }
 
     /**
@@ -1823,6 +1845,11 @@
             return sts.filter(function (x, n) { return sts.indexOf(x) === n; });
         }
         if (f === 'brand') return brandsOnCard(p);
+        if (f === 'spec') {
+            var specs = [];
+            (p.products || []).forEach(function (pr) { stdOf(pr).forEach(function (m) { if (!specs.some(function (o) { return sameSpec(o, m); })) specs.push(m); }); });
+            return specs;
+        }
         // The card's own words for the part-load box; a box nobody answered is blank, not "no".
         if (f === 'load') return p.partLoad === true ? ['Takes part load'] : (p.partLoad === false ? ['Full load only'] : []);
         if (f === 'reach') return reachOf(p).map(function (k) { return REACH_LABEL[k]; });
@@ -1849,7 +1876,7 @@
         return out;
     }
 
-    function sameFacet(f, a, b) { return f === 'brand' ? sameBrand(a, b) : lower(a) === lower(b); }
+    function sameFacet(f, a, b) { return f === 'brand' ? sameBrand(a, b) : (f === 'spec' ? sameSpec(a, b) : lower(a) === lower(b)); }
 
     /** 'yes', 'no', or 'blank' (a filter is set and this card has nothing in that box). */
     function facetFit(p) {
@@ -1964,7 +1991,7 @@
             if (!S.find.text || S.find.state !== 'name') return true;
             var hay = lower(p.company + ' ' + p.city + ' ' + branchNames(p).join(' ') + ' ' + (p.types || []).join(' ')
                 + ' ' + people(p).map(function (x) { return x.name; }).join(' ') + ' ' + allEmails(p).join(' ')
-                + ' ' + (p.roleOther || '') + ' ' + (p.products || []).map(function (x) { return x.p + ' ' + x.spec; }).join(' ')
+                + ' ' + (p.roleOther || '') + ' ' + (p.products || []).map(rowText).join(' ')
                 + ' ' + (p.notes || []).map(function (n) { return n.t; }).join(' '));
             return hay.indexOf(lower(S.find.text)) !== -1;
         });
@@ -2150,6 +2177,7 @@
         if (r.what === 'branch') return str(v && v.city);
         if (r.what === 'size') return [str(v && v.nb), str(v && v.inch)].filter(Boolean).join(' ');
         if (r.what === 'brand') return 'Brand ' + str(v) + (r.at && r.at.product && str(r.at.product.p) ? ' on ' + str(r.at.product.p) : '');
+        if (r.what === 'std') return 'Specification ' + str(v) + (r.at && r.at.product && str(r.at.product.p) ? ' on ' + str(r.at.product.p) : '');
         return str(v);
     }
 
@@ -2435,6 +2463,7 @@
         var kind = str(id).split(':')[0];
         if (kind === 'town' || id === 'facet:town') return sameTown(a, b);
         if (kind === 'brand' || id === 'facet:brand') return sameBrand(a, b);
+        if (kind === 'spec' || id === 'facet:spec') return sameSpec(a, b);
         if (kind === 'product' || id === 'facet:product') return productWords(a).join(' ') === productWords(b).join(' ');
         return lower(a) === lower(b);
     }
@@ -2718,11 +2747,13 @@
 
     function productRow(pr, i) {
         var f = function (k, ph, v) { return '<input data-pd-pr="' + i + '" data-pd-k="' + k + '" value="' + esc(v == null ? '' : v) + '" placeholder="' + esc(ph) + '">'; };
-        var cls = specClass(pr.spec);
+        var cls = specClass(pr);
         return '<div class="pd-pcard"><div class="pd-pcard-r1">'
-            + productPicker(pr, i) + f('spec', 'Specification — e.g. IS 1239 Heavy', pr.spec)
+            + productPicker(pr, i) + specPicker(pr, i)
             + brandPicker(pr, i)
             + '<button class="pd-del" data-pd-delproduct="' + i + '">✕</button></div>'
+            // What is not a standard — a factory, a length, a note — stays his own words here.
+            + '<div style="margin-top:6px;">' + f('spec', 'Other details — e.g. factory, length, grade notes', pr.spec) + '</div>'
             + '<div class="pd-row" style="margin-top:6px;"><span class="pd-tiny">Minimum order</span>'
             + '<span style="width:80px;">' + f('moq', 'T', pr.moq) + '</span><span class="pd-tiny">tonnes</span><span class="pd-sp"></span>'
             + (cls ? '<button class="pd-addline" data-pd-loadis="' + i + '">Load IS 1239 ' + cls + ' sizes</button>' : '') + '</div>'
@@ -2844,6 +2875,39 @@
                 options: brandOptions().filter(function (b) { return !mine.some(function (m) { return sameBrand(m, b); }); })
                     .map(function (b) { return { v: b }; }) })
             + '</div>';
+    }
+
+    /** The specification list: what his cards already say first, in his spelling, then the trade's list. */
+    function specOptions() {
+        var out = [];
+        var add = function (nm) { nm = str(nm); if (nm && !out.some(function (o) { return sameSpec(o, nm); })) out.push(nm); };
+        D.contacts.concat((D.pending || []).map(function (it) { return it.preview || {}; }))
+            .forEach(function (c) { (c.products || []).forEach(function (pr) { stdOf(pr).forEach(add); }); });
+        SPEC_NAMES.forEach(add);
+        return out.sort(function (a, b) { return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }); });
+    }
+
+    /** The specification items on one product as tags, and a dropdown to add another. */
+    function specPicker(pr, i) {
+        var mine = stdOf(pr);
+        return '<div class="pd-brands pd-specs">'
+            + mine.map(function (m, j) {
+                return '<span class="pd-tag">' + esc(m) + ' <span class="pd-x" data-pd-delstd="' + i + ':' + j + '">✕</span></span>';
+            }).join('')
+            + listPickerHtml({ id: 'spec:' + i, value: '', placeholder: mine.length ? '+ Spec' : 'Specification…', noun: 'specification', canAdd: true,
+                options: specOptions().filter(function (o) { return !mine.some(function (m) { return sameSpec(m, o); }); })
+                    .map(function (o) { return { v: o }; }) })
+            + '</div>';
+    }
+
+    /** The product row a specification item sits on — found the way brandRow finds a brand's. */
+    function stdRow(p, want, item) {
+        var rows = (p.products || []).filter(function (x) {
+            return lower(x.p) === lower(want.p) && lower(x.spec) === lower(want.spec)
+                && stdOf(x).some(function (m) { return lower(m) === lower(item); });
+        });
+        if (want.std !== undefined) return rows.filter(function (x) { return lower(x.std) === lower(want.std); })[0] || null;
+        return rows.length === 1 ? rows[0] : null;
     }
 
     function otherRulesBlock(p) {
@@ -4422,7 +4486,7 @@
             };
         });
         LISTS.facet = function (f, v) { S.facet[f] = v; render(); };
-        on(app, '[data-pd-facetclear]', function () { S.facet = { state: '', town: '', product: '', brand: '', load: '', reach: '' }; render(); });
+        on(app, '[data-pd-facetclear]', function () { S.facet = { state: '', town: '', product: '', spec: '', brand: '', load: '', reach: '' }; render(); });
         bindFinder(app); bindAdd(app); bindListAndCard(app); bindChanges(app);
         bindListPickers(app);
     }
@@ -4716,6 +4780,12 @@
                 pr.sizes = drop(pr.sizes);
                 save(true, ['products']);
                 return;
+            } else if (what === 'std' && at && at.product) {
+                var hasIt = stdRow(p, at.product, value);
+                if (!hasIt) return;
+                hasIt.std = stdOf(hasIt).filter(function (m) { return lower(m) !== lower(value); }).join(', ');
+                save(true, ['products']);
+                return;
             } else if (what === 'brand' && at && at.product) {
                 var onIt = brandRow(p, at.product, value);
                 if (!onIt) return;
@@ -4990,6 +5060,13 @@
             el.onclick = function () { askRemoval('product', p.products[Number(el.getAttribute('data-pd-delproduct'))]); };
         });
         bindProductPickers(card, p, save);
+        each(card, '[data-pd-delstd]', function (el) {
+            el.onclick = function () {
+                var a = el.getAttribute('data-pd-delstd').split(':');
+                var pr = p.products[+a[0]];
+                askRemoval('std', stdOf(pr)[+a[1]], { product: { p: pr.p, spec: pr.spec, std: pr.std } });
+            };
+        });
         each(card, '[data-pd-delmake]', function (el) {
             el.onclick = function () {
                 var a = el.getAttribute('data-pd-delmake').split(':');
@@ -5032,7 +5109,7 @@
         });
         each(card, '[data-pd-loadis]', function (el) {
             el.onclick = function () {
-                var pr = p.products[Number(el.getAttribute('data-pd-loadis'))], cls = specClass(pr.spec);
+                var pr = p.products[Number(el.getAttribute('data-pd-loadis'))], cls = specClass(pr);
                 if (!cls) return;
                 // It REPLACES the table outright, and a supplier's own thicknesses typed in by
                 // hand were being wiped by a button pressed to see what it did. Undo does not
@@ -5074,6 +5151,27 @@
             if (!pr || !str(v)) { render(); return; }
             pr.p = str(v);
             if (isNew) pr.added = true; else delete pr.added;
+            save(true, ['products']);
+        };
+        LISTS.spec = function (i, v) {
+            var pr = p.products[Number(i)];
+            if (!pr) { render(); return; }
+            addStd(pr, v);
+        };
+        // "IS 1239, IS 3589" typed in the box is two items; one already on the row is not added twice.
+        var addStd = function (pr, v) {
+            var mine = stdOf(pr), added = [];
+            str(v).split(',').forEach(function (b) {
+                b = str(b);
+                if (b && !mine.concat(added).some(function (m) { return sameSpec(m, b); })) added.push(b);
+            });
+            if (!added.length) {
+                if (!str(v)) { render(); return; }
+                askOnPage({ title: 'Already on this product', okLabel: 'OK', danger: false, run: function () { render(); },
+                    lines: [str(v) + ' is already one of its specifications, so nothing was added.'] });
+                return;
+            }
+            pr.std = mine.concat(added).join(', ');
             save(true, ['products']);
         };
         LISTS.brand = function (i, v) {
@@ -5804,7 +5902,7 @@
         // holds edits the same way and had none of the guard, so F5 threw them away silently.
         hasUnsavedWork: function () { return Object.keys(S.dirty).length > 0; },
         _test: { readEnquiry: readEnquiry, rankFor: rankFor, matchCity: matchCity, kmBetween: kmBetween,
-                 specCodes: specCodes,
+                 specCodes: specCodes, sameSpec: sameSpec, stdOf: stdOf, specOptions: specOptions,
                  applyFind: applyFind, looksLikeFirmName: looksLikeFirmName,
                  focusKey: focusKey, saveFailedWhat: saveFailedWhat,
                  refreshWaitingBadge: refreshWaitingBadge,

@@ -207,6 +207,9 @@ function sanitizeProducts(list) {
         .map(pr => ({
             p: str(pr && pr.p), spec: str(pr && pr.spec),
             make: str(pr && pr.make),
+            // The Specification items — "IS 1239, IS 3589" — one per comma like the makes.
+            // `spec` beside it is the free-text Details box, kept exactly as typed.
+            std: str(pr && pr.std),
             sizes: sanitizeSizes(pr && pr.sizes),
             moq: num(pr && pr.moq, 0), rule: str(pr && pr.rule),
             // Added through "+ Add" rather than picked from the Product list — kept so it is
@@ -215,7 +218,7 @@ function sanitizeProducts(list) {
         }))
         // A row holding only a make is still worth keeping — "they stock Jindal" is a real
         // thing to have written down, and dropping it would lose what was just typed.
-        .filter(pr => pr.p || pr.spec || pr.make || pr.sizes.length)
+        .filter(pr => pr.p || pr.spec || pr.std || pr.make || pr.sizes.length)
         .slice(0, 400);
 }
 
@@ -1773,6 +1776,7 @@ function diffProducts(out, b, now) {
         const o = had[lower(x.p)];
         if (!o) out.push({ label: 'Product added', from: '', to: x.p + ' — ' + line(x) });
         else if (num(o.moq, 0) !== num(x.moq, 0) || str(o.rule) !== str(x.rule)) out.push({ label: x.p, from: line(o), to: line(x) });
+        if (o && str(o.std) !== str(x.std)) out.push({ label: x.p + ' — specification', from: str(o.std), to: str(x.std) });
     });
 }
 

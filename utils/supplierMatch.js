@@ -51,7 +51,7 @@ function cardText(p) {
     if ((p.categories || []).length) lines.push('FILED UNDER: ' + p.categories.map(str).join('; '));
     if ((p.types || []).length) lines.push('PIPE TYPES: ' + p.types.map(str).join(', '));
     (p.products || []).forEach((pr) => {
-        const bits = [str(pr.p), str(pr.spec), str(pr.make) ? 'make ' + str(pr.make) : ''].filter(Boolean).join(' · ');
+        const bits = [str(pr.p), str(pr.std), str(pr.spec), str(pr.make) ? 'make ' + str(pr.make) : ''].filter(Boolean).join(' · ');
         const sizes = (pr.sizes || []).map(sizeText).filter(Boolean);
         lines.push('PRODUCT: ' + bits + (sizes.length ? ' — sizes: ' + sizes.join(' | ') : ''));
     });
