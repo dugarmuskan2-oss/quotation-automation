@@ -2515,3 +2515,20 @@ old free-text box became Specification items on 12 rows of 6 cards, each logged 
   YST 310/240/355), BHARAT TUBES (IS 1239), ANAND SEAMLESS (SA-179, DIN 2391), MADHAV PIPE ×3.
 - Text says more (lengths, grades, coating) → items added, text kept word for word: MAN ×5, Zenith.
 **What transfers:** a new card's standards go in the Specification box; the text box is for the rest.
+
+## Every heading and "buys from" into the product range (10 Oct)
+
+*His words: "do for all cards, even those approved", "if a dealer buys from a manufacturer, we can
+add that as brand in product range", "You also missed adding steel items to the products".* The
+7 Oct pass only turned headings naming a PIPE KIND into rows; product words like STEEL ITEMS and
+LARGER DIA, and make pages like JINDAL STAR, were skipped. Every own heading on every card was
+re-read (approved and waiting), and every "buys from <maker on file>" note:
+- Asian Steels: its unnamed row (20" to 100") named LARGER DIA. Jindal Saw: LARGER DIA row added.
+- Brand-only rows (he picks the product, as he did on SAROJ): MADRAS STEEL TUBES — Jindal Star,
+  MKK METAL, Jindal hissar; BOMBAY HARDWARE — Jindal Star; VARDHAMAN — MKK METAL.
+- He had already done SHREE SAKTHI (Steel Items) and Mokshi (Jindal Star) himself — left as set.
+- Already there: 26 dealers carry the maker they buy from; JSL = Jindal Saw on Crayon, Steel &
+  Metal, Shree Sakthi; Madhav's "MKK Metpro" = MKK Metal. Clients that buy from makers: not done
+  (his words were "a dealer").
+**What transfers:** a new card gets a row for every product word on its own P(n)/PD(n) page and a
+brand for every maker page it is a dealer on or "buys from" note — not only the pipe kinds.
