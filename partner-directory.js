@@ -766,7 +766,7 @@
             (more.match(/\d{3,5}/g) || []).forEach(function (x) { add(k + ' ' + x); });
             return ' ';
         });
-        var mat = new RegExp('\\b(?:(?:astm|asme)\\s*s?a|sa)\\s*-?\\s*(\\d{2,4})\\b' + UNIT + '|\\ba(\\d{2,4})\\b', 'g');
+        var mat = new RegExp('\\b(?:(?:astm|asme)\\s*s?a|sa)\\s*-?\\s*(\\d{2,4})\\b' + UNIT + '|\\ba-?(\\d{2,4})\\b', 'g');
         t = t.replace(mat, function (all, a, b) { add('A' + (a || b)); return ' '; });
         t = t.replace(/\bapi\s*-?\s*(5l|5ct)\b/g, function (all, c) { add('API ' + c); return ' '; });
         t = t.replace(/\byst\s*-?\s*(\d{3})\b/g, function (all, c) { add('YST ' + c); return ' '; });
@@ -776,7 +776,33 @@
     function sameSpec(a, b) {
         if (!str(a) || !str(b)) return false;
         var x = specParts(a), y = specParts(b);
+        // No standard in either: the words themselves, spacing and dots aside ("SCH40" = "SCH 40",
+        // but "ASTM" is not "ASME" and a dash is not every other dash).
+        if (!x.codes.length && !y.codes.length) return plainSpec(a) === plainSpec(b);
         return x.codes.slice().sort().join('|') === y.codes.slice().sort().join('|') && x.rest === y.rest;
+    }
+    function plainSpec(s) { return lower(s).replace(/[\s.\-_/]+/g, ''); }
+    /**
+     * Does a card's item cover the one picked in the filter? "IS 1239 Heavy" on a card is an
+     * IS 1239 card; the filter must not miss it because the item says more (review, 10 Oct).
+     */
+    function specCovers(cardItem, wanted) {
+        if (sameSpec(cardItem, wanted)) return true;
+        var c = specParts(cardItem), w = specParts(wanted);
+        if (!w.codes.length) return false;
+        return w.codes.every(function (k) { return c.codes.indexOf(k) !== -1; }) && c.rest.indexOf(w.rest) !== -1;
+    }
+    /** The standards written in a row's free-text Details box, spelt the way the list spells them. */
+    function specItemsOfText(text) {
+        return specCodes(text).map(function (code) {
+            return SPEC_NAMES.filter(function (n) { return sameSpec(n, code); })[0] || code;
+        });
+    }
+    /** Every Specification item a row has: its items, and any standard still written in its Details text. */
+    function rowSpecs(pr) {
+        var out = stdOf(pr);
+        specItemsOfText(pr && pr.spec).forEach(function (m) { if (!out.some(function (o) { return sameSpec(o, m); })) out.push(m); });
+        return out;
     }
     /** The items in one product's Specification box — one per comma, the way the Brand box keeps makes. */
     function stdOf(pr) {
@@ -1847,7 +1873,7 @@
         if (f === 'brand') return brandsOnCard(p);
         if (f === 'spec') {
             var specs = [];
-            (p.products || []).forEach(function (pr) { stdOf(pr).forEach(function (m) { if (!specs.some(function (o) { return sameSpec(o, m); })) specs.push(m); }); });
+            (p.products || []).forEach(function (pr) { rowSpecs(pr).forEach(function (m) { if (!specs.some(function (o) { return sameSpec(o, m); })) specs.push(m); }); });
             return specs;
         }
         // The card's own words for the part-load box; a box nobody answered is blank, not "no".
@@ -1877,6 +1903,8 @@
     }
 
     function sameFacet(f, a, b) { return f === 'brand' ? sameBrand(a, b) : (f === 'spec' ? sameSpec(a, b) : lower(a) === lower(b)); }
+    /** Whether a card's value fits the filter — the same as sameFacet, except a fuller item still fits. */
+    function facetMatches(f, cardValue, wanted) { return f === 'spec' ? specCovers(cardValue, wanted) : sameFacet(f, cardValue, wanted); }
 
     /** 'yes', 'no', or 'blank' (a filter is set and this card has nothing in that box). */
     function facetFit(p) {
@@ -1885,7 +1913,7 @@
             if (!S.facet[f] || fit === 'no') return;
             var vals = facetValues(p, f);
             if (!vals.length) fit = 'blank';
-            else if (!vals.some(function (v) { return sameFacet(f, v, S.facet[f]); })) fit = 'no';
+            else if (!vals.some(function (v) { return facetMatches(f, v, S.facet[f]); })) fit = 'no';
         });
         return fit;
     }
@@ -2494,7 +2522,8 @@
         [].slice.call(pop.querySelectorAll('[data-pd-lsval]')).forEach(function (b) {
             var v = b.getAttribute('data-pd-lsval');
             if (!v) { b.hidden = !!t; return; }                 // "Any town" only on an empty search
-            var hit = !t || lower(b.textContent).indexOf(lower(t)) !== -1 || sameInList(id, v, t) || nearlyThe(v, t);
+            var exactOnly = /^(spec|facet:spec)\b/.test(str(id));
+            var hit = !t || lower(b.textContent).indexOf(lower(t)) !== -1 || sameInList(id, v, t) || (!exactOnly && nearlyThe(v, t));
             b.hidden = !hit;
             if (hit) shown++;
             if (t && sameInList(id, v, t)) same = true;
@@ -2833,12 +2862,9 @@
 
     /** The product row a brand sits on — the same matching the server does (utils/removals.js). */
     function brandRow(p, want, brand) {
-        var rows = (p.products || []).filter(function (x) {
-            return lower(x.p) === lower(want.p) && lower(x.spec) === lower(want.spec)
-                && makesOf(x).some(function (m) { return lower(m) === lower(brand); });
-        });
-        if (want.make !== undefined) return rows.filter(function (x) { return lower(x.make) === lower(want.make); })[0] || null;
-        return rows.length === 1 ? rows[0] : null;
+        return pickRow((p.products || []).filter(function (x) {
+            return sameRow(x, want) && makesOf(x).some(function (m) { return lower(m) === lower(brand); });
+        }));
     }
 
     /**
@@ -2884,6 +2910,7 @@
         D.contacts.concat((D.pending || []).map(function (it) { return it.preview || {}; }))
             .forEach(function (c) { (c.products || []).forEach(function (pr) { stdOf(pr).forEach(add); }); });
         SPEC_NAMES.forEach(add);
+        D.contacts.forEach(function (c) { (c.products || []).forEach(function (pr) { specItemsOfText(pr.spec).forEach(add); }); });
         return out.sort(function (a, b) { return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }); });
     }
 
@@ -2902,13 +2929,28 @@
 
     /** The product row a specification item sits on — found the way brandRow finds a brand's. */
     function stdRow(p, want, item) {
-        var rows = (p.products || []).filter(function (x) {
-            return lower(x.p) === lower(want.p) && lower(x.spec) === lower(want.spec)
-                && stdOf(x).some(function (m) { return lower(m) === lower(item); });
-        });
-        if (want.std !== undefined) return rows.filter(function (x) { return lower(x.std) === lower(want.std); })[0] || null;
-        return rows.length === 1 ? rows[0] : null;
+        return pickRow((p.products || []).filter(function (x) {
+            return sameRow(x, want) && stdOf(x).some(function (m) { return lower(m) === lower(item); });
+        }));
     }
+    /** The same choice utils/removals.js makes: identical rows → the first; rows that differ → none. */
+    function pickRow(rows) {
+        if (rows.length < 2) return rows[0] || null;
+        var id = function (x) { return [x.p, x.spec, x.std, x.make].map(lower).join('|'); };
+        return rows.every(function (x) { return id(x) === id(rows[0]); }) ? rows[0] : null;
+    }
+    /**
+     * The row a ✕ was pressed on: same product and Details, and the same Specification and Brand
+     * lines when the press sent them. Two rows that differ only in one of those are told apart.
+     */
+    function sameRow(x, want) {
+        return lower(x.p) === lower(want.p)
+            && (want.spec === undefined || lower(x.spec) === lower(want.spec))
+            && (want.std === undefined || lower(x.std) === lower(want.std))
+            && (want.make === undefined || lower(x.make) === lower(want.make));
+    }
+    /** What a ✕ sends to name its row. */
+    function rowId(pr) { return { p: pr.p, spec: pr.spec, std: str(pr.std), make: str(pr.make) }; }
 
     function otherRulesBlock(p) {
         return '<div class="pd-tiny pd-head-line" style="margin-top:12px;">Other price rules</div>'
@@ -4775,7 +4817,7 @@
             else if (what === 'rule') p.rules = drop(p.rules);
             else if (what === 'note') p.notes = drop(p.notes);
             else if (what === 'size' && at && at.product) {
-                var pr = (p.products || []).filter(function (x) { return str(x.p) === str(at.product.p); })[0];
+                var pr = pickRow((p.products || []).filter(function (x) { return sameRow(x, at.product); }));
                 if (!pr) return;
                 pr.sizes = drop(pr.sizes);
                 save(true, ['products']);
@@ -5064,14 +5106,14 @@
             el.onclick = function () {
                 var a = el.getAttribute('data-pd-delstd').split(':');
                 var pr = p.products[+a[0]];
-                askRemoval('std', stdOf(pr)[+a[1]], { product: { p: pr.p, spec: pr.spec, std: pr.std } });
+                askRemoval('std', stdOf(pr)[+a[1]], { product: rowId(pr) });
             };
         });
         each(card, '[data-pd-delmake]', function (el) {
             el.onclick = function () {
                 var a = el.getAttribute('data-pd-delmake').split(':');
                 var pr = p.products[+a[0]];
-                askRemoval('brand', makesOf(pr)[+a[1]], { product: { p: pr.p, spec: pr.spec, make: pr.make } });
+                askRemoval('brand', makesOf(pr)[+a[1]], { product: rowId(pr) });
             };
         });
         each(card, '[data-pd-pr]', function (el) {
@@ -5104,7 +5146,7 @@
             el.onclick = function () {
                 var a = el.getAttribute('data-pd-delsz').split(':');
                 var pr = p.products[+a[0]];
-                askRemoval('size', pr.sizes[+a[1]], { product: { p: pr.p } });
+                askRemoval('size', pr.sizes[+a[1]], { product: rowId(pr) });
             };
         });
         each(card, '[data-pd-loadis]', function (el) {
@@ -5163,7 +5205,10 @@
             var mine = stdOf(pr), added = [];
             str(v).split(',').forEach(function (b) {
                 b = str(b);
-                if (b && !mine.concat(added).some(function (m) { return sameSpec(m, b); })) added.push(b);
+                // Two standards in one piece are two items; one standard with words beside it
+                // ("IS 1239 Heavy") stays as he typed it.
+                var parts = specParts(b).codes.length > 1 ? specItemsOfText(b) : [b];
+                parts.forEach(function (x) { if (x && !mine.concat(added).some(function (m) { return sameSpec(m, x); })) added.push(x); });
             });
             if (!added.length) {
                 if (!str(v)) { render(); return; }
@@ -5902,7 +5947,7 @@
         // holds edits the same way and had none of the guard, so F5 threw them away silently.
         hasUnsavedWork: function () { return Object.keys(S.dirty).length > 0; },
         _test: { readEnquiry: readEnquiry, rankFor: rankFor, matchCity: matchCity, kmBetween: kmBetween,
-                 specCodes: specCodes, sameSpec: sameSpec, stdOf: stdOf, specOptions: specOptions,
+                 specCodes: specCodes, sameSpec: sameSpec, specCovers: specCovers, stdOf: stdOf, rowSpecs: rowSpecs, specOptions: specOptions,
                  applyFind: applyFind, looksLikeFirmName: looksLikeFirmName,
                  focusKey: focusKey, saveFailedWhat: saveFailedWhat,
                  refreshWaitingBadge: refreshWaitingBadge,

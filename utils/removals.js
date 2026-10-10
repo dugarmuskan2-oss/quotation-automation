@@ -22,7 +22,9 @@ const lower = (v) => str(v).toLowerCase();
 const REMOVABLE = {
     person: { list: 'people', same: (a, b) => samePerson(a, b), name: (v) => str(v && v.name) || firstMail(v) || 'a contact' },
     branch: { list: 'branches', same: (a, b) => lower(a && a.city) === lower(b && b.city) && lower(a && a.address) === lower(b && b.address), name: (v) => str(v && v.city) || 'a branch' },
-    product: { list: 'products', same: (a, b) => lower(a && a.p) === lower(b && b.p) && lower(a && a.spec) === lower(b && b.spec), name: (v) => str(v && v.p) || 'a product' },
+    // The whole row is sent with a ✕, so it is matched on everything that tells two rows apart —
+    // two "GI pipe" rows that differ only in Specification or Brand are two rows (review, 10 Oct).
+    product: { list: 'products', same: (a, b) => sameRow(a, b), name: (v) => str(v && v.p) || 'a product' },
     route: { list: 'routes', same: (a, b) => lower(a && a.from) === lower(b && b.from) && lower(a && a.to) === lower(b && b.to), name: (v) => (str(v && v.from) + ' to ' + str(v && v.to)).trim() },
     note: { list: 'notes', same: (a, b) => lower(a && a.t) === lower(b && b.t), name: (v) => str(v && v.t).slice(0, 60) },
     type: { list: 'types', same: (a, b) => lower(a) === lower(b), name: (v) => str(v) },
@@ -51,11 +53,29 @@ function makesOf(product) {
  * that: if it has changed since he marked it, nothing is taken — never the nearest match.
  */
 function findBrandRow(card, want, brand) {
-    const rows = (card.products || []).filter((p) => lower(p && p.p) === lower(want && want.p)
-        && lower(p && p.spec) === lower(want && want.spec)
-        && makesOf(p).some((m) => lower(m) === lower(brand)));
-    if (want && want.make !== undefined) return rows.filter((p) => lower(p.make) === lower(want.make))[0] || null;
-    return rows.length === 1 ? rows[0] : null;
+    return pickRow((card.products || []).filter((p) => sameRow(p, want) && makesOf(p).some((m) => lower(m) === lower(brand))));
+}
+
+/**
+ * One row out of the rows a request fits. Rows that read the same in every box that names a
+ * row are one choice: the first, the one the card greys out. Rows that differ in a box the
+ * request did not send are not guessed between — nothing is taken.
+ */
+function pickRow(rows) {
+    if (rows.length < 2) return rows[0] || null;
+    const id = (p) => [p.p, p.spec, p.std, p.make].map(lower).join('|');
+    return rows.every((p) => id(p) === id(rows[0])) ? rows[0] : null;
+}
+
+/**
+ * A product row as a removal names it: name and Details always; the Specification and Brand
+ * lines whenever the request carried them (a request made before they were sent has neither).
+ */
+function sameRow(p, want) {
+    return lower(p && p.p) === lower(want && want.p)
+        && (!want || want.spec === undefined || lower(p && p.spec) === lower(want.spec))
+        && (!want || want.std === undefined || lower(p && p.std) === lower(want.std))
+        && (!want || want.make === undefined || lower(p && p.make) === lower(want.make));
 }
 
 /** The items in one product's Specification box — one per comma, like the makes. */
@@ -65,11 +85,7 @@ function stdOf(product) {
 
 /** The product row a specification item sits on — the same care as findBrandRow. */
 function findStdRow(card, want, item) {
-    const rows = (card.products || []).filter((p) => lower(p && p.p) === lower(want && want.p)
-        && lower(p && p.spec) === lower(want && want.spec)
-        && stdOf(p).some((m) => lower(m) === lower(item)));
-    if (want && want.std !== undefined) return rows.filter((p) => lower(p.std) === lower(want.std))[0] || null;
-    return rows.length === 1 ? rows[0] : null;
+    return pickRow((card.products || []).filter((p) => sameRow(p, want) && stdOf(p).some((m) => lower(m) === lower(item))));
 }
 
 function firstMail(person) {
@@ -153,7 +169,9 @@ function applyRemoval(card, req) {
     }
 
     if (req.what === 'size') {
-        const product = (card.products || []).filter((p) => lower(p && p.p) === lower(req.at && req.at.product && req.at.product.p))[0];
+        const rows = (card.products || []).filter((p) => sameRow(p, req.at && req.at.product));
+        const product = pickRow(rows);
+        if (rows.length > 1 && !product) return { changed: false, reason: 'two product rows look the same, so nothing was taken' };
         if (!product) return { changed: false, reason: 'that product is no longer on the card' };
         const list = product.sizes || [];
         const at = list.findIndex((s) => sizeName(s) === sizeName(req.value));
@@ -168,6 +186,11 @@ function applyRemoval(card, req) {
     const meta = REMOVABLE[req.what];
     if (!meta) return { changed: false, reason: 'nothing to do' };
     const list = card[meta.list] || [];
+    // Never the first of two look-alikes: if a product request matches two rows, nothing goes.
+    if (req.what === 'product') {
+        const fits = list.filter((x) => meta.same(x, req.value));
+        if (fits.length > 1 && !pickRow(fits)) return { changed: false, reason: 'two product rows look the same, so nothing was taken' };
+    }
     const at = list.findIndex((x) => meta.same(x, req.value));
     if (at === -1) return { changed: false, reason: 'it has already gone' };
     card[meta.list] = list.slice(0, at).concat(list.slice(at + 1));

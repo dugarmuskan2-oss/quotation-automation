@@ -871,6 +871,13 @@ function keepWhatWasAddedSince(before, incoming, fields) {
     (fields || []).forEach(f => {
         const key = LIST_KEY[f];
         if (key && Array.isArray(before[f])) {
+            // A row on both sides keeps the Specification items, makes and sizes either side
+            // has — a frozen copy approved days later wiped items typed on the card meanwhile.
+            if (f === 'products') {
+                out[f] = (out[f] || []).map(x => Object.assign({}, x));
+                const joined = joinRowItems(out[f], before[f]).n;
+                if (joined) kept.push(joined + ' on products');
+            }
             const have = new Set((out[f] || []).map(key));
             const missing = before[f].filter(x => !have.has(key(x)));
             if (!missing.length) return;
@@ -1038,6 +1045,38 @@ function addressesSpokenFor(pending, contacts) {
  *
  * Additive only. A blank never replaces a value, and nothing on either card is dropped.
  */
+/**
+ * Fold the Specification items, makes, sizes, minimum and price rule of `extra` rows into the
+ * same rows of `rows` (same product and Details text), without dropping either side's. A row
+ * that matches two rows is left alone rather than guessed. With `apart`, two rows that each
+ * name DIFFERENT Specification items are two products (GI pipe to IS 1239 and GI pipe to
+ * ASTM A53) and stay two rows. Returns { n: rows that gained something, apart: rows kept apart }.
+ */
+function joinRowItems(rows, extra, apart) {
+    const key = LIST_KEY.products;
+    const items = (v) => str(v).split(',').map(str).filter(Boolean);
+    const sameItems = (a, b) => items(a).map(lower).sort().join('|') === items(b).map(lower).sort().join('|');
+    let n = 0;
+    const keptApart = [];
+    (extra || []).forEach(x => {
+        const twins = rows.filter(r => key(r) === key(x));
+        if (twins.length !== 1) { if (apart) keptApart.push(x); return; }
+        const r = twins[0];
+        if (apart && items(r.std).length && items(x && x.std).length && !sameItems(r.std, x.std)) { keptApart.push(x); return; }
+        let gained = false;
+        ['std', 'make'].forEach(f => {
+            const mine = items(r[f]);
+            const add = items(x && x[f]).filter(v => !mine.some(m => lower(m) === lower(v)));
+            if (add.length) { r[f] = mine.concat(add).join(', '); gained = true; }
+        });
+        if (!(r.sizes || []).length && (x.sizes || []).length) { r.sizes = x.sizes; gained = true; }
+        if (!(num(r.moq, 0) > 0) && num(x.moq, 0) > 0) { r.moq = x.moq; gained = true; }
+        if (!str(r.rule) && str(x.rule)) { r.rule = x.rule; gained = true; }
+        if (gained) n++;
+    });
+    return { n, apart: keptApart };
+}
+
 function mergePreviews(base, extra) {
     const out = Object.assign({}, base || {});
     const from = extra || {};
@@ -1047,6 +1086,12 @@ function mergePreviews(base, extra) {
         const mine = Array.isArray(out[f]) ? out[f] : [];
         const theirs = Array.isArray(from[f]) ? from[f] : [];
         const have = new Set(mine.map(key));
+        if (f === 'products') {
+            const rows = mine.map(x => Object.assign({}, x));
+            const apart = joinRowItems(rows, theirs, true).apart;
+            out[f] = rows.concat(theirs.filter(x => !have.has(key(x)) || apart.indexOf(x) !== -1));
+            return;
+        }
         out[f] = mine.concat(theirs.filter(x => !have.has(key(x))));
     });
     // Every person from both cards, then folded on shared numbers and addresses. Filtering
@@ -1776,7 +1821,20 @@ function diffProducts(out, b, now) {
         const o = had[lower(x.p)];
         if (!o) out.push({ label: 'Product added', from: '', to: x.p + ' — ' + line(x) });
         else if (num(o.moq, 0) !== num(x.moq, 0) || str(o.rule) !== str(x.rule)) out.push({ label: x.p, from: line(o), to: line(x) });
-        if (o && str(o.std) !== str(x.std)) out.push({ label: x.p + ' — specification', from: str(o.std), to: str(x.std) });
+    });
+    // Specification items, compared per product name. With one row of a name on each side the
+    // rows are compared directly; with several, the items of the name as a whole — comparing
+    // one row's items with a different row of the same name reported changes nobody made.
+    const byName = (list) => {
+        const m = {};
+        (list || []).forEach(x => { (m[lower(x.p)] = m[lower(x.p)] || []).push(x); });
+        return m;
+    };
+    const was = byName(b.products), is = byName(now.products);
+    Object.keys(is).forEach(n => {
+        if (!was[n]) return;
+        const items = (rows) => rows.map(r => str(r.std)).filter(Boolean).sort().join(' | ');
+        if (items(was[n]) !== items(is[n])) out.push({ label: is[n][0].p + ' — specification', from: items(was[n]), to: items(is[n]) });
     });
 }
 
