@@ -2557,3 +2557,20 @@ each in Recent changes with Undo. The card with enquiry history was kept, so its
 - ARC → into Arc Limited: RAVINDRA (9326587326), the Jindal Saw route and note; "ARC" as another
   name. Arc Limited has an arclimited.com address — if these are two firms, Undo restores ARC.
 - NASHIK GLOBE: the two cards were identical; the duplicate removed.
+
+## Thirteenth ten — the first ten of his Google import (10 Oct)
+
+*His words: "do the next ten cards"; "no need to work on clients".* The 25 cards he brought in from
+Google Contacts today (origin google); the first ten, in the app's order. Each checked, challenged,
+built and independently verified (10 of 10 passed), saved to the waiting list with its questions.
+- Clients approved straight away, no other work: ETA ENGINEERING, HNGL, SAINT GOBAIN.
+- Dealers rebuilt from his pages: MAHARASHTRA PIPE DISTRIBUTOR (Mumbai, Tata), DINESH METAL IND
+  (ISMT line turned the right way, ISMT brand), BHUSHAN TUBES (Jindal Star, Delhi sales lines to an
+  Office row), GAJANAN TUBES (Mumbai / Kalamboli, Jindal Star), Industrial Metal Corporation
+  (alloy, titanium/monel/inconel), Manhar Trading (Jindal Star; buyers Mechtherm, Mahashree).
+- Vignesh Metal: filed under METAL INDIA CORPORATION, its family note names MR. L.K. JAIN.
+- SPLIT: Manhar's card held a second firm, MOTILAL LAXMICHAND SANGHAVI (his Bombay page entry 9):
+  its 5 people, molax.net emails, numbers, ALLOY STEEL PIPE and one note moved word for word to a
+  NEW waiting card (Mumbai, 3 headings, aka MOTHILAL LAXMICHAND SANGHVI) — nothing dropped.
+**What transfers:** a Google-imported card is only names and emails; his phone-book pages carry the
+rest. Two firms numbered one after the other on a page can end up on one card — check neighbours.
