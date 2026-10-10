@@ -2532,3 +2532,17 @@ re-read (approved and waiting), and every "buys from <maker on file>" note:
   (his words were "a dealer").
 **What transfers:** a new card gets a row for every product word on its own P(n)/PD(n) page and a
 brand for every maker page it is a dealer on or "buys from" note — not only the pipe kinds.
+
+## Routes from the works a transporter carries for; Jindal Saw as a brand (10 Oct)
+
+*His words: "if a transporter transports for a manufacturer can add it to route. Also what happened
+to this Also, if a dealer buys from a maufacturer, we can add that as brnad in product range".*
+- Route FROM the maker's works (town the note names, else the maker's only factory town; "to"
+  left blank), on every transporter with no route naming that maker yet: CCI, LODHA ROADWAYS,
+  VRT LOGISTICS, BALAJI ROADLINES, SAFE SPEED CARRIERS, both NASHIK GLOBE cards — "Nashik (Jindal
+  Saw Limited)"; ROAD TRANSHIPERS — "Raipur (Jindal India Limited)". Already named: ARC, NAVISH,
+  KRISHNA, LAKSHMI SARASWATHI ("CSTPL → BHPL"). Union Roadways (waiting) carries for ISMT, which
+  has three works (Pune, Baramati, Ahmednagar) and the note names none — no route.
+- "Jindal Saw Limited" brand row on SHREE SAKTHI, CRAYON, STEEL & METAL (their notes say they buy
+  from Jindal Saw; the rows said only "JSL") — the way he did it on SAROJ.
+- Duplicate cards seen: NASHIK GLOBE ×2, ARC / Arc Limited, NAVISH LOGISTICS / Navish Logistics.
