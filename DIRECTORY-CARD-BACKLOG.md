@@ -2505,3 +2505,13 @@ approved card is logged in Recent changes with Undo; folded cards were deleted t
   MAN's factory, Jco's factory, MSL's VIBHORE FACTORY.
 **What transfers:** a branch box holding a word that is not a town is the commonest reason a firm
 cannot be measured; his own pages usually name the town in the same entry.
+
+## Specification items from the old text (10 Oct)
+
+*His words: "I added the specifications now, but whoever has specifications already, you can add
+them yourself".* He did Shree Mahaveer himself (left as he set it). Standards written in a row's
+old free-text box became Specification items on 12 rows of 6 cards, each logged with Undo:
+- Text was only standards → moved into items, text box emptied: MKK METAL (IS 1239, IS 3589,
+  YST 310/240/355), BHARAT TUBES (IS 1239), ANAND SEAMLESS (SA-179, DIN 2391), MADHAV PIPE ×3.
+- Text says more (lengths, grades, coating) → items added, text kept word for word: MAN ×5, Zenith.
+**What transfers:** a new card's standards go in the Specification box; the text box is for the rest.
