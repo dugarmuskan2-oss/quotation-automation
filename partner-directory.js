@@ -1164,7 +1164,11 @@
             why.push(['ok', 'Local carrier in ' + from + ' — ' + reach.map(function (k) { return REACH_LABEL[k]; }).join(', ')]); return { pts: 40, blocked: false };
         }
         if (f !== t && offices.indexOf(f) !== -1 && offices.indexOf(t) !== -1) { why.push(['ok', 'Has offices at both ends — ' + from + ' and ' + to]); return { pts: 35, blocked: false }; }
-        if (routes.some(function (r) { return townOfPlace(r.from) === f; })) { why.push(['warn', 'Loads from ' + from + ', but not to ' + to]); return { pts: 22, blocked: false }; }
+        var loads = routes.filter(function (r) { return townOfPlace(r.from) === f; });
+        // A route with no end town on it ("Nashik (Jindal Saw Limited)" — they carry for that
+        // works) says where they load, not where they will not go.
+        if (loads.length && loads.some(function (r) { return !str(r.to); })) { why.push(['ok', 'Loads from ' + from + ' (a route on their card)']); return { pts: 22, blocked: false }; }
+        if (loads.length) { why.push(['warn', 'Loads from ' + from + ', but not to ' + to]); return { pts: 22, blocked: false }; }
         if (routes.some(function (r) { return townOfPlace(r.to) === t; })) { why.push(['ok', 'Goes to ' + to + ' (a route on their card)']); return { pts: 22, blocked: false }; }
         if (local) { why.push(['ok', 'Does local trips — ' + reach.map(function (k) { return REACH_LABEL[k]; }).join(', ')]); return { pts: 25, blocked: false }; }
         if (offices.indexOf(f) !== -1) { why.push(['neutral', 'Has an office in ' + from]); return { pts: 15, blocked: false }; }
@@ -3221,6 +3225,10 @@
         // THEM still came out as "They sell to", and both cards claimed to be the seller.
         if (suppliesThisCard(how, p, firm)) return 'They buy from';
         if (buysFromThem(how, p)) return BUYERS;
+        // "Transporter for ISMT" on a LORRY FIRM's own card says who it carries for. On ISMT's
+        // card the same words name ISMT's transporter, so it is the card's trade that decides —
+        // Union Roadways read "Their transporters: ISMT" (10 Oct).
+        if (p && p.role === 'transporter' && /\btransporters?\s+for\b/i.test(str(how))) return CARRIES_FOR;
         var hit = REL_KINDS.find(function (k) { return k[0].test(str(how)); });
         return hit ? hit[1] : '';
     }
