@@ -2473,3 +2473,35 @@ Recent changes (Undo).
 For the other cards: pages that name only a make ("TATA PRODUCT", "APOLLO DEALER", "JINDAL STAR"),
 "STEEL ITEMS", "LARGER DIA" or a stockist town were not turned into rows — no product kind to name.
 A new card filed under a P(n)/PD(n) page should get the same row when it is built.
+
+## Cards the search test flagged — 18 fixes (10 Oct)
+
+*His words: "the 18 card changes also look good".* Each change came from a line in his own data,
+proposed by one helper and challenged by another (outside knowledge was not evidence). Every
+approved card is logged in Recent changes with Undo; folded cards were deleted through the app.
+- Towns filled in: Sreevatsa Tube Chennai (+ Royapuram address), Dugar Tubes Mumbai, Jindal hissar
+  Hisar (+ factory address, two names beside their emails), Jco Pipe Delhi (+ office address and
+  a "Larger Dia ERW Pipes" row with his size range), Bhushan Steel Khopoli, Jindal Pipe Limited
+  Gurgaon, Chetna Steel Gummidipoondi.
+- Non-towns out of town boxes (his words kept in the address): CHETNA FACTORY → Gummidipoondi,
+  odisha → Rourkela (Puja), NASIK FACTORY (PPC DIVISION) → Nashik (Jindal Saw; the division stays
+  beside its two people's jobs), JYOTI NAGAR GODOWN → Chennai, area Jyoti Nagar (Bombay Hardware),
+  SEAMLESS FACTORY / ERW FACTORY → Nagothane and head office HYDRABAD → Chennai (MSL, T. Nagar
+  address). Trichi → Trichy (Periyadavar). Shankara's "Bangalore / Hosur" branch → Hosur.
+- Jindal Saw filed under "P(8) PURCHASE DEP - LARGER DIA P(8)" (it is entry 12 on that page).
+- Chetna: rishab@bombayhardware.co → .com (his yes).
+- Airta Logistics town Coimbatore → Rourkela (*"rourkela"*).
+- Folds: Sreevatsa Venkateswara into Sreevatsa Tube (Coimbatore branch, 5 people, 25 notes, 27
+  filings; name kept as another name); SANKARA into SHANKARA (RATISH = MR.RATHISH NAIR, same
+  number; name kept as another name).
+- Moved: everything from his "SNO 6 JINDAL PIPES LTD" page that sat on MAHARASHTRA SEAMLESS —
+  Bellary, Hyderabad, Ghaziabad factories and the Gurgaon office, 6 product rows, 47 people, all
+  17 jindalpipe.com emails — onto Jindal Pipe Limited. Left on MSL because it cannot be proved
+  either way: the JPL WhatsApp group notes, Desh Raj JPL and Bibhu Dhal (mahaseam.com emails), the
+  "HYD FACTORY" note.
+- Deleted: Carriers (suresh@carriers.com) and Ravi (ravi@transport.com) — test cards.
+- Not done ("unsure"): Krs Logistics = Kerala Roadways?; whether Tata's two works make ERW.
+- Still no town in his data: Anand Seamless, Saroj Steel, Mr. Vasanth, Kriscol Roofing, Spml,
+  MAN's factory, Jco's factory, MSL's VIBHORE FACTORY.
+**What transfers:** a branch box holding a word that is not a town is the commonest reason a firm
+cannot be measured; his own pages usually name the town in the same entry.
