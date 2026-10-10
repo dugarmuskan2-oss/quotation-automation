@@ -2546,3 +2546,14 @@ to this Also, if a dealer buys from a maufacturer, we can add that as brnad in p
 - "Jindal Saw Limited" brand row on SHREE SAKTHI, CRAYON, STEEL & METAL (their notes say they buy
   from Jindal Saw; the rows said only "JSL") — the way he did it on SAROJ.
 - Duplicate cards seen: NASHIK GLOBE ×2, ARC / Arc Limited, NAVISH LOGISTICS / Navish Logistics.
+
+## Three lorry firms on one card each (10 Oct)
+
+*His answer: "should I fold the three pairs of lorry firm cards (Nashik Globe, ARC, Navish
+Logistics) into one card each? - yes".* Built and checked independently (nothing lost), then saved;
+each in Recent changes with Undo. The card with enquiry history was kept, so its counts stand.
+- NAVISH LOGISTICS → into Navish Logistics: 5 people, 3 routes, 2 notes; "NAVISH LOGISTIK" kept as
+  another name. Part load: the kept card's "yes" stands (the other said "no").
+- ARC → into Arc Limited: RAVINDRA (9326587326), the Jindal Saw route and note; "ARC" as another
+  name. Arc Limited has an arclimited.com address — if these are two firms, Undo restores ARC.
+- NASHIK GLOBE: the two cards were identical; the duplicate removed.
