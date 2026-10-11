@@ -2574,3 +2574,16 @@ built and independently verified (10 of 10 passed), saved to the waiting list wi
   NEW waiting card (Mumbai, 3 headings, aka MOTHILAL LAXMICHAND SANGHVI) — nothing dropped.
 **What transfers:** a Google-imported card is only names and emails; his phone-book pages carry the
 rest. Two firms numbered one after the other on a page can end up on one card — check neighbours.
+
+## Open questions on cards approved for him (11 Oct onward)
+
+*His words, 11 Oct: "You can complete the entire list and approve all of them 10 at a time and very
+carefully".* Approving throws a card's questions away, so they are kept here. Nothing below was
+guessed — each card was saved as his pages show it and the point left open.
+- MAHARASHTRA PIPE DISTRIBUTOR (MPD): are "RAJU -- 8108634954" and "Raju Bhai : 08454897346 ( GODOWN KEEPAR )" one man or two?
+- DINESH METAL IND: is 7666005709 Lalit's number too, or only Prachin's?
+- BHUSHAN TUBES: is Standard Tube Company another name for it? Is the Delhi / Ghaziabad office (BHUSAN MITTAL, AMIT JAIN) the head office or a branch? Is BUSTAN TUBE (Albusten's page) this firm, Bhushan Steel, or another?
+- Industrial Metal Corporation: is the Google contact "Industrial Metal" (accounts@industrialmetal.co.in) this Mumbai firm?
+- Manhar Trading: is manhartr@bom5.vsnl.net.in its email?
+- Vignesh Metal: is the "M/s. Vignesh" on BALWANT STEEL's page this firm, and that Umesh the one at umesh@vigneshmetal.com?
+- ETA ENGINEERING (client, approved without work): are TOOT MNE TECH and ETA ENGINEERING the same firm? (they share 9840999880)
