@@ -2587,3 +2587,21 @@ guessed — each card was saved as his pages show it and the point left open.
 - Manhar Trading: is manhartr@bom5.vsnl.net.in its email?
 - Vignesh Metal: is the "M/s. Vignesh" on BALWANT STEEL's page this firm, and that Umesh the one at umesh@vigneshmetal.com?
 - ETA ENGINEERING (client, approved without work): are TOOT MNE TECH and ETA ENGINEERING the same firm? (they share 9840999880)
+
+## Fourteenth ten — Google import, cards 11-20 (11 Oct, approved for him)
+
+Mahavir Tube Corporation (Bombay — kept apart from the Chennai SHREE MAHAVEER TUBE CO.), Ashoka Steel
+Tubes (Jindal hissar line turned right; Jindal Star + Jindal hissar brands), Tube Suppliers and Sreejee
+Steel (HI TECH dealers), Bali Steel Tubes (Jindal Star), Metallica Metals India (Tata, ISMT; sells to
+Vardhaman), Devaki Nandan, Metro Steel Ind., National Comm Corpn (Jindal Star), Ashoka Infrasteel —
+all Mumbai dealers. Checked, challenged, built, verified (10/10 passed), saved, approved; intact 20 s on.
+Open questions (also logged under "Open questions on cards approved for him"):
+- M/s. MAHAVIR TUBE CORPORATION: Is M/s. MAHAVIR TUBE CORPORATION (Bombay, MR. RAHUL 9820322528) the same firm as your approved SHREE MAHAVEER TUBE CO. (Chennai, NARENDRAJI)? I kept them apart. Your P(21) page lists "SRI MAHAVIR TUBE" and "MAHAVIR TUBE (BOMBAY)" separately. / Your SURYA PIPE TRADERS page says "BUYS FROM ... MAHAVIR TUBE". Is that the Bombay Mahavir Tube Corporation or the Chennai Shree Mahaveer Tube Co.? Both cards now carry this line. / Your P(21) heading says "2ND QUALITY AND CENTRIFUGAL CASTING SEAMLESS PIPE". Does Mahavir Tube (Bombay) also sell centrifugal cast pipe? I added only second-quality seamless.
+- ASHOKA STEEL TUBES: Your Bombay dealer page lists '20. ASHOKA INFRASTEEL/8369588476/2268201436' with 'sales@ashoktubes.com'. Is it a sister firm of ASHOKA STEEL TUBES (samarth@ashokatubes.com), or a separate firm?
+- TUBE SUPPLIERS: Your TATA PRODUCT page lists "3. UTKARSH (DINESH BHAI'S SON) -- 982035047" as a Mumbai dealer. That is 9820350470 without the last 0. Is that UTKARSH SHAH of TUBE SUPPLIERS?
+- SREEJEE STEEL: Your Bombay dealer page has "GK-VINOD: 8779820072/GK-9619803674". Is 9619803674 Vinod's second number, or another godown man? For now it sits on its own GK row with no name.
+- METALLICA METALS INDIA: Under DELUX TRANSPORT you wrote "VARDHAMAN AGENCY BROUGHT 14" X 10 MM-4 PCS FROM METTALICA METAL ON 15/4/2023". Did Delux carry that load from Metallica, and should Delux be listed as Metallica's transporter?
+- DEVAKI NANDAN: "PLOT NO : 1530 , OPP RAILWAY STATION" is written on the godown keeper's line (GK: SANTHOSH). Is it their godown or their office? For now it stays in the address box.
+- METRO STEEL IND.: Your page writes the website as "WWW.metroateel.ln" but the email as "sales@metrosteel.in". Is the website www.metrosteel.in? It stays as you wrote it.
+- NATIONAL COMM CORPN: The man at 9820061597 is written "KEDIA" on your two dealer lists but "MR. KADAKIA" on your AIR MECH ENGINEERS page. Which is right? The card keeps MR. KADAKIA and notes KEDIA.
+- ASHOKA INFRASTEEL: Your Bombay dealer page has '11. ASHOKA STEEL TUBES' (samarth@ashokatubes.com) and '20. ASHOKA INFRASTEEL' (sales@ashoktubes.com). Are they sister firms? Both stay as separate cards for now.
