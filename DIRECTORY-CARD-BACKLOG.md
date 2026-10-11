@@ -2605,3 +2605,16 @@ Open questions (also logged under "Open questions on cards approved for him"):
 - METRO STEEL IND.: Your page writes the website as "WWW.metroateel.ln" but the email as "sales@metrosteel.in". Is the website www.metrosteel.in? It stays as you wrote it.
 - NATIONAL COMM CORPN: The man at 9820061597 is written "KEDIA" on your two dealer lists but "MR. KADAKIA" on your AIR MECH ENGINEERS page. Which is right? The card keeps MR. KADAKIA and notes KEDIA.
 - ASHOKA INFRASTEEL: Your Bombay dealer page has '11. ASHOKA STEEL TUBES' (samarth@ashokatubes.com) and '20. ASHOKA INFRASTEEL' (sales@ashoktubes.com). Are they sister firms? Both stay as separate cards for now.
+
+## The rest of his Google list — trade partners only (11 Oct)
+
+*His words: "ok now you can just keep going. skip clients"; of shops like electricals, a carpenter and a
+computer shop: "leave these".* The 1,218 Google firms not yet brought in were sorted first (by the
+page they sit on in his phone book, their stated trade and their notes):
+- BRING IN — 635: 224 transporters, 304 dealers, 71 makers, 20 coaters, 8 fabricators, 8 testing labs.
+- LEAVE — 478: 290 clients, 170 shops and services (office/godown repairs, electricals, computers,
+  Tally, advocates, banks…), 7 personal, 11 other.
+- UNSURE, left out — 105: mostly "NEW MARKET PARTY" with no notes or products. Listed in
+  ~/Projects/qa-work/google-sorted.json (decision "unsure"); he can say which to bring in.
+Only BRING-IN firms are queued, ten at a time (queue-chosen.js, the app's own Google item), each
+checked, challenged, built, verified, saved and approved, as with the cards before.
