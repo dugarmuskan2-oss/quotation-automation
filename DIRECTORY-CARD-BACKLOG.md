@@ -2618,3 +2618,11 @@ page they sit on in his phone book, their stated trade and their notes):
   ~/Projects/qa-work/google-sorted.json (decision "unsure"); he can say which to bring in.
 Only BRING-IN firms are queued, ten at a time (queue-chosen.js, the app's own Google item), each
 checked, challenged, built, verified, saved and approved, as with the cards before.
+
+### Batch 43 — 12 Oct (approved for him; clients discarded: none)
+ANJANI STEEL · NAGARDAS KANJI SHAH · SRINIVAAS TRANSPORT · MAHAVEER TRANSPORT (waiting item pd_mv2fqqdq_of9259) · CHETAN TRANSPORT (waiting item pd_mv2fqqdq_porvjm, preview p_new_pd_mv2fqqdq_porvjm)
+- ANJANI STEEL: Your Apollo page has "1. ANJANI -VINOTH" under MUMBAI DEALER. Is VINOTH the same man as VINOD GOYAL?
+- NAGARDAS KANJI SHAH: Your International Trading page (Chennai) says "He brught matarial worth 7 lac from Nafardas in june -09". Is "Nafardas" this firm, NAGARDAS KANJI SHAH? / Your P(21) title says "2ND QUALITY AND CENTRIFUGAL CASTING SEAMLESS PIPE". Should NAGARDAS KANJI SHAH (and Mahavir Tube on the same page) also list centrifugal cast pipe?
+- SRINIVAAS TRANSPORT: Your Jindal Pipes page lists "3) SRINIVAS TRANSPORT / MR. RAO / PH : 9448286182/81 (RAJESH)" under the Bellary transporters. Is that this Mumbai–Chennai firm? I kept them apart, because the town, the people and the numbers are all different. / Is 022-27653399 the Vashi office's number? One page writes it after the Vashi numbers and the other gives it its own "PHONE:" line, so I left it as a plain office number.
+- MAHAVEER TRANSPORT (waiting item pd_mv2fqqdq_of9259): Your Bombay page says '(4) CHETAN TRANSPORT ( 9321161511 )-REF BY RAHUL OF MAHAVEER'. Is that RAHUL at MAHAVEER TRANSPORT, or MR. RAHUL of MAHAVIR TUBE (9820322528)?
+- CHETAN TRANSPORT (waiting item pd_mv2fqqdq_porvjm, preview p_new_pd_mv2fqqdq_porvjm): Chetan Transport says "REF BY RAHUL OF MAHAVEER": is that MR. RAHUL of MAHAVIR TUBE CORPORATION, Mumbai (9820322528), or someone at MAHAVEER TRANSPORT?
