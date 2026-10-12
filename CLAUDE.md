@@ -189,6 +189,8 @@ jest tests/pipe-weights.test.js          # utils/pipeWeights.js — price-list p
 jest tests/print-and-weight-panel.test.js # print enquiry + freight weight panel; incl. ERW/GI-only 7% tolerance (rowIsSeamless, secToleranceWeight, secHasTolerance, sectionHtml)
 jest tests/revision-full-view.test.js    # History/Copy-Link full-quote render, incl. pipe-type header rows (revisionPipeTypeOf grouping)
 jest tests/revision-popup.test.js        # "new revision request" pop-up: once a day per open ask (revisionsDueToday) + index.html/allowlist wiring guards
+jest tests/price-list-book.test.js       # Price List: draft never prices quotes until Checked; a draft blocks only its own list; Cost/Meter not Price; diffRows
+jest tests/quantity-units.test.js        # kg → metres by the price list kg/m only (blank + red if missing, never 6 m); non-pipe items → "Other items"
 jest --silent                            # quieter output (add to any command)
 ```
 
@@ -396,6 +398,27 @@ The shared quote page (Copy Link) and the History "view full quote" rebuild the 
 
 ### "New revision request" pop-up — `revision-popup.js`
 An open revision ask (`revisionRequests`, not done) pops up "There is a new revision request, please check" for everyone (no roles yet), **at most once a day per ask on each computer** (localStorage `revisionPopupShown`: askId → date last shown). A brand-new ask pops up as soon as it is seen; one still open tomorrow pops up again. The adder is not shown their own ask (`addRevisionRequest` calls `RevisionPopup.markShown`). Fed at startup by `loadRevisionQuotesForCount` and polled every 5 min while the tab is visible (`/quotations-filter?revision=1`; a failed poll stays silent — the red count is still there). **Check now** opens the Revision list; **Later** closes it. Guarded by `tests/revision-popup.test.js`.
+
+### Price List page — `price-list.js`, `routes/priceLists.js`, `utils/priceListBook.js`
+The in-app ERW / GI / Seamless lists are **the one copy of the prices quotes are made from** (the AI only reads the enquiry; the rate comes from here — `utils/priceList.js` `applyPriceListRates`, run at generation time only). Each list has a **live** version and at most one **draft**. An edit is a draft; quotes keep pricing from live until someone prints the draft, checks it and clicks **Checked** (needs a name; draft → next live version, emails the office). **While a list has an unchecked draft, that list's lines on new quotes get no price at all** (blank and red) — only that list. ERW/GI price from **Cost/Meter**, never the ~5% higher **Price** column; Seamless from **Price per Meter** (its Cost/Meter is kept as the cost table). A size not in the list, a list never made live, or an angle/bar filed under a pipe type → no price; the AI's own figure is kept beside as `aiUnitRate`. A list with no readable rate column is refused, never saved. Routes: `GET /api/price-lists`, `PUT|DELETE /api/price-lists/:type/draft`, `POST /api/price-lists/:type/check`, `POST /api/price-lists/:type/read-pdf`. Guarded by `tests/price-list-book.test.js`.
+
+### Quantities in kg, and items that are not pipes — `utils/quantityUnits.js`
+The AI returns quantity + unit exactly as written (`UNIT_AND_ITEM_RULES` is appended to the prompt from code, not the editable instructions). In `handleGenerateQuotation`, a kg line becomes metres **only by the price list's kg/m** (`convertKgQuantities`, before pricing); the enquiry's figure is kept as `enquiryQty` ("2497 kg"). **No kg/m → quantity blank and red (`quantityMissing`), never guessed** — `keepMissingQuantitiesBlank` re-blanks it after pricing so it can't become 0. The 6 m default applies only when the enquiry gives no quantity at all. Angles (ISA), bars, rods, plates, channels, beams, flanges and fittings go under **"Other items"** (`markNonPipeItems`) and never get a pipe price. Guarded by `tests/quantity-units.test.js`.
+
+### Supplier search / "Ask AI — who can I buy this from?" — `utils/supplierMatch.js`
+Free rules in the Partner Directory rank every dealer and maker first; only firms the rules can't decide go to Claude, which reads each firm's own card. A yes/no whose quoted words aren't on the card is turned into "maybe". Phone numbers and emails are stripped before sending. **No tests yet.**
+
+### Partner Directory — `partner-directory.js`, `routes/contacts.js`
+The 📇 tool: Directory (filters, paste-an-enquiry finder, edit card) and Recent changes (Add-to-Directory Gmail label emails waiting for approval, plus every automatic change with Undo). Every edit saves that partner only. Ranking runs in the browser, every point with a reason; being under a minimum sinks a partner, never hides them. **Removing anything is a request, not an act** (`utils/removals.js`): ✕ queues it in Recent changes until the owner approves, and the removal remembers the *value*, not its position — if it's already gone, approving does nothing. Directory reads (brochures, photos, typed lines) use **Claude Opus** via `utils/anthropic.js`; quotation generation stays on OpenAI. Guarded by `tests/partner-directory.test.js`, `tests/removals.test.js`, `tests/anthropic-reader.test.js`.
+
+### Nearest makers and dealers — `town-places.js`
+Each town is placed on the map once (OpenStreetMap, picked by the owner when there's more than one match) so suppliers can be ranked by distance from the delivery town. A town nobody has placed stays unmeasured and says so — **no distance is ever guessed**. Used in the browser (`window.townPlaces`) and the server. **No tests yet.**
+
+### Google contacts into the directory — `utils/googlePeople.js`
+Read-only. Saved contacts and everyone the owner has written to are too many for one 60 s request, so `tools/google-contacts-scan.js` runs once from the owner's computer and the app reads the cached result; firms are brought in a batch at a time and the owner picks the trade. Uses the Gmail credentials (scopes include `contacts.readonly` + `contacts.other.readonly`). Guarded in part by `tests/google-contacts.test.js`.
+
+### Signing in — `utils/googleAuth.js`, `utils/auth.js`
+"Sign in with Google" or email + password. Sign-in is separate from the Gmail *sending* token: nothing from it is stored, only the email address comes out. The redirect address is built from the request (the two deployments live at different addresses; `PUBLIC_URL` overrides). Only files in `PUBLIC_FILES` / `SERVABLE_ROOT_FILES` are served from the project root — **a new front-end `.js` file must be added to `PUBLIC_FILES` in `utils/auth.js`** or the browser gets nothing. **No tests yet.**
 
 ### Quote counter / numbering
 The DynamoDB table holds an atomic counter item. `POST /api/save-quotation` increments it to get the next DSC-### number. The Gmail ingest also calls this when creating a quote from an email.
