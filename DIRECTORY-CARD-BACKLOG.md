@@ -2674,3 +2674,11 @@ MUGATLAL B & SONS · M/S. SHAH STEEL & TUBES · TUBE TRADING CO. · MERCURY STEE
 - RAVI CHOUDHARY: Suresh's line says "DEALER OF JINDAL / APOLLO". Which Jindal is it: Jindal Star or another one? The card keeps plain "JINDAL" for now.
 - AMRIT PATEL GRATIK: This card mixes two firms that share only Amrit Patel's number 9825336316. One is "(15) AMRIT PATEL GRATIK" on your Jindal Star list, which is "GRATIK TUBES PVT LTD-- MR.AMRIT PATEL" in Ahmedabad. The other is Deep Seals (India) Limited, the coater at Mehsana and Kutch. Should Deep Seals get its own card? / Your Deep Seals page says "PRODUCTION RANGE 18" TO 120" (EX-PSL PLANT)". Is that pipe they make? For now it is on a LARGER DIA row.
 - PIONEER TUBE: Your Sobha page writes "PIONEER TUBE - HY". Is HY Hyderabad? The town box says "HY" until you say.
+
+### Batch 49 — 12 Oct (approved for him; clients discarded: none)
+HARDIK SHAH · MANOJ KHANDELWAL · VIBHOR KHANDELWAL · VIVEK GARG · MAHESH JOSHI · PRAVEEN BHAGAT · VIKAS VORA · RONAK MODI · SUNIL · RAMASWAMY MUTHUR
+- MANOJ KHANDELWAL: Is MANOJ KHANDELWAL (9884022910) on your Jindal Star dealer list the "MR, MANOJ M/S KHANDELWAL STEELS" on your INDIAN METAL HUB page?
+- VIBHOR KHANDELWAL: Your Jindal Star list has '(22) VIBHOR KHANDELWAL (9943057475)'. Your suspense dealer page has '7.VIBHOR ENTERPRISES/vibhor.enterprises@gmail.com / VIBHOR KHANDELWAL/SHARADHA PALSANI', and a page of its own gives 17, CHERIAN ROAD, COIMBATORE. Are they the same firm? / On your IES AGENCIES page, is the VIBHOR in 'FROM VIBHOR / KHANDELWAL / MS RAJA / TAHER FROM COIMBATTUR' this firm?
+- MAHESH JOSHI: On your Rajasthan dealer page under BIKANER, 'MAHESH JOSHI-9414139401' comes just below '(2).KRISHNA TRADING CO-0151-2270270'. This card's office number is 0151-2270270. Is Mahesh Joshi from KRISHNA TRADING CO? / Your ALL SUSPENSE DEALER page lists '1.M.K TRADERS' with MAHESH JOSHI and no number. Is that this Mahesh Joshi of Bikaner?
+- VIKAS VORA: Does VIKAS VORA (9810004839) work at M/s. Manhar Trading Corporation, like RAKSHIT J VORA and PINAL VORA, who are written beside him on your Jindal Star dealer page?
+- RONAK MODI: Is "RONAK MODI (9920050742)" on your Jindal Star dealer list the same man as "RAUNAK MODI - 8169627562", owner of SREEJEE STEEL in Mumbai?
