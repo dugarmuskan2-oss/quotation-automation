@@ -15,6 +15,7 @@ const crypto = require('crypto');
 const { CONFIG_KEY_USERS } = require('../utils/constants');
 const auth = require('../utils/auth');
 const googleAuth = require('../utils/googleAuth');
+const roles = require('../utils/peopleRoles');
 
 // Reading the people list from cloud storage on EVERY request would add a network round trip to
 // every page and every save. Held briefly instead; a minute-old list is fine for a list that
@@ -276,14 +277,37 @@ function createPeopleRouter({ storage }) {
     const router = express.Router();
     const EMAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+    // Only an admin changes the list (any signed-in person while nobody is admin yet — see
+    // utils/peopleRoles.js). Checked on the server: the page hiding a button is not a lock.
+    function refuseUnlessManager(req, res, users) {
+        if (roles.canManagePeople(users, req.user && req.user.email)) return false;
+        res.status(403).json({ error: 'Only an admin can change who can sign in.' });
+        return true;
+    }
+    function refuseIfNoAdminLeft(res, before, after) {
+        if (!roles.leavesNoAdmin(before, after)) return false;
+        res.status(400).json({ error: 'There must always be at least one admin. Make someone else admin first.' });
+        return true;
+    }
+    async function savePeople(res, next) {
+        try { await storage.saveText(CONFIG_KEY_USERS, JSON.stringify(next, null, 2)); }
+        catch (e) { res.status(503).json({ error: 'Could not save. Try again shortly.' }); return false; }
+        forgetUsers();
+        return true;
+    }
+
     // A GET while the site is unconfigured is a fair question (has the login already been set
     // up?), and returning it plainly here is what lets the login page and this page agree.
     router.get('/people', async (req, res) => {
         const { users, ok } = await loadUsers(storage);
         if (!ok) return res.status(503).json({ error: 'Cannot read the people list right now. Try again shortly.' });
+        const you = (req.user && req.user.email) || null;
         res.json({
-            you: (req.user && req.user.email) || null,
+            you,
+            youCanManage: roles.canManagePeople(users, you),
+            hasAdmin: roles.adminCount(users) > 0,
             people: users.map((u) => ({
+                role: roles.roleOf(u),
                 name: u.name || u.email,
                 email: u.email,
                 // Computed from what is stored, not stored itself: a person added with --google
@@ -297,6 +321,7 @@ function createPeopleRouter({ storage }) {
     router.post('/people', express.json(), async (req, res) => {
         const { users, ok } = await loadUsers(storage);
         if (!ok) return res.status(503).json({ error: 'Cannot read the people list right now. Try again shortly.' });
+        if (refuseUnlessManager(req, res, users)) return;
 
         const name = String((req.body && req.body.name) || '').trim();
         const email = String((req.body && req.body.email) || '').trim().toLowerCase();
@@ -319,11 +344,12 @@ function createPeopleRouter({ storage }) {
             record = { name, email };
         }
 
+        if (roles.parseRole(req.body && req.body.role) === 'admin') record.role = 'admin';
+
         const next = users.filter((u) => String(u.email || '').toLowerCase() !== email);
         next.push(record);
-        try { await storage.saveText(CONFIG_KEY_USERS, JSON.stringify(next, null, 2)); }
-        catch (e) { return res.status(503).json({ error: 'Could not save. Try again shortly.' }); }
-        forgetUsers();
+        if (refuseIfNoAdminLeft(res, users, next)) return;
+        if (!(await savePeople(res, next))) return;
 
         // Adding a password-based person changes every hash mixed into the signing key, which
         // would otherwise sign the person doing the adding straight out mid-task. Reissuing under
@@ -346,14 +372,35 @@ function createPeopleRouter({ storage }) {
 
         const { users, ok } = await loadUsers(storage);
         if (!ok) return res.status(503).json({ error: 'Cannot read the people list right now. Try again shortly.' });
+        if (refuseUnlessManager(req, res, users)) return;
         const next = users.filter((u) => String(u.email || '').toLowerCase() !== email);
         if (next.length === users.length) return res.status(404).json({ error: 'No one there with that email.' });
-
-        try { await storage.saveText(CONFIG_KEY_USERS, JSON.stringify(next, null, 2)); }
-        catch (e) { return res.status(503).json({ error: 'Could not save. Try again shortly.' }); }
-        forgetUsers();
+        if (refuseIfNoAdminLeft(res, users, next)) return;
+        if (!(await savePeople(res, next))) return;
 
         reissueIfPossible(req, res, next);
+        res.json({ ok: true });
+    });
+
+    // Admin or staff. The password hash is untouched, so nobody is signed out by a role change.
+    router.post('/people/role', express.json(), async (req, res) => {
+        const email = String((req.body && req.body.email) || '').trim().toLowerCase();
+        const role = roles.parseRole(req.body && req.body.role);
+        if (!email || !role) return res.status(400).json({ error: 'Give an email and a role (admin or staff).' });
+
+        const { users, ok } = await loadUsers(storage);
+        if (!ok) return res.status(503).json({ error: 'Cannot read the people list right now. Try again shortly.' });
+        if (refuseUnlessManager(req, res, users)) return;
+        if (!users.some((u) => roles.sameEmail(u && u.email, email))) return res.status(404).json({ error: 'No one there with that email.' });
+
+        const next = users.map((u) => {
+            if (!roles.sameEmail(u && u.email, email)) return u;
+            const copy = Object.assign({}, u);
+            if (role === 'admin') copy.role = 'admin'; else delete copy.role;
+            return copy;
+        });
+        if (refuseIfNoAdminLeft(res, users, next)) return;
+        if (!(await savePeople(res, next))) return;
         res.json({ ok: true });
     });
 

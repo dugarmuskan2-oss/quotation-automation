@@ -51,6 +51,14 @@
     .remove-btn:hover { background: #fcebeb; }
     .remove-btn[disabled] { opacity: .5; cursor: default; }
     .empty { font-size: 13px; color: #8a8781; padding: 8px 0; }
+    .role-select { font-size: 12px; padding: 4px 6px; border: 1px solid #d8d5ce; border-radius: 5px; background: #fff; flex: none; }
+    .badge.admin { background: #eeedfe; color: #3c3489; }
+    .row:has(.confirm) { flex-wrap: wrap; }
+    .confirm { display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex: 1 0 100%; font-size: 12px; color: #A32D2D; }
+    .confirm button { font-size: 12px; padding: 5px 9px; border-radius: 5px; cursor: pointer; border: 1px solid #d8d5ce; background: #fff; }
+    .confirm .yes { border-color: #A32D2D; background: #A32D2D; color: #fff; }
+    .notice { font-size: 13px; padding: 10px 12px; border-radius: 6px; background: #faeeda; color: #633806; margin-bottom: 14px; }
+    select#role { width: 100%; padding: 9px 11px; font-size: 14.5px; border: 1px solid #d8d5ce; border-radius: 6px; background: #fcfcfb; }
 
     label { display: block; font-size: 12px; color: #6f6c66; margin: 12px 0 5px; }
     label:first-of-type { margin-top: 4px; }
@@ -86,10 +94,16 @@
     <div class="card">
         <h2>Signed in</h2>
         <p class="hint">Everyone who can open this site right now.</p>
+        <div class="notice" id="noAdmin" hidden>Nobody is an admin yet, so anyone signed in can add or remove people. Set yourself to Admin below to lock that down.</div>
         <div id="list"><div class="empty">Loading…</div></div>
     </div>
 
-    <div class="card">
+    <div class="card" id="notManager" hidden>
+        <h2>Add someone</h2>
+        <p class="hint" style="margin:0">Only an admin can add or remove people.</p>
+    </div>
+
+    <div class="card" id="addCard">
         <h2>Add someone</h2>
         <p class="hint" id="addHint">Give them a way in.</p>
 
@@ -99,6 +113,12 @@
 
             <label for="email">Email</label>
             <input id="email" type="email" placeholder="jane@dscpipes.com" required>
+
+            <label for="role">Role</label>
+            <select id="role">
+                <option value="staff" selected>Staff — uses the app</option>
+                <option value="admin">Admin — can also add and remove people</option>
+            </select>
 
             <div class="method">
                 <label><input type="radio" name="method" value="google" checked> Signs in with Google</label>
@@ -126,6 +146,14 @@
     var addHint = document.getElementById('addHint');
     var passwordFields = document.getElementById('passwordFields');
     var youEmail = null;
+    var youCanManage = false;
+    var busy = false;          // one change at a time: a second click while one is saving does nothing
+
+    function post(url, body) {
+        return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+            .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { return { ok: r.ok, d: d }; }); })
+            .catch(function () { return { ok: false, d: { error: 'Could not reach the server.' } }; });
+    }
 
     function esc(s) {
         var d = document.createElement('div');
@@ -138,58 +166,90 @@
         return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
     }
 
+    function roleHtml(p) {
+        if (!youCanManage) return '<span class="badge ' + (p.role === 'admin' ? 'admin' : '') + '">' + (p.role === 'admin' ? 'Admin' : 'Staff') + '</span>';
+        return '<select class="role-select" data-email="' + esc(p.email) + '" aria-label="Role">'
+            + '<option value="staff"' + (p.role !== 'admin' ? ' selected' : '') + '>Staff</option>'
+            + '<option value="admin"' + (p.role === 'admin' ? ' selected' : '') + '>Admin</option></select>';
+    }
+
     function renderList(people) {
         if (!people.length) { listEl.innerHTML = '<div class="empty">Nobody has been added yet.</div>'; return; }
         listEl.innerHTML = people.map(function (p) {
             var mine = youEmail && p.email && youEmail.toLowerCase() === p.email.toLowerCase();
             var badge = p.kind === 'google' ? 'Google' : 'Password';
-            var right = mine
-                ? '<span class="you-tag">you</span>'
-                : '<button class="remove-btn" type="button" data-email="' + esc(p.email) + '">Remove</button>';
+            var right = mine ? '<span class="you-tag">you</span>'
+                : (youCanManage ? '<button class="remove-btn" type="button" data-email="' + esc(p.email) + '" data-name="' + esc(p.name) + '">Remove</button>' : '');
             return '<div class="row">'
                 + '<div class="avatar">' + esc(initials(p.name)) + '</div>'
                 + '<div class="who"><div class="name">' + esc(p.name) + '</div><div class="email">' + esc(p.email) + '</div></div>'
                 + '<span class="badge ' + (p.kind === 'google' ? 'google' : '') + '">' + badge + '</span>'
+                + roleHtml(p)
                 + right
                 + '</div>';
         }).join('');
     }
 
-    // Deliberately not confirm(): a native confirm() dialog is easy to click through on reflex,
-    // and this action is exactly the kind of thing a reflex click on the wrong row would regret.
-    // The button disables itself and reverts on any failure, so a slow tap is never a lost click
-    // and a fast double-tap can only ever remove one person.
-    function bindRemoveButtons() {
-        Array.prototype.forEach.call(listEl.querySelectorAll('.remove-btn'), function (btn) {
-            btn.addEventListener('click', function () {
-                var email = btn.getAttribute('data-email');
-                btn.disabled = true;
-                btn.textContent = 'Removing…';
-                fetch('/api/people/remove', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: email })
-                }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
-                  .then(function (res) {
-                    if (!res.ok) {
-                        alert((res.d && res.d.error) || 'Could not remove them.');
-                        btn.disabled = false; btn.textContent = 'Remove';
-                        return;
-                    }
-                    load();
-                });
+    // "Are you sure?" in place of the button, not a native confirm(): that dialog is easy to
+    // click through on reflex. Yes is locked while it saves, so a double-click removes one person.
+    function askToRemove(btn) {
+        var email = btn.getAttribute('data-email');
+        var box = document.createElement('span');
+        box.className = 'confirm';
+        box.innerHTML = 'Remove ' + esc(btn.getAttribute('data-name') || email) + '? <button type="button" class="yes">Yes, remove</button><button type="button" class="no">Cancel</button>';
+        btn.replaceWith(box);
+        box.querySelector('.no').onclick = function () { box.replaceWith(btn); };
+        box.querySelector('.yes').onclick = function () {
+            if (busy) return;
+            busy = true;
+            var yes = this; yes.disabled = true; yes.textContent = 'Removing…';
+            post('/api/people/remove', { email: email }).then(function (res) {
+                busy = false;
+                if (!res.ok) { alert((res.d && res.d.error) || 'Could not remove them.'); box.replaceWith(btn); return; }
+                load();
             });
+        };
+    }
+
+    function changeRole(sel) {
+        var before = sel.value === 'admin' ? 'staff' : 'admin';
+        if (busy) { sel.value = before; return; }
+        busy = true; sel.disabled = true;
+        post('/api/people/role', { email: sel.getAttribute('data-email'), role: sel.value }).then(function (res) {
+            busy = false; sel.disabled = false;
+            if (!res.ok) { alert((res.d && res.d.error) || 'Could not change the role.'); sel.value = before; return; }
+            load();
+        });
+    }
+
+    function bindRowButtons() {
+        Array.prototype.forEach.call(listEl.querySelectorAll('.remove-btn'), function (btn) {
+            btn.addEventListener('click', function () { askToRemove(btn); });
+        });
+        Array.prototype.forEach.call(listEl.querySelectorAll('.role-select'), function (sel) {
+            sel.addEventListener('change', function () { changeRole(sel); });
         });
     }
 
     function load() {
         return fetch('/api/people').then(function (r) {
             if (r.status === 401) { location.href = '/login.html?next=' + encodeURIComponent(location.pathname); return null; }
-            return r.json();
-        }).then(function (d) {
-            if (!d) return;
+            return r.json().catch(function () { return {}; }).then(function (d) { return { ok: r.ok, d: d }; });
+        }).then(function (res) {
+            if (!res) return;
+            // A failed read must never look like an empty list.
+            if (!res.ok) {
+                listEl.innerHTML = '<div class="empty" style="color:#A32D2D">' + esc((res.d && res.d.error) || 'Could not load the people list.') + '</div>';
+                return;
+            }
+            var d = res.d;
             youEmail = d.you;
+            youCanManage = !!d.youCanManage;
+            document.getElementById('noAdmin').hidden = !!d.hasAdmin || !(d.people && d.people.length);
+            document.getElementById('addCard').hidden = !youCanManage;
+            document.getElementById('notManager').hidden = youCanManage;
             renderList(d.people || []);
-            bindRemoveButtons();
+            bindRowButtons();
             if (!d.people || !d.people.length) {
                 addHint.textContent = 'Add yourself first — this site stays open to anyone until someone is on the list.';
             } else {
@@ -213,6 +273,7 @@
         var email = document.getElementById('email').value.trim();
         var password = document.getElementById('password').value;
         var confirmPassword = document.getElementById('confirmPassword').value;
+        var role = document.getElementById('role').value;
 
         addMsg.className = 'msg';
         if (!name) { addMsg.className = 'msg bad'; addMsg.textContent = 'Enter a name.'; return; }
@@ -226,7 +287,7 @@
         addMsg.textContent = 'Adding…';
         fetch('/api/people', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: name, email: email, method: method, password: password, confirmPassword: confirmPassword })
+            body: JSON.stringify({ name: name, email: email, method: method, role: role, password: password, confirmPassword: confirmPassword })
         }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
           .then(function (res) {
             addBtn.disabled = false;
