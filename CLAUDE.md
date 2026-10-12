@@ -188,6 +188,7 @@ jest tests/freight-tab.test.js           # freight module _test (parseFreightAmo
 jest tests/pipe-weights.test.js          # utils/pipeWeights.js — price-list parser (parseCsv, buildWeightMap) + size→kg/m matcher (parseDescription, lookupKgPerMeter)
 jest tests/print-and-weight-panel.test.js # print enquiry + freight weight panel; incl. ERW/GI-only 7% tolerance (rowIsSeamless, secToleranceWeight, secHasTolerance, sectionHtml)
 jest tests/revision-full-view.test.js    # History/Copy-Link full-quote render, incl. pipe-type header rows (revisionPipeTypeOf grouping)
+jest tests/revision-popup.test.js        # "new revision request" pop-up: once a day per open ask (revisionsDueToday) + index.html/allowlist wiring guards
 jest --silent                            # quieter output (add to any command)
 ```
 
@@ -392,6 +393,9 @@ The Freight weight panel's "With tolerance (7%)" line applies a 7% under-weight 
 
 ### Pipe-type header rows in History / Copy-Link — `revisionItemsTableHtml`
 The shared quote page (Copy Link) and the History "view full quote" rebuild the items table from a revision snapshot's `lineItems`. `revisionItemsTableHtml` now emits a full-width **pipe-type header row** per group (matching the live quote). The group label comes from `revisionPipeTypeOf(li)`: the item's `identifiedPipeType` if set, else derived from the description (`-- ERW`/`-- GI`, or `Sch`/seamless → Seamless) — needed because older/AI quotes often carry the type only in the description text. Guarded by `tests/revision-full-view.test.js`.
+
+### "New revision request" pop-up — `revision-popup.js`
+An open revision ask (`revisionRequests`, not done) pops up "There is a new revision request, please check" for everyone (no roles yet), **at most once a day per ask on each computer** (localStorage `revisionPopupShown`: askId → date last shown). A brand-new ask pops up as soon as it is seen; one still open tomorrow pops up again. The adder is not shown their own ask (`addRevisionRequest` calls `RevisionPopup.markShown`). Fed at startup by `loadRevisionQuotesForCount` and polled every 5 min while the tab is visible (`/quotations-filter?revision=1`; a failed poll stays silent — the red count is still there). **Check now** opens the Revision list; **Later** closes it. Guarded by `tests/revision-popup.test.js`.
 
 ### Quote counter / numbering
 The DynamoDB table holds an atomic counter item. `POST /api/save-quotation` increments it to get the next DSC-### number. The Gmail ingest also calls this when creating a quote from an email.
