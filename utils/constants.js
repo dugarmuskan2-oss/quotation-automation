@@ -23,6 +23,9 @@ const ENTITY_GMAIL_MSG_MARKER = 'GMAIL_MSG_MARKER';
  *  The marker is written with attribute_not_exists so only the first ingest of a
  *  given message wins — this is the atomic duplicate guard. */
 const GMAIL_MSG_MARKER_PREFIX = 'GMAILMSG#';
+// A claim with no quote behind it after this long was cut off mid-run (Vercel stops a request at
+// 60 s) and is retried. Five stuck claims silently blocked real enquiries, 9–12 Oct 2026.
+const GMAIL_CLAIM_STALE_MS = 10 * 60 * 1000;
 
 /** Gmail labels the app puts on threads it sends into, keyed by a short tag the
  *  client sends. The client passes the KEY, never the label name — otherwise a
@@ -151,6 +154,7 @@ const COMPANY_EMAIL = String(process.env.COMPANY_EMAIL || '').trim() || 'info@ds
 // ─────────────────────────────────────────────────────────────────────────────
 
 module.exports = {
+    GMAIL_CLAIM_STALE_MS,
     ENTITY_QUOTATION,
     ENTITY_GMAIL_MSG_MARKER,
     GMAIL_MSG_MARKER_PREFIX,

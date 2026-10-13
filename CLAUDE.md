@@ -191,6 +191,7 @@ jest tests/revision-full-view.test.js    # History/Copy-Link full-quote render, 
 jest tests/revision-popup.test.js        # "new revision request" pop-up: once a day per open ask (revisionsDueToday) + index.html/allowlist wiring guards
 jest tests/price-list-book.test.js       # Price List: draft never prices quotes until Checked; a draft blocks only its own list; Cost/Meter not Price; diffRows
 jest tests/quantity-units.test.js        # kg → metres by the price list kg/m only (blank + red if missing, never 6 m); non-pipe items → "Other items"
+jest tests/ingest-stale-claim.test.js    # a Gmail claim cut off mid-run is retaken after 10 min; a saved quote marks its claim done
 jest --silent                            # quieter output (add to any command)
 ```
 
@@ -428,6 +429,8 @@ The DynamoDB table holds an atomic counter item. `POST /api/save-quotation` incr
 
 ### Gmail ingest flow
 For each labelled email: (1) deduplicate by `gmailMessageId`, (2) extract text from PDF/Excel/Word attachments, (3) upload PDFs to OpenAI, (4) capture first image, (5) call `handleGenerateQuotation` with combined content, (6) save with `saved: false`. The saved quote links back to the Gmail thread via `emailLink` and `gmailMessageId`.
+
+**Claims and stale claims.** Dedup is an atomic claim row (`GMAILMSG#<id>`, `reserveGmailMessageId`), released if generation fails. A request Vercel kills at 60 s never runs the release, so the claim used to block that email for ever as "Already imported (duplicate)" — five real enquiries were stuck this way, 9–12 Oct 2026. Now a saved quote marks its claim `done` (`markGmailMessageDone`), and a claim with no quote older than `GMAIL_CLAIM_STALE_MS` (10 min) is retaken once (`takeOverStaleClaim`, conditional on the timestamp read, so only one run wins). Old claims without `done` are checked against the quotes once and then marked. Guarded by `tests/ingest-stale-claim.test.js`.
 
 ### Sending a quotation by email — `sendQuotationToCustomer` (index.html)
 

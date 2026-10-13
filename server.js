@@ -27,6 +27,7 @@ const {
     ENTITY_QUOTATION,
     ENTITY_GMAIL_MSG_MARKER,
     GMAIL_MSG_MARKER_PREFIX,
+    GMAIL_CLAIM_STALE_MS,
     QUOTE_COUNTER_ID,
     QUOTE_COUNTER_START,
     CONFIG_KEY_INSTRUCTIONS,
@@ -1047,10 +1048,59 @@ async function reserveGmailMessageId(messageId) {
         }));
         return true;
     } catch (err) {
-        if (err && err.name === 'ConditionalCheckFailedException') return false; // duplicate
+        if (err && err.name === 'ConditionalCheckFailedException') return takeOverStaleClaim(messageId);
         console.warn('reserveGmailMessageId error (proceeding without guard):', err.message || err);
         return true; // fail open — never drop a genuine enquiry over a transient DB error
     }
+}
+/**
+ * An existing claim is a real duplicate when its quote exists or another run is still on it.
+ * A claim older than GMAIL_CLAIM_STALE_MS with no quote was cut off before it could release
+ * itself (the request was killed, so the release never ran) — retake it, or the email would be
+ * skipped as "already imported" for ever. Only one run can retake it: the write is conditional
+ * on the claim still carrying the timestamp we read.
+ * @returns {Promise<boolean>} true = this run now owns the claim
+ */
+function isStaleGmailClaim(marker, nowMs) {
+    if (!marker || marker.done) return false;
+    const at = Date.parse(marker.createdAt || '');
+    if (!Number.isFinite(at)) return true;           // a claim with no readable time can't be "in progress"
+    return nowMs - at >= GMAIL_CLAIM_STALE_MS;
+}
+async function takeOverStaleClaim(messageId) {
+    const { GetCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+    const key = { id: GMAIL_MSG_MARKER_PREFIX + String(messageId) };
+    try {
+        const { Item: marker } = await ddbDocClient.send(new GetCommand({ TableName: ddbTableName, Key: key, ConsistentRead: true }));
+        if (!isStaleGmailClaim(marker, Date.now())) return false;
+        const existing = await findQuotationByGmailMessageId(messageId);
+        if (existing) { await markGmailMessageDone(messageId, existing.id); return false; }
+        await ddbDocClient.send(new UpdateCommand({
+            TableName: ddbTableName, Key: key,
+            UpdateExpression: 'SET createdAt = :now, retakenAt = :now',
+            ConditionExpression: 'createdAt = :old AND attribute_not_exists(done)',
+            ExpressionAttributeValues: { ':now': new Date().toISOString(), ':old': marker.createdAt }
+        }));
+        console.warn('Gmail claim was stale (no quote after ' + Math.round(GMAIL_CLAIM_STALE_MS / 60000) + ' min) — retrying ' + messageId);
+        return true;
+    } catch (err) {
+        return false; // lost the race, or could not read — leave it as a duplicate this time
+    }
+}
+/**
+ * Record that a claim produced its quote, so it is never mistaken for a stale one.
+ * Best-effort: without it the stale check falls back to looking the quote up.
+ */
+async function markGmailMessageDone(messageId, quoteId) {
+    if (!ddbDocClient || !ddbTableName || !messageId) return;
+    const { UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+    try {
+        await ddbDocClient.send(new UpdateCommand({
+            TableName: ddbTableName, Key: { id: GMAIL_MSG_MARKER_PREFIX + String(messageId) },
+            UpdateExpression: 'SET done = :t, quoteId = :q',
+            ExpressionAttributeValues: { ':t': true, ':q': quoteId == null ? null : String(quoteId) }
+        }));
+    } catch (e) { /* best-effort */ }
 }
 /**
  * Release a Gmail message claim so the email can be retried later.
@@ -1108,6 +1158,7 @@ const gmailIngestContext = {
     findQuotationByGmailMessageId,
     reserveGmailMessageId,
     releaseGmailMessageId,
+    markGmailMessageDone,
     uploadEnquiryFileToOpenAI: uploadEnquiryFileFromBuffer,
     extractTextFromAttachment,
     saveEnquiryFile: saveEnquiryFileToStorage
@@ -1173,6 +1224,7 @@ module.exports.ingestFromGmailHandler = ingestFromGmailHandler;
 
 // Export pure utility functions for unit testing
 module.exports._test = {
+    isStaleGmailClaim,
     isWordEnquiryFile,
     isExcelEnquiryFile,
     isImageEnquiryFile,

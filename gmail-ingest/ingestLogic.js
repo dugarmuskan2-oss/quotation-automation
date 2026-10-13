@@ -315,6 +315,8 @@ async function generateAndSaveQuotation(ctx, email, emailId) {
             const message = err && (err.message || err.error || String(err));
             return { success: false, error: message || 'Failed to save quotation', emailId };
         }
+        // So the claim is never later mistaken for one that was cut off (see takeOverStaleClaim).
+        if (ctx.markGmailMessageDone) await ctx.markGmailMessageDone(emailId, quotation.id);
     }
 
     return { success: true, id: quotation.id, emailId };
