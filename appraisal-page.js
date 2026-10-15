@@ -87,7 +87,7 @@
     function lockButtons(on) { document.querySelectorAll('#main button').forEach(function (b) { b.disabled = on; }); }
     function load() {
         return api('GET', '/api/appraisal/me').then(function (me) {
-            S.you = me.you; S.hasAdmin = me.hasAdmin; S.setup = me.setup; S.isStarter = me.isStarter; S.mine = me.mine;
+            S.you = me.you; S.hasAdmin = me.hasAdmin; S.testSite = me.testSite; S.setup = me.setup; S.isStarter = me.isStarter; S.mine = me.mine;
             if (!me.you.isAdmin) return;
             return api('GET', '/api/appraisal/overview').then(function (o) { S.setup = o.setup; S.isStarter = o.isStarter; S.people = o.people; });
         }).then(function () { S.loaded = true; S.loadError = null; }, function (e) { S.loadError = e.message; });
@@ -118,7 +118,10 @@
         if (!S.tab) S.tab = T[0][0];
         tabs.innerHTML = T.map(function (t) { return '<button type="button" role="tab" aria-selected="' + (S.tab === t[0]) + '" data-act="tab" data-v="' + t[0] + '">' + t[1] + '</button>'; }).join('');
         var views = { reviews: S.open ? viewReview : viewReviews, meetings: S.openMeet ? viewMeeting : viewMeetings, staff: viewStaff, setup: viewSetup, mine: viewMine, guide: viewGuide };
-        main.innerHTML = starterNotice() + views[S.tab]();
+        main.innerHTML = testSiteNotice() + starterNotice() + views[S.tab]();
+    }
+    function testSiteNotice() {
+        return S.testSite ? '<div class="notice" style="margin-bottom:14px">Testing site: you are in as a test manager. Nothing saved here reaches the live appraisal.</div>' : '';
     }
     function starterNotice() {
         if (!S.you.isAdmin || !S.isStarter || S.tab === 'setup') return '';
@@ -171,7 +174,7 @@
         var typingSelf = !own && d.typeSelf, self = own || (typingSelf ? d.selfByMgr : null);
         var h = '<div class="stack"><div><button class="btn link" data-act="close-review">← All staff</button></div>'
             + '<div class="row between"><div><div class="eyebrow">' + esc(qi.label) + '</div><h2>' + esc(p.name) + '</h2><p class="small muted">' + esc(roleNames(rolesOf(p)).join(' · ') || 'No role picked yet. Pick roles in the Staff tab.') + '</p></div>' + (d.done ? '<span class="chip ok">Marked done</span>' : '') + '</div>';
-        if (p.mgr && p.mgr.targets) h += '<div class="card"><div class="who">Targets for this period</div><p class="pre">' + esc(p.mgr.targets) + '</p></div>';
+        if (p.mgr && p.mgr.targets) h += '<div class="card"><div class="who">Their current targets</div><p class="pre">' + esc(p.mgr.targets) + '</p></div>';
         if (!own) h += '<div class="card row between"><p class="small">They have not submitted their form for this quarter. You can type in their answers from a paper form.</p><label class="check"><input type="checkbox" id="type-self" data-act="type-self"' + (typingSelf ? ' checked' : '') + '> Type in their self-review</label></div>';
         g.forEach(function (grp) {
             if (!grp.items.length) return;
@@ -181,7 +184,7 @@
         h += '<div class="card"><label class="lbl" for="mgr-comment">Your overall comment for this quarter</label><textarea id="mgr-comment" data-d="mgr:comment" placeholder="What went well, what to work on next quarter">' + esc(d.comment || '') + '</textarea></div>';
         var tm = total(g, d.scores);
         return h + '<div class="totals"><div class="row" style="gap:22px"><div class="tot"><span class="who">Their total</span><span class="big">' + fmt(self ? total(g, self.scores) : null) + '</span></div><div class="tot"><span class="who">Your total</span><span class="big">' + fmt(tm) + '</span></div><div class="tot"><span class="who">Rating</span><span>' + esc(band(tm) || '–') + '</span></div></div>'
-            + '<div class="row"><span class="small muted" id="dirty">' + (S.dirty ? 'Unsaved changes' : '') + '</span><button class="btn" data-act="save-review">Save</button><button class="btn primary" data-act="done-review">' + (d.done ? 'Save' : 'Save & mark done') + '</button></div></div></div>';
+            + '<div class="row"><span class="small muted" id="dirty">' + (S.dirty ? 'Unsaved changes' : '') + '</span>' + (d.done ? '<button class="btn primary" data-act="done-review">Save</button>' : '<button class="btn" data-act="save-review">Save</button><button class="btn primary" data-act="done-review">Save & mark done</button>') + '</div></div></div>';
     }
 
     // Admin: 6-month meetings
@@ -254,6 +257,11 @@
         return (list || []).map(function (c, i) {
             return '<div class="editrow"><input type="text" id="' + path + '-' + i + '-n" aria-label="Item name" value="' + esc(c.name) + '" data-d="setup:' + path + '.' + i + '.name" placeholder="What is judged"><input type="text" id="' + path + '-' + i + '-h" aria-label="What good looks like" value="' + esc(c.hint || '') + '" data-d="setup:' + path + '.' + i + '.hint" placeholder="What good looks like"><button class="btn sm danger" data-act="del-item" data-list="' + path + '" data-i="' + i + '">Remove</button></div>';
         }).join('') + '<div><button class="btn sm link" data-act="add-item" data-list="' + path + '">+ Add item</button></div>';
+    }
+    /** The server drops a role or item with no name, so it would vanish silently on save. */
+    function blankNames(d) {
+        var unnamed = function (x) { return !String((x && x.name) || '').trim(); };
+        return d.roles.some(function (r) { return unnamed(r) || (r.criteria || []).some(unnamed); }) || d.behaviour.some(unnamed) || d.discipline.some(unnamed);
     }
     function weightSum(d) { return GROUPS.reduce(function (a, g) { return a + Number((d.weights || {})[g[0]] || 0); }, 0); }
     function viewSetup() {
@@ -381,7 +389,7 @@
             S.draft.base = cur ? cur.savedAt : null; S.dirty = false; window.scrollTo(0, 0); render();
         },
         'close-review': function () { if (!okToLeave()) return; S.open = null; S.dirty = false; render(); },
-        'type-self': function (b) { S.draft.typeSelf = b.checked; S.draft.selfByMgr = S.draft.selfByMgr || { scores: {}, notes: {} }; render(); },
+        'type-self': function (b) { S.draft.typeSelf = b.checked; S.draft.selfByMgr = S.draft.selfByMgr || { scores: {}, notes: {} }; markDirty(); render(); },
         'save-review': function () { saveReview(false); },
         'done-review': function () { saveReview(true); },
         'open-meet': function (b) {
@@ -390,7 +398,7 @@
             S.meetDraft.base = cur ? cur.savedAt : null; S.meetDraft.setTargets = true; S.dirty = false; window.scrollTo(0, 0); render();
         },
         'close-meet': function () { if (!okToLeave()) return; S.openMeet = null; S.dirty = false; render(); },
-        'meet-settargets': function (b) { S.meetDraft.setTargets = b.checked; },
+        'meet-settargets': function (b) { S.meetDraft.setTargets = b.checked; markDirty(); },
         'save-meet': function () { saveMeeting(false); },
         'done-meet': function () { saveMeeting(true); },
         'p-edit': function (b) { var p = person(b.dataset.v); S.editPerson = { email: p.email, roles: rolesOf(p).slice(), targets: (p.mgr && p.mgr.targets) || '', base: (p.mgr && p.mgr.profileSavedAt) || null }; window.scrollTo(0, 0); render(); },
@@ -410,6 +418,7 @@
         'setup-save': function () {
             var d = S.setupDraft, sum = weightSum(d);
             if (sum !== 100) { toast('The three parts add up to ' + sum + '%. Make them 100%.'); return; }
+            if (blankNames(d)) { toast('Some roles or items have no name. Type a name or remove them.'); return; }
             save('PUT', '/api/appraisal/setup', { setup: d, baseSavedAt: S.isStarter ? null : S.setup.savedAt }, function () { S.setupDraft = null; return afterSave('Setup saved'); });
         },
         'submit-self': function () {

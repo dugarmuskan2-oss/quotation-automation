@@ -26,7 +26,15 @@ const A = require('../utils/appraisal');
 
 const STALE_MSG = 'Someone saved this since you opened it. Reload the page to see the latest, then make your change again.';
 
-function key(name) { return String(process.env.CONFIG_PREFIX || '').trim() + APPRAISAL_KEY_PREFIX + name; }
+/**
+ * The testing site (a Vercel preview build) shares the live site's storage, and nobody has a
+ * named login there yet. So on the testing site only, the shared password gets a test manager,
+ * and everything it saves goes to separate "preview-" files that the live site never reads.
+ */
+function isTestSite() { return process.env.VERCEL_ENV === 'preview'; }
+const TEST_MANAGER = { name: 'Test manager (testing site)', email: 'test-manager@testing-site' };
+
+function key(name) { return String(process.env.CONFIG_PREFIX || '').trim() + (isTestSite() ? 'preview-' : '') + APPRAISAL_KEY_PREFIX + name; }
 const setupKey = () => key('setup.json');
 const selfKey = (email) => key('self-' + A.personSlug(email) + '.json');
 const mgrKey = (email) => key('mgr-' + A.personSlug(email) + '.json');
@@ -63,6 +71,7 @@ function createAppraisalRouter({ storage, loadUsers }) {
         const { users, ok } = await loadUsers(storage);
         if (!ok) throw fail(503, 'Cannot read the people list right now. Try again shortly.');
         const email = req.user && req.user.email;
+        if (!email && req.user && isTestSite()) return { users, me: TEST_MANAGER, email: TEST_MANAGER.email, isAdmin: true, testSite: true };
         if (!email) throw fail(403, 'Sign in with your own name to use the appraisal. The shared password has no name on it.');
         const me = users.find((u) => roles.sameEmail(u && u.email, email));
         if (!me) throw fail(403, 'You are not on the People list. Ask an admin to add you.');
@@ -106,6 +115,7 @@ function createAppraisalRouter({ storage, loadUsers }) {
         res.json({
             you: { email: who.email, name: who.me.name || who.email, isAdmin: who.isAdmin },
             hasAdmin: roles.adminCount(who.users) > 0,
+            testSite: !!who.testSite,
             setup, isStarter,
             mine: { roles: mgr.roles || [], targets: mgr.targets || '', reviews: self.reviews || {}, lockedQuarters },
         });
