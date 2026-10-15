@@ -282,6 +282,7 @@ const api = {
     cellNumber,
     weightKey,
     findCol,
+    normSize,
     _test: { normSize, normClass, weightKey, findCol },
 };
 

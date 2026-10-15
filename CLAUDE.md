@@ -192,6 +192,7 @@ jest tests/revision-popup.test.js        # "new revision request" pop-up: once a
 jest tests/price-list-book.test.js       # Price List: draft never prices quotes until Checked; a draft blocks only its own list; Cost/Meter not Price; diffRows
 jest tests/quantity-units.test.js        # kg → metres by the price list kg/m only (blank + red if missing, never 6 m); non-pipe items → "Other items"
 jest tests/ingest-stale-claim.test.js    # a Gmail claim cut off mid-run is retaken after 10 min; a saved quote marks its claim done
+jest tests/enquiry-walls-and-sender.test.js # AI sees the sender; customer = sender not project; line-item shape has unit + wallThicknessMm; seamless schedule from the list by wall mm
 jest --silent                            # quieter output (add to any command)
 ```
 
@@ -405,6 +406,9 @@ The in-app ERW / GI / Seamless lists are **the one copy of the prices quotes are
 
 ### Quantities in kg, and items that are not pipes — `utils/quantityUnits.js`
 The AI returns quantity + unit exactly as written (`UNIT_AND_ITEM_RULES` is appended to the prompt from code, not the editable instructions). In `handleGenerateQuotation`, a kg line becomes metres **only by the price list's kg/m** (`convertKgQuantities`, before pricing); the enquiry's figure is kept as `enquiryQty` ("2497 kg"). **No kg/m → quantity blank and red (`quantityMissing`), never guessed** — `keepMissingQuantitiesBlank` re-blanks it after pricing so it can't become 0. The 6 m default applies only when the enquiry gives no quantity at all. Angles (ISA), bars, rods, plates, channels, beams, flanges and fittings go under **"Other items"** (`markNonPipeItems`) and never get a pipe price. Guarded by `tests/quantity-units.test.js`.
+
+### Who the customer is, every file, and walls in mm — `utils/enquiryReading.js`, `utils/wallThickness.js`
+DSC-2930 (Enexio, Oct 2026): one email for three of the contractor's projects, one PDF each, walls in mm. The AI billed it to an end client, dropped a project, and turned walls into wrong schedules. Now: (1) ingest shows the AI a `From:`/`Subject:` header (`senderHeader`) — the saved `emailContent` is unchanged; (2) `ENQUIRY_READING_RULES` (appended to the prompt from code) says the customer is the **sender's company, never a project/site**, every file counts, and spells out the full line-item shape — **the saved instructions' JSON format has no `unit` or `wallThicknessMm` key, and the AI follows it exactly, so both were silently dropped until this** (the kg rule never got a unit); (3) for **seamless** lines with a wall in mm (from `wallThicknessMm`, else a decimal in the description), `applyEnquiryWalls` reads the schedule off the live seamless list's Thickness column (±0.06 mm, closest wins). A wall no row has stays `<size>X<mm>MM` → no price, blank and red. ERW lines are untouched. Note the saved instructions say "thickness in mm → ERW price list", so OD×mm enquiries often come out ERW. Guarded by `tests/enquiry-walls-and-sender.test.js`.
 
 ### Supplier search / "Ask AI — who can I buy this from?" — `utils/supplierMatch.js`
 Free rules in the Partner Directory rank every dealer and maker first; only firms the rules can't decide go to Claude, which reads each firm's own card. A yes/no whose quoted words aren't on the card is turned into "maybe". Phone numbers and emails are stripped before sending. **No tests yet.**

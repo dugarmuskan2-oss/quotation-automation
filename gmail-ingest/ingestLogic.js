@@ -3,6 +3,7 @@
  * Process one or many emails: generate quotation, build HTML, save (with duplicate check).
  */
 
+const { senderHeader } = require('../utils/enquiryReading');
 const { buildTableHTMLFromLineItems, buildHeaderHTMLFromQuotation } = require('./htmlBuilder');
 const { getAllPdfAttachments, getAllExcelAttachments, getAllWordAttachments, getAllImageAttachments } = require('./attachmentUtils');
 const { buildItemSummary } = require('../utils/calculations');
@@ -264,7 +265,8 @@ async function generateAndSaveQuotation(ctx, email, emailId) {
     let aiResult;
     try {
         aiResult = await ctx.generateQuotationData({
-            emailContent: body,
+            // The AI also sees who sent it — the customer is the sender's company (utils/enquiryReading.js).
+            emailContent: senderHeader(email) + body,
             instructions,
             enquiryFileIds: enquiryFileIds.length > 0 ? enquiryFileIds : undefined,
             enquiryImageDataUrls: enquiryImageDataUrls.length > 0 ? enquiryImageDataUrls : undefined
