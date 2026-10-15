@@ -80,6 +80,10 @@ const CONFIG_KEY_STAFF_LIST           = 'staff-list.json';
 // automatically; this holds the curated records those get promoted into, plus the log of
 // every change the app made on its own ({ contacts: [...], changes: [...] }).
 const CONFIG_KEY_CONTACTS             = 'contacts.json';
+/** Staff appraisal files all start with this: "appraisal-setup.json", then one file per person
+ *  for what they wrote themselves and one for what an admin wrote about them (see routes/appraisal.js).
+ *  Each site keeps its own: routes/appraisal.js puts CONFIG_PREFIX in front, as it does for people. */
+const APPRAISAL_KEY_PREFIX            = 'appraisal-';
 /** Emails tagged with the Add-to-Directory Gmail label, waiting for the owner's approval. */
 const CONFIG_KEY_CONTACTS_PENDING     = 'contacts-pending.json';
 /** Firms worked out from Google Contacts, waiting to be brought in a batch at a time.
@@ -176,6 +180,7 @@ module.exports = {
     CONFIG_KEY_STAFF_LIST,
     CONFIG_KEY_CONTACTS,
     CONFIG_KEY_CONTACTS_PENDING,
+    APPRAISAL_KEY_PREFIX,
     CONFIG_KEY_TOWN_PLACES,
     CONFIG_KEY_AREA_PLACES,
     CONFIG_KEY_GOOGLE_FIRMS,

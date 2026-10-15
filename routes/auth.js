@@ -425,5 +425,6 @@ module.exports = {
     createAuthRouter,
     createAuthGate,
     createPeopleRouter,
+    loadUsers,
     _test: { sessionSecret, forgetUsers, loadUsers, hasIngestSecret },
 };

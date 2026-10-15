@@ -91,7 +91,7 @@ app.use(express.json({ limit: '30mb' }));
 // Mounted before the static server and before every route, so anything added later is behind it
 // without anyone having to remember. What stays open is the short list in utils/auth.js — the
 // login page, a customer's quote link, and the Gmail ingest, which carries its own secret.
-const { createAuthRouter, createAuthGate, createPeopleRouter } = require('./routes/auth');
+const { createAuthRouter, createAuthGate, createPeopleRouter, loadUsers } = require('./routes/auth');
 app.use('/api', createAuthRouter({ storage }));
 app.use(createAuthGate({ storage }));
 // Managing who can sign in is mounted AFTER the gate, deliberately — createAuthRouter above runs
@@ -113,7 +113,7 @@ app.use(express.static('public')); // Serve static files if needed
 // Being servable and being public are two different questions — index.html already had to answer
 // them separately (it is gated except for the one "?view=pdf" case), so people.html follows it.
 const { PUBLIC_FILES } = require('./utils/auth');
-const SERVABLE_ROOT_FILES = new Set([...PUBLIC_FILES, '/index.html', '/people.html']);
+const SERVABLE_ROOT_FILES = new Set([...PUBLIC_FILES, '/index.html', '/people.html', '/home.html', '/appraisal.html', '/appraisal-page.js']);
 const serveRootFile = express.static(__dirname, { dotfiles: 'deny', index: false });
 // THE PAGE ITSELF MUST NEVER BE CACHED. Every script it loads carries a ?v= stamp, and that
 // only works if the PAGE is fresh — a browser holding yesterday's index.html goes on asking for
@@ -186,6 +186,7 @@ const createQuotationsRouter = require('./routes/quotations');
 const createGmailRouter      = require('./routes/gmail');
 const createContactsRouter   = require('./routes/contacts');
 const createPriceListsRouter = require('./routes/priceLists');
+const { createAppraisalRouter } = require('./routes/appraisal');
 
 app.use('/api', createRatesRouter({ openai, upload, storage, ratesDir }));
 app.use('/api', createConfigRouter({ storage }));
@@ -193,6 +194,7 @@ app.use('/api', createQuotationsRouter({ ddbDocClient, ddbTableName, storage }))
 app.use('/api', createGmailRouter());
 app.use('/api', createContactsRouter({ storage, openai }));
 app.use('/api', createPriceListsRouter({ storage, openai }));
+app.use('/api', createAppraisalRouter({ storage, loadUsers }));
 
 // API Routes
 

@@ -87,7 +87,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quotation Generator</title>
     
-    <link rel="stylesheet" href="styles.css?v=20261007-1">
+    <link rel="stylesheet" href="styles.css?v=20261015-1">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
@@ -98,6 +98,13 @@
         ============================================
     -->
     
+    <!-- Home: back to home.html, where staff choose the quotation app or the staff appraisal.
+         Top-left, in the gutter the side buttons already keep clear. A shared customer link
+         never shows it: that view covers the page at z-index 99999. -->
+    <a class="home-link" href="/home.html" title="Home — quotation app or staff appraisal" aria-label="Home">
+        <span>🏠</span>
+    </a>
+
     <!-- Floating main tool selector -->
     <div class="main-tools-bar">
         <button
