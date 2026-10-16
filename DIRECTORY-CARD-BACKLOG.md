@@ -2747,3 +2747,12 @@ SALECHA LLP · STEEL MET INDUSTRIES · UNISTEES & ENGINEERING CO.(P) LTD. · SAL
 He looked at all 148 (99 cards, 11–15 Oct batches): *"Im not sure about any of them"*. They are closed
 as they stand: every card stays exactly as his pages show it, nothing changed on any card, nothing
 guessed. From here on such points are written into the batch log only — never put to him.
+
+### Batch 56 — 16 Oct (approved for him; clients discarded: none)
+MECHWELL FITTING PVT LTD · Nav Bharat Tubes Pvt. Ltd. · VENUS METAL AND TUBES · YASH METAL INDIA · ANGEL PIPES AND TUBES · SHUBULAKSHMI METALS &TUBES · RATNAVEER STAINLESS PRODUCTS · VERITAS STAINLESS CO PVT LTD · PENNAR INDUSTRIES LTD · S PLUS TUBE TECH
+- MECHWELL FITTING PVT LTD: Your page lists 'MECHWELL FITTING PVT LTD' under MFG on the stainless steel page but does not say what they make. Should 'Fittings' go in their product range?
+- Nav Bharat Tubes Pvt. Ltd.: On your P(18) page, 07940322129, 66170426 and asrmettech.mumbai@gmail.com are written only under "(12)ASR MET TECH PVT LTD", where "MR.AJITH VARMA WORKED THERE". They stay on Ajit Verma's row of Nav Bharat Tubes, as your Google contact has them. Should they come off?
+- VENUS METAL AND TUBES: Approved STAR METAL AND TUBE's office line is 022-66109859, the number next to Venus's "022-66109860 / 1". Are the two firms in one office or one group? (Left as two separate firms.)
+- YASH METAL INDIA: YASH METAL INDIA (stainless maker, mukesh b): which town are they in? Your P(18) page gives only "9930001108/8080101108 (mukesh b)" and a Gmail address.
+- RATNAVEER STAINLESS PRODUCTS: Your page has "02667-264594 / 264595/ 96/ 97" for RATNAVEER. Should "96" and "97" be saved as 264596 and 264597? For now they stay as you wrote them.
+- PENNAR INDUSTRIES LTD: Your pages give a CHENNAI office ('CHENNAI--044-27629042/27601009/27601010') and a works at 'Chennai, TN, India(Uthukkottai Taluk, Tiruvallur District...)'. Are they the same place? Both are kept as separate Chennai rows for now.
