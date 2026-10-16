@@ -64,7 +64,7 @@
     .s5 { background: var(--good-bg); color: var(--good); }
 
     .seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: 6px; overflow: hidden; flex-shrink: 0; }
-    .seg button { width: 38px; height: 34px; border: 0; border-right: 1px solid var(--line-2); background: var(--card); color: var(--ink);
+    .seg button { width: 33px; height: 34px; border: 0; border-right: 1px solid var(--line-2); background: var(--card); color: var(--ink);
         font: 600 14px inherit; font-family: inherit; cursor: pointer; }
     .seg button:last-child { border-right: 0; }
     .seg button:hover:not(:disabled) { background: var(--sunk); }
@@ -118,6 +118,7 @@
     @media (max-width: 640px) {
         .crit { grid-template-columns: minmax(0, 1fr); }
         .crit .side { align-items: flex-start; }
+        .seg button { width: 29px; font-size: 13px; }
         .editrow, .scalerow, .raiserow { grid-template-columns: minmax(0, 1fr); }
         .sub { margin-left: 0; }
     }
@@ -135,6 +136,6 @@
     <main id="main"><div class="empty"><p class="muted">Loading…</p></div></main>
 </div>
 <div class="toast" id="toast" hidden></div>
-<script src="/appraisal-page.js?v=5"></script>
+<script src="/appraisal-page.js?v=6"></script>
 </body>
 </html>

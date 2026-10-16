@@ -15,6 +15,7 @@ const crypto = require('crypto');
 
 const GROUPS = ['work', 'behaviour'];
 const TEXT_MAX = 2000;
+const SCORE_MAX = 10;   // scores run 1 to 10
 const NAME_MAX = 120;
 
 // ── Periods ─────────────────────────────────────────────────────────────────
@@ -67,7 +68,7 @@ function averageOf(values) {
 }
 
 /**
- * Weighted total on the 1–5 scale. Each group is the average of its scored items; a group with
+ * Weighted total on the 1–10 scale. Each group is the average of its scored items; a group with
  * nothing scored is left out and the remaining weights are re-balanced, rather than counted as 0.
  * Returns null when nothing at all is scored — never a guessed number.
  */
@@ -75,7 +76,7 @@ function weightedTotal(setup, groups, scores) {
     let weightUsed = 0;
     let sum = 0;
     for (const g of GROUPS) {
-        const vals = (groups[g] || []).map((c) => scores && scores[c.id]).filter((v) => v >= 1 && v <= 5);
+        const vals = (groups[g] || []).map((c) => scores && scores[c.id]).filter((v) => v >= 1 && v <= SCORE_MAX);
         const avg = averageOf(vals);
         if (avg == null) continue;
         const w = Number((setup.weights || {})[g] || 0);
@@ -122,7 +123,7 @@ function cleanItems(list) {
 
 function cleanScale(list) {
     const byN = new Map((Array.isArray(list) ? list : []).map((s) => [Number(s && s.n), s]));
-    return [1, 2, 3, 4, 5].map((n) => ({
+    return Array.from({ length: SCORE_MAX }, (_, i) => i + 1).map((n) => ({
         n, label: cleanText((byN.get(n) || {}).label, 40), desc: cleanText((byN.get(n) || {}).desc, 300),
     }));
 }
@@ -130,7 +131,7 @@ function cleanScale(list) {
 function cleanRaises(list) {
     return (Array.isArray(list) ? list : [])
         .map((r) => ({ min: Number(r && r.min), pct: Number(r && r.pct), note: cleanText(r && r.note, 120) }))
-        .filter((r) => Number.isFinite(r.min) && Number.isFinite(r.pct) && r.min >= 0 && r.min <= 5 && r.pct >= 0 && r.pct <= 100)
+        .filter((r) => Number.isFinite(r.min) && Number.isFinite(r.pct) && r.min >= 0 && r.min <= SCORE_MAX && r.pct >= 0 && r.pct <= 100)
         .sort((a, b) => b.min - a.min);
 }
 
@@ -155,12 +156,12 @@ function sanitizeSetup(input) {
     };
 }
 
-/** Scores kept only for item ids that exist in the setup, and only whole numbers 1–5. */
+/** Scores kept only for item ids that exist in the setup, and only whole numbers 1–10. */
 function cleanScores(scores, validIds) {
     const out = {};
     for (const [k, v] of Object.entries(scores && typeof scores === 'object' ? scores : {})) {
         const n = Number(v);
-        if (validIds.has(k) && Number.isInteger(n) && n >= 1 && n <= 5) out[k] = n;
+        if (validIds.has(k) && Number.isInteger(n) && n >= 1 && n <= SCORE_MAX) out[k] = n;
     }
     return out;
 }
@@ -234,11 +235,16 @@ function item(id, name, hint) { return { id, name, hint }; }
 
 const DEFAULT_SETUP = {
     scale: [
-        { n: 1, label: 'Poor', desc: 'Well below what was expected. Needs close support and a clear plan to improve.' },
-        { n: 2, label: 'Needs work', desc: 'Below target in some areas. Needs regular help to get the job done.' },
-        { n: 3, label: 'Meets target', desc: 'Did what was expected, on time, with normal help.' },
-        { n: 4, label: 'Good', desc: 'Above target. Works with little help and fixes problems on their own.' },
-        { n: 5, label: 'Excellent', desc: 'Far above target. Others can learn from how they work.' },
+        { n: 1, label: 'Very poor', desc: 'Far below what was expected. Serious problems that need fixing now.' },
+        { n: 2, label: 'Poor', desc: 'Well below what was expected. Needs close support and a clear plan to improve.' },
+        { n: 3, label: 'Weak', desc: 'Below target in most areas. Needs regular help to get the job done.' },
+        { n: 4, label: 'Needs work', desc: 'Below target in some areas. Getting there, but not yet reliable.' },
+        { n: 5, label: 'Almost there', desc: 'Close to target. A few things still slip.' },
+        { n: 6, label: 'Meets target', desc: 'Did what was expected, on time, with normal help.' },
+        { n: 7, label: 'Good', desc: 'A little above target. Works with little help.' },
+        { n: 8, label: 'Very good', desc: 'Above target. Fixes problems on their own.' },
+        { n: 9, label: 'Excellent', desc: 'Far above target. Others can learn from how they work.' },
+        { n: 10, label: 'Outstanding', desc: 'The best we have seen. Sets the standard for everyone.' },
     ],
     weights: { work: 70, behaviour: 30 },
     roles: [
@@ -264,17 +270,17 @@ const DEFAULT_SETUP = {
         item('c_p1', 'Attendance and punctuality', 'Comes in on time. Leave planned in advance.'),
     ],
     raises: [
-        { min: 4.5, pct: 12, note: 'Top performer' },
-        { min: 4, pct: 10, note: '' },
-        { min: 3.5, pct: 7, note: '' },
-        { min: 3, pct: 5, note: 'Met expectations' },
-        { min: 2.5, pct: 2, note: '' },
+        { min: 9, pct: 12, note: 'Top performer' },
+        { min: 8, pct: 10, note: '' },
+        { min: 7, pct: 7, note: '' },
+        { min: 6, pct: 5, note: 'Met expectations' },
+        { min: 5, pct: 2, note: '' },
         { min: 0, pct: 0, note: 'No raise. Agree an improvement plan.' },
     ],
 };
 
 module.exports = {
-    GROUPS, DEFAULT_SETUP,
+    GROUPS, SCORE_MAX, DEFAULT_SETUP,
     quarterKey, halfKey, isQuarterKey, isHalfKey, quartersOfHalf,
     groupsFor, weightedTotal, itemCount, unscoredCount, raiseFor,
     sanitizeSetup, sanitizeSelfReview, sanitizeManagerReview, sanitizeMeeting, sanitizeProfile,

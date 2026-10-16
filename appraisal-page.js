@@ -42,10 +42,15 @@
 
     // ── Scoring (mirrors utils/appraisal.js, which the server uses) ────────
     function scaleOf(n) { return ((S.setup && S.setup.scale) || []).filter(function (x) { return x.n === n; })[0] || { n: n, label: '', desc: '' }; }
-    function band(t) { return t == null ? '' : scaleOf(Math.min(5, Math.max(1, Math.round(t)))).label; }
+    var GAP = 3;    // their score and yours this far apart gets flagged to talk about
+    var MAX = 10;   // scores run 1 to 10 (utils/appraisal.js SCORE_MAX)
+    function clampScore(v) { return Math.min(MAX, Math.max(1, Math.round(v))); }
+    /** Five colours for ten scores: 1–2 red … 9–10 green. */
+    function colourOf(v) { return 's' + Math.ceil(clampScore(v) / 2); }
+    function band(t) { return t == null ? '' : scaleOf(clampScore(t)).label; }
     function raiseFor(t) { if (t == null) return null; var rs = ((S.setup && S.setup.raises) || []).slice().sort(function (a, b) { return b.min - a.min; }); return rs.filter(function (r) { return t >= r.min; })[0] || null; }
     function fmt(v) { return v == null ? '–' : (Number.isInteger(v) ? String(v) : v.toFixed(2)); }
-    function scoreChip(v) { if (v == null) return '<span class="score">–</span>'; var r = Math.min(5, Math.max(1, Math.round(v))); return '<span class="score s' + r + '">' + fmt(v) + '</span>'; }
+    function scoreChip(v) { if (v == null) return '<span class="score">–</span>'; return '<span class="score ' + colourOf(v) + '">' + fmt(v) + '</span>'; }
     function groupsFor(roleIds) {
         var work = [], seen = {}, mine = roleIds || [];
         (S.setup.roles || []).forEach(function (r) {
@@ -142,8 +147,8 @@
     function qSelect(id, val, count) { return '<select id="' + id + '" data-change="' + id + '">' + quarterList(count).map(function (q) { return '<option value="' + q.key + '"' + (q.key === val ? ' selected' : '') + '>' + esc(q.label) + '</option>'; }).join('') + '</select>'; }
     function hSelect(id, val) { return '<select id="' + id + '" data-change="' + id + '">' + halfList().map(function (h) { return '<option value="' + h.key + '"' + (h.key === val ? ' selected' : '') + '>' + esc(h.label) + '</option>'; }).join('') + '</select>'; }
     function seg(who, cid, val, readOnly) {
-        var h = '<div class="seg" role="group" aria-label="Score 1 to 5">';
-        for (var n = 1; n <= 5; n++) {
+        var h = '<div class="seg" role="group" aria-label="Score 1 to 10">';
+        for (var n = 1; n <= MAX; n++) {
             var lab = scaleOf(n).label;
             h += '<button type="button" class="' + (val === n ? 'on' : '') + '"' + (readOnly ? ' disabled' : '') + ' data-act="score" data-who="' + who + '" data-c="' + esc(cid) + '" data-v="' + n + '" aria-pressed="' + (val === n) + '" title="' + esc(n + (lab ? ' – ' + lab : '')) + '">' + n + '</button>';
         }
@@ -171,7 +176,7 @@
     // Admin: score one person
     function critRow(grp, c, self, d, typingSelf) {
         var sv = self && self.scores ? self.scores[c.id] : null, mv = d.scores[c.id];
-        var gap = sv && mv && Math.abs(sv - mv) >= 2;
+        var gap = sv && mv && Math.abs(sv - mv) >= GAP;
         var theirs = typingSelf ? '<div class="row"><span class="who">Their score</span>' + seg('selfm', c.id, sv) + '</div>' : '<div class="row"><span class="who">They said</span>' + scoreChip(sv || null) + '</div>';
         var theirNote = typingSelf ? '<input type="text" id="sn-' + c.id + '" placeholder="Their comment (optional)" value="' + esc((d.selfByMgr.notes || {})[c.id] || '') + '" data-d="selfm:notes.' + c.id + '">'
             : (self && self.notes && self.notes[c.id] ? '<div class="selfnote"><span class="who">Their comment</span><br>' + esc(self.notes[c.id]) + '</div>' : '<div></div>');
@@ -223,7 +228,7 @@
         var out = [];
         hd.qs.forEach(function (x) {
             if (!x.self || !x.mr) return;
-            hd.g.forEach(function (grp) { grp.items.forEach(function (c) { var a = (x.self.scores || {})[c.id], b = (x.mr.scores || {})[c.id]; if (a && b && Math.abs(a - b) >= 2) out.push('Q' + x.qi.q + ' · ' + c.name + ': they said ' + a + ', you said ' + b); }); });
+            hd.g.forEach(function (grp) { grp.items.forEach(function (c) { var a = (x.self.scores || {})[c.id], b = (x.mr.scores || {})[c.id]; if (a && b && Math.abs(a - b) >= GAP) out.push('Q' + x.qi.q + ' · ' + c.name + ': they said ' + a + ', you said ' + b); }); });
         });
         return out;
     }
@@ -279,14 +284,14 @@
         if (!S.setupDraft) S.setupDraft = clone(S.setup);
         var d = S.setupDraft, sum = weightSum(d);
         var h = '<div class="stack">' + (S.isStarter ? '<div class="notice">This is the starter setup. Nothing is saved until you press Save setup.</div>' : '')
-            + '<section class="card stack"><div><h3>Scoring scale</h3><p class="small muted">Everyone scores 1 to 5 using these meanings.</p></div>' + d.scale.map(function (s, i) { return '<div class="scalerow"><span class="score s' + s.n + '">' + s.n + '</span><input type="text" id="sc-' + i + '-l" aria-label="Name for ' + s.n + '" value="' + esc(s.label) + '" data-d="setup:scale.' + i + '.label"><input type="text" id="sc-' + i + '-d" aria-label="Meaning of ' + s.n + '" value="' + esc(s.desc) + '" data-d="setup:scale.' + i + '.desc"></div>'; }).join('') + '</section>'
+            + '<section class="card stack"><div><h3>Scoring scale</h3><p class="small muted">Everyone scores 1 to 10 using these meanings.</p></div>' + d.scale.map(function (s, i) { return '<div class="scalerow"><span class="score ' + colourOf(s.n) + '">' + s.n + '</span><input type="text" id="sc-' + i + '-l" aria-label="Name for ' + s.n + '" value="' + esc(s.label) + '" data-d="setup:scale.' + i + '.label"><input type="text" id="sc-' + i + '-d" aria-label="Meaning of ' + s.n + '" value="' + esc(s.desc) + '" data-d="setup:scale.' + i + '.desc"></div>'; }).join('') + '</section>'
             + '<section class="card stack"><div><h3>How much each part counts</h3><p class="small muted">Must add up to 100%.</p></div><div class="grid2">' + GROUPS.map(function (g) { return '<div><label class="lbl" for="w-' + g[0] + '">' + g[1] + ' (%)</label><input type="number" id="w-' + g[0] + '" min="0" max="100" value="' + ((d.weights || {})[g[0]] || 0) + '" data-d="setup:weights.' + g[0] + '" data-num="1"></div>'; }).join('') + '</div><p class="small" id="wsum" style="color:' + (sum === 100 ? 'var(--good)' : 'var(--bad)') + '">Total: ' + sum + '%</p></section>'
             + '<section class="card stack"><div><h3>Roles and what they are judged on</h3><p class="small muted">These make up Work results. A person with two roles is scored on both lists.</p></div>'
             + d.roles.map(function (r, ri) { return '<div class="stack" style="gap:5px;border-top:1px solid var(--line);padding-top:12px"><div class="row between"><input type="text" id="role-' + ri + '" aria-label="Role name" style="max-width:260px;font-weight:600" value="' + esc(r.name) + '" data-d="setup:roles.' + ri + '.name"><button class="btn sm danger" data-act="del-role" data-i="' + ri + '">Remove role</button></div>' + critList('roles.' + ri + '.criteria', r.criteria) + '</div>'; }).join('')
             + '<div><button class="btn" data-act="add-role">+ Add role</button></div></section>'
             + '<section class="card stack"><div><h3>Behaviour</h3><p class="small muted">Everyone is scored on these.</p></div>' + critList('behaviour', d.behaviour) + '</section>'
             + '<section class="card stack"><div><h3>Raise table</h3><p class="small muted">The 6-month rating picks the highest row it reaches. Change the numbers to fit your budget.</p></div>'
-            + d.raises.map(function (r, i) { return '<div class="raiserow"><div><label class="lbl" for="r-' + i + '-m">Rating from</label><input type="number" id="r-' + i + '-m" step="0.1" min="0" max="5" value="' + r.min + '" data-d="setup:raises.' + i + '.min" data-num="1"></div><div><label class="lbl" for="r-' + i + '-p">Raise %</label><input type="number" id="r-' + i + '-p" step="0.5" min="0" max="100" value="' + r.pct + '" data-d="setup:raises.' + i + '.pct" data-num="1"></div><div><label class="lbl" for="r-' + i + '-n">Note</label><input type="text" id="r-' + i + '-n" value="' + esc(r.note || '') + '" data-d="setup:raises.' + i + '.note"></div><button class="btn sm danger" data-act="del-raise" data-i="' + i + '">Remove</button></div>'; }).join('')
+            + d.raises.map(function (r, i) { return '<div class="raiserow"><div><label class="lbl" for="r-' + i + '-m">Rating from</label><input type="number" id="r-' + i + '-m" step="0.1" min="0" max="10" value="' + r.min + '" data-d="setup:raises.' + i + '.min" data-num="1"></div><div><label class="lbl" for="r-' + i + '-p">Raise %</label><input type="number" id="r-' + i + '-p" step="0.5" min="0" max="100" value="' + r.pct + '" data-d="setup:raises.' + i + '.pct" data-num="1"></div><div><label class="lbl" for="r-' + i + '-n">Note</label><input type="text" id="r-' + i + '-n" value="' + esc(r.note || '') + '" data-d="setup:raises.' + i + '.note"></div><button class="btn sm danger" data-act="del-raise" data-i="' + i + '">Remove</button></div>'; }).join('')
             + '<div><button class="btn sm link" data-act="add-raise">+ Add row</button></div></section>';
         return h + '<div class="totals"><span class="small muted" id="dirty">' + (S.dirty ? 'Unsaved changes' : '') + '</span><div class="row"><button class="btn" data-act="setup-discard">Discard changes</button><button class="btn primary" data-act="setup-save">Save setup</button></div></div></div>';
     }
@@ -304,7 +309,7 @@
             + '<p class="small muted">Score yourself honestly for ' + esc(qi.label) + '. Your manager will score you too, and you will go over both at the 6-month meeting.</p>';
         if (!S.mine.roles.length) h += '<div class="notice">Your manager has not picked your roles yet, so the Work results part is missing. You can still fill the rest.</div>';
         if (S.mine.targets) h += '<div class="card"><div class="who">Your targets</div><p class="pre">' + esc(S.mine.targets) + '</p></div>';
-        h += '<details class="card"><summary style="cursor:pointer;font-weight:600">What the scores mean</summary><div class="legend" style="margin-top:10px">' + [5, 4, 3, 2, 1].map(function (n) { return scoreChip(n) + '<div><strong>' + esc(scaleOf(n).label) + '</strong> <span class="small muted">' + esc(scaleOf(n).desc) + '</span></div>'; }).join('') + '</div></details>';
+        h += '<details class="card"><summary style="cursor:pointer;font-weight:600">What the scores mean</summary><div class="legend" style="margin-top:10px">' + [10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map(function (n) { return scoreChip(n) + '<div><strong>' + esc(scaleOf(n).label) + '</strong> <span class="small muted">' + esc(scaleOf(n).desc) + '</span></div>'; }).join('') + '</div></details>';
         sections(g).forEach(function (grp) {
             h += '<section class="card"><div class="ghead"><h3>' + esc(grp.name) + '</h3><span class="weight">' + esc(grp.weightText) + '</span></div>' + grp.items.map(function (c) {
                 return '<div class="crit"><div><div class="cname">' + esc(c.name) + '</div><div class="hint">' + esc(c.hint || '') + '</div></div><div class="side">' + seg('self', c.id, d.scores[c.id], locked) + '</div><div class="notes"><input type="text" id="my-n-' + c.id + '" placeholder="Example or comment (optional)" value="' + esc((d.notes || {})[c.id] || '') + '" data-d="self:notes.' + c.id + '"' + (locked ? ' disabled' : '') + '></div></div>';
@@ -317,7 +322,7 @@
     function viewGuide() {
         var w = S.setup.weights || {};
         return '<div class="stack"><section class="card stack"><h3>How it works</h3><ol class="small" style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px"><li>At the end of each quarter (June, September, December, March), fill your form on the My review tab.</li><li>Your manager scores you on the same items.</li><li>Every 6 months you meet one-on-one to go over both scores and agree new targets.</li><li>Your 6-month rating decides your raise.</li></ol></section>'
-            + '<section class="card stack"><h3>What the scores mean</h3><div class="legend">' + [5, 4, 3, 2, 1].map(function (n) { return scoreChip(n) + '<div><strong>' + esc(scaleOf(n).label) + '</strong><br><span class="small muted">' + esc(scaleOf(n).desc) + '</span></div>'; }).join('') + '</div></section>'
+            + '<section class="card stack"><h3>What the scores mean</h3><div class="legend">' + [10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map(function (n) { return scoreChip(n) + '<div><strong>' + esc(scaleOf(n).label) + '</strong><br><span class="small muted">' + esc(scaleOf(n).desc) + '</span></div>'; }).join('') + '</div></section>'
             + '<section class="card stack"><h3>How your total is worked out</h3><div class="kv">' + GROUPS.map(function (g) { return '<span>' + g[1] + '</span><span class="weight">' + (w[g[0]] || 0) + '%</span>'; }).join('') + '</div><p class="small muted">Each part is the average of its items. Work results items depend on the roles you play.</p></section></div>';
     }
 
