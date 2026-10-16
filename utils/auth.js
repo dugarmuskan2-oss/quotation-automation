@@ -145,6 +145,10 @@ const PUBLIC_API_EXACT = new Set([
     '/api/health',
     '/api/company',                 // the letterhead address on a shared quote's PDF
     '/api/ingest-from-gmail',       // Apps Script, checked against INGEST_SECRET
+    // The daily appraisal reminder, called by Vercel's scheduler (vercel.json crons), which has no
+    // session. The route checks CRON_SECRET itself (shut until it is set), only ever emails the office,
+    // at most once a day, and answers sent / not sent — never a name or a count.
+    '/api/appraisal/reminders/run',
     '/ingest-from-gmail',
 ]);
 

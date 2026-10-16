@@ -118,7 +118,7 @@
         return api('GET', '/api/appraisal/me').then(function (me) {
             S.you = me.you; S.hasAdmin = me.hasAdmin; S.testSite = me.testSite; S.setup = me.setup; S.isStarter = me.isStarter; S.mine = me.mine;
             if (!me.you.isAdmin) return;
-            return api('GET', '/api/appraisal/overview').then(function (o) { S.setup = o.setup; S.isStarter = o.isStarter; S.people = o.people; S.removed = o.removed || []; });
+            return api('GET', '/api/appraisal/overview').then(function (o) { S.setup = o.setup; S.isStarter = o.isStarter; S.people = o.people; S.removed = o.removed || []; S.reminder = o.reminder || {}; });
         }).then(function () { S.loaded = true; S.loadError = null; }, function (e) { S.loadError = e.message; });
     }
     var toastTimer;
@@ -173,9 +173,15 @@
     function emptyBox(title, text, btn) { return '<div class="empty"><h3>' + esc(title) + '</h3>' + (text ? '<p class="muted">' + text + '</p>' : '') + (btn || '') + '</div>'; }
 
     // Admin: quarterly list
+    /** The daily reminder email's last result: a failure must be seen here, since the email itself didn't come. */
+    function reminderLine() {
+        var r = S.reminder || {}, when = function (t) { return new Date(t).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }); };
+        if (r.lastFailedAt && (!r.lastSentAt || r.lastFailedAt > r.lastSentAt)) return '<div class="error">The daily reminder email failed on ' + esc(when(r.lastFailedAt)) + ': ' + esc(r.lastError || 'unknown reason') + '. It will try again tomorrow at 9 am.</div>';
+        return r.lastSentAt ? '<p class="small muted">Daily reminder: last emailed to info@dscpipes.com on ' + esc(when(r.lastSentAt)) + '.</p>' : '';
+    }
     function viewReviews() {
         var qi = parseQ(S.q), list = staffPeople();
-        var h = '<div class="stack"><div class="row between"><div class="row"><label class="lbl" for="q-pick" style="margin:0">Quarter</label>' + qSelect('q-pick', S.q, 6) + '</div><p class="small muted">Staff fill their form at the end of each quarter. You score them after.</p></div>';
+        var h = '<div class="stack"><div class="row between"><div class="row"><label class="lbl" for="q-pick" style="margin:0">Quarter</label>' + qSelect('q-pick', S.q, 6) + '</div><p class="small muted">Staff fill their form at the end of each quarter. You score them after.</p></div>' + reminderLine();
         if (!list.length) return h + emptyBox('No staff yet', 'Add the people you appraise on the Staff tab.', '<button class="btn primary" data-act="tab" data-v="staff">Add staff</button>') + '</div>';
         var forms = 0, done = 0;
         var rows = list.map(function (p) {

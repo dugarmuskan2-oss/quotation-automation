@@ -31,9 +31,13 @@
  */
 
 const express = require('express');
-const { APPRAISAL_KEY_PREFIX } = require('../utils/constants');
+const { APPRAISAL_KEY_PREFIX, APPRAISAL_REMINDER_EMAIL } = require('../utils/constants');
 const roles = require('../utils/peopleRoles');
 const A = require('../utils/appraisal');
+const R = require('../utils/appraisalReminder');
+const { sendEmail } = require('../utils/gmail');
+const { siteBase } = require('./auth');
+const { _test: { timingSafeEqualStr } } = require('../utils/auth');
 
 const STALE_MSG = 'Someone saved this since you opened it. Reload the page to see the latest, then make your change again.';
 
@@ -71,6 +75,7 @@ function profileOf(staff, mgrDoc) {
 function key(name) { return String(process.env.CONFIG_PREFIX || '').trim() + (isTestSite() ? 'preview-' : '') + APPRAISAL_KEY_PREFIX + name; }
 const setupKey = () => key('setup.json');
 const staffKey = () => key('staff.json');
+const reminderKey = () => key('reminder.json');
 const selfKey = (id) => key('self-' + A.personSlug(id) + '.json');
 const mgrKey = (id) => key('mgr-' + A.personSlug(id) + '.json');
 
@@ -81,6 +86,25 @@ function seedStaff(users) {
         .map((u) => ({ id: String(u.email).toLowerCase(), name: u.name || u.email, email: String(u.email).toLowerCase() }));
 }
 const activeStaff = (list) => list.filter((s) => !s.removedAt);
+
+/**
+ * Is this request the daily scheduler (vercel.json crons)? Vercel sends CRON_SECRET (set in the
+ * hosting settings) as a Bearer token. Locked shut until CRON_SECRET exists: an open route would
+ * let anyone make the office's Gmail send mail.
+ */
+function fromScheduler(req) {
+    const secret = String(process.env.CRON_SECRET || '').trim();
+    if (!secret) { console.error('Appraisal reminder: CRON_SECRET is not set in the hosting settings, so no reminder can be sent.'); return false; }
+    return timingSafeEqualStr(String(req.headers.authorization || ''), 'Bearer ' + secret);
+}
+
+/** The live site's own address for the email's link — never the address the scheduler happened to call. */
+function liveSiteBase(req) {
+    const configured = String(process.env.PUBLIC_URL || '').trim().replace(/\/+$/, '');
+    if (configured) return configured;
+    const production = String(process.env.VERCEL_PROJECT_PRODUCTION_URL || '').trim();
+    return production ? 'https://' + production : siteBase(req);
+}
 
 /** A small HTTP error a handler can throw; anything else becomes a 503. */
 function fail(status, error) { const e = new Error(error); e.status = status; return e; }
@@ -94,7 +118,7 @@ function send(res, err) {
 /** Wraps a handler so a throw is always answered, never left hanging. */
 function handle(fn) { return (req, res) => fn(req, res).catch((e) => send(res, e)); }
 
-function createAppraisalRouter({ storage, loadUsers }) {
+function createAppraisalRouter({ storage, loadUsers, onceClaim }) {
     const router = express.Router();
 
     async function readJson(k, fallback) {
@@ -177,6 +201,14 @@ function createAppraisalRouter({ storage, loadUsers }) {
         return result;
     }
 
+    /** Each staff member with their saved self-review and manager files. */
+    function withFiles(list) {
+        return Promise.all(list.map(async (s) => {
+            const [self, mgr] = await Promise.all([readJson(selfKey(s.id), { reviews: {} }), readJson(mgrKey(s.id), {})]);
+            return { staff: s, self, mgr };
+        }));
+    }
+
     // ── Everyone ───────────────────────────────────────────────────────────
 
     /** The signed-in staff member's own record on the staff list (matched by email), or null. */
@@ -228,23 +260,24 @@ function createAppraisalRouter({ storage, loadUsers }) {
     router.get('/appraisal/overview', handle(async (req, res) => {
         const who = await requireAdmin(req);
         const { setup, isStarter } = await readSetup();
-        const list = activeStaff(await readStaff(who.users));
-        const people = await Promise.all(list.map(async (s) => {
-            const [self, mgr] = await Promise.all([readJson(selfKey(s.id), { reviews: {} }), readJson(mgrKey(s.id), {})]);
-            return { id: s.id, name: s.name, email: s.email || '', self, mgr: { ...mgr, ...profileOf(s, mgr) } };
-        }));
+        const files = await withFiles(activeStaff(await readStaff(who.users)));
+        const people = files.map(({ staff: s, self, mgr }) => ({ id: s.id, name: s.name, email: s.email || '', self, mgr: { ...mgr, ...profileOf(s, mgr) } }));
         people.sort((a, b) => a.name.localeCompare(b.name));
         const removed = (await readStaff(who.users)).filter((s) => s.removedAt).map((s) => ({ id: s.id, name: s.name, email: s.email || '', removedAt: s.removedAt }));
-        res.json({ you: { email: who.email, name: who.me.name || who.email, isAdmin: true }, setup, isStarter, people, removed });
+        const reminder = await readJson(reminderKey(), {});
+        res.json({ you: { email: who.email, name: who.me.name || who.email, isAdmin: true }, setup, isStarter, people, removed, reminder });
     }));
 
     router.put('/appraisal/setup', express.json(), handle(async (req, res) => {
         await requireAdmin(req);
-        const { setup: current } = await readSetup();
+        const { setup: current, isStarter } = await readSetup();
         if ((current.savedAt || null) !== ((req.body && req.body.baseSavedAt) || null)) throw fail(409, STALE_MSG);
         const clean = A.sanitizeSetup(req.body && req.body.setup);
         if (clean.error) throw fail(400, clean.error);
-        const saved = { ...clean.setup, savedAt: new Date().toISOString() };
+        const now = new Date().toISOString();
+        // startedAt = when the appraisal was first set up; reminders never cover quarters before it.
+        const startedAt = isStarter ? now : (current.startedAt || current.savedAt);
+        const saved = { ...clean.setup, startedAt, savedAt: now };
         await writeJson(setupKey(), saved);
         res.json({ ok: true, setup: saved });
     }));
@@ -253,7 +286,7 @@ function createAppraisalRouter({ storage, loadUsers }) {
     router.post('/appraisal/staff', express.json(), handle(async (req, res) => {
         const who = await requireAdmin(req);
         const added = await changeStaff(who.users, (list) => {
-            const s = { id: A.newStaffId(), ...checkedDetails(req.body, who.users, list, null) };
+            const s = { id: A.newStaffId(), ...checkedDetails(req.body, who.users, list, null), addedAt: new Date().toISOString() };
             list.push(s);
             return s;
         });
@@ -330,6 +363,56 @@ function createAppraisalRouter({ storage, loadUsers }) {
         const meeting = A.sanitizeMeeting(req.body && req.body.meeting);
         const saved = await saveEntry(mgrKey(staff.id), { id: staff.id }, 'meetings', h, meeting, req.body && req.body.baseSavedAt);
         res.json({ ok: true, meeting: saved });
+    }));
+
+    // ── The daily reminder (vercel.json crons, 9 am India time) ────────────
+
+    /** Who still has something missing for the due quarter, or why no email is due. */
+    async function whatIsDue(now) {
+        const due = R.dueQuarter(now);
+        const { setup, isStarter } = await readSetup();
+        if (!R.quarterIsDue(setup, isStarter, due)) return { due, skip: 'No quarter is due yet.' };
+        const { users, ok } = await loadUsers(storage);
+        if (!ok) throw fail(503, 'Cannot read the people list right now.');
+        const files = await withFiles(activeStaff(await readStaff(users)));
+        const missing = R.missingFor(files.map(({ staff, self, mgr }) => ({ name: staff.name, addedAt: staff.addedAt, self, mgr })), due.key);
+        return missing.length ? { due, missing } : { due, skip: 'Everything is filled and done.' };
+    }
+
+    /** Keep the last result where admins see it, so a broken reminder shows on the page, not only in a log. */
+    async function noteResult(change) {
+        const last = await readJson(reminderKey(), {});
+        await writeJson(reminderKey(), { ...last, ...change });
+    }
+
+    /**
+     * Today's slot is claimed first — only one run can win it, even two at the same instant — so
+     * the office never gets two emails in a day. If the send fails the slot is given back (a re-run
+     * can try again), the failure is logged and saved for the page, and the run fails loudly.
+     */
+    async function sendReminder(due, missing, link, now) {
+        const slot = (isTestSite() ? 'preview-' : '') + 'appraisal-reminder-' + R.istDay(now);
+        if (!(await onceClaim.claim(slot))) return false;
+        try {
+            await sendEmail({ to: APPRAISAL_REMINDER_EMAIL, ...R.reminderEmail(due, missing, link) });
+        } catch (e) {
+            console.error('Appraisal reminder email failed:', e && e.message);
+            await onceClaim.release(slot).catch((er) => console.error('Appraisal reminder: could not give back today\'s slot:', er && er.message));
+            await noteResult({ lastFailedAt: new Date(now).toISOString(), lastError: String((e && e.message) || e).slice(0, 300) }).catch(() => {});
+            throw fail(502, 'The reminder email could not be sent.');
+        }
+        await noteResult({ lastSentAt: new Date(now).toISOString(), lastQuarter: due.key, lastCount: missing.length })
+            .catch((e) => console.error('Appraisal reminder sent, but its record was not saved:', e && e.message));
+        return true;
+    }
+
+    router.get('/appraisal/reminders/run', handle(async (req, res) => {
+        if (!fromScheduler(req)) throw fail(401, 'Not allowed.');
+        const now = Date.now();
+        const { due, skip, missing } = await whatIsDue(now);
+        if (skip) return res.json({ ok: true, sent: false, reason: skip });
+        const sent = await sendReminder(due, missing, liveSiteBase(req) + '/appraisal.html', now);
+        res.json(sent ? { ok: true, sent: true } : { ok: true, sent: false, reason: 'Already sent today.' });
     }));
 
     return router;

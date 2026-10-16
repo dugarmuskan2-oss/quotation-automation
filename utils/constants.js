@@ -23,6 +23,10 @@ const ENTITY_GMAIL_MSG_MARKER = 'GMAIL_MSG_MARKER';
  *  The marker is written with attribute_not_exists so only the first ingest of a
  *  given message wins — this is the atomic duplicate guard. */
 const GMAIL_MSG_MARKER_PREFIX = 'GMAILMSG#';
+/** A "first caller wins" marker row (utils/onceClaim.js), e.g. one day's appraisal reminder.
+ *  Its own entity, so it never shows up in the quotations list. */
+const ENTITY_ONCE_CLAIM = 'ONCE_CLAIM';
+const ONCE_CLAIM_PREFIX = 'ONCE#';
 // A claim with no quote behind it after this long was cut off mid-run (Vercel stops a request at
 // 60 s) and is retried. Five stuck claims silently blocked real enquiries, 9–12 Oct 2026.
 const GMAIL_CLAIM_STALE_MS = 10 * 60 * 1000;
@@ -67,6 +71,8 @@ const PIPE_WEIGHTS_FILE = 'pipe-weights.json';   // size -> kg/m
 const PRICE_LISTS_FILE  = 'price-lists.json';    // the in-app price lists: live + draft per type
 // Told whenever a price list is changed and checked.
 const PRICE_LIST_NOTIFY_EMAIL = 'info@dscpipes.com';
+// Where the daily "appraisal reviews still due" email goes (routes/appraisal.js, utils/appraisalReminder.js).
+const APPRAISAL_REMINDER_EMAIL = 'info@dscpipes.com';
 const CONFIG_KEY_DEFAULT_SIGNATURE    = 'default-signature.txt';
 /** Remembered freight-enquiry recipients + pickup/drop points (for instant suggestions). */
 const CONFIG_KEY_FREIGHT_SUGGESTIONS  = 'freight-suggestions.json';
@@ -162,6 +168,8 @@ module.exports = {
     ENTITY_QUOTATION,
     ENTITY_GMAIL_MSG_MARKER,
     GMAIL_MSG_MARKER_PREFIX,
+    ENTITY_ONCE_CLAIM,
+    ONCE_CLAIM_PREFIX,
     GMAIL_SENT_LABELS,
     QUOTE_COUNTER_ID,
     QUOTE_COUNTER_START,
@@ -174,6 +182,7 @@ module.exports = {
     PIPE_WEIGHTS_FILE,
     PRICE_LISTS_FILE,
     PRICE_LIST_NOTIFY_EMAIL,
+    APPRAISAL_REMINDER_EMAIL,
     CONFIG_KEY_DEFAULT_SIGNATURE,
     CONFIG_KEY_FREIGHT_SUGGESTIONS,
     CONFIG_KEY_SUPPLIER_SUGGESTIONS,

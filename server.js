@@ -197,7 +197,7 @@ app.use('/api', createQuotationsRouter({ ddbDocClient, ddbTableName, storage }))
 app.use('/api', createGmailRouter());
 app.use('/api', createContactsRouter({ storage, openai }));
 app.use('/api', createPriceListsRouter({ storage, openai }));
-app.use('/api', createAppraisalRouter({ storage, loadUsers }));
+app.use('/api', createAppraisalRouter({ storage, loadUsers, onceClaim: require('./utils/onceClaim').createOnceClaim({ getDb: () => ({ client: ddbDocClient, table: ddbTableName }), storage }) }));
 
 // API Routes
 

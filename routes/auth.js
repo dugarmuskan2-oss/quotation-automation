@@ -574,5 +574,6 @@ module.exports = {
     createAuthGate,
     createPeopleRouter,
     loadUsers,
+    siteBase,
     _test: { sessionSecret, forgetUsers, loadUsers, hasIngestSecret },
 };
