@@ -145,7 +145,8 @@
             .catch(function () { return null; });   // no badge is better than a broken page
     }
 
-    window.AccountBadge = { initialsOf: initialsOf, accountFrom: accountFrom, badgeHtml: badgeHtml, pageHasUnsavedWork: pageHasUnsavedWork, start: start };
+    window.AccountBadge = { initialsOf: initialsOf, accountFrom: accountFrom, badgeHtml: badgeHtml, pageHasUnsavedWork: pageHasUnsavedWork, start: start,
+        _test: { createLogout: createLogout, mount: mount, CSS: CSS } };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { start(document, window); });
     else start(document, window);
 })();
