@@ -40,6 +40,15 @@ function makeApp(store, { withDdb = true } = {}) {
             throw new Error('unexpected command: ' + cmd.__type);
         },
     } : null;
+    // The real app's auth gate signs a person in before these routes run. This stands in for it:
+    // someone with every tick, unless a test says who (x-test-user) or what they may do.
+    app.use((req, res, next) => {
+        const who = req.headers['x-test-user'] || 'Test Admin';
+        const list = req.headers['x-test-permissions'];
+        req.user = { who, kind: 'person', email: who.toLowerCase().replace(/\s+/g, '.') + '@dscpipes.com',
+            permissions: list !== undefined ? String(list).split(',').filter(Boolean) : require('../utils/permissions').ALL };
+        next();
+    });
     app.use('/api', createQuotationsRouter({ ddbDocClient, ddbTableName: withDdb ? 'T' : null }));
     return app;
 }

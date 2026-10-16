@@ -53,6 +53,25 @@
     .empty { font-size: 13px; color: #8a8781; padding: 8px 0; }
     .role-select { font-size: 12px; padding: 4px 6px; border: 1px solid #d8d5ce; border-radius: 5px; background: #fff; flex: none; }
     .badge.admin { background: #eeedfe; color: #3c3489; }
+    .name-btn { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; font-size: 14px; color: #2b2b2b; cursor: pointer; text-align: left; }
+    .name-btn:hover { color: #3f51b5; text-decoration: underline; }
+    .perm-count { font-size: 11px; padding: 3px 9px; border-radius: 5px; background: #f1efe8; color: #444441; flex: none; cursor: pointer; border: 0; }
+    .perm-count.admin { background: #eeedfe; color: #3c3489; }
+    .pm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 50; }
+    .pm-box { background: #fff; border-radius: 10px; width: 420px; max-width: 100%; max-height: 90vh; overflow: auto; padding: 20px 22px; box-shadow: 0 8px 30px rgba(0,0,0,.2); }
+    .pm-box h3 { margin: 0 0 2px; font-size: 16px; }
+    .pm-box .pm-sub { font-size: 12.5px; color: #8a8781; margin: 0 0 12px; }
+    .pm-group { margin-top: 14px; }
+    .pm-group h4 { margin: 0 0 6px; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: #6f6c66; }
+    .pm-item { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; font-size: 14px; cursor: pointer; }
+    .pm-item input { margin-top: 3px; width: 16px; height: 16px; flex: none; }
+    .pm-item small { display: block; color: #8a8781; font-size: 12px; }
+    .pm-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; align-items: center; }
+    .pm-actions button { font-size: 13px; padding: 7px 14px; border-radius: 6px; border: 1px solid #d8d5ce; background: #fff; cursor: pointer; }
+    .pm-actions .pm-save { background: #3f51b5; border-color: #3f51b5; color: #fff; font-weight: 600; }
+    .pm-actions .pm-save[disabled] { background: #a8afd8; border-color: #a8afd8; }
+    .pm-all { font-size: 12px; color: #3f51b5; background: none; border: 0; cursor: pointer; padding: 0; margin-right: auto; }
+    .pm-msg { font-size: 12.5px; color: #A32D2D; margin-top: 10px; min-height: 16px; }
     .row:has(.confirm), .row:has(.pw-form) { flex-wrap: wrap; }
     .pw-btn { font-size: 12px; padding: 5px 10px; border: 1px solid #d8d5ce; border-radius: 5px; background: #fff; color: #444; cursor: pointer; flex: none; }
     .pw-form { display: flex; gap: 6px; align-items: center; flex: 1 0 100%; justify-content: flex-end; flex-wrap: wrap; }
@@ -99,13 +118,13 @@
     <div class="card">
         <h2>Signed in</h2>
         <p class="hint">Everyone who can open this site right now.</p>
-        <div class="notice" id="noAdmin" hidden>Nobody is an admin yet, so anyone signed in can add or remove people. Set yourself to Admin below to lock that down.</div>
+        <div class="notice" id="noAdmin" hidden>Nobody can manage people yet, so everyone signed in can do everything. Click your own name and tick "Manage people" (and anything else you want) to switch the permissions on.</div>
         <div id="list"><div class="empty">Loading…</div></div>
     </div>
 
     <div class="card" id="notManager" hidden>
         <h2>Add someone</h2>
-        <p class="hint" style="margin:0">Only an admin can add or remove people.</p>
+        <p class="hint" style="margin:0">Only someone allowed to manage people can add or remove people.</p>
     </div>
 
     <div class="card" id="addCard">
@@ -119,11 +138,7 @@
             <label for="email">Email</label>
             <input id="email" type="email" placeholder="jane@dscpipes.com" required>
 
-            <label for="role">Role</label>
-            <select id="role">
-                <option value="staff" selected>Staff — uses the app</option>
-                <option value="admin">Admin — can also add and remove people</option>
-            </select>
+            <p class="hint" style="margin:12px 0 0">New people can add revision requests. Click their name afterwards to allow more.</p>
 
             <div class="method">
                 <label><input type="radio" name="method" value="google" checked> Signs in with Google</label>
@@ -152,6 +167,8 @@
     var passwordFields = document.getElementById('passwordFields');
     var youEmail = null;
     var youCanManage = false;
+    var catalog = [];                 // the tick list, with headings, from the server
+    var peopleByEmail = {};
     var busy = false;          // one change at a time: a second click while one is saving does nothing
 
     function post(url, body) {
@@ -171,11 +188,66 @@
         return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
     }
 
+    // "Admin" when every box is ticked, else how many. Clicking it (or the name) opens the ticks.
     function roleHtml(p) {
-        if (!youCanManage) return '<span class="badge ' + (p.role === 'admin' ? 'admin' : '') + '">' + (p.role === 'admin' ? 'Admin' : 'Staff') + '</span>';
-        return '<select class="role-select" data-email="' + esc(p.email) + '" aria-label="Role">'
-            + '<option value="staff"' + (p.role !== 'admin' ? ' selected' : '') + '>Staff</option>'
-            + '<option value="admin"' + (p.role === 'admin' ? ' selected' : '') + '>Admin</option></select>';
+        var n = (p.permissions || []).length, all = catalog.length && n === catalog.length;
+        return '<button type="button" class="perm-count open-perms' + (all ? ' admin' : '') + '" data-email="' + esc(p.email) + '">'
+            + (all ? 'Admin' : n + ' of ' + catalog.length + ' allowed') + '</button>';
+    }
+
+    // The permissions window: a heading per group (Margins, Notes, Revisions, People), a tick per
+    // permission. People who can't manage people see it read-only.
+    function openPermissions(email) {
+        var p = peopleByEmail[String(email).toLowerCase()];
+        if (!p || document.querySelector('.pm-overlay')) return;
+        var have = {}; (p.permissions || []).forEach(function (k) { have[k] = true; });
+        var groups = [];
+        catalog.forEach(function (c) {
+            var g = groups.filter(function (x) { return x.name === c.group; })[0];
+            if (!g) { g = { name: c.group, items: [] }; groups.push(g); }
+            g.items.push(c);
+        });
+        var ro = !youCanManage;
+        var html = '<div class="pm-box" role="dialog" aria-label="Permissions for ' + esc(p.name) + '">'
+            + '<h3>' + esc(p.name) + '</h3><div class="pm-sub">' + esc(p.email) + (ro ? ' · you can look, not change' : ' · ticked = allowed') + '</div>'
+            + groups.map(function (g) {
+                return '<div class="pm-group"><h4>' + esc(g.name) + '</h4>' + g.items.map(function (c) {
+                    return '<label class="pm-item"><input type="checkbox" value="' + esc(c.key) + '"' + (have[c.key] ? ' checked' : '') + (ro ? ' disabled' : '') + '>'
+                        + '<span>' + esc(c.label) + '<small>' + esc(c.help) + '</small></span></label>';
+                }).join('') + '</div>';
+            }).join('')
+            + '<div class="pm-msg"></div>'
+            + '<div class="pm-actions">' + (ro ? '' : '<button type="button" class="pm-all">Tick all (Admin)</button>')
+            + '<button type="button" class="pm-cancel">' + (ro ? 'Close' : 'Cancel') + '</button>'
+            + (ro ? '' : '<button type="button" class="pm-save">Save</button>') + '</div></div>';
+        var overlay = document.createElement('div');
+        overlay.className = 'pm-overlay';
+        overlay.innerHTML = html;
+        document.body.appendChild(overlay);
+        function close() { overlay.remove(); }
+        overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+        overlay.querySelector('.pm-cancel').onclick = close;
+        if (ro) return;
+        overlay.querySelector('.pm-all').onclick = function () {
+            Array.prototype.forEach.call(overlay.querySelectorAll('input[type=checkbox]'), function (b) { b.checked = true; });
+        };
+        var save = overlay.querySelector('.pm-save'), msg = overlay.querySelector('.pm-msg');
+        save.onclick = function () {
+            if (busy) return;
+            var list = Array.prototype.filter.call(overlay.querySelectorAll('input[type=checkbox]'), function (b) { return b.checked; })
+                .map(function (b) { return b.value; });
+            busy = true; save.disabled = true; save.textContent = 'Saving…'; msg.textContent = '';
+            post('/api/people/permissions', { email: p.email, permissions: list }).then(function (res) {
+                busy = false;
+                if (!res.ok) {                     // e.g. the last person who can manage people
+                    msg.textContent = (res.d && res.d.error) || 'Could not save.';
+                    save.disabled = false; save.textContent = 'Save';
+                    return;
+                }
+                close();
+                load();
+            });
+        };
     }
 
     function renderList(people) {
@@ -189,7 +261,7 @@
                 : (youCanManage ? '<button class="remove-btn" type="button" data-email="' + esc(p.email) + '" data-name="' + esc(p.name) + '">Remove</button>' : '');
             return '<div class="row">'
                 + '<div class="avatar">' + esc(initials(p.name)) + '</div>'
-                + '<div class="who"><div class="name">' + esc(p.name) + '</div><div class="email">' + esc(p.email) + '</div></div>'
+                + '<div class="who"><div class="name"><button type="button" class="name-btn open-perms" data-email="' + esc(p.email) + '" title="See what ' + esc(p.name) + ' may do">' + esc(p.name) + '</button></div><div class="email">' + esc(p.email) + '</div></div>'
                 + '<span class="badge ' + (p.kind === 'google' ? 'google' : '') + '">' + badge + '</span>'
                 + roleHtml(p)
                 + pw
@@ -219,16 +291,6 @@
         };
     }
 
-    function changeRole(sel) {
-        var before = sel.value === 'admin' ? 'staff' : 'admin';
-        if (busy) { sel.value = before; return; }
-        busy = true; sel.disabled = true;
-        post('/api/people/role', { email: sel.getAttribute('data-email'), role: sel.value }).then(function (res) {
-            busy = false; sel.disabled = false;
-            if (!res.ok) { alert((res.d && res.d.error) || 'Could not change the role.'); sel.value = before; return; }
-            load();
-        });
-    }
 
     // New password in place, under the row. Save is locked while it saves.
     function askNewPassword(btn) {
@@ -267,8 +329,8 @@
         Array.prototype.forEach.call(listEl.querySelectorAll('.remove-btn'), function (btn) {
             btn.addEventListener('click', function () { askToRemove(btn); });
         });
-        Array.prototype.forEach.call(listEl.querySelectorAll('.role-select'), function (sel) {
-            sel.addEventListener('change', function () { changeRole(sel); });
+        Array.prototype.forEach.call(listEl.querySelectorAll('.open-perms'), function (el) {
+            el.addEventListener('click', function () { openPermissions(el.getAttribute('data-email')); });
         });
     }
 
@@ -286,7 +348,10 @@
             var d = res.d;
             youEmail = d.you;
             youCanManage = !!d.youCanManage;
-            document.getElementById('noAdmin').hidden = !!d.hasAdmin || !(d.people && d.people.length);
+            catalog = Array.isArray(d.catalog) ? d.catalog : [];
+            peopleByEmail = {};
+            (d.people || []).forEach(function (p) { peopleByEmail[String(p.email).toLowerCase()] = p; });
+            document.getElementById('noAdmin').hidden = !!d.listsOn || !(d.people && d.people.length);
             document.getElementById('addCard').hidden = !youCanManage;
             document.getElementById('notManager').hidden = youCanManage;
             renderList(d.people || []);
@@ -314,7 +379,6 @@
         var email = document.getElementById('email').value.trim();
         var password = document.getElementById('password').value;
         var confirmPassword = document.getElementById('confirmPassword').value;
-        var role = document.getElementById('role').value;
 
         addMsg.className = 'msg';
         if (!name) { addMsg.className = 'msg bad'; addMsg.textContent = 'Enter a name.'; return; }
@@ -328,7 +392,7 @@
         addMsg.textContent = 'Adding…';
         fetch('/api/people', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: name, email: email, method: method, role: role, password: password, confirmPassword: confirmPassword })
+            body: JSON.stringify({ name: name, email: email, method: method, password: password, confirmPassword: confirmPassword })
         }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
           .then(function (res) {
             addBtn.disabled = false;

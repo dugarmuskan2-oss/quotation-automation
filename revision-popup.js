@@ -63,13 +63,25 @@
         try { window.localStorage.setItem(STORE_KEY, JSON.stringify(kept)); } catch (e) { /* memory copy still holds */ }
     }
 
+    // "Ravi Kumar · 16 Oct, 3:20 pm" — who asked (stamped by the server) and when, India time.
+    // index.html has the same helper; this copy keeps the file working on its own.
+    function askStamp(ask) {
+        if (typeof window !== 'undefined' && typeof window.formatAskStamp === 'function') return window.formatAskStamp(ask);
+        var when = ask && ask.addedAt ? new Date(ask.addedAt) : null;
+        var time = (when && !isNaN(when.getTime()))
+            ? when.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }) : '';
+        return [ask && ask.addedBy ? String(ask.addedBy) : '', time].filter(Boolean).join(' · ');
+    }
+
     function rowHtml(item) {
         var q = item.quote;
         var name = [q.quoteNumber, q.companyName || q.projectName].filter(Boolean).join(' — ') || 'Quotation';
         var text = plainText(item.ask.text);
         if (text.length > 140) text = text.slice(0, 137) + '…';
+        var stamp = askStamp(item.ask);
         return '<li style="margin:0 0 8px;"><b>' + esc(name) + '</b>'
-            + (text ? '<br><span style="color:#555;">' + esc(text) + '</span>' : '') + '</li>';
+            + (text ? '<br><span style="color:#555;">' + esc(text) + '</span>' : '')
+            + (stamp ? '<br><span style="color:#999;font-size:12px;">' + esc(stamp) + '</span>' : '') + '</li>';
     }
 
     function checkNow() {
@@ -124,6 +136,6 @@
     }
 
     window.RevisionPopup = { check: check, markShown: markShown };
-    window.RevisionPopup._test = { revisionsDueToday: revisionsDueToday, todayKey: todayKey, plainText: plainText };
+    window.RevisionPopup._test = { revisionsDueToday: revisionsDueToday, todayKey: todayKey, plainText: plainText, askStamp: askStamp };
     setInterval(poll, CHECK_EVERY_MS);
 })();

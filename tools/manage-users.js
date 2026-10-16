@@ -6,6 +6,10 @@
  *   node tools/manage-users.js list
  *   node tools/manage-users.js add "Muskan" muskan@dscpipes.com
  *   node tools/manage-users.js remove muskan@dscpipes.com
+ *   node tools/manage-users.js grant muskan@dscpipes.com all          (every tick — Admin)
+ *   node tools/manage-users.js grant muskan@dscpipes.com addNotes,deleteNotes
+ *
+ * "grant" is the way back in if the ticks ever leave nobody able to manage people.
  *
  * The password is TYPED IN, never passed as an argument: an argument is visible to every other
  * process on the machine and lands in the shell's history file. Only the scrypt hash is stored,
@@ -23,6 +27,14 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const storage = require('../storage');
 const { CONFIG_KEY_USERS, configKey } = require('../utils/constants');
 const { hashPassword } = require('../utils/auth');
+const perms = require('../utils/permissions');
+
+// One person's ticks, with role:'admin' kept in step (as routes/auth.js does).
+function withPermissions(user, list) {
+    const copy = Object.assign({}, user, { permissions: perms.cleanPermissions(list) });
+    if (copy.permissions.includes('managePeople')) copy.role = 'admin'; else delete copy.role;
+    return copy;
+}
 
 function askHidden(question) {
     return new Promise((resolve) => {
@@ -72,7 +84,8 @@ async function main() {
             console.log('Until someone does, the shared APP_PASSWORD is the only way in.');
             return;
         }
-        users.forEach((u, i) => console.log('  ' + (i + 1) + '. ' + label(u)));
+        users.forEach((u, i) => console.log('  ' + (i + 1) + '. ' + label(u) + '   [' + perms.permissionsOf(u).join(', ') + ']'));
+        if (!perms.listsOn(users)) console.log('\nNobody has managePeople yet, so everyone signed in may do everything.');
         return;
     }
 
@@ -101,6 +114,8 @@ async function main() {
             if (password !== again) { console.error('Those did not match. Nothing was changed.'); process.exit(1); }
             record = { name, email, hash: hashPassword(password) };
         }
+        // Re-adding someone (say, to reset a password) keeps their ticks.
+        record = withPermissions(record, existing >= 0 ? perms.permissionsOf(users[existing]) : perms.STAFF_DEFAULT);
         if (existing >= 0) { users[existing] = record; console.log('Updated ' + label(record)); }
         else { users.push(record); console.log('Added ' + label(record)); }
         await saveUsers(users);
@@ -112,6 +127,11 @@ async function main() {
         const email = String(arg1 || '').trim().toLowerCase();
         const kept = users.filter((u) => String(u.email || '').toLowerCase() !== email);
         if (kept.length === users.length) { console.error('No login found for ' + email); process.exit(1); }
+        if (perms.leavesNoManager(users, kept)) {
+            console.error('That is the last person who can manage people. Grant managePeople to someone else first:');
+            console.error('  node tools/manage-users.js grant someone@dscpipes.com all');
+            process.exit(1);
+        }
         // Removing the last person would leave only the shared password — fine, but say so, since
         // with no APP_PASSWORD set either it would leave the site open to anyone.
         if (!kept.length) {
@@ -125,7 +145,27 @@ async function main() {
         return;
     }
 
-    console.error('Unknown command. Use: list | add | remove');
+    if (command === 'grant') {
+        const email = String(arg1 || '').trim().toLowerCase();
+        const want = String(arg2 || '').trim();
+        const i = users.findIndex((u) => perms.sameEmail(u.email, email));
+        if (i < 0 || !want) {
+            console.error('Usage: node tools/manage-users.js grant email@dscpipes.com all|key,key');
+            console.error('Keys: ' + perms.ALL.join(', '));
+            process.exit(1);
+        }
+        const list = want === 'all' ? perms.ALL : want.split(',').map((k) => k.trim());
+        const unknown = list.filter((k) => !perms.ALL.includes(k));
+        if (unknown.length) { console.error('Not a permission: ' + unknown.join(', ') + '\nKeys: ' + perms.ALL.join(', ')); process.exit(1); }
+        const next = users.slice();
+        next[i] = withPermissions(users[i], list);
+        if (perms.leavesNoManager(users, next)) { console.error('That would leave nobody able to manage people. Nothing was changed.'); process.exit(1); }
+        await saveUsers(next);
+        console.log(label(next[i]) + ' may now: ' + perms.permissionsOf(next[i]).join(', '));
+        return;
+    }
+
+    console.error('Unknown command. Use: list | add | remove | grant');
     process.exit(1);
 }
 

@@ -164,6 +164,15 @@ function makeApp(store, opts = {}) {
     const app = express();
     app.use(express.json({ limit: '10mb' }));
     const ddb = makeDdb(store, opts);
+    // The real app's auth gate signs a person in before these routes run. This stands in for it:
+    // someone with every tick, unless a test says who (x-test-user) or what they may do.
+    app.use((req, res, next) => {
+        const who = req.headers['x-test-user'] || 'Test Admin';
+        const list = req.headers['x-test-permissions'];
+        req.user = { who, kind: 'person', email: who.toLowerCase().replace(/\s+/g, '.') + '@dscpipes.com',
+            permissions: list !== undefined ? String(list).split(',').filter(Boolean) : require('../utils/permissions').ALL };
+        next();
+    });
     app.use('/api', createQuotationsRouter({
         ddbDocClient: ddb.send ? { send: ddb.send } : null,
         ddbTableName: 'T',
@@ -605,7 +614,10 @@ const concurrencySeed = () => storeOf([quoteItem('q1', Object.assign(
     { quoteNumber: 'DSC-600', companyName: 'Acme', updatedAt: '2026-07-30T12:00:00.000Z' }, clone(HEAVY)
 ))]);
 
-const addAsk = (app, body) => request(app).post('/api/quotations/q1/revision-request').send(body);
+const addAsk = (app, body, who) => {
+    const r = request(app).post('/api/quotations/q1/revision-request');
+    return (who ? r.set('x-test-user', who) : r).send(body);
+};
 
 describe('POST /quotations/:id/revision-request — simultaneous asks all survive', () => {
     test('two at once: BOTH are stored, and the clash really happened', async () => {
@@ -613,8 +625,9 @@ describe('POST /quotations/:id/revision-request — simultaneous asks all surviv
         const app = makeApp(store, { onGet: makeLatch(2) });   // neither may write before both have read
 
         const [a, b] = await Promise.all([
-            addAsk(app, { text: 'Change the freight to FOR Chennai', addedBy: 'Admin' }),
-            addAsk(app, { text: 'Add 2% cash discount', addedBy: 'Pavi' }),
+            // WHO is the signed-in person; a name the browser sends is ignored.
+            addAsk(app, { text: 'Change the freight to FOR Chennai', addedBy: 'Forged' }, 'Admin'),
+            addAsk(app, { text: 'Add 2% cash discount', addedBy: 'Forged' }, 'Pavi'),
         ]);
         expect(a.status).toBe(200);
         expect(b.status).toBe(200);

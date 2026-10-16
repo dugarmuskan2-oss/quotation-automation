@@ -163,11 +163,17 @@ function stampAdminMargins(lineItems, adminMargins) {
         if (bucketKey && margins[bucketKey] && margins[bucketKey].include === false) return next;
         if (bucket === 'Seamless') {
             const cfg = margins.seamless || {};
+            // The list rate is remembered the first time cost mode replaces it, so margins changed
+            // again later (Edit margins) can go back to "Price list" without quoting at cost.
             if (cfg.mode === 'cost') {
                 const costRate = parseFloat(next.costRate);
-                if (Number.isFinite(costRate) && costRate > 0) next.unitRate = String(costRate);
+                if (Number.isFinite(costRate) && costRate > 0) {
+                    if (next.listUnitRate === undefined) next.listUnitRate = String(next.unitRate == null ? '' : next.unitRate);
+                    next.unitRate = String(costRate);
+                }
                 next.marginPercent = String(adminPct(cfg.pct));
             } else {
+                if (next.listUnitRate !== undefined) { next.unitRate = next.listUnitRate; delete next.listUnitRate; }
                 next.marginPercent = '0';   // price list already includes margin
             }
         } else if (bucket === 'ERW' || bucket === 'GI') {

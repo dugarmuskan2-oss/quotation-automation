@@ -1,45 +1,41 @@
 'use strict';
 
 /**
- * utils/peopleRoles.js — admin or staff, and who may change the people list.
+ * utils/peopleRoles.js — "admin" or "staff", now worked out from the tick list.
  *
- * Each person on users.json may carry `role: 'admin'`. Anything else (or nothing — everyone
- * added before roles existed) is staff. Only an admin may add, remove or change the role of
- * anyone.
+ * The per-person permissions (utils/permissions.js) replaced the single admin flag on
+ * 16 Oct 2026. This file keeps the old names working for the code that still asks "is this
+ * person an admin?" — the appraisal (routes/appraisal.js, appraisal-page.js) and the People
+ * routes' older paths. An admin is someone who may manage people.
  *
- * Two rules keep this from locking the owner out:
- *   - Until SOMEONE is an admin, everyone signed in may manage the list. That is how the first
- *     admin gets made, on a list that predates roles.
- *   - The last admin can never be removed or made staff — the list would then be managed by
- *     nobody, or (by the first rule) silently by everyone again.
+ * users.json still carries role: 'admin' for every manager (routes/auth.js keeps it in step),
+ * so older code reading the file directly sees the same admins.
  *
  * Pure module: no I/O.
  */
 
+const P = require('./permissions');
+
 const ROLES = ['admin', 'staff'];
 
 function roleOf(user) {
-    return user && user.role === 'admin' ? 'admin' : 'staff';
+    return P.permissionsOf(user).includes('managePeople') ? 'admin' : 'staff';
 }
 
-function sameEmail(a, b) {
-    return !!a && !!b && String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
-}
+const sameEmail = P.sameEmail;
 
 function adminCount(users) {
-    return (Array.isArray(users) ? users : []).filter((u) => roleOf(u) === 'admin').length;
+    return P.managerCount(users);
 }
 
-/** May the person signed in as `email` add, remove or change roles? */
+/** May the person signed in as `email` add, remove or change people? */
 function canManagePeople(users, email) {
-    if (!adminCount(users)) return true;
-    const me = (Array.isArray(users) ? users : []).find((u) => sameEmail(u && u.email, email));
-    return roleOf(me) === 'admin';
+    return P.can(users, email, 'managePeople');
 }
 
-/** A change that would take the list from having an admin to having none is refused. */
+/** A change that would leave nobody able to manage people is refused. */
 function leavesNoAdmin(before, after) {
-    return adminCount(before) > 0 && adminCount(after) === 0;
+    return P.leavesNoManager(before, after);
 }
 
 /** 'admin' | 'staff' from whatever was sent; null when it is neither. */

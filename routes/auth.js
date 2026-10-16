@@ -16,6 +16,7 @@ const { CONFIG_KEY_USERS, COMPANY_EMAIL } = require('../utils/constants');
 const auth = require('../utils/auth');
 const googleAuth = require('../utils/googleAuth');
 const roles = require('../utils/peopleRoles');
+const perms = require('../utils/permissions');
 const reset = require('../utils/passwordReset');
 
 // Reading the people list from cloud storage on EVERY request would add a network round trip to
@@ -146,6 +147,10 @@ function createAuthGate({ storage }) {
                     console.warn('SECURITY: no APP_PASSWORD and no users.json — the app is OPEN to anyone with the address.');
                 }
                 res.setHeader('X-Auth-Status', 'not-configured');
+                // No logins at all: the site is open, as it always was. Marked here (never as a
+                // req.user — that would let reissueIfPossible sign an "open" cookie) so permission
+                // checks pass in this mode and only in this mode.
+                req.authOpen = true;
                 return next();
             }
 
@@ -153,6 +158,10 @@ function createAuthGate({ storage }) {
             const session = secret && auth.verifySession(auth.readCookie(req, auth.SESSION_COOKIE), secret);
             if (session) {
                 req.user = { who: session.who, kind: session.kind, email: session.email || null };
+                // Worked out from the list on every request — never kept in the cookie, so a
+                // changed tick applies at once and nobody is signed out. A list we could not read
+                // gives nothing at all rather than "everything".
+                req.user.permissions = ok ? perms.effectivePermissions(users, req.user.email) : [];
                 return next();
             }
             return refuse(req, res);
@@ -319,6 +328,12 @@ function createAuthRouter({ storage }) {
             email: session ? (session.email || null) : null,
             people: Array.isArray(users) ? users.length : 0,
             google: googleAuth.isConfigured(),      // whether to offer the Google button
+            // What this person may do, for the app to hide what they can't. The server checks
+            // every one of these again on the route itself; this only shapes the page.
+            permissions: !ok ? [] : (!auth.authIsConfigured(users) ? perms.ALL.slice()
+                : (session ? perms.effectivePermissions(users, session.email || null) : [])),
+            permissionsKnown: !!ok,
+            listsOn: perms.listsOn(users),
         });
     });
 
@@ -340,17 +355,29 @@ function createPeopleRouter({ storage }) {
     const router = express.Router();
     const EMAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    // Only an admin changes the list (any signed-in person while nobody is admin yet — see
-    // utils/peopleRoles.js). Checked on the server: the page hiding a button is not a lock.
+    // Only someone with "Manage people" changes the list (anyone signed in while nobody has it
+    // yet — see utils/permissions.js). Checked on the server: the page hiding a button is not a lock.
     function refuseUnlessManager(req, res, users) {
-        if (roles.canManagePeople(users, req.user && req.user.email)) return false;
-        res.status(403).json({ error: 'Only an admin can change who can sign in.' });
+        if (req.authOpen || roles.canManagePeople(users, req.user && req.user.email)) return false;
+        res.status(403).json({ error: 'Only someone allowed to manage people can change this.' });
         return true;
     }
     function refuseIfNoAdminLeft(res, before, after) {
         if (!roles.leavesNoAdmin(before, after)) return false;
-        res.status(400).json({ error: 'There must always be at least one admin. Make someone else admin first.' });
+        res.status(400).json({ error: 'Someone must always be able to manage people. Tick "Manage people" for someone else first.' });
         return true;
+    }
+    // Every change is made on a FRESH read of the list, never this instance's minute-old copy —
+    // otherwise two people changing ticks at nearly the same time would undo each other.
+    async function loadFresh() {
+        forgetUsers();
+        return loadUsers(storage);
+    }
+    // One person's ticks set, with role:'admin' kept in step for older code that still reads it.
+    function withPermissions(user, list) {
+        const copy = Object.assign({}, user, { permissions: perms.cleanPermissions(list) });
+        if (copy.permissions.includes('managePeople')) copy.role = 'admin'; else delete copy.role;
+        return copy;
     }
     async function savePeople(res, next) {
         try { await storage.saveText(CONFIG_KEY_USERS, JSON.stringify(next, null, 2)); }
@@ -367,10 +394,13 @@ function createPeopleRouter({ storage }) {
         const you = (req.user && req.user.email) || null;
         res.json({
             you,
-            youCanManage: roles.canManagePeople(users, you),
+            youCanManage: !!req.authOpen || roles.canManagePeople(users, you),
             hasAdmin: roles.adminCount(users) > 0,
+            listsOn: perms.listsOn(users),
+            catalog: perms.PERMISSIONS,
             people: users.map((u) => ({
                 role: roles.roleOf(u),
+                permissions: perms.permissionsOf(u),
                 name: u.name || u.email,
                 email: u.email,
                 // Computed from what is stored, not stored itself: a person added with --google
@@ -382,7 +412,7 @@ function createPeopleRouter({ storage }) {
     });
 
     router.post('/people', express.json(), async (req, res) => {
-        const { users, ok } = await loadUsers(storage);
+        const { users, ok } = await loadFresh();
         if (!ok) return res.status(503).json({ error: 'Cannot read the people list right now. Try again shortly.' });
         if (refuseUnlessManager(req, res, users)) return;
 
@@ -407,7 +437,12 @@ function createPeopleRouter({ storage }) {
             record = { name, email };
         }
 
-        if (roles.parseRole(req.body && req.body.role) === 'admin') record.role = 'admin';
+        // Ticks: what was sent, else (someone already on the list) what they had, else the staff
+        // default. Re-adding a person to change how they sign in must not strip their ticks.
+        const existing = users.find((u) => roles.sameEmail(u && u.email, email));
+        const sent = Array.isArray(req.body && req.body.permissions) ? req.body.permissions
+            : (roles.parseRole(req.body && req.body.role) === 'admin' ? perms.ALL : null);
+        record = withPermissions(record, sent || (existing ? perms.permissionsOf(existing) : perms.STAFF_DEFAULT));
 
         const next = users.filter((u) => String(u.email || '').toLowerCase() !== email);
         next.push(record);
@@ -433,7 +468,7 @@ function createPeopleRouter({ storage }) {
             return res.status(400).json({ error: 'You cannot remove yourself. Ask someone else to.' });
         }
 
-        const { users, ok } = await loadUsers(storage);
+        const { users, ok } = await loadFresh();
         if (!ok) return res.status(503).json({ error: 'Cannot read the people list right now. Try again shortly.' });
         if (refuseUnlessManager(req, res, users)) return;
         const next = users.filter((u) => String(u.email || '').toLowerCase() !== email);
@@ -450,7 +485,7 @@ function createPeopleRouter({ storage }) {
     // signs in once more; the person doing it stays signed in.
     router.post('/people/password', express.json(), async (req, res) => {
         const email = String((req.body && req.body.email) || '').trim().toLowerCase();
-        const { users, ok } = await loadUsers(storage);
+        const { users, ok } = await loadFresh();
         if (!ok) return res.status(503).json({ error: 'Cannot read the people list right now. Try again shortly.' });
         const self = roles.sameEmail(req.user && req.user.email, email);
         if (!self && refuseUnlessManager(req, res, users)) return;
@@ -465,27 +500,33 @@ function createPeopleRouter({ storage }) {
         res.json({ ok: true });
     });
 
-    // Admin or staff. The password hash is untouched, so nobody is signed out by a role change.
+    // One person's ticks. The password hash is untouched, so nobody is signed out by this.
+    router.post('/people/permissions', express.json(), async (req, res) => {
+        const email = String((req.body && req.body.email) || '').trim().toLowerCase();
+        const list = req.body && req.body.permissions;
+        if (!email || !Array.isArray(list)) return res.status(400).json({ error: 'Give an email and a list of permissions.' });
+        await setPermissions(req, res, email, list);
+    });
+
+    // Older pages: "admin" is every tick, "staff" the staff default.
     router.post('/people/role', express.json(), async (req, res) => {
         const email = String((req.body && req.body.email) || '').trim().toLowerCase();
         const role = roles.parseRole(req.body && req.body.role);
         if (!email || !role) return res.status(400).json({ error: 'Give an email and a role (admin or staff).' });
+        await setPermissions(req, res, email, role === 'admin' ? perms.ALL : perms.STAFF_DEFAULT);
+    });
 
-        const { users, ok } = await loadUsers(storage);
+    async function setPermissions(req, res, email, list) {
+        const { users, ok } = await loadFresh();
         if (!ok) return res.status(503).json({ error: 'Cannot read the people list right now. Try again shortly.' });
         if (refuseUnlessManager(req, res, users)) return;
         if (!users.some((u) => roles.sameEmail(u && u.email, email))) return res.status(404).json({ error: 'No one there with that email.' });
-
-        const next = users.map((u) => {
-            if (!roles.sameEmail(u && u.email, email)) return u;
-            const copy = Object.assign({}, u);
-            if (role === 'admin') copy.role = 'admin'; else delete copy.role;
-            return copy;
-        });
+        const next = users.map((u) => (roles.sameEmail(u && u.email, email) ? withPermissions(u, list) : u));
         if (refuseIfNoAdminLeft(res, users, next)) return;
         if (!(await savePeople(res, next))) return;
-        res.json({ ok: true });
-    });
+        const saved = next.find((u) => roles.sameEmail(u.email, email));
+        res.json({ ok: true, permissions: perms.permissionsOf(saved) });
+    }
 
     // Re-signs the acting person's own cookie under the secret the NEW list produces, so changing
     // the people list does not also sign out whoever just changed it. Silently does nothing for a

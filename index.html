@@ -1082,6 +1082,7 @@
         }
 
         async function initQuotations() {
+            await loadMyAccess();                  // what this person may do — before the first render
             initDropTargets();                     // paste boxes also accept a dropped file
             initApprovalFilters();                 // build the month/year dropdowns (no filter applied yet)
             approvedQuotationsCursor = null;
@@ -1105,7 +1106,7 @@
                 if (!res.ok) return;
                 const data = await safeJsonParse(res);
                 const found = Array.isArray(data.quotations) ? data.quotations : [];
-                if (window.RevisionPopup) window.RevisionPopup.check(found);   // revision-popup.js
+                if (typeof window !== "undefined" && window.RevisionPopup) window.RevisionPopup.check(found);   // revision-popup.js
                 let added = 0;
                 found.forEach(function(f) {
                     if (f && f.id != null && !f.deleted && !approvedQuotations.some(function(x){ return idsMatch(x.id, f.id); })) {
@@ -6033,7 +6034,7 @@
                 // Admin margin-allocation states + note chip
                 const isRegretted = quotation.adminStatus === 'regretted';
                 const adminStateBadgeHTML = isRegretted
-                    ? `<span class="q-pill q-regretted">Regretted${quotation.regretSentAt ? ' · reply sent' : ''}</span> <a href="#" class="gmail-link" style="font-size:12px;" onclick="event.preventDefault(); event.stopPropagation(); mdkUndoRegret(${JSON.stringify(String(quotation.id))});">Undo</a>`
+                    ? `<span class="q-pill q-regretted">Regretted${quotation.regretSentAt ? ' · reply sent' : ''}</span>${can('allocateMargins') ? ` <a href="#" class="gmail-link" style="font-size:12px;" onclick="event.preventDefault(); event.stopPropagation(); mdkUndoRegret(${JSON.stringify(String(quotation.id))});">Undo</a>` : ''}`
                     : (quotation.adminStatus === 'awaiting' && !quotation.sent ? '<span class="q-pill q-awaiting">Awaiting margin</span>' : '');
                 const adminNoteChipHTML = (!isRegretted && String(quotation.adminNote || '').trim())
                     ? '<span class="admin-note-badge">📝 Admin note</span>'
@@ -6574,6 +6575,7 @@
             const quotation = approvedQuotations.find(function(q) { return idsMatch(q.id, quotationId); });
             if (!quotation) { alert('Quotation not found!'); return; }
             const isNote = kind === 'note';
+            if (!can(isNote ? 'addNotes' : 'addRevisions')) { alert('You are not allowed to add ' + (isNote ? 'notes' : 'revision requests') + '. Ask someone who manages people to tick it for you.'); return; }
             const text = await promptMultiline(isNote
                 ? { title: 'Add a note for this quote', rich: true, quoteId: quotationId,
                     subtitle: 'Internal only — this does NOT put the quote in the revision list.',
@@ -6591,7 +6593,7 @@
                     body: JSON.stringify({ text: text.trim(), kind: isNote ? 'note' : 'revision' })
                 });
                 const result = await safeJsonParse(response);
-                if (!response.ok || !result.success) throw new Error(result.error || 'Failed to save');
+                if (!response.ok || !result.success) throw new Error(refusedMessage(result, result.error || 'Failed to save'));
                 // Mirror the server's entry locally so the card and the count update immediately.
                 if (isNote) {
                     if (!Array.isArray(quotation.extraNotes)) quotation.extraNotes = [];
@@ -6812,17 +6814,80 @@
 
         // One dated line per ask/note. Open revision asks are listed first and marked; done ones are
         // kept but greyed, so the card still shows what was asked after it has been dealt with.
-        function revisionEntryLineHTML(entry, opts) {
+        // ── What the signed-in person may do ─────────────────────────────────────────────
+        // From /api/me (utils/permissions.js). The server checks every one of these again on its
+        // own route; this only hides what they can't use. Until it is known — or if it could not
+        // be read — nothing is hidden, and a refused click explains itself.
+        let myAccess = { known: false, permissions: [] };
+        async function loadMyAccess() {
+            try {
+                const r = await fetch(`${API_BASE_URL}/me`, { credentials: 'same-origin' });
+                const d = await r.json();
+                if (r.ok && d && d.permissionsKnown && Array.isArray(d.permissions)) {
+                    myAccess = { known: true, permissions: d.permissions.slice(), who: d.who || '' };
+                }
+            } catch (e) { console.warn('Could not check what you may do — nothing hidden; the server still checks.', e.message); }
+        }
+        function can(key) { return !myAccess.known || myAccess.permissions.indexOf(key) >= 0; }
+        // A refused request (403) says so plainly, instead of "please try again".
+        function refusedMessage(result, fallback) {
+            return (result && result.code === 'no-permission' && result.error) ? result.error : fallback;
+        }
+
+        // "Ravi Kumar · 16 Oct, 3:20 pm" — who asked (stamped by the server from the sign-in) and
+        // when, in India time whatever the computer's settings. Old entries carry no name.
+        function formatAskStamp(entry) {
             const when = entry && entry.addedAt ? new Date(entry.addedAt) : null;
-            const stamp = (when && !isNaN(when.getTime()))
-                ? when.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '';
-            const who = entry && entry.addedBy ? ' · ' + escapeHtml(entry.addedBy) : '';
+            const time = (when && !isNaN(when.getTime()))
+                ? when.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })
+                : '';
+            return [entry && entry.addedBy ? String(entry.addedBy) : '', time].filter(Boolean).join(' · ');
+        }
+
+        function revisionEntryLineHTML(entry, opts) {
             const done = !!(entry && entry.done);
+            const isNote = !!(opts && opts.note);
+            // 🗑 sits OUTSIDE the text span: the note's own HTML is sanitised, and would drop it.
+            const del = (isNote && opts.quoteId != null && entry && entry.id && can('deleteNotes'))
+                ? '<button type="button" class="rev-note-del" title="Delete this note" data-qid="' + escapeHtml(String(opts.quoteId)) + '" data-note-id="' + escapeHtml(String(entry.id)) + '" onclick="event.stopPropagation(); deleteExtraNote(this)">🗑</button>'
+                : '';
             return '<div class="rev-ask-line' + (done ? ' is-done' : '') + '">'
-                + '<span class="rev-ask-dot">' + (opts && opts.note ? '🗒️' : (done ? '✓' : '●')) + '</span>'
+                + '<span class="rev-ask-dot">' + (isNote ? '🗒️' : (done ? '✓' : '●')) + '</span>'
                 + '<span class="rev-ask-text">' + revisionTextHtml(entry && entry.text) + '</span>'
-                + '<span class="rev-ask-meta">' + escapeHtml(stamp) + who + (done ? ' · done' : '') + '</span>'
+                + '<span class="rev-ask-meta">' + escapeHtml(formatAskStamp(entry)) + (done ? ' · done' : '') + '</span>'
+                + del
                 + '</div>';
+        }
+
+        // Delete one "Add another note" entry (needs "Delete notes"). Asks first; one click, one request.
+        const deletingNoteIds = {};
+        async function deleteExtraNote(btn) {
+            const quoteId = btn.getAttribute('data-qid');
+            const noteId = btn.getAttribute('data-note-id');
+            if (!quoteId || !noteId || deletingNoteIds[noteId]) return;
+            if (!confirm('Delete this note?\n\nIt is removed from the quote for everyone.')) return;
+            deletingNoteIds[noteId] = true;
+            btn.disabled = true;
+            try {
+                const response = await fetch(`${API_BASE_URL}/quotations/${encodeURIComponent(quoteId)}/extra-notes/${encodeURIComponent(noteId)}/delete`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({})
+                });
+                const result = await safeJsonParse(response);
+                if (!response.ok || !result.success) throw new Error(refusedMessage(result, result.error || ('request failed (' + response.status + ')')));
+                const quotation = approvedQuotations.find(function(q) { return idsMatch(q.id, quoteId); });
+                if (quotation) {
+                    quotation.extraNotes = Array.isArray(result.extraNotes) ? result.extraNotes
+                        : extraNotesOf(quotation).filter(function(n) { return !(n && n.id === noteId); });
+                    syncApprovedQuotationsGlobal();
+                    if (!refreshApprovalListPreservingEdits()) rerenderRevisionStrip(quotation.id, quotation);
+                }
+            } catch (error) {
+                console.error('Delete note failed:', error);
+                alert('The note was not deleted: ' + error.message);
+                btn.disabled = false;
+            } finally {
+                delete deletingNoteIds[noteId];
+            }
         }
 
         function buildRevisionStripHTML(quotation) {
@@ -6832,9 +6897,10 @@
             const doneAsks = asks.filter(function(r) { return r && r.done; });
             const notes = extraNotesOf(quotation);
 
+            // Each Add button shows only to someone with its tick ("Add revision requests" / "Add notes").
             const buttons = '<div class="rev-ask-actions">'
-                + '<button class="rev-ask-btn" type="button" onclick="event.stopPropagation(); addRevisionRequest(' + id + ', \'revision\')">📝 Add revision</button>'
-                + '<button class="rev-ask-btn rev-ask-btn-note" type="button" onclick="event.stopPropagation(); addRevisionRequest(' + id + ', \'note\')">🗒️ Add another note</button>'
+                + (can('addRevisions') ? '<button class="rev-ask-btn" type="button" onclick="event.stopPropagation(); addRevisionRequest(' + id + ', \'revision\')">📝 Add revision</button>' : '')
+                + (can('addNotes') ? '<button class="rev-ask-btn rev-ask-btn-note" type="button" onclick="event.stopPropagation(); addRevisionRequest(' + id + ', \'note\')">🗒️ Add another note</button>' : '')
                 + '</div>';
 
             if (!open.length && !doneAsks.length && !notes.length) {
@@ -6853,13 +6919,76 @@
             }
             if (notes.length) {
                 body += '<div class="rev-ask-h">🗒️ Notes</div>'
-                    + notes.map(function(r) { return revisionEntryLineHTML(r, { note: true }); }).join('');
+                    + notes.map(function(r) { return revisionEntryLineHTML(r, { note: true, quoteId: quotation.id }); }).join('');
             }
             if (doneAsks.length) {
                 body += '<div class="rev-ask-h">Revisions done</div>'
                     + doneAsks.map(function(r) { return revisionEntryLineHTML(r, {}); }).join('');
             }
             return '<div class="rev-ask-strip' + (open.length ? ' is-open' : '') + '">' + body + buttons + '</div>';
+        }
+
+        // Who allocated the margins (stamped by the server), for the "From the admin" strip.
+        function adminStripByHTML(q) {
+            const by = q && (q.allocatedBy || '');
+            return by ? ' <span style="font-weight:400;color:#8a7a5a;">· ' + escapeHtml(by) + '</span>' : '';
+        }
+        // "✏️ Edit margins" puts the quote back in the Margins box (only before it is sent, and not
+        // once freight is added — the box rebuilds the table without the freight line). "🗑" removes
+        // the admin note. Each needs its own tick.
+        function adminStripActionsHTML(q, hasNote) {
+            const qid = escapeHtml(String(q.id));
+            const freight = !!q.freightDistributedIntoMargin || /freight-row/.test(String(q.tableHTML || ''));
+            const reopen = (can('editMargins') && q.adminStatus === 'ready' && !q.sent && !freight)
+                ? '<button type="button" class="rev-ask-btn" data-qid="' + qid + '" onclick="event.stopPropagation(); reopenMargins(this)">✏️ Edit margins</button>' : '';
+            const clear = (hasNote && can('deleteNotes'))
+                ? '<button type="button" class="rev-ask-btn" data-qid="' + qid + '" onclick="event.stopPropagation(); clearAdminNote(this)" style="color:#A32D2D;">🗑 Remove note</button>' : '';
+            return (reopen || clear) ? '<div class="rev-ask-actions" style="margin-top:6px;">' + reopen + clear + '</div>' : '';
+        }
+        const adminStripBusy = {};
+        async function reopenMargins(btn) {
+            const id = btn.getAttribute('data-qid');
+            const q = approvedQuotations.find(function(x) { return idsMatch(x.id, id); });
+            if (!q || adminStripBusy[id]) return;
+            if (!confirm('Put ' + ((q.companyName || 'this quote') + ' ' + (q.quoteNumber || '')).trim() + ' back in the Margins box to change its margins?\n\nIt will need approving again after.')) return;
+            adminStripBusy[id] = true; btn.disabled = true;
+            try {
+                const response = await fetch(`${API_BASE_URL}/quotations/${encodeURIComponent(q.id)}/reopen-margins`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({})
+                });
+                const result = await safeJsonParse(response);
+                if (!response.ok || !result.success) throw new Error(refusedMessage(result, result.error || ('request failed (' + response.status + ')')));
+                Object.assign(q, result.quotation);
+                delete q._adminMarginsDraft;          // start from the margins chosen last time
+                syncApprovedQuotationsGlobal();
+                renderMarginDesk();
+                displayAllApprovedQuotations();
+                const desk = document.getElementById('marginDeskSection');
+                if (desk && desk.scrollIntoView) desk.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } catch (error) {
+                alert('Could not open the margins again: ' + error.message);
+                btn.disabled = false;
+            } finally { delete adminStripBusy[id]; }
+        }
+        async function clearAdminNote(btn) {
+            const id = btn.getAttribute('data-qid');
+            const q = approvedQuotations.find(function(x) { return idsMatch(x.id, id); });
+            if (!q || adminStripBusy[id]) return;
+            if (!confirm('Remove the admin note from this quote?\n\nIt is removed for everyone.')) return;
+            adminStripBusy[id] = true; btn.disabled = true;
+            try {
+                const response = await fetch(`${API_BASE_URL}/quotations/${encodeURIComponent(q.id)}/admin-note/clear`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expected: q.adminNote || '' })
+                });
+                const result = await safeJsonParse(response);
+                if (!response.ok || !result.success) throw new Error(refusedMessage(result, result.error || ('request failed (' + response.status + ')')));
+                q.adminNote = '';
+                syncApprovedQuotationsGlobal();
+                displayAllApprovedQuotations();
+            } catch (error) {
+                alert('The note was not removed: ' + error.message);
+                btn.disabled = false;
+            } finally { delete adminStripBusy[id]; }
         }
 
         function buildApprovalSplitLayout({ quotation, termsText, approveButtonHTML, saveButtonHTML, printButtonHTML, downloadButtonHTML, sendButtonHTML, copyLinkButtonHTML }) {
@@ -6878,7 +7007,7 @@
                 ? '\nNew company → assigned to ' + quotation.assignedTo : '';
             const adminNoteBlock = (typeof adminNoteHtml === 'function') ? adminNoteHtml(quotation) : '';
             const adminStripHTML = (quotation.adminStatus && quotation.adminStatus !== 'awaiting' && (adminMessage || adminAssigned || adminNoteBlock))
-                ? `<div class="mdk-admin-strip"><div class="h">👤 From the admin</div><div class="b">${escapeHtml(adminMessage + adminAssigned)}${adminNoteBlock}</div></div>`
+                ? `<div class="mdk-admin-strip"><div class="h">👤 From the admin${adminStripByHTML(quotation)}</div><div class="b">${escapeHtml(adminMessage + adminAssigned)}${adminNoteBlock}</div>${adminStripActionsHTML(quotation, !!adminNoteBlock)}</div>`
                 : '';
 
             // Revision asks + notes, with the two Add buttons. Always rendered (unlike the admin
@@ -7354,7 +7483,7 @@
                 + '<span class="mdk-name">' + escapeHtml((q.companyName || q.projectName || 'Quotation') + ' - ' + (q.quoteNumber || '')) + '</span>'
                 + '<span class="mdk-meta">' + s.count + ' items · ' + (s.types.join(' + ') || '—') + '</span>'
                 + (s.noRate ? '<span class="mdk-pill">⚠ ' + s.noRate + ' item' + (s.noRate > 1 ? 's' : '') + ' not in price list</span>' : '')
-                + '<span class="q-pill q-awaiting" style="margin-left:auto;">Awaiting margin</span>'
+                + '<span class="q-pill q-awaiting" style="margin-left:auto;">' + (q.adminReopenedAt ? 'Reopened' + (q.adminReopenedBy ? ' by ' + escapeHtml(q.adminReopenedBy) : '') : 'Awaiting margin') + '</span>'
                 + '</div>';
 
             // Collapsible body — everything below the header.
@@ -7400,8 +7529,13 @@
             h += '</div>';
 
             // Note for staff
-            h += '<div class="mdk-note-lbl">📝 Notes for staff <span style="color:#9b988e;">(optional — shown on the quote card and the printed enquiry; you can paste a table)</span></div>'
-                + '<div class="mdk-note" id="mdk-note-' + idAttr + '" contenteditable="true" data-ph="e.g. Quote the 6&quot; ERW at Jindal list less 5%." oninput="mdkNoteChanged(\'' + idAttr + '\',this.innerHTML)" onpaste="mdkNotePaste(event,\'' + idAttr + '\')">' + (typeof sanitizeRichNoteHtml === 'function' ? sanitizeRichNoteHtml(q.adminNote || '') : escapeHtml(q.adminNote || '')) + '</div>';
+            // Writing the note needs "Add notes"; without it the note is shown but can't be changed.
+            const noteEditable = can('addNotes');
+            h += '<div class="mdk-note-lbl">📝 Notes for staff <span style="color:#9b988e;">(optional — shown on the quote card and the printed enquiry; you can paste a table)</span>'
+                + (!noteEditable ? ' <span style="color:#A32D2D;">— you can\'t add notes</span>' : '') + '</div>'
+                + '<div class="mdk-note" id="mdk-note-' + idAttr + '" contenteditable="' + (noteEditable ? 'true' : 'false') + '" data-ph="' + (noteEditable ? 'e.g. Quote the 6&quot; ERW at Jindal list less 5%.' : '') + '"'
+                + (noteEditable ? ' oninput="mdkNoteChanged(\'' + idAttr + '\',this.innerHTML)" onpaste="mdkNotePaste(event,\'' + idAttr + '\')"' : '')
+                + '>' + (typeof sanitizeRichNoteHtml === 'function' ? sanitizeRichNoteHtml(q.adminNote || '') : escapeHtml(q.adminNote || '')) + '</div>';
 
             // Enquiry preview (lazy): the formatted email as-is (tables & layout preserved),
             // a View-in-Gmail link, and the retained attachment chips.
@@ -7422,9 +7556,9 @@
 
             // Action buttons — inside the body, at the bottom.
             h += '<div class="mdk-line" style="margin-top:14px;">'
-                + '<button type="button" class="mdk-regret" onclick="mdkRegret(\'' + idAttr + '\')">🚫 Regret</button>'
-                + '<button type="button" onclick="mdkDelete(\'' + idAttr + '\')" title="Delete this quote — for accidental entries" style="color:#A32D2D;border-color:#F0A0A0;">🗑 Delete</button>'
-                + '<button type="button" class="mdk-apply" style="margin-left:auto;" onclick="mdkSendToApproval(\'' + idAttr + '\')">→ Send to approval</button></div>';
+                + (can('allocateMargins') ? '<button type="button" class="mdk-regret" onclick="mdkRegret(\'' + idAttr + '\')">🚫 Regret</button>'
+                + '<button type="button" onclick="mdkDelete(\'' + idAttr + '\')" title="Delete this quote — for accidental entries" style="color:#A32D2D;border-color:#F0A0A0;">🗑 Delete</button>' : '')
+                + '<button type="button" class="mdk-apply" id="mdk-apply-' + idAttr + '" style="margin-left:auto;" onclick="mdkSendToApproval(\'' + idAttr + '\')">→ Send to approval</button></div>';
 
             h += '</div>';   // close .mdk-folder-body
             h += '</div>';   // close .mdk-card
@@ -7439,7 +7573,11 @@
             if (!section) return;
             // Awaiting margin allocation — but drop any already SENT to the customer: a quote
             // was created/sent without going through the desk, so there's nothing to allocate.
-            const waiting = approvedQuotations.filter(function(q) { return q.adminStatus === 'awaiting' && !q.sent && !q.deleted; });
+            const awaitingAll = approvedQuotations.filter(function(q) { return q.adminStatus === 'awaiting' && !q.sent && !q.deleted; });
+            // "Allocate margins" sees every waiting quote; "Edit margins" alone sees only the ones
+            // someone reopened. Neither tick: no box at all.
+            const waiting = can('allocateMargins') ? awaitingAll
+                : (can('editMargins') ? awaitingAll.filter(function(q) { return !!q.adminReopenedAt; }) : []);
             if (!waiting.length) {
                 section.style.display = 'none';
                 section.innerHTML = '';
@@ -7448,7 +7586,7 @@
             section.style.display = 'block';
             let h = '<div class="mdk-head"><span class="mdk-title">Margins to allocate</span>'
                 + '<span class="mdk-count">' + waiting.length + ' waiting</span>'
-                + '<span class="mdk-hint">only you use this section</span></div>';
+                + '<span class="mdk-hint">only people allowed to allocate margins see this</span></div>';
             waiting.forEach(function(q) { h += buildMarginDeskRow(q); });
             section.innerHTML = h;
             // Cards start collapsed; only load the enquiry email for ones already expanded.
@@ -7507,19 +7645,24 @@
             if (chips) chips.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
 
+        const mdkSending = {};
         async function mdkSendToApproval(id) {
             const q = mdkQuote(id);
-            if (!q) return;
+            if (!q || mdkSending[id]) return;          // a second click while the first is saving does nothing
             const noteEl = document.getElementById('mdk-note-' + id);
-            if (noteEl) q.adminNote = noteEl.innerHTML;
+            if (noteEl && can('addNotes')) q.adminNote = noteEl.innerHTML;
             const draft = adminMarginsOf(q);
+            const btn = document.getElementById('mdk-apply-' + id);
+            mdkSending[id] = true;
+            if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
             try {
                 const response = await fetch(`${API_BASE_URL}/quotations/${encodeURIComponent(q.id)}/apply-admin-margins`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         adminMargins: draft,
-                        adminNote: q.adminNote || '',
+                        // Left out entirely without "Add notes", so the stored note is left alone.
+                        ...(can('addNotes') ? { adminNote: q.adminNote || '' } : {}),
                         isNewCompany: !!q.isNewCompany,
                         assignedTo: q.assignedTo || ''
                     })
@@ -7532,6 +7675,9 @@
             } catch (error) {
                 console.error('Send to approval failed:', error);
                 alert('Could not send to approval: ' + error.message);
+                if (btn) { btn.disabled = false; btn.textContent = '→ Send to approval'; }
+            } finally {
+                delete mdkSending[id];
             }
         }
 
@@ -7540,6 +7686,7 @@
         async function mdkSetRegretStatus(id, undo, emailSent) {
             const q = mdkQuote(id);
             if (!q) return false;
+            if (!can('allocateMargins')) { alert('You are not allowed to regret quotes from the Margins box.'); return false; }
             try {
                 const response = await fetch(`${API_BASE_URL}/quotations/${encodeURIComponent(q.id)}/regret`, {
                     method: 'POST',
@@ -7600,6 +7747,7 @@
         // Delete an accidental / junk quote from the desk. Soft-delete (recoverable): the
         // backend flags it and every list filters it out. Confirmed first so it's not a misclick.
         async function mdkDelete(id) {
+            if (!can('allocateMargins')) { alert('You are not allowed to delete quotes from the Margins box.'); return; }
             const q = mdkQuote(id);
             const label = q ? ((q.companyName || q.projectName || 'this quote') + ' ' + (q.quoteNumber || '')).trim() : 'this quote';
             if (!confirm('Delete ' + label + '?\n\nIt is removed from the desk and all lists. Use this for accidental entries — it can be restored from the database if ever needed.')) return;
@@ -7622,6 +7770,9 @@
         async function mdkRegret(id) {
             const q = mdkQuote(id);
             if (!q) return;
+            // Checked BEFORE the email window: a refusal after the customer is emailed would leave
+            // the quote looking unregretted, one click from a second regret email.
+            if (!can('allocateMargins')) { alert('You are not allowed to regret quotes from the Margins box.'); return; }
             const company = q.companyName || q.projectName || 'this customer';
             if (q.gmailMessageId) {
                 // Same review-and-edit window a quotation gets. This used to be a browser confirm
@@ -12110,7 +12261,7 @@
     <script src="town-places.js?v=20261001-2"></script>
     <script src="partner-directory.js?v=20261010-2"></script>
     <script src="price-list.js?v=20261001-4"></script>
-    <script src="revision-popup.js?v=20261012-1"></script>
+    <script src="revision-popup.js?v=20261016-1"></script>
 </body>
 </html>
 

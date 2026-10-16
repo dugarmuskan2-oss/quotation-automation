@@ -61,6 +61,8 @@ function makeDeskRow(opts) {
         staffList: opts.staffList || [],
         buildEmailContentPreviewHTML: function (q) { return '<div class="preview">' + (q.emailContent || '') + '</div>'; },
         buildEnquiryFilesChipsHTML: function () { return '<div class="chips"></div>'; },
+        // What the viewer may do (index.html can()). Everything, unless a test says otherwise.
+        can: opts.can || function () { return true; },
     });
 }
 
@@ -211,7 +213,7 @@ describe('buildMarginDeskRow — HTML escaping of untrusted quote fields', () =>
 describe('renderMarginDesk — the desk filter is adminStatus === "awaiting" && !q.sent', () => {
     // Fake DOM section + a stub buildMarginDeskRow that just tags each rendered quote,
     // so we can read back exactly which quotes survived the real filter.
-    function runDesk(quotes) {
+    function runDesk(quotes, can) {
         const section = { style: {}, innerHTML: '' };
         const doc = { getElementById: function (id) { return id === 'marginDeskSection' ? section : null; } };
         const render = loadFns(['renderMarginDesk'], {
@@ -220,6 +222,7 @@ describe('renderMarginDesk — the desk filter is adminStatus === "awaiting" && 
             buildMarginDeskRow: function (q) { return '[row:' + q.id + ']'; },
             ensureDeskEnquiryLoaded: function () {},
             mdkExpandedIds: {},
+            can: can || function () { return true; },
         });
         render();
         return section;
