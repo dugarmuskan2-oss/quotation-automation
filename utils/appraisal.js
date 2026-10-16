@@ -48,24 +48,28 @@ function quartersOfHalf(k) {
 // ── Scoring ─────────────────────────────────────────────────────────────────
 
 /**
- * The items one person is scored on: their roles' items (no duplicates), then Behaviour, plus any
- * extra items set for that person alone. An extra filed under a job goes into Work results (even
- * if the job was since removed); one filed under Behaviour goes there.
+ * The items one person is scored on. `person` is { roles, extras, hidden }:
+ *  - their jobs' items (no duplicates), then Behaviour,
+ *  - minus any shared item removed for this person alone (`hidden`),
+ *  - plus extra items set for this person alone. An extra filed under a job goes into Work results
+ *    (even if the job was since removed); one filed under Behaviour goes there.
  */
-function groupsFor(setup, roleIds, extras) {
+function groupsFor(setup, person) {
+    const p = person || {};
+    const hidden = new Set(Array.isArray(p.hidden) ? p.hidden : []);
+    const mine = new Set(Array.isArray(p.roles) ? p.roles : []);
     const work = [];
     const seen = new Set();
-    const mine = new Set(Array.isArray(roleIds) ? roleIds : []);
     for (const r of (setup && setup.roles) || []) {
         if (!mine.has(r.id)) continue;
         for (const c of r.criteria || []) {
-            if (seen.has(c.id)) continue;
+            if (seen.has(c.id) || hidden.has(c.id)) continue;
             seen.add(c.id);
             work.push(c);
         }
     }
-    const behaviour = [...((setup && setup.behaviour) || [])];
-    for (const x of Array.isArray(extras) ? extras : []) (x.section === 'behaviour' ? behaviour : work).push(x);
+    const behaviour = ((setup && setup.behaviour) || []).filter((c) => !hidden.has(c.id));
+    for (const x of Array.isArray(p.extras) ? p.extras : []) (x.section === 'behaviour' ? behaviour : work).push(x);
     return { work, behaviour };
 }
 
@@ -226,28 +230,64 @@ function sanitizeMeeting(input) {
 
 const EXTRAS_MAX = 30;
 
-/** Items for one person only. Each sits under a job of the setup, or under Behaviour. */
+/**
+ * Items for one person only. Each sits under a job of the setup, or under Behaviour.
+ * `dropped` counts items that could not be kept (no name, or a heading that is no longer a job —
+ * e.g. Setup changed in another tab). The caller refuses the save rather than lose them silently.
+ */
 function cleanExtras(list, setup) {
     const sections = new Set([...(setup.roles || []).map((r) => r.id), 'behaviour']);
+    const sent = Array.isArray(list) ? list : [];
     const out = [];
-    for (const x of Array.isArray(list) ? list : []) {
+    for (const x of sent) {
         const id = cleanId(x && x.id);
         const name = cleanText(x && x.name, NAME_MAX).trim();
         if (!id || !id.startsWith('x_') || !name || !sections.has(x.section) || out.some((o) => o.id === id)) continue;
         out.push({ id, name, hint: cleanText(x.hint, 300), section: x.section });
     }
-    return out.slice(0, EXTRAS_MAX);
+    return { extras: out.slice(0, EXTRAS_MAX), dropped: sent.length - Math.min(out.length, EXTRAS_MAX) };
 }
 
-/** Roles and targets; extras only when sent, so a caller that doesn't send them keeps the old ones. */
+/** Shared items removed for one person: only ids that really are items of the setup. */
+function cleanHidden(list, setup) {
+    const valid = allItemIds(setup);
+    return [...new Set(Array.isArray(list) ? list : [])].filter((id) => valid.has(id));
+}
+
+/**
+ * Roles and targets; extras and hidden only when sent, so a caller that doesn't send them keeps
+ * the old ones. Returns { profile } or { error } when some of the person's own items can't be kept.
+ */
 function sanitizeProfile(input, setup) {
     const src = input && typeof input === 'object' ? input : {};
     const valid = new Set((setup.roles || []).map((r) => r.id));
     const roles = [...new Set(Array.isArray(src.roles) ? src.roles : [])].filter((id) => valid.has(id));
-    const out = { roles, targets: cleanText(src.targets).trim() };
-    if (Array.isArray(src.extras)) out.extras = cleanExtras(src.extras, setup);
-    return out;
+    const profile = { roles, targets: cleanText(src.targets).trim() };
+    if (Array.isArray(src.extras)) {
+        const { extras, dropped } = cleanExtras(src.extras, setup);
+        if (dropped) return { error: 'Setup has changed since you opened this page, so some of their own items no longer fit. Reload the page, then make your change again.' };
+        profile.extras = extras;
+    }
+    if (Array.isArray(src.hidden)) profile.hidden = cleanHidden(src.hidden, setup);
+    return { profile };
 }
+
+// ── The staff list ──────────────────────────────────────────────────────────
+
+const EMAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** A new staff member: a name, and optionally the email they sign in with. Or an error message. */
+function sanitizeNewStaff(input) {
+    const src = input && typeof input === 'object' ? input : {};
+    const name = cleanText(src.name, NAME_MAX).trim();
+    const email = cleanText(src.email, 200).trim().toLowerCase();
+    if (!name) return { error: 'Type a name.' };
+    if (email && !EMAIL_RX.test(email)) return { error: 'That email does not look right. Leave it blank or fix it.' };
+    return { staff: { name, email } };
+}
+
+/** A staff member's stable id: it names their saved files, so it never changes. */
+function newStaffId() { return 's-' + crypto.randomBytes(6).toString('hex'); }
 
 /** A storage-safe key part for one person, the same for any spelling of their email. */
 function personSlug(email) {
@@ -309,5 +349,6 @@ module.exports = {
     quarterKey, halfKey, isQuarterKey, isHalfKey, quartersOfHalf,
     groupsFor, weightedTotal, itemCount, unscoredCount, raiseFor,
     sanitizeSetup, sanitizeSelfReview, sanitizeManagerReview, sanitizeMeeting, sanitizeProfile,
+    sanitizeNewStaff, newStaffId,
     personSlug,
 };

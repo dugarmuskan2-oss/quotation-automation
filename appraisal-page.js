@@ -19,7 +19,7 @@
         loaded: false, loadError: null, you: null, hasAdmin: true, setup: null, isStarter: false,
         people: [], mine: null, tab: null, q: null, h: null, busy: false, dirty: false,
         open: null, draft: null, openMeet: null, meetDraft: null, myDraft: null, myDraftKey: null,
-        editPerson: null, setupDraft: null, leaveArmed: false
+        editPerson: null, setupDraft: null, leaveArmed: false, newStaff: { name: '', email: '' }, removeArmed: null
     };
     var $ = function (s) { return document.querySelector(s); };
     function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -51,14 +51,16 @@
     function raiseFor(t) { if (t == null) return null; var rs = ((S.setup && S.setup.raises) || []).slice().sort(function (a, b) { return b.min - a.min; }); return rs.filter(function (r) { return t >= r.min; })[0] || null; }
     function fmt(v) { return v == null ? '–' : (Number.isInteger(v) ? String(v) : v.toFixed(2)); }
     function scoreChip(v) { if (v == null) return '<span class="score">–</span>'; return '<span class="score ' + colourOf(v) + '">' + fmt(v) + '</span>'; }
-    /** Mirrors utils/appraisal.js groupsFor: job items, Behaviour, plus this person's own extras. */
-    function groupsFor(roleIds, extras) {
-        var work = [], seen = {}, mine = roleIds || [], behaviour = (S.setup.behaviour || []).slice();
+    /** Mirrors utils/appraisal.js groupsFor. `prof` is { roles, extras, hidden }: job items and
+     *  Behaviour, minus shared items removed for this person, plus their own extra items. */
+    function groupsFor(prof) {
+        var p = prof || {}, hidden = p.hidden || [], keep = function (c) { return hidden.indexOf(c.id) < 0; };
+        var work = [], seen = {}, mine = p.roles || [], behaviour = (S.setup.behaviour || []).filter(keep);
         (S.setup.roles || []).forEach(function (r) {
             if (mine.indexOf(r.id) < 0) return;
-            (r.criteria || []).forEach(function (c) { if (!seen[c.id]) { seen[c.id] = 1; work.push(Object.assign({ role: r.name }, c)); } });
+            (r.criteria || []).forEach(function (c) { if (!seen[c.id] && keep(c)) { seen[c.id] = 1; work.push(Object.assign({ role: r.name }, c)); } });
         });
-        (extras || []).forEach(function (x) {
+        (p.extras || []).forEach(function (x) {
             if (x.section === 'behaviour') behaviour.push(Object.assign({ extra: true }, x));
             else work.push(Object.assign({ extra: true, role: roleName(x.section) || 'Extra items' }, x));
         });
@@ -103,10 +105,12 @@
             }, function () { throw new Error('Could not reach the server. Check your connection and try again.'); });
     }
     /** One write at a time. While it runs every button on the page is disabled. */
-    function save(method, url, body, done) {
+    function save(method, url, body, done) { run(function () { return api(method, url, body); }, done); }
+    /** Like save, for a write made of more than one request (`work` returns a promise). */
+    function run(work, done) {
         if (S.busy) return;
         S.busy = true; lockButtons(true);
-        api(method, url, body).then(function (d) { S.busy = false; return done(d); })
+        work().then(function (d) { S.busy = false; return done(d); })
             .catch(function (e) { S.busy = false; lockButtons(false); toast(e.message); });
     }
     function lockButtons(on) { document.querySelectorAll('#main button').forEach(function (b) { b.disabled = on; }); }
@@ -114,17 +118,20 @@
         return api('GET', '/api/appraisal/me').then(function (me) {
             S.you = me.you; S.hasAdmin = me.hasAdmin; S.testSite = me.testSite; S.setup = me.setup; S.isStarter = me.isStarter; S.mine = me.mine;
             if (!me.you.isAdmin) return;
-            return api('GET', '/api/appraisal/overview').then(function (o) { S.setup = o.setup; S.isStarter = o.isStarter; S.people = o.people; });
+            return api('GET', '/api/appraisal/overview').then(function (o) { S.setup = o.setup; S.isStarter = o.isStarter; S.people = o.people; S.removed = o.removed || []; });
         }).then(function () { S.loaded = true; S.loadError = null; }, function (e) { S.loadError = e.message; });
     }
     var toastTimer;
     function toast(msg) { var t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.hidden = true; }, 3600); }
 
     // ── Lookups (admin view) ────────────────────────────────────────────────
-    function staffPeople() { return S.people.filter(function (p) { return p.role !== 'admin'; }); }
-    function person(email) { return S.people.filter(function (p) { return p.email === email; })[0]; }
+    // Everyone in S.people is on the appraisal staff list (the server sends no one else).
+    function staffPeople() { return S.people; }
+    function person(id) { return S.people.filter(function (p) { return p.id === id; })[0]; }
     function rolesOf(p) { return (p.mgr && p.mgr.roles) || []; }
     function extrasOf(p) { return (p && p.mgr && p.mgr.extras) || []; }
+    function hiddenOf(p) { return (p && p.mgr && p.mgr.hidden) || []; }
+    function profileOf(p) { return { roles: rolesOf(p), extras: extrasOf(p), hidden: hiddenOf(p) }; }
     function roleNames(ids) { return (S.setup.roles || []).filter(function (r) { return ids.indexOf(r.id) >= 0; }).map(function (r) { return r.name; }); }
     function mgrReview(p, q) { return (p.mgr && p.mgr.reviews && p.mgr.reviews[q]) || null; }
     function selfReview(p, q) {
@@ -169,15 +176,15 @@
     function viewReviews() {
         var qi = parseQ(S.q), list = staffPeople();
         var h = '<div class="stack"><div class="row between"><div class="row"><label class="lbl" for="q-pick" style="margin:0">Quarter</label>' + qSelect('q-pick', S.q, 6) + '</div><p class="small muted">Staff fill their form at the end of each quarter. You score them after.</p></div>';
-        if (!list.length) return h + emptyBox('No staff yet', 'Everyone on the People page who is not an admin shows up here.', '<a class="btn primary" href="/people.html">Open People</a>') + '</div>';
+        if (!list.length) return h + emptyBox('No staff yet', 'Add the people you appraise on the Staff tab.', '<button class="btn primary" data-act="tab" data-v="staff">Add staff</button>') + '</div>';
         var forms = 0, done = 0;
         var rows = list.map(function (p) {
-            var g = groupsFor(rolesOf(p), extrasOf(p)), self = selfReview(p, qi.key), mr = mgrReview(p, qi.key);
+            var g = groupsFor(profileOf(p)), self = selfReview(p, qi.key), mr = mgrReview(p, qi.key);
             if (self) forms++; if (mr && mr.done) done++;
             var form = self ? (self.source === 'staff' ? '<span class="chip ok">Submitted</span>' : '<span class="chip info">Typed in by you</span>') : '<span class="chip wait">Waiting</span>';
             var rev = mr && mr.done ? '<span class="chip ok">Done</span>' : (mr && Object.keys(mr.scores || {}).length ? '<span class="chip wait">Started</span>' : '<span class="chip">Not started</span>');
             var noRole = rolesOf(p).length ? '' : ' <span class="chip wait">No role</span>';
-            return '<tr><td class="name">' + esc(p.name) + '</td><td class="small muted">' + esc(roleNames(rolesOf(p)).join(', ')) + noRole + '</td><td>' + form + '</td><td>' + scoreChip(self ? total(g, self.scores) : null) + '</td><td>' + rev + '</td><td>' + scoreChip(mr ? total(g, mr.scores) : null) + '</td><td><button class="btn sm" data-act="open-review" data-v="' + esc(p.email) + '">' + (mr && mr.done ? 'View' : 'Score') + '</button></td></tr>';
+            return '<tr><td class="name">' + esc(p.name) + '</td><td class="small muted">' + esc(roleNames(rolesOf(p)).join(', ')) + noRole + '</td><td>' + form + '</td><td>' + scoreChip(self ? total(g, self.scores) : null) + '</td><td>' + rev + '</td><td>' + scoreChip(mr ? total(g, mr.scores) : null) + '</td><td><button class="btn sm" data-act="open-review" data-v="' + esc(p.id) + '">' + (mr && mr.done ? 'View' : 'Score') + '</button></td></tr>';
         }).join('');
         return h + '<p class="small"><strong>' + forms + ' of ' + list.length + '</strong> forms in · <strong>' + done + ' of ' + list.length + '</strong> reviewed for ' + esc(qi.label) + '</p><div class="tablewrap"><table><thead><tr><th>Name</th><th>Roles</th><th>Their form</th><th>Their score</th><th>Your review</th><th>Your score</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
     }
@@ -195,7 +202,7 @@
     }
     function viewReview() {
         var p = person(S.open); if (!p) { S.open = null; return viewReviews(); }
-        var qi = parseQ(S.q), g = groupsFor(rolesOf(p), extrasOf(p)), d = S.draft;
+        var qi = parseQ(S.q), g = groupsFor(profileOf(p)), d = S.draft;
         var own = p.self && p.self.reviews && p.self.reviews[qi.key] && p.self.reviews[qi.key].submittedAt ? p.self.reviews[qi.key] : null;
         var typingSelf = !own && d.typeSelf, self = own || (typingSelf ? d.selfByMgr : null);
         var h = '<div class="stack"><div><button class="btn link" data-act="close-review">← All staff</button></div>'
@@ -214,7 +221,7 @@
 
     // Admin: 6-month meetings
     function halfData(p, hi) {
-        var g = groupsFor(rolesOf(p), extrasOf(p));
+        var g = groupsFor(profileOf(p));
         var qs = hi.quarters.map(function (qi) { var self = selfReview(p, qi.key), mr = mgrReview(p, qi.key); return { qi: qi, self: self, mr: mr, tSelf: self ? total(g, self.scores) : null, tMgr: mr ? total(g, mr.scores) : null }; });
         var m = qs.map(function (x) { return x.tMgr; }).filter(function (v) { return v != null; });
         var rating = m.length ? m.reduce(function (a, b) { return a + b; }, 0) / m.length : null;
@@ -224,12 +231,12 @@
     function viewMeetings() {
         var hi = parseH(S.h), list = staffPeople();
         var h = '<div class="stack"><div class="row between"><div class="row"><label class="lbl" for="h-pick" style="margin:0">Half-year</label>' + hSelect('h-pick', S.h) + '</div><p class="small muted">The 6-month rating is the average of your two quarterly scores.</p></div>';
-        if (!list.length) return h + emptyBox('No staff yet', '', '<a class="btn primary" href="/people.html">Open People</a>') + '</div>';
+        if (!list.length) return h + emptyBox('No staff yet', 'Add the people you appraise on the Staff tab.', '<button class="btn primary" data-act="tab" data-v="staff">Add staff</button>') + '</div>';
         var rows = list.map(function (p) {
             var hd = halfData(p, hi), mt = meetingOf(p, hi.key);
             return '<tr><td class="name">' + esc(p.name) + '</td>' + hd.qs.map(function (x) { return '<td>' + scoreChip(x.tMgr) + '</td>'; }).join('')
                 + '<td>' + scoreChip(hd.rating) + ' <span class="small muted">' + esc(band(hd.rating)) + (hd.partial ? ' (1 quarter only)' : '') + '</span></td><td>' + (hd.raise ? esc(hd.raise.pct + '%') : '–') + '</td>'
-                + '<td>' + (mt && mt.done ? '<span class="chip ok">Held' + (mt.raisePct != null ? ' · ' + esc(mt.raisePct) + '% agreed' : '') + '</span>' : '<span class="chip">Not held</span>') + '</td><td><button class="btn sm" data-act="open-meet" data-v="' + esc(p.email) + '">Open</button></td></tr>';
+                + '<td>' + (mt && mt.done ? '<span class="chip ok">Held' + (mt.raisePct != null ? ' · ' + esc(mt.raisePct) + '% agreed' : '') + '</span>' : '<span class="chip">Not held</span>') + '</td><td><button class="btn sm" data-act="open-meet" data-v="' + esc(p.id) + '">Open</button></td></tr>';
         }).join('');
         return h + '<div class="tablewrap"><table><thead><tr><th>Name</th>' + hi.quarters.map(function (q) { return '<th>Q' + q.q + ' score</th>'; }).join('') + '<th>6-month rating</th><th>Suggested raise</th><th>Meeting</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
     }
@@ -259,34 +266,83 @@
         return h + '<div class="totals"><span class="small muted" id="dirty">' + (S.dirty ? 'Unsaved changes' : '') + '</span><div class="row"><button class="btn" data-act="save-meet">Save</button><button class="btn primary" data-act="done-meet">Save & mark held</button></div></div></div>';
     }
 
-    // Admin: staff roles and targets
-    /** Items set for this one person, each under a job or Behaviour. */
-    function extrasEditor(e) {
+    // Admin: the staff list, and each person's jobs, targets and full item list
+    /** What one person's form shows, as editor sections: each ticked job (plus any heading one of
+     *  their own items sits under), then Behaviour. A heading whose job was removed in Setup shows
+     *  as such, so its items can be moved or removed rather than silently dropped on save. */
+    function editorSections(e) {
+        var jobs = S.setup.roles || [], ids = e.roles.slice();
+        e.extras.forEach(function (x) { if (x.section !== 'behaviour' && ids.indexOf(x.section) < 0) ids.push(x.section); });
+        var order = jobs.map(function (j) { return j.id; });
+        ids.sort(function (a, b) { var i = order.indexOf(a), k = order.indexOf(b); return (i < 0 ? 1e9 : i) - (k < 0 ? 1e9 : k); });
+        var out = ids.map(function (id) {
+            var r = jobs.filter(function (j) { return j.id === id; })[0];
+            return r ? { id: id, name: r.name, shared: e.roles.indexOf(id) >= 0 ? (r.criteria || []) : [] } : { id: id, name: 'Job removed in Setup', shared: [], orphan: true };
+        });
+        out.push({ id: 'behaviour', name: 'Behaviour', shared: S.setup.behaviour || [] });
+        return out;
+    }
+    function sharedItemRow(c, e) {
+        var off = e.hidden.indexOf(c.id) >= 0;
+        return '<div class="itemrow' + (off ? ' off' : '') + '"><div><div class="cname">' + esc(c.name) + (off ? ' <span class="chip">Removed for them</span>' : '') + '</div><div class="hint">' + esc(c.hint || '') + '</div></div>'
+            + (off ? '<button class="btn sm" data-act="p-unhide" data-v="' + esc(c.id) + '">Put back</button>' : '<button class="btn sm danger" data-act="p-hide" data-v="' + esc(c.id) + '">Remove</button>') + '</div>';
+    }
+    function ownItemRow(x, i, orphan) {
         var opts = (S.setup.roles || []).map(function (r) { return [r.id, r.name]; }).concat([['behaviour', 'Behaviour']]);
-        return '<div class="stack" style="gap:6px"><div><span class="lbl" style="margin:0">Extra items for this person only</span><p class="small muted">Scored like any other item, under the heading you pick. Nobody else sees them.</p></div>'
-            + e.extras.map(function (x, i) {
-                return '<div class="editrow" style="grid-template-columns:minmax(0,1fr) minmax(0,2fr) auto auto"><input type="text" id="px-' + i + '-n" aria-label="Item name" placeholder="What is judged" value="' + esc(x.name) + '" data-d="person:extras.' + i + '.name">'
-                    + '<input type="text" id="px-' + i + '-h" aria-label="What good looks like" placeholder="What good looks like" value="' + esc(x.hint || '') + '" data-d="person:extras.' + i + '.hint">'
-                    + '<select id="px-' + i + '-s" aria-label="Show under" data-d="person:extras.' + i + '.section">' + opts.map(function (o) { return '<option value="' + o[0] + '"' + (x.section === o[0] ? ' selected' : '') + '>Under ' + esc(o[1]) + '</option>'; }).join('') + '</select>'
-                    + '<button class="btn sm danger" data-act="p-del-extra" data-i="' + i + '">Remove</button></div>';
-            }).join('') + '<div><button class="btn sm link" data-act="p-add-extra">+ Add an item for this person</button></div></div>';
+        var move = orphan ? '<select id="px-' + i + '-s" aria-label="Move under" data-d="person:extras.' + i + '.section"><option value="' + esc(x.section) + '" selected>Move under…</option>' + opts.map(function (o) { return '<option value="' + o[0] + '">' + esc(o[1]) + '</option>'; }).join('') + '</select>' : '';
+        return '<div class="itemrow own"><div class="editrow" style="padding:0"><input type="text" id="px-' + i + '-n" aria-label="Item name" placeholder="What is judged" value="' + esc(x.name) + '" data-d="person:extras.' + i + '.name">'
+            + '<input type="text" id="px-' + i + '-h" aria-label="What good looks like" placeholder="What good looks like" value="' + esc(x.hint || '') + '" data-d="person:extras.' + i + '.hint">' + move + '</div>'
+            + '<div class="row" style="gap:6px"><span class="chip info">Only for them</span><button class="btn sm danger" data-act="p-del-extra" data-i="' + i + '">Remove</button></div></div>';
+    }
+    /** One person's whole list, section by section: shared items (remove / put back for them only)
+     *  and their own items (edit / remove), with an add button under every heading. */
+    function itemsEditor(e, name) {
+        var count = groupsFor(e).reduce(function (n, g) { return n + g.items.length; }, 0);
+        return '<div class="stack" style="gap:10px"><div><span class="lbl" style="margin:0">Everything ' + esc(name) + ' is scored on · ' + count + ' items</span><p class="small muted">Removing a shared item here removes it for ' + esc(name) + ' only. To change it for everyone, use Setup.</p></div>'
+            + editorSections(e).map(function (sec) {
+                var own = e.extras.map(function (x, i) { return x.section === sec.id ? ownItemRow(x, i, sec.orphan) : ''; }).join('');
+                return '<div class="itemsec"><h4>' + esc(sec.name) + '</h4>' + sec.shared.map(function (c) { return sharedItemRow(c, e); }).join('') + own
+                    + (sec.orphan ? '' : '<div><button class="btn sm link" data-act="p-add-extra" data-v="' + esc(sec.id) + '">+ Add an item under ' + esc(sec.name) + '</button></div>') + '</div>';
+            }).join('') + '</div>';
+    }
+    function personEditor(e) {
+        var p = person(e.id), name = p ? p.name : '';
+        return '<div class="card stack"><h3>' + esc(name) + '</h3>'
+            + '<div class="grid2"><div><label class="lbl" for="p-name">Name</label><input type="text" id="p-name" data-d="person:name" value="' + esc(e.name) + '"></div>'
+            + '<div><label class="lbl" for="p-email">Email they sign in with (optional)</label><input type="email" id="p-email" data-d="person:email" value="' + esc(e.email) + '"></div></div>'
+            + '<div><span class="lbl">Jobs they do (pick all that apply)</span><div class="row">'
+            + (S.setup.roles || []).map(function (r) { return '<label class="check"><input type="checkbox" id="pr-' + r.id + '" data-act="p-role" data-v="' + r.id + '"' + (e.roles.indexOf(r.id) >= 0 ? ' checked' : '') + '> ' + esc(r.name) + '</label>'; }).join('')
+            + '</div></div><div><label class="lbl" for="p-targets">Current targets</label><textarea id="p-targets" data-d="person:targets" placeholder="For example: ₹40 lakh in orders this quarter, 5 new customers, no invoice over 60 days">' + esc(e.targets || '') + '</textarea></div>'
+            + itemsEditor(e, name)
+            + '<div class="row"><button class="btn primary" data-act="p-save">Save</button><button class="btn" data-act="p-cancel">Cancel</button></div></div>';
+    }
+    function addStaffCard() {
+        var n = S.newStaff;
+        return '<div class="card stack"><h3>Add a staff member</h3><div class="grid2"><div><label class="lbl" for="ns-name">Name</label><input type="text" id="ns-name" data-d="newstaff:name" value="' + esc(n.name) + '"></div>'
+            + '<div><label class="lbl" for="ns-email">Email they sign in with (optional)</label><input type="email" id="ns-email" data-d="newstaff:email" value="' + esc(n.email) + '" placeholder="Leave blank if they won\'t fill their own form"></div></div>'
+            + '<div><button class="btn primary" data-act="staff-add">Add</button></div></div>';
+    }
+    function staffRow(p) {
+        var t = (p.mgr && p.mgr.targets) || '', items = groupsFor(profileOf(p)).reduce(function (n, g) { return n + g.items.length; }, 0);
+        var armed = S.removeArmed === p.id;
+        return '<tr><td class="name">' + esc(p.name) + '</td><td class="small muted">' + esc(p.email || '–') + '</td><td>' + (roleNames(rolesOf(p)).map(function (n) { return '<span class="chip">' + esc(n) + '</span>'; }).join(' ') || '<span class="chip wait">None</span>') + '</td>'
+            + '<td class="small">' + items + '</td><td class="small muted">' + esc(t.slice(0, 50)) + (t.length > 50 ? '…' : '') + '</td>'
+            + '<td style="white-space:nowrap"><button class="btn sm" data-act="p-edit" data-v="' + esc(p.id) + '">Edit</button> <button class="btn sm danger" data-act="staff-remove" data-v="' + esc(p.id) + '">' + (armed ? 'Click again to remove' : 'Remove') + '</button></td></tr>';
     }
     function viewStaff() {
         var e = S.editPerson, list = staffPeople();
-        var h = '<div class="stack"><p class="small muted">Staff come from the <a href="/people.html">People page</a>. Admins are not appraised. Pick the roles each person plays; their roles decide the Work results items.</p>';
-        if (e) {
-            var p = person(e.email);
-            h += '<div class="card stack"><h3>' + esc(p ? p.name : e.email) + '</h3><div><span class="lbl">Roles they play (pick all that apply)</span><div class="row">'
-                + (S.setup.roles || []).map(function (r) { return '<label class="check"><input type="checkbox" id="pr-' + r.id + '" data-act="p-role" data-v="' + r.id + '"' + (e.roles.indexOf(r.id) >= 0 ? ' checked' : '') + '> ' + esc(r.name) + '</label>'; }).join('')
-                + '</div></div><div><label class="lbl" for="p-targets">Current targets</label><textarea id="p-targets" data-d="person:targets" placeholder="For example: ₹40 lakh in orders this quarter, 5 new customers, no invoice over 60 days">' + esc(e.targets || '') + '</textarea></div>'
-                + extrasEditor(e)
-                + '<div class="row"><button class="btn primary" data-act="p-save">Save</button><button class="btn" data-act="p-cancel">Cancel</button></div></div>';
-        }
-        if (!list.length) return h + emptyBox('No staff yet', 'Add people on the People page first.', '<a class="btn primary" href="/people.html">Open People</a>') + '</div>';
-        return h + '<div class="tablewrap"><table><thead><tr><th>Name</th><th>Email</th><th>Roles</th><th>Targets</th><th></th></tr></thead><tbody>' + list.map(function (p) {
-            var t = (p.mgr && p.mgr.targets) || '';
-            return '<tr><td class="name">' + esc(p.name) + '</td><td class="small muted">' + esc(p.email) + '</td><td>' + (roleNames(rolesOf(p)).map(function (n) { return '<span class="chip">' + esc(n) + '</span>'; }).join(' ') || '<span class="chip wait">None</span>') + '</td><td class="small muted">' + esc(t.slice(0, 60)) + (t.length > 60 ? '…' : '') + '</td><td><button class="btn sm" data-act="p-edit" data-v="' + esc(p.email) + '">Edit</button></td></tr>';
-        }).join('') + '</tbody></table></div></div>';
+        var h = '<div class="stack"><p class="small muted">Everyone on this list is appraised. Click Edit to set their jobs and see or change everything they are scored on. To let someone fill their own form, add the email they sign in with (they also need to be on the <a href="/people.html">People page</a>).</p>';
+        h += e ? personEditor(e) : addStaffCard();
+        if (!list.length) return h + emptyBox('No staff yet', 'Add your first staff member above.') + removedStaff() + '</div>';
+        return h + '<div class="tablewrap"><table><thead><tr><th>Name</th><th>Email</th><th>Jobs</th><th>Items</th><th>Targets</th><th></th></tr></thead><tbody>' + list.map(staffRow).join('') + '</tbody></table></div>' + removedStaff() + '</div>';
+    }
+    /** People taken off the list. Their scores were kept, so Bring back restores everything. */
+    function removedStaff() {
+        var r = S.removed || [];
+        if (!r.length) return '';
+        return '<details class="card"><summary style="cursor:pointer;font-weight:600">Removed staff (' + r.length + ')</summary><div class="stack" style="gap:6px;margin-top:10px">'
+            + r.map(function (p) { return '<div class="row between"><span>' + esc(p.name) + (p.email ? ' <span class="small muted">' + esc(p.email) + '</span>' : '') + ' <span class="small muted">· removed ' + esc(new Date(p.removedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })) + '</span></span><button class="btn sm" data-act="staff-restore" data-v="' + esc(p.id) + '">Bring back</button></div>'; }).join('')
+            + '</div></details>';
     }
 
     // Admin: setup
@@ -320,11 +376,12 @@
     // Staff: my review
     function viewMine() {
         if (!S.hasAdmin) return emptyBox('Not set up yet', 'Nobody is an admin on the People page yet, so there is no manager to review forms.');
+        if (!S.mine) return emptyBox('You are not on the staff list yet', 'Ask your manager to add you on the Staff tab, with the email you sign in with.');
         var quarters = quarterList(4);
         if (!quarters.some(function (q) { return q.key === S.q; })) S.q = quarters[1].key;
         var saved = S.mine.reviews[S.q] || null, locked = S.mine.lockedQuarters.indexOf(S.q) >= 0;
         if (S.myDraftKey !== S.q) { S.myDraft = clone(saved) || { scores: {}, notes: {}, wins: '', help: '' }; S.myDraftKey = S.q; S.dirty = false; }
-        var d = S.myDraft, g = groupsFor(S.mine.roles, S.mine.extras), qi = parseQ(S.q), left = unscored(g, d.scores);
+        var d = S.myDraft, g = groupsFor(S.mine), qi = parseQ(S.q), left = unscored(g, d.scores);
         var chip = locked ? '<span class="chip info">Reviewed by your manager</span>' : saved ? '<span class="chip ok">Submitted ' + esc(new Date(saved.submittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })) + '</span>' : '<span class="chip wait">Not submitted</span>';
         var h = '<div class="stack"><div class="row between"><div class="row"><label class="lbl" for="my-q" style="margin:0">Quarter</label>' + qSelect('my-q', S.q, 4) + '</div>' + chip + '</div>'
             + '<p class="small muted">Score yourself honestly for ' + esc(qi.label) + '. Your manager will score you too, and you will go over both at the 6-month meeting.</p>';
@@ -351,9 +408,19 @@
     function setPath(obj, path, val) { var ks = path.split('.'), o = obj; for (var i = 0; i < ks.length - 1; i++) { if (o[ks[i]] == null || typeof o[ks[i]] !== 'object') o[ks[i]] = {}; o = o[ks[i]]; } o[ks[ks.length - 1]] = val; }
     function draftFor(who) {
         if (who === 'selfm') { if (!S.draft) return null; S.draft.selfByMgr = S.draft.selfByMgr || { scores: {}, notes: {} }; return S.draft.selfByMgr; }
-        return { mgr: S.draft, self: S.myDraft, meet: S.meetDraft, person: S.editPerson, setup: S.setupDraft }[who];
+        return { mgr: S.draft, self: S.myDraft, meet: S.meetDraft, person: S.editPerson, setup: S.setupDraft, newstaff: S.newStaff }[who];
     }
     function markDirty() { S.dirty = true; var el = $('#dirty'); if (el) el.textContent = 'Unsaved changes'; }
+    /** Arm one Remove button for 4 seconds by changing only its own label. */
+    function armRemove(id) {
+        var label = function (on) {
+            var btn = Array.prototype.filter.call(document.querySelectorAll('[data-act="staff-remove"]'), function (x) { return x.dataset.v === id; })[0];
+            if (btn) btn.textContent = on ? 'Click again to remove' : 'Remove';
+        };
+        if (S.removeArmed) { var old = S.removeArmed; S.removeArmed = null; Array.prototype.forEach.call(document.querySelectorAll('[data-act="staff-remove"]'), function (x) { if (x.dataset.v === old) x.textContent = 'Remove'; }); }
+        S.removeArmed = id; S.removeArmedAt = Date.now(); label(true);
+        setTimeout(function () { if (S.removeArmed === id) { S.removeArmed = null; label(false); } }, 4000);
+    }
     /** Leaving with unsaved changes needs a second click. */
     function okToLeave() {
         if (!S.dirty) return true;
@@ -387,7 +454,7 @@
         delete d.base; delete d.typeSelf;
         if (!typeSelf) delete d.selfByMgr;
         if (markDone) {
-            var left = unscored(groupsFor(rolesOf(person(S.open)), extrasOf(person(S.open))), d.scores);
+            var left = unscored(groupsFor(profileOf(person(S.open))), d.scores);
             if (left) { toast('Score every item first. ' + left + ' still to score.'); return; }
             d.done = true;
         }
@@ -397,28 +464,29 @@
         });
     }
     function saveMeeting(markDone) {
-        var d = clone(S.meetDraft), base = d.base, setTargets = d.setTargets, email = S.openMeet, p = person(email);
+        var warn = null;   // a targets failure must outlast the "Meeting saved" message
+        var d = clone(S.meetDraft), base = d.base, setTargets = d.setTargets, id = S.openMeet, p = person(id);
         delete d.base; delete d.setTargets;
         if (markDone) d.done = true;
-        save('PUT', '/api/appraisal/meeting/' + encodeURIComponent(email) + '/' + S.h, { meeting: d, baseSavedAt: base }, function (r) {
+        save('PUT', '/api/appraisal/meeting/' + encodeURIComponent(id) + '/' + S.h, { meeting: d, baseSavedAt: base }, function (r) {
             var t = (d.newTargets || '').trim();
             var next = setTargets && t && t !== ((p.mgr && p.mgr.targets) || '')
-                ? api('PUT', '/api/appraisal/profile/' + encodeURIComponent(email), { roles: rolesOf(p), targets: t, baseSavedAt: (p.mgr && p.mgr.profileSavedAt) || null })
-                    .catch(function (e) { toast('Meeting saved, but the new targets were not: ' + e.message); })
+                ? api('PUT', '/api/appraisal/profile/' + encodeURIComponent(id), { roles: rolesOf(p), targets: t, baseSavedAt: (p.mgr && p.mgr.profileSavedAt) || null })
+                    .catch(function (e) { warn = 'Meeting saved, but the new targets were not: ' + e.message; })
                 : Promise.resolve();
             return next.then(function () {
                 if (markDone) S.openMeet = null; else { S.meetDraft.base = r.meeting.savedAt; }
-                return afterSave(markDone ? 'Meeting saved' : 'Saved');
+                return afterSave(warn || (markDone ? 'Meeting saved' : 'Saved'));
             });
         });
     }
     var actions = {
         reload: function () { S.loadError = null; render(); load().then(render); },
-        tab: function (b) { if (!okToLeave()) return; S.tab = b.dataset.v; S.open = S.openMeet = S.editPerson = S.setupDraft = null; S.myDraftKey = null; S.dirty = false; window.scrollTo(0, 0); render(); },
+        tab: function (b) { if (!okToLeave()) return; S.tab = b.dataset.v; S.open = S.openMeet = S.editPerson = S.setupDraft = S.removeArmed = null; S.newStaff = { name: '', email: '' }; S.myDraftKey = null; S.dirty = false; window.scrollTo(0, 0); render(); },
         score: function (b) { var d = draftFor(b.dataset.who); if (!d) return; d.scores = d.scores || {}; d.scores[b.dataset.c] = Number(b.dataset.v); markDirty(); render(); },
         'open-review': function (b) {
             var p = person(b.dataset.v), cur = mgrReview(p, S.q);
-            S.open = p.email; S.draft = clone(cur) || { scores: {}, notes: {}, comment: '', done: false };
+            S.open = p.id; S.draft = clone(cur) || { scores: {}, notes: {}, comment: '', done: false };
             S.draft.scores = S.draft.scores || {}; S.draft.notes = S.draft.notes || {};
             S.draft.typeSelf = !!(S.draft.selfByMgr && Object.keys(S.draft.selfByMgr.scores || {}).length);
             S.draft.base = cur ? cur.savedAt : null; S.dirty = false; window.scrollTo(0, 0); render();
@@ -429,22 +497,67 @@
         'done-review': function () { saveReview(true); },
         'open-meet': function (b) {
             var p = person(b.dataset.v), hd = halfData(p, parseH(S.h)), cur = meetingOf(p, S.h);
-            S.openMeet = p.email; S.meetDraft = clone(cur) || { wentWell: '', improve: '', newTargets: '', raisePct: hd.raise ? hd.raise.pct : null, date: '', done: false };
+            S.openMeet = p.id; S.meetDraft = clone(cur) || { wentWell: '', improve: '', newTargets: '', raisePct: hd.raise ? hd.raise.pct : null, date: '', done: false };
             S.meetDraft.base = cur ? cur.savedAt : null; S.meetDraft.setTargets = true; S.dirty = false; window.scrollTo(0, 0); render();
         },
         'close-meet': function () { if (!okToLeave()) return; S.openMeet = null; S.dirty = false; render(); },
         'meet-settargets': function (b) { S.meetDraft.setTargets = b.checked; markDirty(); },
         'save-meet': function () { saveMeeting(false); },
         'done-meet': function () { saveMeeting(true); },
-        'p-edit': function (b) { var p = person(b.dataset.v); S.editPerson = { email: p.email, roles: rolesOf(p).slice(), targets: (p.mgr && p.mgr.targets) || '', extras: clone(extrasOf(p)), base: (p.mgr && p.mgr.profileSavedAt) || null }; window.scrollTo(0, 0); render(); },
-        'p-add-extra': function () { var r = (S.setup.roles || [])[0]; S.editPerson.extras.push({ id: newId('x_'), name: '', hint: '', section: r ? r.id : 'behaviour' }); markDirty(); render(); },
-        'p-del-extra': function (b) { S.editPerson.extras.splice(+b.dataset.i, 1); markDirty(); render(); },
-        'p-cancel': function () { S.editPerson = null; S.dirty = false; render(); },
-        'p-role': function (b) { var r = S.editPerson.roles, i = r.indexOf(b.dataset.v); if (b.checked && i < 0) r.push(b.dataset.v); if (!b.checked && i >= 0) r.splice(i, 1); markDirty(); },
+        'p-edit': function (b) {
+            if (!okToLeave()) return;
+            var p = person(b.dataset.v);
+            S.editPerson = { id: p.id, name: p.name, email: p.email || '', roles: rolesOf(p).slice(), targets: (p.mgr && p.mgr.targets) || '', extras: clone(extrasOf(p)), hidden: hiddenOf(p).slice(), base: (p.mgr && p.mgr.profileSavedAt) || null };
+            S.dirty = false; window.scrollTo(0, 0); render();
+        },
+        'p-add-extra': function (b) {
+            var e = S.editPerson; if (!e) return;
+            e.extras.push({ id: newId('x_'), name: '', hint: '', section: b.dataset.v }); markDirty(); render();
+            var el = document.getElementById('px-' + (e.extras.length - 1) + '-n'); if (el) el.focus();
+        },
+        'p-del-extra': function (b) { if (!S.editPerson) return; S.editPerson.extras.splice(+b.dataset.i, 1); markDirty(); render(); },
+        'p-hide': function (b) { if (!S.editPerson) return; var h = S.editPerson.hidden; if (h.indexOf(b.dataset.v) < 0) h.push(b.dataset.v); markDirty(); render(); },
+        'p-unhide': function (b) { if (!S.editPerson) return; var h = S.editPerson.hidden, i = h.indexOf(b.dataset.v); if (i >= 0) h.splice(i, 1); markDirty(); render(); },
+        'p-cancel': function () { if (!okToLeave()) return; S.editPerson = null; S.dirty = false; render(); },
+        'p-role': function (b) { if (!S.editPerson) return; var r = S.editPerson.roles, i = r.indexOf(b.dataset.v); if (b.checked && i < 0) r.push(b.dataset.v); if (!b.checked && i >= 0) r.splice(i, 1); markDirty(); render(); },
+        /** Name/email first (the likelier one to be refused, e.g. an email already in use), then the
+         *  jobs, targets and items. If the second fails the panel stays open with the edits in it. */
         'p-save': function () {
-            var e = S.editPerson;
-            if (e.extras.some(function (x) { return !String(x.name || '').trim(); })) { toast('An extra item has no name. Type a name or remove it.'); return; }
-            save('PUT', '/api/appraisal/profile/' + encodeURIComponent(e.email), { roles: e.roles, targets: e.targets, extras: e.extras, baseSavedAt: e.base }, function () { S.editPerson = null; return afterSave('Saved'); });
+            var e = S.editPerson, p = person(e.id), jobs = (S.setup.roles || []).map(function (r) { return r.id; }).concat(['behaviour']);
+            if (!String(e.name || '').trim()) { toast('Type their name.'); return; }
+            if (e.extras.some(function (x) { return !String(x.name || '').trim(); })) { toast('One of their own items has no name. Type a name or remove it.'); return; }
+            if (e.extras.some(function (x) { return jobs.indexOf(x.section) < 0; })) { toast('Move or remove the items under "Job removed in Setup" first.'); return; }
+            var details = e.name.trim() !== p.name || e.email.trim().toLowerCase() !== (p.email || '');
+            run(function () {
+                var first = details ? api('PUT', '/api/appraisal/staff/' + encodeURIComponent(e.id), { name: e.name, email: e.email }) : Promise.resolve();
+                return first.then(function () { return api('PUT', '/api/appraisal/profile/' + encodeURIComponent(e.id), { roles: e.roles, targets: e.targets, extras: e.extras, hidden: e.hidden, baseSavedAt: e.base }); });
+            }, function () { S.editPerson = null; return afterSave('Saved'); });
+        },
+        'staff-add': function () {
+            var n = S.newStaff;
+            if (!String(n.name || '').trim()) { toast('Type a name first.'); return; }
+            save('POST', '/api/appraisal/staff', { name: n.name, email: n.email }, function (r) {
+                S.newStaff = { name: '', email: '' };
+                return afterSave(r.staff && r.staff.name ? r.staff.name + ' added' : 'Added');
+            });
+        },
+        /** Removing needs a second, separate click within 4 seconds (a double-click doesn't count).
+         *  Not while someone's Edit panel is open: saving the removal would clear its unsaved-changes guard. */
+        'staff-remove': function (b) {
+            var id = b.dataset.v, p = person(id);
+            if (S.editPerson) { toast('Save or cancel the open Edit panel first.'); return; }
+            if (S.removeArmed !== id) { armRemove(id); return; }
+            if (Date.now() - S.removeArmedAt < 400) return;
+            S.removeArmed = null;
+            save('DELETE', '/api/appraisal/staff/' + encodeURIComponent(id), null, function () {
+                return afterSave((p ? p.name : 'They') + ' removed. Their past scores are kept under Removed staff.');
+            });
+        },
+        'staff-restore': function (b) {
+            if (S.editPerson) { toast('Save or cancel the open Edit panel first.'); return; }
+            save('POST', '/api/appraisal/staff/' + encodeURIComponent(b.dataset.v) + '/restore', null, function (r) {
+                return afterSave((r.staff && r.staff.name ? r.staff.name : 'They') + ' is back, with everything they had.');
+            });
         },
         'add-item': function (b) { listAt(b.dataset.list).push({ id: newId('c'), name: '', hint: '' }); markDirty(); render(); },
         'del-item': function (b) { listAt(b.dataset.list).splice(+b.dataset.i, 1); markDirty(); render(); },
@@ -460,14 +573,15 @@
             save('PUT', '/api/appraisal/setup', { setup: d, baseSavedAt: S.isStarter ? null : S.setup.savedAt }, function () { S.setupDraft = null; return afterSave('Setup saved'); });
         },
         'submit-self': function () {
-            var g = groupsFor(S.mine.roles, S.mine.extras), left = unscored(g, S.myDraft.scores);
+            var g = groupsFor(S.mine), left = unscored(g, S.myDraft.scores);
             if (left) { toast('Score every item first. ' + left + ' still to score.'); return; }
             var saved = S.mine.reviews[S.q];
             save('PUT', '/api/appraisal/self/' + S.q, { review: S.myDraft, baseSavedAt: saved ? saved.savedAt : null }, function () { S.myDraftKey = null; return afterSave('Your form is submitted'); });
         }
     };
     document.addEventListener('click', function (ev) {
-        var b = ev.target.closest('[data-act]'); if (!b || (S.busy && b.dataset.act !== 'tab')) return;
+        var b = ev.target.closest('[data-act]'); if (!b) return;
+        if (S.busy && b.dataset.act !== 'tab') { ev.preventDefault(); return; }
         var fn = actions[b.dataset.act]; if (fn) fn(b);
     });
 

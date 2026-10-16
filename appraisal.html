@@ -110,6 +110,13 @@
     .editrow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto; gap: 8px; align-items: start; padding: 5px 0; }
     .scalerow { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 3fr); gap: 8px; align-items: center; padding: 3px 0; }
     .raiserow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 2fr) auto; gap: 8px; align-items: end; padding: 3px 0; }
+    .itemsec { display: flex; flex-direction: column; gap: 0; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+    .itemsec h4 { font-size: 13.5px; margin: 0 0 4px; }
+    .itemrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 14px; align-items: center; padding: 8px 0; border-top: 1px solid #eeece6; }
+    .itemrow .cname { font-weight: 600; font-size: 13.5px; }
+    .itemrow .hint { color: var(--faint); font-size: 12.5px; }
+    .itemrow.off .cname, .itemrow.off .hint { color: var(--faint); text-decoration: line-through; }
+    .itemrow.own { background: #f7f8fd; margin: 0 -12px; padding: 8px 12px; }
     .legend { display: grid; grid-template-columns: auto 1fr; gap: 7px 12px; align-items: start; }
     .pre { white-space: pre-wrap; }
     .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: 22px; background: var(--ink); color: #fff; padding: 10px 16px;
@@ -119,7 +126,7 @@
         .crit { grid-template-columns: minmax(0, 1fr); }
         .crit .side { align-items: flex-start; }
         .seg button { width: 29px; font-size: 13px; }
-        .editrow, .scalerow, .raiserow { grid-template-columns: minmax(0, 1fr); }
+        .editrow, .scalerow, .raiserow, .itemrow { grid-template-columns: minmax(0, 1fr); }
         .sub { margin-left: 0; }
     }
 </style>
@@ -136,6 +143,6 @@
     <main id="main"><div class="empty"><p class="muted">Loading…</p></div></main>
 </div>
 <div class="toast" id="toast" hidden></div>
-<script src="/appraisal-page.js?v=7"></script>
+<script src="/appraisal-page.js?v=9"></script>
 </body>
 </html>
