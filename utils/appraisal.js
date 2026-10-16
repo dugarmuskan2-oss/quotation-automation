@@ -13,7 +13,7 @@
 
 const crypto = require('crypto');
 
-const GROUPS = ['work', 'behaviour', 'discipline'];
+const GROUPS = ['work', 'behaviour'];
 const TEXT_MAX = 2000;
 const NAME_MAX = 120;
 
@@ -59,7 +59,7 @@ function groupsFor(setup, roleIds) {
             work.push(c);
         }
     }
-    return { work, behaviour: (setup && setup.behaviour) || [], discipline: (setup && setup.discipline) || [] };
+    return { work, behaviour: (setup && setup.behaviour) || [] };
 }
 
 function averageOf(values) {
@@ -140,7 +140,7 @@ function sanitizeSetup(input) {
     const weights = {};
     for (const g of GROUPS) weights[g] = Math.max(0, Math.round(Number((src.weights || {})[g]) || 0));
     const total = GROUPS.reduce((n, g) => n + weights[g], 0);
-    if (total !== 100) return { error: `The three parts add up to ${total}%. Make them 100%.` };
+    if (total !== 100) return { error: `The two parts add up to ${total}%. Make them 100%.` };
     const roles = [];
     for (const r of Array.isArray(src.roles) ? src.roles : []) {
         const id = cleanId(r && r.id);
@@ -150,7 +150,7 @@ function sanitizeSetup(input) {
     return {
         setup: {
             scale: cleanScale(src.scale), weights, roles,
-            behaviour: cleanItems(src.behaviour), discipline: cleanItems(src.discipline), raises: cleanRaises(src.raises),
+            behaviour: cleanItems(src.behaviour), raises: cleanRaises(src.raises),
         },
     };
 }
@@ -178,7 +178,6 @@ function allItemIds(setup) {
     const ids = new Set();
     for (const r of setup.roles || []) for (const c of r.criteria || []) ids.add(c.id);
     for (const c of setup.behaviour || []) ids.add(c.id);
-    for (const c of setup.discipline || []) ids.add(c.id);
     return ids;
 }
 
@@ -241,28 +240,20 @@ const DEFAULT_SETUP = {
         { n: 4, label: 'Good', desc: 'Above target. Works with little help and fixes problems on their own.' },
         { n: 5, label: 'Excellent', desc: 'Far above target. Others can learn from how they work.' },
     ],
-    weights: { work: 60, behaviour: 20, discipline: 20 },
+    weights: { work: 70, behaviour: 30 },
     roles: [
         { id: 'r_sales', name: 'Sales', criteria: [
             item('c_s1', 'Orders closed vs target', 'Value and number of orders won this quarter, compared with the target.'),
-            item('c_s2', 'New customers', 'New buyers added, including GeM, Ariba and other portal leads.'),
-            item('c_s3', 'Payment collection', 'Payments collected on time. Few overdue invoices.'),
-            item('c_s4', 'Quotes and follow-ups', 'Quotes sent quickly and every lead followed up.'),
-            item('c_s5', 'Customer care', 'Customers get clear answers and stay happy with the service.'),
-        ] },
-        { id: 'r_accounts', name: 'Accounts', criteria: [
-            item('c_a1', 'Accuracy', 'Invoices, entries and ledgers are correct the first time.'),
-            item('c_a2', 'Dues follow-up', 'Chases pending payments and keeps the outstanding list up to date.'),
-            item('c_a3', 'Filings on time', 'GST, TDS and other filings done before the due date.'),
-            item('c_a4', 'Bank and ledger matching', 'Bank statements and ledgers matched every month.'),
-            item('c_a5', 'Reports on time', 'Sales, stock and payment reports ready when needed.'),
+            item('c_s2', 'New customers', 'New parties brought in through calls, visits, portals and marketing.'),
+            item('c_s3', 'Payment collection', 'Payments collected on time, with dues chased before they go overdue.'),
+            item('c_s4', 'Quotes and follow-ups', 'Every quote followed up on time until it is won or lost. No enquiry left hanging.'),
+            item('c_s5', 'Customer care', 'Parties get replies on time and stay happy with the service.'),
+            item('c_s6', 'Keeping in touch', 'Stays in regular touch with parties, even between orders. No customer goes quiet without a call.'),
         ] },
         { id: 'r_admin', name: 'Administration', criteria: [
-            item('c_d1', 'Vendor registrations and documents', 'Vendor forms, portal registrations and company documents complete and current.'),
-            item('c_d2', 'Dispatch coordination', 'Transport, delivery papers and dispatch details sorted without delays.'),
-            item('c_d3', 'Records and filing', 'Files are easy to find. Nothing goes missing.'),
-            item('c_d4', 'Office running', 'Supplies, repairs and day-to-day office needs handled.'),
-            item('c_d5', 'Tasks done on time', 'Assigned tasks finished by the agreed date.'),
+            item('c_d5', 'Tasks done on time', 'Assigned tasks finished on time.'),
+            item('c_d6', 'Responsibility', "Owns their work from start to finish. Raises problems early, doesn't wait to be chased, and owns up to mistakes."),
+            item('c_d7', 'Accuracy', 'Invoices, entries, quotations and ledgers are correct the first time.'),
         ] },
     ],
     behaviour: [
@@ -270,11 +261,7 @@ const DEFAULT_SETUP = {
         item('c_b2', 'Communication', 'Keeps people informed. Clear with customers and colleagues.'),
         item('c_b3', 'Ownership', 'Takes charge of problems without being told.'),
         item('c_b4', 'Learning', 'Picks up new tools, products and ways of working.'),
-    ],
-    discipline: [
         item('c_p1', 'Attendance and punctuality', 'Comes in on time. Leave planned in advance.'),
-        item('c_p2', 'Follows company rules', 'Follows processes, approvals and pricing rules.'),
-        item('c_p3', 'Meets deadlines', 'Delivers what was promised by the agreed date.'),
     ],
     raises: [
         { min: 4.5, pct: 12, note: 'Top performer' },

@@ -37,13 +37,13 @@ const TEST_MANAGER = { name: 'Test manager (testing site)', email: 'test-manager
 // The testing site has no People list, so it gets the office staff by name (no emails yet), each
 // with the jobs the owner gave them. Never on the live site. `startRoles` holds only until an
 // admin saves that person's roles on the Staff tab.
-const ALL_JOBS = ['r_sales', 'r_accounts', 'r_admin'];
+const ALL_JOBS = ['r_sales', 'r_admin'];
 const TEST_SITE_STAFF = [
     { name: 'Pavithra', email: 'pavithra@testing-site', startRoles: ALL_JOBS },
     { name: 'Jayanthi', email: 'jayanthi@testing-site', startRoles: ALL_JOBS },
     { name: 'Ramesh', email: 'ramesh@testing-site', startRoles: ALL_JOBS },
     { name: 'Ramya', email: 'ramya@testing-site', startRoles: ALL_JOBS },
-    { name: 'Kavitha', email: 'kavitha@testing-site', startRoles: ['r_accounts', 'r_admin'] },
+    { name: 'Kavitha', email: 'kavitha@testing-site', startRoles: ['r_admin'] },
 ];
 function withTestSiteStaff(users) { return isTestSite() ? [...users, ...TEST_SITE_STAFF] : users; }
 

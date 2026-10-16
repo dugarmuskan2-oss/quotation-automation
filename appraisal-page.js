@@ -14,7 +14,7 @@
 (function () {
     'use strict';
 
-    var GROUPS = [['work', 'Work results'], ['behaviour', 'Behaviour'], ['discipline', 'Attendance & discipline']];
+    var GROUPS = [['work', 'Work results'], ['behaviour', 'Behaviour']];
     var S = {
         loaded: false, loadError: null, you: null, hasAdmin: true, setup: null, isStarter: false,
         people: [], mine: null, tab: null, q: null, h: null, busy: false, dirty: false,
@@ -52,7 +52,7 @@
             if (mine.indexOf(r.id) < 0) return;
             (r.criteria || []).forEach(function (c) { if (!seen[c.id]) { seen[c.id] = 1; work.push(Object.assign({ role: r.name }, c)); } });
         });
-        return [{ id: 'work', name: 'Work results', items: work }, { id: 'behaviour', name: 'Behaviour', items: S.setup.behaviour || [] }, { id: 'discipline', name: 'Attendance & discipline', items: S.setup.discipline || [] }];
+        return [{ id: 'work', name: 'Work results', items: work }, { id: 'behaviour', name: 'Behaviour', items: S.setup.behaviour || [] }];
     }
     function total(groups, scores) {
         var used = 0, sum = 0;
@@ -261,7 +261,7 @@
     /** The server drops a role or item with no name, so it would vanish silently on save. */
     function blankNames(d) {
         var unnamed = function (x) { return !String((x && x.name) || '').trim(); };
-        return d.roles.some(function (r) { return unnamed(r) || (r.criteria || []).some(unnamed); }) || d.behaviour.some(unnamed) || d.discipline.some(unnamed);
+        return d.roles.some(function (r) { return unnamed(r) || (r.criteria || []).some(unnamed); }) || d.behaviour.some(unnamed);
     }
     function weightSum(d) { return GROUPS.reduce(function (a, g) { return a + Number((d.weights || {})[g[0]] || 0); }, 0); }
     function viewSetup() {
@@ -274,7 +274,6 @@
             + d.roles.map(function (r, ri) { return '<div class="stack" style="gap:5px;border-top:1px solid var(--line);padding-top:12px"><div class="row between"><input type="text" id="role-' + ri + '" aria-label="Role name" style="max-width:260px;font-weight:600" value="' + esc(r.name) + '" data-d="setup:roles.' + ri + '.name"><button class="btn sm danger" data-act="del-role" data-i="' + ri + '">Remove role</button></div>' + critList('roles.' + ri + '.criteria', r.criteria) + '</div>'; }).join('')
             + '<div><button class="btn" data-act="add-role">+ Add role</button></div></section>'
             + '<section class="card stack"><div><h3>Behaviour</h3><p class="small muted">Everyone is scored on these.</p></div>' + critList('behaviour', d.behaviour) + '</section>'
-            + '<section class="card stack"><div><h3>Attendance & discipline</h3><p class="small muted">Everyone is scored on these.</p></div>' + critList('discipline', d.discipline) + '</section>'
             + '<section class="card stack"><div><h3>Raise table</h3><p class="small muted">The 6-month rating picks the highest row it reaches. Change the numbers to fit your budget.</p></div>'
             + d.raises.map(function (r, i) { return '<div class="raiserow"><div><label class="lbl" for="r-' + i + '-m">Rating from</label><input type="number" id="r-' + i + '-m" step="0.1" min="0" max="5" value="' + r.min + '" data-d="setup:raises.' + i + '.min" data-num="1"></div><div><label class="lbl" for="r-' + i + '-p">Raise %</label><input type="number" id="r-' + i + '-p" step="0.5" min="0" max="100" value="' + r.pct + '" data-d="setup:raises.' + i + '.pct" data-num="1"></div><div><label class="lbl" for="r-' + i + '-n">Note</label><input type="text" id="r-' + i + '-n" value="' + esc(r.note || '') + '" data-d="setup:raises.' + i + '.note"></div><button class="btn sm danger" data-act="del-raise" data-i="' + i + '">Remove</button></div>'; }).join('')
             + '<div><button class="btn sm link" data-act="add-raise">+ Add row</button></div></section>';
@@ -417,7 +416,7 @@
         'setup-discard': function () { S.setupDraft = null; S.dirty = false; render(); },
         'setup-save': function () {
             var d = S.setupDraft, sum = weightSum(d);
-            if (sum !== 100) { toast('The three parts add up to ' + sum + '%. Make them 100%.'); return; }
+            if (sum !== 100) { toast('The two parts add up to ' + sum + '%. Make them 100%.'); return; }
             if (blankNames(d)) { toast('Some roles or items have no name. Type a name or remove them.'); return; }
             save('PUT', '/api/appraisal/setup', { setup: d, baseSavedAt: S.isStarter ? null : S.setup.savedAt }, function () { S.setupDraft = null; return afterSave('Setup saved'); });
         },
