@@ -54,6 +54,18 @@
         });
         return [{ id: 'work', name: 'Work results', items: work }, { id: 'behaviour', name: 'Behaviour', items: S.setup.behaviour || [] }];
     }
+    /** What the form shows: one heading per job (Sales, Administration…), then Behaviour.
+     *  Display only — the jobs' items still count together as Work results in the total. */
+    function sections(groups) {
+        var out = [], work = groups.filter(function (g) { return g.id === 'work'; })[0], w = S.setup.weights || {};
+        var names = [];
+        work.items.forEach(function (c) { if (names.indexOf(c.role) < 0) names.push(c.role); });
+        names.forEach(function (n) {
+            out.push({ name: n, items: work.items.filter(function (c) { return c.role === n; }), weightText: 'Part of work results · ' + (w.work || 0) + '% together' });
+        });
+        groups.forEach(function (g) { if (g.id !== 'work') out.push({ name: g.name, items: g.items, weightText: (w[g.id] || 0) + '% of total' }); });
+        return out.filter(function (x) { return x.items.length; });
+    }
     function total(groups, scores) {
         var used = 0, sum = 0;
         groups.forEach(function (g) {
@@ -163,7 +175,7 @@
         var theirs = typingSelf ? '<div class="row"><span class="who">Their score</span>' + seg('selfm', c.id, sv) + '</div>' : '<div class="row"><span class="who">They said</span>' + scoreChip(sv || null) + '</div>';
         var theirNote = typingSelf ? '<input type="text" id="sn-' + c.id + '" placeholder="Their comment (optional)" value="' + esc((d.selfByMgr.notes || {})[c.id] || '') + '" data-d="selfm:notes.' + c.id + '">'
             : (self && self.notes && self.notes[c.id] ? '<div class="selfnote"><span class="who">Their comment</span><br>' + esc(self.notes[c.id]) + '</div>' : '<div></div>');
-        return '<div class="crit"><div><div class="cname">' + esc(c.name) + (grp.id === 'work' && c.role ? ' <span class="small muted">· ' + esc(c.role) + '</span>' : '') + '</div><div class="hint">' + esc(c.hint || '') + '</div>' + (gap ? '<div class="flag">Big gap between their score and yours. Talk about this.</div>' : '') + '</div>'
+        return '<div class="crit"><div><div class="cname">' + esc(c.name) + '</div><div class="hint">' + esc(c.hint || '') + '</div>' + (gap ? '<div class="flag">Big gap between their score and yours. Talk about this.</div>' : '') + '</div>'
             + '<div class="side">' + theirs + '<div class="row"><span class="who">Your score</span>' + seg('mgr', c.id, mv) + '</div></div>'
             + '<div class="notes">' + theirNote + '<input type="text" id="mn-' + c.id + '" placeholder="Your comment (optional)" value="' + esc((d.notes || {})[c.id] || '') + '" data-d="mgr:notes.' + c.id + '"></div></div>';
     }
@@ -176,9 +188,8 @@
             + '<div class="row between"><div><div class="eyebrow">' + esc(qi.label) + '</div><h2>' + esc(p.name) + '</h2><p class="small muted">' + esc(roleNames(rolesOf(p)).join(' · ') || 'No role picked yet. Pick roles in the Staff tab.') + '</p></div>' + (d.done ? '<span class="chip ok">Marked done</span>' : '') + '</div>';
         if (p.mgr && p.mgr.targets) h += '<div class="card"><div class="who">Their current targets</div><p class="pre">' + esc(p.mgr.targets) + '</p></div>';
         if (!own) h += '<div class="card row between"><p class="small">They have not submitted their form for this quarter. You can type in their answers from a paper form.</p><label class="check"><input type="checkbox" id="type-self" data-act="type-self"' + (typingSelf ? ' checked' : '') + '> Type in their self-review</label></div>';
-        g.forEach(function (grp) {
-            if (!grp.items.length) return;
-            h += '<section class="card"><div class="ghead"><h3>' + esc(grp.name) + '</h3><span class="weight">' + ((S.setup.weights || {})[grp.id] || 0) + '% of total</span></div>' + grp.items.map(function (c) { return critRow(grp, c, self, d, typingSelf); }).join('') + '</section>';
+        sections(g).forEach(function (grp) {
+            h += '<section class="card"><div class="ghead"><h3>' + esc(grp.name) + '</h3><span class="weight">' + esc(grp.weightText) + '</span></div>' + grp.items.map(function (c) { return critRow(grp, c, self, d, typingSelf); }).join('') + '</section>';
         });
         if (own && (own.wins || own.help)) h += '<div class="grid2"><div class="card"><div class="who">Their biggest wins</div><p class="pre">' + esc(own.wins || '–') + '</p></div><div class="card"><div class="who">Where they want help</div><p class="pre">' + esc(own.help || '–') + '</p></div></div>';
         h += '<div class="card"><label class="lbl" for="mgr-comment">Your overall comment for this quarter</label><textarea id="mgr-comment" data-d="mgr:comment" placeholder="What went well, what to work on next quarter">' + esc(d.comment || '') + '</textarea></div>';
@@ -294,9 +305,8 @@
         if (!S.mine.roles.length) h += '<div class="notice">Your manager has not picked your roles yet, so the Work results part is missing. You can still fill the rest.</div>';
         if (S.mine.targets) h += '<div class="card"><div class="who">Your targets</div><p class="pre">' + esc(S.mine.targets) + '</p></div>';
         h += '<details class="card"><summary style="cursor:pointer;font-weight:600">What the scores mean</summary><div class="legend" style="margin-top:10px">' + [5, 4, 3, 2, 1].map(function (n) { return scoreChip(n) + '<div><strong>' + esc(scaleOf(n).label) + '</strong> <span class="small muted">' + esc(scaleOf(n).desc) + '</span></div>'; }).join('') + '</div></details>';
-        g.forEach(function (grp) {
-            if (!grp.items.length) return;
-            h += '<section class="card"><div class="ghead"><h3>' + esc(grp.name) + '</h3><span class="weight">' + ((S.setup.weights || {})[grp.id] || 0) + '% of total</span></div>' + grp.items.map(function (c) {
+        sections(g).forEach(function (grp) {
+            h += '<section class="card"><div class="ghead"><h3>' + esc(grp.name) + '</h3><span class="weight">' + esc(grp.weightText) + '</span></div>' + grp.items.map(function (c) {
                 return '<div class="crit"><div><div class="cname">' + esc(c.name) + '</div><div class="hint">' + esc(c.hint || '') + '</div></div><div class="side">' + seg('self', c.id, d.scores[c.id], locked) + '</div><div class="notes"><input type="text" id="my-n-' + c.id + '" placeholder="Example or comment (optional)" value="' + esc((d.notes || {})[c.id] || '') + '" data-d="self:notes.' + c.id + '"' + (locked ? ' disabled' : '') + '></div></div>';
             }).join('') + '</section>';
         });
