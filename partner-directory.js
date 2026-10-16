@@ -4379,10 +4379,10 @@
         if (!mails.length && pi.from) mails = [pi.from];
         var one = mails.length === 1;
         return '<div class="pd-read" style="margin:0 0 8px;"><p class="pd-tiny">'
-            + '<b>' + esc(mails.join(', ')) + '</b> ' + (one ? 'is' : 'are') + ' for '
+            + '<b>' + esc(mails.join(', ')) + '</b> ' + (one ? 'looks like it belongs' : 'look like they belong') + ' to '
             + '<button data-pd-open="' + esc(match.id) + '" class="pd-linkish">'
-            + esc(match.company || '(no name)') + '</button>, already in your directory. '
-            + 'Approve adds ' + (one ? 'it' : 'them') + ' to that card.</p></div>';
+            + esc(match.company || '(no name)') + '</button>. '
+            + 'Click Approve to add ' + (one ? 'it' : 'them') + ' here.</p></div>';
     }
 
     function matchedPartner(pi) {
