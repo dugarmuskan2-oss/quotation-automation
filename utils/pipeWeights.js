@@ -169,6 +169,19 @@ function buildWeightMap(rows) {
 //
 // The size is taken from the FRONT of the code, and the class from what follows the final "X" —
 // splitting on the first "X" turns "21/2XM" into size "21" and loses every fraction size.
+// Nominal bore in mm → inch size, for a size written "25 NB" / "25NB" (the lists are keyed by inch).
+// Only a 2–3 digit number directly before NB, with no inch mark, is read as mm: "2" NB" is 2 inch,
+// "20NB" is 3/4" and "20" NB" is 20 inch.
+const NB_MM_TO_INCH = {
+    15: '1/2', 20: '3/4', 25: '1', 32: '11/4', 40: '11/2', 50: '2', 65: '21/2', 80: '3', 90: '31/2',
+    100: '4', 125: '5', 150: '6', 200: '8', 250: '10', 300: '12', 350: '14', 400: '16', 450: '18',
+    500: '20', 600: '24',
+};
+function inchFromNbMm(raw, size) {
+    const m = /(^|[^\d\/-])(\d{2,3})\s*(?:MM\s*)?NB/i.exec(String(raw));
+    return m && m[2] === String(size) && NB_MM_TO_INCH[m[2]] ? NB_MM_TO_INCH[m[2]] : null;
+}
+
 function parseDescription(description) {
     // Notes in brackets are not part of the size: "(Rate per Kg - 105)", "(China make)",
     // "(14.27THK)", "(OD 42.2)". A bracket of bare digits stays — "16X5.5(6.0)" is the AI's wall.
@@ -178,7 +191,8 @@ function parseDescription(description) {
         .replace(/(SCH(?:EDULE)?\.?\s*\d+)\s+[\d.]+\s*MM(\s*THK)?/i, '$1');
     const t = raw.toUpperCase().replace(/["”]/g, '').replace(/\s+/g, '')
         .replace(/--?(ERW|GI|SEAMLESS).*$/, '')
-        .replace(/MMTHK$/, '').replace(/THK$/, '').replace(/MM$/, '');
+        .replace(/MMTHK$/, '').replace(/THK$/, '').replace(/MM$/, '')
+        .replace(/^(\d{2,3})MMNB/, '$1NB');                              // "40 mm NB X Medium"
 
     // Display form first: 2NBXHEAVY, 8NBX6.35, 1-1/2NBXSCH40
     let m = /^((?:\d+-)?\d+(?:\/\d+)?)NBX(.+)$/.exec(t);
@@ -197,7 +211,7 @@ function parseDescription(description) {
 
     // Leave the size as written — normSize folds "2-1/2" and "21/2" together when the key is
     // built, and callers (and the existing tests) expect what the description actually said.
-    const size = m[1];
+    const size = inchFromNbMm(raw, m[1]) || m[1];
     let spec = String(m[2]).replace(/^SCH(?:EDULE)?\.?/, '');       // "SCH40" -> "40"
     if (/^(HEAVY|HY|H)$/.test(spec)) spec = 'heavy';
     else if (/^(MEDIUM|MED|M)$/.test(spec)) spec = 'medium';

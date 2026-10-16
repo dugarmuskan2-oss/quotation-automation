@@ -129,3 +129,23 @@ describe('the AI sees who sent the email', () => {
         expect(iPrice).toBeGreaterThan(iWall);
     });
 });
+
+describe('sizes written in NB (mm) match the inch-keyed lists', () => {
+    const { parseDescription } = require('../utils/pipeWeights');
+    test.each([
+        ['25NBXH', '1'], ['50 NB X Heavy', '2'], ['150NBXSCH40', '6'], ['20NBX80', '3/4'], ['40 mm NB X Medium', '11/2'],
+    ])('%s is %s inch', (d, inch) => expect(parseDescription(d).size).toBe(inch));
+    test.each([
+        ['2" NB X Sch 40', '2'], ['20" NB X Sch 20', '20'], ['2NBXM', '2'], ['11/2X80', '11/2'],
+    ])('%s stays %s inch (inch mark, or not a bore in mm)', (d, inch) => expect(parseDescription(d).size).toBe(inch));
+});
+
+describe('pipe type rule (owner, 16 Oct 2026)', () => {
+    test('standards → seamless; bare "seamless" with ERW grades → ERW; else ERW; overrides the saved rules', () => {
+        expect(ENQUIRY_READING_RULES).toMatch(/PIPE TYPE — this OVERRIDES every pipe-type rule/);
+        expect(ENQUIRY_READING_RULES).toMatch(/API 5L Gr\. B[\s\S]*ASTM A106 Gr\. B[\s\S]*ASTM A53[^\n]*→ "Seamless"|→ "Seamless": API 5L Gr\. B[^\n]*ASTM A106 Gr\. B[^\n]*ASTM A53/);
+        expect(ENQUIRY_READING_RULES).toMatch(/says "seamless" \(with no standard above\) AND gives ERW grades[^\n]*→ "ERW"/);
+        expect(ENQUIRY_READING_RULES).toMatch(/Everything else → "ERW"/);
+        expect(ENQUIRY_READING_RULES).toMatch(/"Seamless pipe 2" Medium" → ERW/);
+    });
+});
