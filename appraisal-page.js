@@ -51,14 +51,22 @@
     function raiseFor(t) { if (t == null) return null; var rs = ((S.setup && S.setup.raises) || []).slice().sort(function (a, b) { return b.min - a.min; }); return rs.filter(function (r) { return t >= r.min; })[0] || null; }
     function fmt(v) { return v == null ? '–' : (Number.isInteger(v) ? String(v) : v.toFixed(2)); }
     function scoreChip(v) { if (v == null) return '<span class="score">–</span>'; return '<span class="score ' + colourOf(v) + '">' + fmt(v) + '</span>'; }
-    function groupsFor(roleIds) {
-        var work = [], seen = {}, mine = roleIds || [];
+    /** Mirrors utils/appraisal.js groupsFor: job items, Behaviour, plus this person's own extras. */
+    function groupsFor(roleIds, extras) {
+        var work = [], seen = {}, mine = roleIds || [], behaviour = (S.setup.behaviour || []).slice();
         (S.setup.roles || []).forEach(function (r) {
             if (mine.indexOf(r.id) < 0) return;
             (r.criteria || []).forEach(function (c) { if (!seen[c.id]) { seen[c.id] = 1; work.push(Object.assign({ role: r.name }, c)); } });
         });
-        return [{ id: 'work', name: 'Work results', items: work }, { id: 'behaviour', name: 'Behaviour', items: S.setup.behaviour || [] }];
+        (extras || []).forEach(function (x) {
+            if (x.section === 'behaviour') behaviour.push(Object.assign({ extra: true }, x));
+            else work.push(Object.assign({ extra: true, role: roleName(x.section) || 'Extra items' }, x));
+        });
+        return [{ id: 'work', name: 'Work results', items: work }, { id: 'behaviour', name: 'Behaviour', items: behaviour }];
     }
+    function roleName(id) { var r = (S.setup.roles || []).filter(function (x) { return x.id === id; })[0]; return r ? r.name : ''; }
+    /** The little tag that marks an item set for one person only. */
+    function extraTag(c, who) { return c.extra ? ' <span class="chip info">Only for ' + who + '</span>' : ''; }
     /** What the form shows: one heading per job (Sales, Administration…), then Behaviour.
      *  Display only — the jobs' items still count together as Work results in the total. */
     function sections(groups) {
@@ -116,6 +124,7 @@
     function staffPeople() { return S.people.filter(function (p) { return p.role !== 'admin'; }); }
     function person(email) { return S.people.filter(function (p) { return p.email === email; })[0]; }
     function rolesOf(p) { return (p.mgr && p.mgr.roles) || []; }
+    function extrasOf(p) { return (p && p.mgr && p.mgr.extras) || []; }
     function roleNames(ids) { return (S.setup.roles || []).filter(function (r) { return ids.indexOf(r.id) >= 0; }).map(function (r) { return r.name; }); }
     function mgrReview(p, q) { return (p.mgr && p.mgr.reviews && p.mgr.reviews[q]) || null; }
     function selfReview(p, q) {
@@ -163,7 +172,7 @@
         if (!list.length) return h + emptyBox('No staff yet', 'Everyone on the People page who is not an admin shows up here.', '<a class="btn primary" href="/people.html">Open People</a>') + '</div>';
         var forms = 0, done = 0;
         var rows = list.map(function (p) {
-            var g = groupsFor(rolesOf(p)), self = selfReview(p, qi.key), mr = mgrReview(p, qi.key);
+            var g = groupsFor(rolesOf(p), extrasOf(p)), self = selfReview(p, qi.key), mr = mgrReview(p, qi.key);
             if (self) forms++; if (mr && mr.done) done++;
             var form = self ? (self.source === 'staff' ? '<span class="chip ok">Submitted</span>' : '<span class="chip info">Typed in by you</span>') : '<span class="chip wait">Waiting</span>';
             var rev = mr && mr.done ? '<span class="chip ok">Done</span>' : (mr && Object.keys(mr.scores || {}).length ? '<span class="chip wait">Started</span>' : '<span class="chip">Not started</span>');
@@ -180,13 +189,13 @@
         var theirs = typingSelf ? '<div class="row"><span class="who">Their score</span>' + seg('selfm', c.id, sv) + '</div>' : '<div class="row"><span class="who">They said</span>' + scoreChip(sv || null) + '</div>';
         var theirNote = typingSelf ? '<input type="text" id="sn-' + c.id + '" placeholder="Their comment (optional)" value="' + esc((d.selfByMgr.notes || {})[c.id] || '') + '" data-d="selfm:notes.' + c.id + '">'
             : (self && self.notes && self.notes[c.id] ? '<div class="selfnote"><span class="who">Their comment</span><br>' + esc(self.notes[c.id]) + '</div>' : '<div></div>');
-        return '<div class="crit"><div><div class="cname">' + esc(c.name) + '</div><div class="hint">' + esc(c.hint || '') + '</div>' + (gap ? '<div class="flag">Big gap between their score and yours. Talk about this.</div>' : '') + '</div>'
+        return '<div class="crit"><div><div class="cname">' + esc(c.name) + extraTag(c, 'them') + '</div><div class="hint">' + esc(c.hint || '') + '</div>' + (gap ? '<div class="flag">Big gap between their score and yours. Talk about this.</div>' : '') + '</div>'
             + '<div class="side">' + theirs + '<div class="row"><span class="who">Your score</span>' + seg('mgr', c.id, mv) + '</div></div>'
             + '<div class="notes">' + theirNote + '<input type="text" id="mn-' + c.id + '" placeholder="Your comment (optional)" value="' + esc((d.notes || {})[c.id] || '') + '" data-d="mgr:notes.' + c.id + '"></div></div>';
     }
     function viewReview() {
         var p = person(S.open); if (!p) { S.open = null; return viewReviews(); }
-        var qi = parseQ(S.q), g = groupsFor(rolesOf(p)), d = S.draft;
+        var qi = parseQ(S.q), g = groupsFor(rolesOf(p), extrasOf(p)), d = S.draft;
         var own = p.self && p.self.reviews && p.self.reviews[qi.key] && p.self.reviews[qi.key].submittedAt ? p.self.reviews[qi.key] : null;
         var typingSelf = !own && d.typeSelf, self = own || (typingSelf ? d.selfByMgr : null);
         var h = '<div class="stack"><div><button class="btn link" data-act="close-review">← All staff</button></div>'
@@ -205,7 +214,7 @@
 
     // Admin: 6-month meetings
     function halfData(p, hi) {
-        var g = groupsFor(rolesOf(p));
+        var g = groupsFor(rolesOf(p), extrasOf(p));
         var qs = hi.quarters.map(function (qi) { var self = selfReview(p, qi.key), mr = mgrReview(p, qi.key); return { qi: qi, self: self, mr: mr, tSelf: self ? total(g, self.scores) : null, tMgr: mr ? total(g, mr.scores) : null }; });
         var m = qs.map(function (x) { return x.tMgr; }).filter(function (v) { return v != null; });
         var rating = m.length ? m.reduce(function (a, b) { return a + b; }, 0) / m.length : null;
@@ -251,6 +260,17 @@
     }
 
     // Admin: staff roles and targets
+    /** Items set for this one person, each under a job or Behaviour. */
+    function extrasEditor(e) {
+        var opts = (S.setup.roles || []).map(function (r) { return [r.id, r.name]; }).concat([['behaviour', 'Behaviour']]);
+        return '<div class="stack" style="gap:6px"><div><span class="lbl" style="margin:0">Extra items for this person only</span><p class="small muted">Scored like any other item, under the heading you pick. Nobody else sees them.</p></div>'
+            + e.extras.map(function (x, i) {
+                return '<div class="editrow" style="grid-template-columns:minmax(0,1fr) minmax(0,2fr) auto auto"><input type="text" id="px-' + i + '-n" aria-label="Item name" placeholder="What is judged" value="' + esc(x.name) + '" data-d="person:extras.' + i + '.name">'
+                    + '<input type="text" id="px-' + i + '-h" aria-label="What good looks like" placeholder="What good looks like" value="' + esc(x.hint || '') + '" data-d="person:extras.' + i + '.hint">'
+                    + '<select id="px-' + i + '-s" aria-label="Show under" data-d="person:extras.' + i + '.section">' + opts.map(function (o) { return '<option value="' + o[0] + '"' + (x.section === o[0] ? ' selected' : '') + '>Under ' + esc(o[1]) + '</option>'; }).join('') + '</select>'
+                    + '<button class="btn sm danger" data-act="p-del-extra" data-i="' + i + '">Remove</button></div>';
+            }).join('') + '<div><button class="btn sm link" data-act="p-add-extra">+ Add an item for this person</button></div></div>';
+    }
     function viewStaff() {
         var e = S.editPerson, list = staffPeople();
         var h = '<div class="stack"><p class="small muted">Staff come from the <a href="/people.html">People page</a>. Admins are not appraised. Pick the roles each person plays; their roles decide the Work results items.</p>';
@@ -259,6 +279,7 @@
             h += '<div class="card stack"><h3>' + esc(p ? p.name : e.email) + '</h3><div><span class="lbl">Roles they play (pick all that apply)</span><div class="row">'
                 + (S.setup.roles || []).map(function (r) { return '<label class="check"><input type="checkbox" id="pr-' + r.id + '" data-act="p-role" data-v="' + r.id + '"' + (e.roles.indexOf(r.id) >= 0 ? ' checked' : '') + '> ' + esc(r.name) + '</label>'; }).join('')
                 + '</div></div><div><label class="lbl" for="p-targets">Current targets</label><textarea id="p-targets" data-d="person:targets" placeholder="For example: ₹40 lakh in orders this quarter, 5 new customers, no invoice over 60 days">' + esc(e.targets || '') + '</textarea></div>'
+                + extrasEditor(e)
                 + '<div class="row"><button class="btn primary" data-act="p-save">Save</button><button class="btn" data-act="p-cancel">Cancel</button></div></div>';
         }
         if (!list.length) return h + emptyBox('No staff yet', 'Add people on the People page first.', '<a class="btn primary" href="/people.html">Open People</a>') + '</div>';
@@ -303,7 +324,7 @@
         if (!quarters.some(function (q) { return q.key === S.q; })) S.q = quarters[1].key;
         var saved = S.mine.reviews[S.q] || null, locked = S.mine.lockedQuarters.indexOf(S.q) >= 0;
         if (S.myDraftKey !== S.q) { S.myDraft = clone(saved) || { scores: {}, notes: {}, wins: '', help: '' }; S.myDraftKey = S.q; S.dirty = false; }
-        var d = S.myDraft, g = groupsFor(S.mine.roles), qi = parseQ(S.q), left = unscored(g, d.scores);
+        var d = S.myDraft, g = groupsFor(S.mine.roles, S.mine.extras), qi = parseQ(S.q), left = unscored(g, d.scores);
         var chip = locked ? '<span class="chip info">Reviewed by your manager</span>' : saved ? '<span class="chip ok">Submitted ' + esc(new Date(saved.submittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })) + '</span>' : '<span class="chip wait">Not submitted</span>';
         var h = '<div class="stack"><div class="row between"><div class="row"><label class="lbl" for="my-q" style="margin:0">Quarter</label>' + qSelect('my-q', S.q, 4) + '</div>' + chip + '</div>'
             + '<p class="small muted">Score yourself honestly for ' + esc(qi.label) + '. Your manager will score you too, and you will go over both at the 6-month meeting.</p>';
@@ -312,7 +333,7 @@
         h += '<details class="card"><summary style="cursor:pointer;font-weight:600">What the scores mean</summary><div class="legend" style="margin-top:10px">' + [10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map(function (n) { return scoreChip(n) + '<div><strong>' + esc(scaleOf(n).label) + '</strong> <span class="small muted">' + esc(scaleOf(n).desc) + '</span></div>'; }).join('') + '</div></details>';
         sections(g).forEach(function (grp) {
             h += '<section class="card"><div class="ghead"><h3>' + esc(grp.name) + '</h3><span class="weight">' + esc(grp.weightText) + '</span></div>' + grp.items.map(function (c) {
-                return '<div class="crit"><div><div class="cname">' + esc(c.name) + '</div><div class="hint">' + esc(c.hint || '') + '</div></div><div class="side">' + seg('self', c.id, d.scores[c.id], locked) + '</div><div class="notes"><input type="text" id="my-n-' + c.id + '" placeholder="Example or comment (optional)" value="' + esc((d.notes || {})[c.id] || '') + '" data-d="self:notes.' + c.id + '"' + (locked ? ' disabled' : '') + '></div></div>';
+                return '<div class="crit"><div><div class="cname">' + esc(c.name) + extraTag(c, 'you') + '</div><div class="hint">' + esc(c.hint || '') + '</div></div><div class="side">' + seg('self', c.id, d.scores[c.id], locked) + '</div><div class="notes"><input type="text" id="my-n-' + c.id + '" placeholder="Example or comment (optional)" value="' + esc((d.notes || {})[c.id] || '') + '" data-d="self:notes.' + c.id + '"' + (locked ? ' disabled' : '') + '></div></div>';
             }).join('') + '</section>';
         });
         h += '<div class="grid2"><div class="card"><label class="lbl" for="my-wins">Your biggest wins this quarter</label><textarea id="my-wins" data-d="self:wins"' + (locked ? ' disabled' : '') + '>' + esc(d.wins || '') + '</textarea></div><div class="card"><label class="lbl" for="my-help">Where you want help</label><textarea id="my-help" data-d="self:help"' + (locked ? ' disabled' : '') + '>' + esc(d.help || '') + '</textarea></div></div>';
@@ -366,7 +387,7 @@
         delete d.base; delete d.typeSelf;
         if (!typeSelf) delete d.selfByMgr;
         if (markDone) {
-            var left = unscored(groupsFor(rolesOf(person(S.open))), d.scores);
+            var left = unscored(groupsFor(rolesOf(person(S.open)), extrasOf(person(S.open))), d.scores);
             if (left) { toast('Score every item first. ' + left + ' still to score.'); return; }
             d.done = true;
         }
@@ -415,12 +436,15 @@
         'meet-settargets': function (b) { S.meetDraft.setTargets = b.checked; markDirty(); },
         'save-meet': function () { saveMeeting(false); },
         'done-meet': function () { saveMeeting(true); },
-        'p-edit': function (b) { var p = person(b.dataset.v); S.editPerson = { email: p.email, roles: rolesOf(p).slice(), targets: (p.mgr && p.mgr.targets) || '', base: (p.mgr && p.mgr.profileSavedAt) || null }; window.scrollTo(0, 0); render(); },
+        'p-edit': function (b) { var p = person(b.dataset.v); S.editPerson = { email: p.email, roles: rolesOf(p).slice(), targets: (p.mgr && p.mgr.targets) || '', extras: clone(extrasOf(p)), base: (p.mgr && p.mgr.profileSavedAt) || null }; window.scrollTo(0, 0); render(); },
+        'p-add-extra': function () { var r = (S.setup.roles || [])[0]; S.editPerson.extras.push({ id: newId('x_'), name: '', hint: '', section: r ? r.id : 'behaviour' }); markDirty(); render(); },
+        'p-del-extra': function (b) { S.editPerson.extras.splice(+b.dataset.i, 1); markDirty(); render(); },
         'p-cancel': function () { S.editPerson = null; S.dirty = false; render(); },
         'p-role': function (b) { var r = S.editPerson.roles, i = r.indexOf(b.dataset.v); if (b.checked && i < 0) r.push(b.dataset.v); if (!b.checked && i >= 0) r.splice(i, 1); markDirty(); },
         'p-save': function () {
             var e = S.editPerson;
-            save('PUT', '/api/appraisal/profile/' + encodeURIComponent(e.email), { roles: e.roles, targets: e.targets, baseSavedAt: e.base }, function () { S.editPerson = null; return afterSave('Saved'); });
+            if (e.extras.some(function (x) { return !String(x.name || '').trim(); })) { toast('An extra item has no name. Type a name or remove it.'); return; }
+            save('PUT', '/api/appraisal/profile/' + encodeURIComponent(e.email), { roles: e.roles, targets: e.targets, extras: e.extras, baseSavedAt: e.base }, function () { S.editPerson = null; return afterSave('Saved'); });
         },
         'add-item': function (b) { listAt(b.dataset.list).push({ id: newId('c'), name: '', hint: '' }); markDirty(); render(); },
         'del-item': function (b) { listAt(b.dataset.list).splice(+b.dataset.i, 1); markDirty(); render(); },
@@ -436,7 +460,7 @@
             save('PUT', '/api/appraisal/setup', { setup: d, baseSavedAt: S.isStarter ? null : S.setup.savedAt }, function () { S.setupDraft = null; return afterSave('Setup saved'); });
         },
         'submit-self': function () {
-            var g = groupsFor(S.mine.roles), left = unscored(g, S.myDraft.scores);
+            var g = groupsFor(S.mine.roles, S.mine.extras), left = unscored(g, S.myDraft.scores);
             if (left) { toast('Score every item first. ' + left + ' still to score.'); return; }
             var saved = S.mine.reviews[S.q];
             save('PUT', '/api/appraisal/self/' + S.q, { review: S.myDraft, baseSavedAt: saved ? saved.savedAt : null }, function () { S.myDraftKey = null; return afterSave('Your form is submitted'); });

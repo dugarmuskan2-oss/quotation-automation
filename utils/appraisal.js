@@ -47,8 +47,12 @@ function quartersOfHalf(k) {
 
 // ── Scoring ─────────────────────────────────────────────────────────────────
 
-/** The items one person is scored on: their roles' items (no duplicates), then the shared two. */
-function groupsFor(setup, roleIds) {
+/**
+ * The items one person is scored on: their roles' items (no duplicates), then Behaviour, plus any
+ * extra items set for that person alone. An extra filed under a job goes into Work results (even
+ * if the job was since removed); one filed under Behaviour goes there.
+ */
+function groupsFor(setup, roleIds, extras) {
     const work = [];
     const seen = new Set();
     const mine = new Set(Array.isArray(roleIds) ? roleIds : []);
@@ -60,7 +64,9 @@ function groupsFor(setup, roleIds) {
             work.push(c);
         }
     }
-    return { work, behaviour: (setup && setup.behaviour) || [] };
+    const behaviour = [...((setup && setup.behaviour) || [])];
+    for (const x of Array.isArray(extras) ? extras : []) (x.section === 'behaviour' ? behaviour : work).push(x);
+    return { work, behaviour };
 }
 
 function averageOf(values) {
@@ -175,15 +181,16 @@ function cleanNotes(notes, validIds) {
     return out;
 }
 
-function allItemIds(setup) {
+function allItemIds(setup, extras) {
     const ids = new Set();
+    for (const x of Array.isArray(extras) ? extras : []) ids.add(x.id);
     for (const r of setup.roles || []) for (const c of r.criteria || []) ids.add(c.id);
     for (const c of setup.behaviour || []) ids.add(c.id);
     return ids;
 }
 
-function sanitizeSelfReview(input, setup) {
-    const ids = allItemIds(setup);
+function sanitizeSelfReview(input, setup, extras) {
+    const ids = allItemIds(setup, extras);
     const src = input && typeof input === 'object' ? input : {};
     return {
         scores: cleanScores(src.scores, ids), notes: cleanNotes(src.notes, ids),
@@ -191,15 +198,15 @@ function sanitizeSelfReview(input, setup) {
     };
 }
 
-function sanitizeManagerReview(input, setup) {
-    const ids = allItemIds(setup);
+function sanitizeManagerReview(input, setup, extras) {
+    const ids = allItemIds(setup, extras);
     const src = input && typeof input === 'object' ? input : {};
     const out = {
         scores: cleanScores(src.scores, ids), notes: cleanNotes(src.notes, ids),
         comment: cleanText(src.comment).trim(), done: src.done === true,
     };
     if (src.selfByMgr && typeof src.selfByMgr === 'object') {
-        const s = sanitizeSelfReview(src.selfByMgr, setup);
+        const s = sanitizeSelfReview(src.selfByMgr, setup, extras);
         if (Object.keys(s.scores).length) out.selfByMgr = s;
     }
     return out;
@@ -217,11 +224,29 @@ function sanitizeMeeting(input) {
     };
 }
 
+const EXTRAS_MAX = 30;
+
+/** Items for one person only. Each sits under a job of the setup, or under Behaviour. */
+function cleanExtras(list, setup) {
+    const sections = new Set([...(setup.roles || []).map((r) => r.id), 'behaviour']);
+    const out = [];
+    for (const x of Array.isArray(list) ? list : []) {
+        const id = cleanId(x && x.id);
+        const name = cleanText(x && x.name, NAME_MAX).trim();
+        if (!id || !id.startsWith('x_') || !name || !sections.has(x.section) || out.some((o) => o.id === id)) continue;
+        out.push({ id, name, hint: cleanText(x.hint, 300), section: x.section });
+    }
+    return out.slice(0, EXTRAS_MAX);
+}
+
+/** Roles and targets; extras only when sent, so a caller that doesn't send them keeps the old ones. */
 function sanitizeProfile(input, setup) {
     const src = input && typeof input === 'object' ? input : {};
     const valid = new Set((setup.roles || []).map((r) => r.id));
     const roles = [...new Set(Array.isArray(src.roles) ? src.roles : [])].filter((id) => valid.has(id));
-    return { roles, targets: cleanText(src.targets).trim() };
+    const out = { roles, targets: cleanText(src.targets).trim() };
+    if (Array.isArray(src.extras)) out.extras = cleanExtras(src.extras, setup);
+    return out;
 }
 
 /** A storage-safe key part for one person, the same for any spelling of their email. */

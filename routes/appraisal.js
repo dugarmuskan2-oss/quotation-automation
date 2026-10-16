@@ -137,7 +137,7 @@ function createAppraisalRouter({ storage, loadUsers }) {
             hasAdmin: roles.adminCount(who.users) > 0,
             testSite: !!who.testSite,
             setup, isStarter,
-            mine: { roles: mgr.roles || [], targets: mgr.targets || '', reviews: self.reviews || {}, lockedQuarters },
+            mine: { roles: rolesOf(who.me, mgr), extras: mgr.extras || [], targets: mgr.targets || '', reviews: self.reviews || {}, lockedQuarters },
         });
     }));
 
@@ -150,8 +150,8 @@ function createAppraisalRouter({ storage, loadUsers }) {
         if (mgr.reviews && mgr.reviews[q] && mgr.reviews[q].done) {
             throw fail(409, 'Your manager has already finished this quarter, so it can no longer be changed.');
         }
-        const review = A.sanitizeSelfReview(req.body && req.body.review, setup);
-        const groups = A.groupsFor(setup, mgr.roles || []);
+        const review = A.sanitizeSelfReview(req.body && req.body.review, setup, mgr.extras);
+        const groups = A.groupsFor(setup, rolesOf(who.me, mgr), mgr.extras);
         const left = A.unscoredCount(groups, review.scores);
         if (left) throw fail(400, `Score every item first. ${left} still to score.`);
         review.submittedAt = new Date().toISOString();
@@ -191,7 +191,7 @@ function createAppraisalRouter({ storage, loadUsers }) {
         const doc = await readJson(k, {});
         if ((doc.profileSavedAt || null) !== ((req.body && req.body.baseSavedAt) || null)) throw fail(409, STALE_MSG);
         const profile = A.sanitizeProfile(req.body, setup);
-        const next = { ...doc, email: String(person.email).toLowerCase(), roles: profile.roles, targets: profile.targets, profileSavedAt: new Date().toISOString() };
+        const next = { ...doc, email: String(person.email).toLowerCase(), ...profile, profileSavedAt: new Date().toISOString() };
         await writeJson(k, next);
         res.json({ ok: true, profileSavedAt: next.profileSavedAt });
     }));
@@ -202,10 +202,10 @@ function createAppraisalRouter({ storage, loadUsers }) {
         const who = await requireAdmin(req);
         const person = personByEmail(who.users, req.params.email);
         const { setup } = await readSetup();
-        const review = A.sanitizeManagerReview(req.body && req.body.review, setup);
+        const doc = await readJson(mgrKey(person.email), {});
+        const review = A.sanitizeManagerReview(req.body && req.body.review, setup, doc.extras);
         if (review.done) {
-            const doc = await readJson(mgrKey(person.email), {});
-            const left = A.unscoredCount(A.groupsFor(setup, rolesOf(person, doc)), review.scores);
+            const left = A.unscoredCount(A.groupsFor(setup, rolesOf(person, doc), doc.extras), review.scores);
             if (left) throw fail(400, `Score every item first. ${left} still to score.`);
         }
         const saved = await saveEntry(mgrKey(person.email), { email: person.email }, 'reviews', q, review, req.body && req.body.baseSavedAt);
