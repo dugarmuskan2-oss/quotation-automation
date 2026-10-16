@@ -30,10 +30,15 @@
  *  5. Remove needs two separate clicks (a second click within 400 ms does nothing), is disarmed
  *     after 4 s, and is refused while an Edit panel is open.
  *  6. Add staff: one POST even on a double click (the in-flight lock), the input is cleared once
- *     used, and a failed POST unlocks so it can be tried again.
+ *     used, the lock comes off again after a successful save, and a failed POST unlocks so it can
+ *     be tried again.
  *  7. Ten score buttons per item, on the manager's review and on the staff member's own form.
+ *     The manager's Save & mark done sends the version it opened and never a self-review that was
+ *     typed in and then unticked; a staff member updating a submitted form sends the version it
+ *     opened; a quarter the manager has finished is locked.
  *  8. A staff member who is not on the list sees "not on the staff list yet"; a failed load
  *     says it failed instead of showing an empty list.
+ *  9. Names are escaped (shown as text, never as markup).
  */
 'use strict';
 
@@ -605,7 +610,11 @@ describe('Add staff', () => {
         expect(env.find(null, { d: 'newstaff:name' }).attrs.value).toBe('');
         expect(env.find(null, { d: 'newstaff:email' }).attrs.value).toBe('');
         expect(staffRows(env.html).Kiran.items).toBe(5);
-        env.click('staff-add'); await flush();                       // a third click with the cleared name
+        // A third click, with the cleared name: the lock is off again after a successful save (not
+        // stuck swallowing every click), so it reaches the blank-name check — and sends nothing.
+        const third = env.click('staff-add'); await flush();
+        expect(third.prevented).toBe(false);
+        expect(env.toast).toBe('Type a name first.');
         expect(env.writes()).toHaveLength(1);
     });
 
@@ -664,6 +673,90 @@ describe('Scoring: ten buttons per item', () => {
         expect(w.map((c) => c.method + ' ' + c.url)).toEqual(['PUT /api/appraisal/self/' + PREV_Q]);
         expect(Object.keys(w[0].body.review.scores).sort()).toEqual(expected.slice().sort());
         expect(w[0].body.baseSavedAt).toBeNull();
+    });
+
+    test('the manager\'s Save & mark done sends every score, done, and the version it opened — and drops a self-review typed in then unticked', async () => {
+        const started = { scores: { c_s1: 6 }, notes: { c_s1: 'Good month' }, comment: 'Steady', done: false, savedAt: '2026-10-10T10:00:00.000Z' };
+        const ps = people();
+        ps[1].mgr.reviews = { [PREV_Q]: started };
+        const env = await start({ ov: overview({ people: ps }) });
+        expect(env.html).toContain('<span class="chip wait">Started</span>');
+        env.click('open-review', { v: 'pavithra@dsc.com' });
+        const pressed = env.all('score', { who: 'mgr', c: 'c_s1' }).filter((e) => e.attrs['aria-pressed'] === 'true').map((e) => e.dataset.v);
+        expect(pressed).toEqual(['6']);
+
+        // Start typing in their paper form, then change mind: none of it may be saved as their self-review.
+        env.click('type-self');
+        env.click('score', { who: 'selfm', c: 'c_s1', v: '3' });
+        env.click('type-self');
+        expect(env.all('score', { who: 'selfm' })).toHaveLength(0);
+
+        const ids = scoredItemIds(env.html, 'mgr');
+        expect(ids).toHaveLength(11);
+        ids.forEach((id) => env.click('score', { who: 'mgr', c: id, v: '8' }));
+        env.click('done-review'); await flush();
+        const w = env.writes();
+        expect(w.map((c) => c.method + ' ' + c.url)).toEqual(['PUT /api/appraisal/review/pavithra%40dsc.com/' + PREV_Q]);
+        expect(w[0].body.baseSavedAt).toBe('2026-10-10T10:00:00.000Z');
+        const review = w[0].body.review;
+        expect(review.scores).toEqual(Object.fromEntries(ids.map((id) => [id, 8])));
+        expect(review).toMatchObject({ notes: { c_s1: 'Good month' }, comment: 'Steady', done: true });
+        expect(review).not.toHaveProperty('selfByMgr');
+        expect(review).not.toHaveProperty('base');
+        expect(review).not.toHaveProperty('typeSelf');
+        expect(env.toast).toBe('Review saved and marked done');
+        expect(env.all('done-review')).toHaveLength(0);    // back on the list
+    });
+});
+
+describe('Staff view: a form already in', () => {
+    const SUBMITTED = '2026-10-05T10:00:00.000Z';
+    const SALES_AND_BEHAVIOUR = ['c_s1', 'c_s2', 'c_s3', 'c_s4', 'c_s5', 'c_s6', 'c_b1', 'c_b2', 'c_b3', 'c_b4', 'c_p1'];
+    function submittedMine(lockedQuarters) {
+        return {
+            roles: ['r_sales'], hidden: [], extras: [], targets: '', lockedQuarters,
+            reviews: { [PREV_Q]: { scores: Object.fromEntries(SALES_AND_BEHAVIOUR.map((id) => [id, 7])), notes: {}, wins: 'Big order', help: '', submittedAt: SUBMITTED, savedAt: SUBMITTED } },
+        };
+    }
+
+    test('updating a submitted form sends the version it was opened at, so a stale copy is refused', async () => {
+        const env = await start({ me: staffMe(submittedMine([])) });
+        expect(env.html).toContain('<span class="chip ok">Submitted 5 Oct</span>');
+        expect(env.find('submit-self').text).toBe('Update my form');
+        env.click('score', { who: 'self', c: 'c_s1', v: '9' });
+        env.click('submit-self'); await flush();
+        const w = env.writes();
+        expect(w.map((c) => c.method + ' ' + c.url)).toEqual(['PUT /api/appraisal/self/' + PREV_Q]);
+        expect(w[0].body.baseSavedAt).toBe(SUBMITTED);
+        expect(w[0].body.review.scores.c_s1).toBe(9);
+        expect(w[0].body.review.scores.c_s2).toBe(7);
+        expect(w[0].body.review.wins).toBe('Big order');
+        expect(env.toast).toBe('Your form is submitted');
+    });
+
+    test('a quarter the manager has finished is locked: every score button disabled, no submit button', async () => {
+        const env = await start({ me: staffMe(submittedMine([PREV_Q])) });
+        expect(env.html).toContain('<span class="chip info">Reviewed by your manager</span>');
+        const buttons = env.all('score', { who: 'self' });
+        expect(buttons).toHaveLength(110);
+        expect(buttons.every((b) => 'disabled' in b.attrs)).toBe(true);
+        expect(env.all('submit-self')).toHaveLength(0);
+    });
+});
+
+describe('Names are shown as text, never as markup', () => {
+    test('a name with < & > is escaped on Quarterly reviews, the Staff tab and the Edit panel', async () => {
+        const NAME = 'Ali <b>& Sons</b>';
+        const SAFE = 'Ali &lt;b&gt;&amp; Sons&lt;/b&gt;';
+        const env = await start({ ov: overview({ people: [staffPerson('s-0a1b2c3d4e5f', NAME, '', {})] }) });
+        expect(env.html).toContain('<td class="name">' + SAFE + '</td>');
+        expect(env.html).not.toContain('<b>');
+        env.click('tab', { v: 'staff' });
+        expect(staffRows(env.html)[NAME].items).toBe(5);
+        expect(env.html).not.toContain('<b>');
+        env.click('p-edit', { v: 's-0a1b2c3d4e5f' });
+        expect(env.html).toContain('<h3>' + SAFE + '</h3>');
+        expect(env.html).not.toContain('<b>');
     });
 });
 

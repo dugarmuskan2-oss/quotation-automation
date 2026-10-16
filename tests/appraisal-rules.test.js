@@ -10,7 +10,9 @@
  *  - Raise by rating: 9+ 12%, 8+ 10%, 7+ 7%, 6+ 5%, 5+ 2%, below that 0%.
  *  - Each person is scored on their own jobs' items + Behaviour, minus shared items removed
  *    for them alone, plus extra items set for them alone.
- *  - A profile save whose own items no longer fit Setup is REFUSED, never silently trimmed.
+ *  - A profile save whose own items no longer fit Setup is REFUSED, never silently trimmed
+ *    (that includes an own item reusing a shared item's id, a repeated own item, or a 31st).
+ *  - The half-year meeting's agreed raise is 0–100% or blank; "done"/"held" only on a real true.
  *
  * Every weighted-total case is built so the right rule and a plausible wrong rule give
  * different numbers (70/30 vs equal weights, hidden excluded vs counted, jobs pooled vs
@@ -22,8 +24,8 @@ const A = require('../utils/appraisal');
 const {
     GROUPS, SCORE_MAX, DEFAULT_SETUP,
     groupsFor, weightedTotal, itemCount, unscoredCount, raiseFor,
-    sanitizeSetup, sanitizeSelfReview, sanitizeManagerReview, sanitizeProfile,
-    sanitizeNewStaff, newStaffId,
+    sanitizeSetup, sanitizeSelfReview, sanitizeManagerReview, sanitizeMeeting, sanitizeProfile,
+    sanitizeNewStaff, newStaffId, personSlug,
     isQuarterKey, isHalfKey, quartersOfHalf, quarterKey, halfKey,
 } = A;
 
@@ -276,6 +278,13 @@ describe('weightedTotal — Work results 70%, Behaviour 30%', () => {
         const g = groupsFor(setup, { roles: ['r_sales'] });
         expect(weightedTotal(setup, g, scoreAll(SALES, 9, scoreAll(BEHAVIOUR, 5)))).toBeCloseTo(6.6, 10);
     });
+
+    test('a part set to 0% counts for nothing: 100/0 with Work 9, Behaviour 5 → exactly 9', () => {
+        // Setup accepts 100/0. A 0% part must not sneak back in with some small weight (→ 8.96).
+        const setup = setupFrom(Object.assign({}, DEFAULT_SETUP, { weights: { work: 100, behaviour: 0 } }));
+        const g = groupsFor(setup, { roles: ['r_sales'] });
+        expect(weightedTotal(setup, g, scoreAll(SALES, 9, scoreAll(BEHAVIOUR, 5)))).toBeCloseTo(9, 10);
+    });
 });
 
 describe('unscoredCount — what is still to score before a form or review is done', () => {
@@ -297,6 +306,11 @@ describe('unscoredCount — what is still to score before a form or review is do
         const scores = scoreAll([...ADMIN, ...BEHAVIOUR], 6);
         scores.c_d6 = 0;
         expect(unscoredCount(g, scores)).toBe(1);
+    });
+
+    test('a 1 is a real score (the bottom of the scale), so a review of all 1s is complete', () => {
+        const g = groupsFor(DEFAULT_SETUP, { roles: ['r_admin'] });
+        expect(unscoredCount(g, scoreAll([...ADMIN, ...BEHAVIOUR], 1))).toBe(0);
     });
 
     test('a removed item is not outstanding; an own extra is until it is scored', () => {
@@ -341,6 +355,15 @@ describe('scores from a form — whole numbers 1 to 10 for real items only', () 
         expect(sanitizeManagerReview({ done: 'true' }, DEFAULT_SETUP).done).toBe(false);
     });
 
+    test('comments are kept only for real items, trimmed, and blank ones dropped', () => {
+        const r = sanitizeSelfReview({ notes: { c_b1: '  Helped on GST week ', c_zz: 'not an item', c_b2: '   ' }, wins: ' Won NTPC ', help: ' Tally training ' }, DEFAULT_SETUP);
+        expect(r.notes).toEqual({ c_b1: 'Helped on GST week' });
+        expect(r.wins).toBe('Won NTPC');
+        expect(r.help).toBe('Tally training');
+        const m = sanitizeManagerReview({ notes: { c_d5: 'On time', c_zz: 'x' } }, DEFAULT_SETUP);
+        expect(m.notes).toEqual({ c_d5: 'On time' });
+    });
+
     test('a manager-typed self form is kept only when it has a score', () => {
         expect(sanitizeManagerReview({ selfByMgr: { wins: 'x', scores: { c_b1: 0 } } }, DEFAULT_SETUP).selfByMgr).toBeUndefined();
         expect(sanitizeManagerReview({ selfByMgr: { scores: { c_b1: 6 } } }, DEFAULT_SETUP).selfByMgr.scores).toEqual({ c_b1: 6 });
@@ -380,6 +403,18 @@ describe('sanitizeSetup — what an admin may save', () => {
         expect(r.error).toMatch(/110%/);
     });
 
+    test('weights are stored as whole numbers: 70.4/29.6 is saved as 70/30', () => {
+        const r = sanitizeSetup(Object.assign(base(), { weights: { work: 70.4, behaviour: 29.6 } }));
+        expect(r.setup.weights).toEqual({ work: 70, behaviour: 30 });
+    });
+
+    test('an item listed twice under Behaviour is kept once, so nobody is scored on it twice', () => {
+        const r = sanitizeSetup(Object.assign(base(), { behaviour: [{ id: 'c_b1', name: 'Teamwork' }, { id: 'c_b1', name: 'Teamwork again' }, { id: 'c_p1', name: 'Attendance' }] }));
+        expect(ids(r.setup.behaviour)).toEqual(['c_b1', 'c_p1']);
+        expect(r.setup.behaviour[0].name).toBe('Teamwork');
+        expect(ids(groupsFor(r.setup, { roles: [] }).behaviour)).toEqual(['c_b1', 'c_p1']);
+    });
+
     test('startedAt and a discipline list are never taken from what the browser sends', () => {
         const r = sanitizeSetup(Object.assign(base(), { startedAt: '2020-01-01T00:00:00.000Z', discipline: [{ id: 'c_p2', name: 'Rules' }] }));
         expect(Object.keys(r.setup).sort()).toEqual(['behaviour', 'raises', 'roles', 'scale', 'weights']);
@@ -404,8 +439,11 @@ describe('sanitizeSetup — what an admin may save', () => {
         expect(r.setup.roles.map((x) => x.name)).toEqual(['Sales']);
     });
 
-    test('raise rows outside 0–10 or above 100% are dropped, and the rest kept highest first', () => {
-        const r = sanitizeSetup(Object.assign(base(), { raises: [{ min: 6, pct: 5 }, { min: 11, pct: 20 }, { min: 9, pct: 12 }, { min: 8, pct: 150 }] }));
+    test('raise rows outside 0–10, below 0% or above 100% are dropped, and the rest kept highest first', () => {
+        const r = sanitizeSetup(Object.assign(base(), { raises: [
+            { min: 6, pct: 5 }, { min: 11, pct: 20 }, { min: 9, pct: 12 }, { min: 8, pct: 150 },
+            { min: 4, pct: -5 }, { min: -1, pct: 1 },
+        ] }));
         expect(r.setup.raises.map((x) => [x.min, x.pct])).toEqual([[9, 12], [6, 5]]);
     });
 });
@@ -460,6 +498,31 @@ describe('sanitizeProfile — jobs, targets, own items and removed shared items'
         expect(r.error).toEqual(expect.any(String));
     });
 
+    test('an own item may not take a shared item\'s id (c_s1) — refused, so it can never be scored twice', () => {
+        const r = sanitizeProfile({ roles: ['r_sales'], extras: [{ id: 'c_s1', name: 'Orders closed vs target', section: 'r_sales' }] }, DEFAULT_SETUP);
+        expect(r.profile).toBeUndefined();
+        expect(r.error).toMatch(/Reload/);
+    });
+
+    test('the same own item sent twice is refused, never kept twice', () => {
+        const r = sanitizeProfile({ roles: [], extras: [
+            { id: 'x_a', name: 'Stays calm', section: 'behaviour' },
+            { id: 'x_a', name: 'Stays calm (copy)', section: 'behaviour' },
+        ] }, DEFAULT_SETUP);
+        expect(r.profile).toBeUndefined();
+        expect(r.error).toEqual(expect.any(String));
+    });
+
+    test('30 own items is the most: 30 are kept, a 31st is refused rather than cut off silently', () => {
+        const make = (n) => Array.from({ length: n }, (_, i) => ({ id: 'x_' + i, name: 'Item ' + i, section: 'behaviour' }));
+        const ok = sanitizeProfile({ roles: [], extras: make(30) }, DEFAULT_SETUP);
+        expect(ok.error).toBeUndefined();
+        expect(ok.profile.extras).toHaveLength(30);
+        const tooMany = sanitizeProfile({ roles: [], extras: make(31) }, DEFAULT_SETUP);
+        expect(tooMany.profile).toBeUndefined();
+        expect(tooMany.error).toEqual(expect.any(String));
+    });
+
     test('removed shared items are kept only if they are real Setup items, once each', () => {
         const r = sanitizeProfile({ roles: ['r_sales'], hidden: ['c_s1', 'c_nope', 'x_mine', 'c_p1', 'c_s1', 'c_d5'] }, DEFAULT_SETUP);
         expect(r.profile.hidden).toEqual(['c_s1', 'c_p1', 'c_d5']);
@@ -499,6 +562,44 @@ describe('sanitizeNewStaff — a name, and an email only if they sign in', () =>
         expect(a).toMatch(/^s-[0-9a-f]{12}$/);
         expect(b).toMatch(/^s-[0-9a-f]{12}$/);
         expect(a).not.toBe(b);
+    });
+
+    test('personSlug (names their saved forms) is the same for any spelling of one email, different for another', () => {
+        const slug = personSlug('ravi.k@dscpipes.com');
+        expect(slug).toMatch(/^[0-9a-f]{20}$/);
+        expect(personSlug('  Ravi.K@DSCPipes.COM ')).toBe(slug);
+        expect(personSlug('kavitha@dscpipes.com')).not.toBe(slug);
+    });
+});
+
+// ── The half-year meeting ───────────────────────────────────────────────────
+
+describe('sanitizeMeeting — the raise agreed at the half-year meeting', () => {
+    test('a raise from 0 to 100%, halves allowed; 0 is a real answer, blank is "not decided"', () => {
+        expect(sanitizeMeeting({ raisePct: 7.5 }).raisePct).toBe(7.5);
+        expect(sanitizeMeeting({ raisePct: 100 }).raisePct).toBe(100);
+        expect(sanitizeMeeting({ raisePct: 0 }).raisePct).toBe(0);
+        expect(sanitizeMeeting({ raisePct: '' }).raisePct).toBeNull();
+        expect(sanitizeMeeting({}).raisePct).toBeNull();
+    });
+
+    test('a raise above 100% or below 0% is not kept', () => {
+        expect(sanitizeMeeting({ raisePct: 101 }).raisePct).toBeNull();
+        expect(sanitizeMeeting({ raisePct: -1 }).raisePct).toBeNull();
+        expect(sanitizeMeeting({ raisePct: 'abc' }).raisePct).toBeNull();
+    });
+
+    test('the meeting date is kept only as YYYY-MM-DD', () => {
+        expect(sanitizeMeeting({ date: '2026-10-05' }).date).toBe('2026-10-05');
+        expect(sanitizeMeeting({ date: '5/10/2026' }).date).toBe('');
+        expect(sanitizeMeeting({ date: '2026-10-05<script>' }).date).toBe('');
+    });
+
+    test('held only on a real true, not the text "true"; notes trimmed', () => {
+        expect(sanitizeMeeting({ done: true }).done).toBe(true);
+        expect(sanitizeMeeting({ done: 'true' }).done).toBe(false);
+        const m = sanitizeMeeting({ wentWell: ' Orders up ', improve: ' Collections ', newTargets: ' 25 orders ' });
+        expect([m.wentWell, m.improve, m.newTargets]).toEqual(['Orders up', 'Collections', '25 orders']);
     });
 });
 
@@ -541,6 +642,7 @@ describe('quarter and half keys', () => {
         expect(isQuarterKey('2026-28-Q2')).toBe(false);
         expect(isQuarterKey('2026-27-Q5')).toBe(false);
         expect(isHalfKey('2026-27-H1')).toBe(true);
+        expect(isHalfKey('2026-28-H1')).toBe(false);
         expect(isHalfKey('2026-27-H3')).toBe(false);
     });
 

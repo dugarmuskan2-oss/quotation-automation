@@ -394,7 +394,7 @@ const STAFF = [
 const selfKey = (id, pre = '') => pre + 'appraisal-self-' + A.personSlug(id) + '.json';
 const mgrKey = (id, pre = '') => pre + 'appraisal-mgr-' + A.personSlug(id) + '.json';
 
-function harness({ setup = SETUP_AUG, staff = STAFF, files = {}, prefix = '', storage, db } = {}) {
+function harness({ setup = SETUP_AUG, staff = STAFF, files = {}, prefix = '', storage, db, usersOk = true } = {}) {
     const initial = { ...files };
     if (setup) initial[prefix + 'appraisal-setup.json'] = JSON.stringify(setup);
     if (staff) initial[prefix + 'appraisal-staff.json'] = JSON.stringify({ staff, savedAt: '2026-09-01T05:00:00.000Z' });
@@ -403,7 +403,9 @@ function harness({ setup = SETUP_AUG, staff = STAFF, files = {}, prefix = '', st
     const dynamo = db || fakeDynamo();
     const onceClaim = createOnceClaim({ getDb: () => ({ client: dynamo.client, table: 'dsc-test' }), storage: store });
     const app = express();
-    app.use('/api', createAppraisalRouter({ storage: store, loadUsers: async () => ({ users: USERS, ok: true }), onceClaim }));
+    // A failed People-list read looks like the real loadUsers: no users, ok:false.
+    const loadUsers = async () => (usersOk ? { users: USERS, ok: true } : { users: [], ok: false });
+    app.use('/api', createAppraisalRouter({ storage: store, loadUsers, onceClaim }));
     const run = (authorization) => {
         const r = request(app).get(RUN_PATH);
         return authorization === undefined ? r : r.set('Authorization', authorization);
@@ -442,6 +444,27 @@ describe('the reminder route is locked to the scheduler', () => {
         expect(sendEmail).not.toHaveBeenCalled();
         expect(h.db.items.size).toBe(0);
     });
+
+    test('the lock comes first: on a day nothing is due, a stranger still gets 401, never the reason', async () => {
+        liveEnv();
+        // 16 Oct 2026 (Jul–Sep, never reminded) and 5 Jan 2027 with everyone done — the two "nothing due" answers.
+        const files = {};
+        for (const id of ['st-pavithra', 'st-ramesh']) {
+            files[selfKey(id)] = JSON.stringify(selfFile({ [Q3]: selfSubmitted() }));
+            files[mgrKey(id)] = JSON.stringify(mgrFile({ [Q3]: mgrReview({ scores: ALL_SCORES, done: true }) }));
+        }
+        const h = harness({ files });
+        for (const now of [at('2026-10-16T03:30:00Z'), T_JAN]) {
+            clock.mockReturnValue(now);
+            for (const authz of [undefined, 'Bearer wrong']) {
+                const res = await h.run(authz);
+                expect([now, authz, res.status, res.body]).toEqual([now, authz, 401, { error: 'Not allowed.' }]);
+            }
+            // The scheduler itself gets the "nothing due" answer, so the day really was a quiet one.
+            expect((await h.run('Bearer ' + SECRET)).body.sent).toBe(false);
+        }
+        expect(sendEmail).not.toHaveBeenCalled();
+    });
 });
 
 describe('the reminder route sends one email a day while something is due', () => {
@@ -456,6 +479,8 @@ describe('the reminder route sends one email a day while something is due', () =
         const mail = sendEmail.mock.calls[0][0];
         expect(mail.to).toBe('info@dscpipes.com');
         expect(APPRAISAL_REMINDER_EMAIL).toBe('info@dscpipes.com');
+        // Only the office: no cc / bcc / reply-in-thread that could carry it to a staff member.
+        expect(Object.keys(mail).sort()).toEqual(['bodyHtml', 'subject', 'to']);
         expect(mail.subject).toBe('Appraisal reminder: 2 people still due for Q3 · Oct–Dec 2026');
         expect(mail.bodyHtml).toContain('href="https://quotes.dscpipes.example/appraisal.html"');
         expect(mail.bodyHtml).not.toMatch(/127\.0\.0\.1|localhost/);    // never the address the scheduler called
@@ -550,6 +575,42 @@ describe('the reminder route sends one email a day while something is due', () =
         expect(res.status).toBe(503);
         expect(sendEmail).not.toHaveBeenCalled();
     });
+
+    test('the People list cannot be read → 503, no email, no slot — never a false "everything is done"', async () => {
+        clock.mockReturnValue(T_JAN);
+        liveEnv();
+        // A staff list an admin has saved, and one still seeded from the People list (nothing stored).
+        for (const staff of [STAFF, null]) {
+            sendEmail.mockClear();
+            const h = harness({ staff, usersOk: false });
+            const res = await h.run('Bearer ' + SECRET);
+            expect([staff ? 'stored' : 'seeded', res.status]).toEqual([staff ? 'stored' : 'seeded', 503]);
+            expect(res.text).not.toMatch(/Everything is filled|Pavithra|Ramesh/);
+            expect(sendEmail).not.toHaveBeenCalled();
+            expect(h.db.items.size).toBe(0);
+        }
+    });
+
+    test('a quarter turns due on the first India morning after it ends — and the next one takes over', async () => {
+        liveEnv();
+        const h = harness();
+        clock.mockReturnValue(at('2026-12-31T03:30:00Z'));              // 09:00 India, 31 Dec 2026: Oct–Dec still running
+        expect((await h.run('Bearer ' + SECRET)).body).toEqual({ ok: true, sent: false, reason: 'No quarter is due yet.' });
+        expect(sendEmail).not.toHaveBeenCalled();
+
+        clock.mockReturnValue(at('2027-01-01T03:30:00Z'));              // 09:00 India, 1 Jan 2027: the first email
+        expect((await h.run('Bearer ' + SECRET)).body).toEqual({ ok: true, sent: true });
+        expect(sendEmail).toHaveBeenCalledTimes(1);
+        expect(sendEmail.mock.calls[0][0].subject).toBe('Appraisal reminder: 2 people still due for Q3 · Oct–Dec 2026');
+        expect(h.db.items.has(ONCE_CLAIM_PREFIX + 'appraisal-reminder-2027-01-01')).toBe(true);
+
+        clock.mockReturnValue(at('2027-04-01T03:30:00Z'));              // 09:00 India, 1 Apr 2027: Jan–Mar is now due
+        expect((await h.run('Bearer ' + SECRET)).body).toEqual({ ok: true, sent: true });
+        // The newcomer (added 3 Jan) was there when Jan–Mar ended, so now they count too.
+        expect(sendEmail.mock.calls[1][0].subject).toBe('Appraisal reminder: 3 people still due for Q4 · Jan–Mar 2027');
+        expect(sendEmail.mock.calls[1][0].bodyHtml).toContain('Newbie Joined');
+        expect(h.reminderRecord().lastQuarter).toBe('2026-27-Q4');
+    });
 });
 
 describe('the reminder route stays quiet when nothing is due', () => {
@@ -613,15 +674,28 @@ describe('the testing site has its own day slot', () => {
         const storage = memoryStorage();
         const db = fakeDynamo();
         // Same storage and same database, as on Vercel: the preview build's files carry "preview-".
+        // Its staff list differs from the live one, so reading the wrong files shows in the email.
+        const PREVIEW_STAFF = [{ id: 'kavitha@testing-site', name: 'Kavitha Testing', email: '', addedAt: '2026-08-01T05:00:00.000Z' }];
         const live = harness({ storage, db });
-        const preview = harness({ storage, db, prefix: 'preview-' });
+        const preview = harness({ storage, db, prefix: 'preview-', staff: PREVIEW_STAFF });
 
         process.env.VERCEL_ENV = 'preview';
         expect((await preview.run('Bearer ' + SECRET)).body).toEqual({ ok: true, sent: true });
+        const previewMail = sendEmail.mock.calls[0][0];
+        expect(previewMail.subject).toBe('Appraisal reminder: 1 person still due for Q3 · Oct–Dec 2026');
+        expect(previewMail.bodyHtml).toContain('Kavitha Testing');
+        expect(previewMail.bodyHtml).not.toContain('Pavithra Sundaram');
+        // The testing site's run is recorded in its own file; the live record is untouched.
+        expect(preview.reminderRecord().lastCount).toBe(1);
+        expect(storage.files.has('appraisal-reminder.json')).toBe(false);
 
         delete process.env.VERCEL_ENV;
         expect((await live.run('Bearer ' + SECRET)).body).toEqual({ ok: true, sent: true });
         expect(sendEmail).toHaveBeenCalledTimes(2);
+        const liveMail = sendEmail.mock.calls[1][0];
+        expect(liveMail.bodyHtml).toContain('Pavithra Sundaram');
+        expect(liveMail.bodyHtml).not.toContain('Kavitha Testing');
+        expect(live.reminderRecord().lastCount).toBe(2);
         expect([...db.items.keys()].sort()).toEqual([
             ONCE_CLAIM_PREFIX + 'appraisal-reminder-2027-01-05',
             ONCE_CLAIM_PREFIX + 'preview-appraisal-reminder-2027-01-05',

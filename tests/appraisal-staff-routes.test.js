@@ -56,8 +56,10 @@ function makeWorld(users) {
         readText: async (k) => (mem.has(k) ? mem.get(k) : null),
         saveText: async (k, v) => { writes.push(k); mem.set(k, String(v)); },
     };
-    const state = { users: users || peopleList() };
-    const loadUsers = async () => ({ users: state.users, ok: true });
+    // state.ok = false mimics routes/auth.js loadUsers when users.json can't be read:
+    // { users: <last cached list, or []>, ok: false }.
+    const state = { users: users || peopleList(), ok: true };
+    const loadUsers = async () => ({ users: state.users, ok: state.ok });
     const onceClaim = { claim: jest.fn(async () => true), release: jest.fn(async () => {}) };
     const app = express();
     app.use((req, res, next) => {
@@ -269,9 +271,10 @@ describe('removing and bringing back', () => {
         expect(ov.removed[0]).toMatchObject({ id: BALA, name: 'Bala', email: BALA });
         expect(ov.removed[0].removedAt).toMatch(ISO_RX);
 
-        // While removed: he has no record of his own, and can't be reviewed or removed again.
+        // While removed: he has no record of his own, and can't be reviewed, renamed or removed again.
         expect((await w.as(BALA).get('/appraisal/me')).body.mine).toBeNull();
         expect((await w.as(BOSS).put(`/appraisal/review/${BALA}/${Q2}`, { review: { scores: {} } })).status).toBe(404);
+        expect((await w.as(BOSS).put('/appraisal/staff/' + BALA, { name: 'Bala R', email: BALA })).status).toBe(404);
         expect((await w.as(BOSS).del('/appraisal/staff/' + BALA)).status).toBe(404);
 
         const back = await w.as(BOSS).post(`/appraisal/staff/${BALA}/restore`);
@@ -281,6 +284,7 @@ describe('removing and bringing back', () => {
         expect(ov.people.map((p) => p.id)).toEqual([ANITA, BALA]);
         expect(ov.removed).toEqual([]);
         const bala = personIn(ov, BALA);
+        expect(bala.name).toBe('Bala');
         expect(bala.mgr.reviews[Q2].scores).toEqual({ c_b1: 8, c_b2: 6 });
         expect(bala.mgr.reviews[Q2].comment).toBe('kept');
 
@@ -313,6 +317,20 @@ describe('who may do what', () => {
         expect(personIn(ov, BALA).mgr.reviews[Q2].scores).toEqual({ c_b1: 5 });
     });
 
+    test('the same holds for someone added on the Staff tab (id is not their email) and later made a manager', async () => {
+        const w = makeWorld();
+        const added = await w.as(BOSS).post('/appraisal/staff', { name: 'Chitra', email: 'chitra@dscpipes.com' });
+        expect(added.status).toBe(200);
+        const id = added.body.staff.id;
+        expect(id).not.toBe('chitra@dscpipes.com');
+        w.state.users = [...w.state.users, { name: 'Chitra', email: 'Chitra@dscpipes.com', permissions: ['managePeople'] }];
+
+        const self = await w.as('chitra@dscpipes.com').put(`/appraisal/review/${id}/${Q2}`, { review: { scores: { c_b1: 10 } } });
+        expect(self.status).toBe(403);
+        expect(self.body.error).toMatch(/yourself/);
+        expect((await w.as(BOSS).put(`/appraisal/review/${id}/${Q2}`, { review: { scores: { c_b1: 6 } } })).status).toBe(200);
+    });
+
     test('staff get 403 on every admin route and nothing is written', async () => {
         const w = makeWorld();
         const me = w.as(ANITA);
@@ -335,6 +353,37 @@ describe('who may do what', () => {
         expect(w.writes).toEqual([]);
     });
 
+    test('with no manager on People, nobody manages here (no "everyone may until a manager exists" window)', async () => {
+        // The People page lets everyone manage until someone holds managePeople; scores are private,
+        // so the appraisal must not. Same people as usual, minus the two managers.
+        const w = makeWorld(peopleList().filter((u) => u.name === 'Anita' || u.name === 'Bala'));
+        const me = await w.as(ANITA).get('/appraisal/me');
+        expect(me.status).toBe(200);
+        expect(me.body.you.isAdmin).toBe(false);
+        expect(me.body.hasAdmin).toBe(false);
+        expect(me.body.mine).not.toBeNull();
+        expect((await w.as(ANITA).get('/appraisal/overview')).status).toBe(403);
+        expect((await w.as(ANITA).put(`/appraisal/review/${BALA}/${Q2}`, { review: { scores: { c_b1: 1 } } })).status).toBe(403);
+        expect(w.writes).toEqual([]);
+        // With a manager on People, the same call says so.
+        const w2 = makeWorld();
+        expect((await w2.as(ANITA).get('/appraisal/me')).body.hasAdmin).toBe(true);
+    });
+
+    test('when the People list cannot be read, the answer is "try again" (503), never "not on the list" or a pass', async () => {
+        const w = makeWorld();
+        w.state.ok = false;
+        w.state.users = [];  // first read failed, nothing cached
+        const me = await w.as(ANITA).get('/appraisal/me');
+        expect(me.status).toBe(503);
+        expect(me.body.error).toMatch(/try again/i);
+        expect(me.body.mine).toBeUndefined();
+        w.state.users = peopleList();  // failed read with an older cached list: still refused
+        expect((await w.as(BOSS).get('/appraisal/overview')).status).toBe(503);
+        expect((await w.as(BOSS).post('/appraisal/staff', { name: 'Chitra' })).status).toBe(503);
+        expect(w.writes).toEqual([]);
+    });
+
     test('no session, or someone not on the People list, is refused on the live site', async () => {
         const w = makeWorld();
         const anon = await w.as(null).get('/appraisal/me');
@@ -350,11 +399,19 @@ describe("a staff member's own view (mine)", () => {
     test('shows only their own jobs, targets and self-reviews — never a manager score or anyone else', async () => {
         const w = makeWorld();
         expect((await saveProfile(w, ANITA, { roles: ['r_sales'], targets: 'Anita: 20 orders' })).status).toBe(200);
-        expect((await saveProfile(w, BALA, { roles: ['r_admin'], targets: 'Bala: clear ledger' })).status).toBe(200);
+        expect((await saveProfile(w, BALA, {
+            roles: ['r_admin'], targets: 'Bala: clear ledger',
+            extras: [{ id: 'x_tally', name: 'Tally entries', section: 'r_admin' }], hidden: ['c_b4'],
+        })).status).toBe(200);
         const done = await w.as(BOSS).put(`/appraisal/review/${ANITA}/${Q2}`, {
             review: { scores: scoresFor([...ITEMS_SALES, ...ITEMS_BEHAVIOUR], 3), comment: 'MGR-ONLY-NOTE', done: true },
         });
         expect(done.status).toBe(200);
+        // A manager DRAFT for Q1 (not done) neither locks her Q1 form nor shows up in her view.
+        const draftQ1 = await w.as(BOSS).put(`/appraisal/review/${ANITA}/${Q1}`, {
+            review: { scores: { c_s1: 2 }, comment: 'MGR-DRAFT-NOTE' },
+        });
+        expect(draftQ1.status).toBe(200);
         const own = await w.as(ANITA).put(`/appraisal/self/${Q1}`, {
             review: { scores: scoresFor([...ITEMS_SALES, ...ITEMS_BEHAVIOUR], 9), wins: 'anita-own-wins' },
         });
@@ -370,14 +427,19 @@ describe("a staff member's own view (mine)", () => {
         expect(mine.reviews[Q1].wins).toBe('anita-own-wins');
         expect(mine.reviews[Q1].scores.c_s1).toBe(9);
         expect(mine.lockedQuarters).toEqual([Q2]);
+        expect(mine.extras).toEqual([]);
+        expect(mine.hidden).toEqual([]);
         const text = JSON.stringify(r.body);
-        expect(text).not.toMatch(/MGR-ONLY-NOTE/);
-        expect(text).not.toMatch(/Bala: clear ledger/);
+        expect(text).not.toMatch(/MGR-ONLY-NOTE|MGR-DRAFT-NOTE/);
+        expect(text).not.toMatch(/Bala: clear ledger|Tally entries/);
         expect(r.body.people).toBeUndefined();
 
+        // Bala's view carries his own items and removed items, so his own form lists the right ones.
         const b = await w.as(BALA).get('/appraisal/me');
         expect(b.body.mine.targets).toBe('Bala: clear ledger');
         expect(b.body.mine.roles).toEqual(['r_admin']);
+        expect(b.body.mine.extras).toEqual([{ id: 'x_tally', name: 'Tally entries', hint: '', section: 'r_admin' }]);
+        expect(b.body.mine.hidden).toEqual(['c_b4']);
         expect(b.body.mine.reviews).toEqual({});
         expect(JSON.stringify(b.body)).not.toMatch(/Anita: 20 orders|anita-own-wins/);
 
@@ -398,12 +460,24 @@ describe("a staff member's own view (mine)", () => {
         expect(sub.status).toBe(403);
     });
 
-    test('a manager gets no mine (managers are not appraised)', async () => {
+    test('a manager gets no mine (managers are not appraised) — even one still on the staff list after a promotion', async () => {
         const w = makeWorld();
-        const r = await w.as(BOSS).get('/appraisal/me');
-        expect(r.status).toBe(200);
-        expect(r.body.you.isAdmin).toBe(true);
-        expect(r.body.mine).toBeNull();
+        await storeStaffList(w);  // Bala stays on the stored list when People changes
+        expect((await saveProfile(w, BALA, { roles: ['r_admin'], targets: 'Bala target' })).status).toBe(200);
+        // Before the promotion Bala sees his own record, so the null below is the manager rule, not a missing record.
+        const before = await w.as(BALA).get('/appraisal/me');
+        expect(before.body.mine.targets).toBe('Bala target');
+
+        w.state.users = w.state.users.map((u) => (u.email === BALA ? { ...u, permissions: ['managePeople'] } : u));
+        const after = await w.as(BALA).get('/appraisal/me');
+        expect(after.status).toBe(200);
+        expect(after.body.you.isAdmin).toBe(true);
+        expect(after.body.mine).toBeNull();
+        expect(JSON.stringify(after.body)).not.toMatch(/Bala target/);
+
+        const boss = await w.as(BOSS).get('/appraisal/me');
+        expect(boss.body.you.isAdmin).toBe(true);
+        expect(boss.body.mine).toBeNull();
     });
 });
 
@@ -432,7 +506,7 @@ describe("a person's profile (jobs, targets, own items, removed items)", () => {
         expect(p.mgr.roles).toEqual(['r_sales', 'r_admin']);
     });
 
-    test('a later save that sends only jobs + targets (meeting "set targets") keeps own items and removed items', async () => {
+    test('a later save that sends only jobs + targets (meeting "set targets") keeps own items, removed items, scores and meeting notes', async () => {
         const w = makeWorld();
         const full = await saveProfile(w, ANITA, {
             roles: ['r_sales', 'r_admin'], targets: 'old',
@@ -440,12 +514,19 @@ describe("a person's profile (jobs, targets, own items, removed items)", () => {
             hidden: ['c_s6'],
         });
         expect(full.status).toBe(200);
+        // Scores and meeting notes live in the same manager file as the profile.
+        expect((await w.as(BOSS).put(`/appraisal/review/${ANITA}/${Q2}`, { review: { scores: { c_s1: 6 }, comment: 'keep-this-review' } })).status).toBe(200);
+        expect((await w.as(BOSS).put(`/appraisal/meeting/${ANITA}/${H1}`, { meeting: { wentWell: 'keep-this-meeting', raisePct: 5 } })).status).toBe(200);
+
         const later = await saveProfile(w, ANITA, { roles: ['r_sales', 'r_admin'], targets: 'new targets', baseSavedAt: full.body.profileSavedAt });
         expect(later.status).toBe(200);
         const p = personIn(await overview(w), ANITA);
         expect(p.mgr.targets).toBe('new targets');
         expect(p.mgr.extras).toEqual([{ id: 'x_tally', name: 'Tally entries', hint: '', section: 'r_admin' }]);
         expect(p.mgr.hidden).toEqual(['c_s6']);
+        expect(p.mgr.reviews[Q2].comment).toBe('keep-this-review');
+        expect(p.mgr.reviews[Q2].scores).toEqual({ c_s1: 6 });
+        expect(p.mgr.meetings[H1].wentWell).toBe('keep-this-meeting');
     });
 
     test('an own item under a job since deleted from Setup is refused (409), never silently dropped', async () => {
@@ -510,6 +591,25 @@ describe('a finished ("done") review', () => {
         expect(r.status).toBe(200);
         expect(r.body.review.done).toBe(false);
     });
+
+    test('a review saved from a stale page is refused (409) and the newer one stays', async () => {
+        const w = await setUp();
+        const url = `/appraisal/review/${ANITA}/${Q2}`;
+        const first = await w.as(BOSS).put(url, { review: { scores: { c_d5: 4 }, comment: 'first' } });
+        expect(first.status).toBe(200);
+        const base1 = first.body.review.savedAt;
+        expect(base1).toMatch(ISO_RX);
+        await pause(5);
+        const second = await w.as(BOSS).put(url, { review: { scores: { c_d5: 6 }, comment: 'second' }, baseSavedAt: base1 });
+        expect(second.status).toBe(200);
+        const stale = await w.as(BOSS).put(url, { review: { scores: { c_d5: 1 }, comment: 'stale' }, baseSavedAt: base1 });
+        expect(stale.status).toBe(409);
+        const noBase = await w.as(BOSS).put(url, { review: { scores: { c_d5: 1 }, comment: 'no-base' } });
+        expect(noBase.status).toBe(409);
+        const p = personIn(await overview(w), ANITA);
+        expect(p.mgr.reviews[Q2].comment).toBe('second');
+        expect(p.mgr.reviews[Q2].scores).toEqual({ c_d5: 6 });
+    });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -563,6 +663,18 @@ describe('testing site (VERCEL_ENV=preview)', () => {
         expect(r.body.mine).toBeNull();
     });
 
+    test('someone signed in is themself there, not the test manager', async () => {
+        const w = makeWorld();
+        const r = await w.as(ANITA).get('/appraisal/me');
+        expect(r.status).toBe(200);
+        expect(r.body.you).toMatchObject({ email: ANITA, isAdmin: false });
+        expect((await w.as(ANITA).get('/appraisal/overview')).status).toBe(403);
+        expect((await w.as(ANITA).post('/appraisal/staff', { name: 'Friend' })).status).toBe(403);
+        expect(w.writes).toEqual([]);
+        const boss = await w.as(BOSS).get('/appraisal/me');
+        expect(boss.body.you).toMatchObject({ email: BOSS, isAdmin: true });
+    });
+
     test('starts with the five office staff and their jobs, not the People list', async () => {
         const w = makeWorld();
         const ov = await overview(w, null);
@@ -599,5 +711,24 @@ describe('testing site (VERCEL_ENV=preview)', () => {
         delete process.env.VERCEL_ENV;
         const ov = await overview(w, BOSS);
         expect(ov.people.map((p) => p.id)).toEqual([ANITA, BALA]);
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('another deployment (CONFIG_PREFIX set)', () => {
+    afterEach(() => { delete process.env.CONFIG_PREFIX; });
+
+    test('keeps its own appraisal files; the main site never reads them', async () => {
+        const w = makeWorld();
+        process.env.CONFIG_PREFIX = 'other-';
+        expect((await w.as(BOSS).post('/appraisal/staff', { name: 'Other site person' })).status).toBe(200);
+        expect((await saveProfile(w, ANITA, { roles: ['r_sales'], targets: 'other site target' })).status).toBe(200);
+        expect(w.writes).toHaveLength(2);
+        for (const k of w.writes) expect(k).toMatch(/^other-appraisal-/);
+
+        delete process.env.CONFIG_PREFIX;
+        const ov = await overview(w);
+        expect(ov.people.map((p) => p.id)).toEqual([ANITA, BALA]);
+        expect(personIn(ov, ANITA).mgr.targets).toBeUndefined();
     });
 });
