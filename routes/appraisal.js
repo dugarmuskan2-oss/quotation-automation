@@ -34,12 +34,24 @@ const STALE_MSG = 'Someone saved this since you opened it. Reload the page to se
  */
 function isTestSite() { return process.env.VERCEL_ENV === 'preview'; }
 const TEST_MANAGER = { name: 'Test manager (testing site)', email: 'test-manager@testing-site' };
-// The testing site has no People list, so it gets two pretend staff to score. Never on the live site.
-const SAMPLE_STAFF = [
-    { name: 'Sample Staff – Ravi', email: 'sample-ravi@testing-site' },
-    { name: 'Sample Staff – Priya', email: 'sample-priya@testing-site' },
+// The testing site has no People list, so it gets the office staff by name (no emails yet), each
+// with the jobs the owner gave them. Never on the live site. `startRoles` holds only until an
+// admin saves that person's roles on the Staff tab.
+const ALL_JOBS = ['r_sales', 'r_accounts', 'r_admin'];
+const TEST_SITE_STAFF = [
+    { name: 'Pavithra', email: 'pavithra@testing-site', startRoles: ALL_JOBS },
+    { name: 'Jayanthi', email: 'jayanthi@testing-site', startRoles: ALL_JOBS },
+    { name: 'Ramesh', email: 'ramesh@testing-site', startRoles: ALL_JOBS },
+    { name: 'Ramya', email: 'ramya@testing-site', startRoles: ALL_JOBS },
+    { name: 'Kavitha', email: 'kavitha@testing-site', startRoles: ['r_accounts', 'r_admin'] },
 ];
-function withSampleStaff(users) { return isTestSite() ? [...users, ...SAMPLE_STAFF] : users; }
+function withTestSiteStaff(users) { return isTestSite() ? [...users, ...TEST_SITE_STAFF] : users; }
+
+/** A person's saved roles, or their starting roles if nobody has saved any yet. */
+function rolesOf(person, mgrDoc) {
+    if (mgrDoc && mgrDoc.profileSavedAt) return mgrDoc.roles || [];
+    return (person && person.startRoles) || (mgrDoc && mgrDoc.roles) || [];
+}
 
 function key(name) { return String(process.env.CONFIG_PREFIX || '').trim() + (isTestSite() ? 'preview-' : '') + APPRAISAL_KEY_PREFIX + name; }
 const setupKey = () => key('setup.json');
@@ -77,7 +89,7 @@ function createAppraisalRouter({ storage, loadUsers }) {
     async function whoIsAsking(req) {
         const { users: people, ok } = await loadUsers(storage);
         if (!ok) throw fail(503, 'Cannot read the people list right now. Try again shortly.');
-        const users = withSampleStaff(people);
+        const users = withTestSiteStaff(people);
         const email = req.user && req.user.email;
         if (!email && isTestSite()) return { users, me: TEST_MANAGER, email: TEST_MANAGER.email, isAdmin: true, testSite: true };
         if (!email) throw fail(403, 'Sign in with your own name to use the appraisal. The shared password has no name on it.');
@@ -154,7 +166,7 @@ function createAppraisalRouter({ storage, loadUsers }) {
         const { setup, isStarter } = await readSetup();
         const people = await Promise.all(who.users.filter((u) => u && u.email).map(async (u) => {
             const [self, mgr] = await Promise.all([readJson(selfKey(u.email), { reviews: {} }), readJson(mgrKey(u.email), {})]);
-            return { email: String(u.email).toLowerCase(), name: u.name || u.email, role: roles.roleOf(u), self, mgr };
+            return { email: String(u.email).toLowerCase(), name: u.name || u.email, role: roles.roleOf(u), self, mgr: { ...mgr, roles: rolesOf(u, mgr) } };
         }));
         people.sort((a, b) => a.name.localeCompare(b.name));
         res.json({ you: { email: who.email, name: who.me.name || who.email, isAdmin: true }, setup, isStarter, people });
@@ -193,7 +205,7 @@ function createAppraisalRouter({ storage, loadUsers }) {
         const review = A.sanitizeManagerReview(req.body && req.body.review, setup);
         if (review.done) {
             const doc = await readJson(mgrKey(person.email), {});
-            const left = A.unscoredCount(A.groupsFor(setup, doc.roles || []), review.scores);
+            const left = A.unscoredCount(A.groupsFor(setup, rolesOf(person, doc)), review.scores);
             if (left) throw fail(400, `Score every item first. ${left} still to score.`);
         }
         const saved = await saveEntry(mgrKey(person.email), { email: person.email }, 'reviews', q, review, req.body && req.body.baseSavedAt);
