@@ -557,11 +557,13 @@
     /** "plates" and "PLATE", "valves" and "Valves": one word (7 Oct review). */
     function singularWord(w) { return w.length > 3 && !/ss$/.test(w) ? w.replace(/s$/, '') : w; }
     /** The words of an enquiry that can only be about the product: no units, numbers, places or filler. */
-    function enquiryWords(raw, place) {
+    function enquiryWords(raw, place, brands) {
         var placeWords = [place.site, place.pickup, place.unknown].concat(Object.keys(COORD)).join(' ').toLowerCase().split(/[^a-z0-9]+/);
+        // A make the enquiry names ("tata make") is read as a make, not looked for as a product.
+        var makeWords = [].concat.apply([], (brands || []).map(function (b) { return lower(b).split(/[^a-z0-9]+/); }));
         var out = [], toks = lower(raw).split(/[^a-z0-9]+/);
         toks.forEach(function (w, i) {
-            if (w.length < 2 || /^\d+(\.\d+)?$/.test(w) || NOT_PRODUCT_WORD.test(w) || placeWords.indexOf(w) !== -1) return;
+            if (w.length < 2 || /^\d+(\.\d+)?$/.test(w) || NOT_PRODUCT_WORD.test(w) || placeWords.indexOf(w) !== -1 || makeWords.indexOf(w) !== -1) return;
             // The letters of a standard ("BS 6223", "SA-179", "A106", "API 5L") are read by specCodes.
             if (/^(is|bs|en|din|jis|sa|astm|asme|api|yst)$/.test(w) && /^(s?a)?\d|^5(l|ct)$/.test(toks[i + 1] || '')) return;
             if (/^a\d{2,4}$/.test(w) || (/^5(l|ct)$/.test(w) && toks[i - 1] === 'api')) return;
@@ -606,6 +608,7 @@
         var ar = areaNamed(raw, place.site);
         if (ar && areaIsPickup(t, ar)) { place = { site: place.site, pickup: place.pickup || ar.town, unknown: place.unknown }; ar = null; }
         if (ar) place = { site: ar.name + ', ' + ar.town, pickup: place.pickup, unknown: '' };
+        var brands = readBrands(raw);
         return {
             items: merged, types: types,
             site: place.site || HOME, siteAssumed: !place.site, pickup: place.pickup,
@@ -615,14 +618,15 @@
             siteUnknown: place.unknown,
             sitePlace: placed && !placed.ambiguous ? placed : undefined,
             tons: kgTotal / 1000, known: kgTotal > 0,
-            brands: readBrands(raw),
+            brands: brands,
             // The enquiry's own product words, for when no pipe kind could be read from it
             // ("API 5L line pipe") — matched against what each card says it supplies.
-            words: types.length ? [] : enquiryWords(raw, place),
+            words: types.length ? [] : enquiryWords(raw, place, brands),
             text: raw.slice(0, 600),
             specs: specCodes(raw),
             freight: /transport|freight|lorry|truck|tempo|vehicle|trailer|container|part load|full load|\bace\b|pick\s*up|mini\s*truck|\b407\b/.test(t) || !!place.pickup,
-            empty: looksLikeNothing(t, types, place.pickup),
+            // "tata make in chennai" names a make and a town: an enquiry, not a firm's name to look up.
+            empty: looksLikeNothing(t, types, place.pickup) && !brands.length && !place.site && !specCodes(raw).length,
         };
     }
 
@@ -2102,7 +2106,8 @@
     function finderResults() {
         var need = S.find.need;
         var h = '<div class="pd-read">' + readBack(need) + '</div>';
-        if (need.types.length || (need.words || []).length || (need.specs || []).length) {
+        // A make on its own ("tata make in chennai") is enough to say who stocks it.
+        if (need.types.length || (need.words || []).length || (need.specs || []).length || (need.brands || []).length) {
             // The same Makers / Dealers / All choice as the in-quote panel, and the same filter,
             // so the two places never give two different lists for one enquiry.
             var sup = rankFor('material', need);
@@ -2131,6 +2136,7 @@
         }).join('');
         tags += '<span class="pd-tag">' + (need.known ? 'Total: <b>' + need.tons.toFixed(2) + ' T</b>' : '<b>No weight worked out</b> — minimums not checked') + '</span>';
         if (need.pickup) tags += '<span class="pd-tag">From: <b>' + esc(need.pickup) + '</b></span>';
+        if ((need.brands || []).length) tags += '<span class="pd-tag">Make: <b>' + esc(need.brands.join(' / ')) + '</b></span>';
         // Three different things, and they used to read as one. "No place named" told the
         // owner not to bother checking, over an enquiry that named Tirupur plainly.
         tags += need.siteUnknown
