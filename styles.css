@@ -331,7 +331,13 @@
         .sq-enq table { max-width: 100%; border-collapse: collapse; }
         .sq-enq td, .sq-enq th { border: 1px solid #ddd; padding: 4px 7px; }
         .mdk-manage { background: none; border: none; padding: 0; font-size: 12px; color: #0C447C; text-decoration: underline; cursor: pointer; }
-        .mdk-admin-strip { background: #FAEEDA; border-radius: 8px; padding: 9px 12px; margin-bottom: 12px; }
+        .mdk-admin-strip { background: #FAEEDA; border-radius: 8px; padding: 9px 12px; margin-bottom: 12px; position: relative; }
+        /* ✏️ / 🗑 in the strip's top-right corner — icons only, the tooltip says what each does. */
+        .mdk-admin-strip .mdk-corner { position: absolute; top: 6px; right: 8px; display: flex; gap: 2px; }
+        .mdk-admin-strip .mdk-corner button { background: none; border: 0; padding: 3px 5px; border-radius: 5px; font-size: 14px; line-height: 1; cursor: pointer; opacity: .7; }
+        .mdk-admin-strip .mdk-corner button:hover { opacity: 1; background: rgba(99, 56, 6, .1); }
+        .mdk-admin-strip .mdk-corner button[disabled] { opacity: .35; cursor: default; }
+        .mdk-admin-strip:has(.mdk-corner) .h { padding-right: 56px; }
         .mdk-admin-strip .h { font-size: 12px; font-weight: 600; color: #633806; margin-bottom: 3px; }
         .mdk-admin-strip .b { font-size: 12px; color: #854F0B; line-height: 1.6; white-space: pre-wrap; }
 

@@ -87,7 +87,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quotation Generator</title>
     
-    <link rel="stylesheet" href="styles.css?v=20261015-1">
+    <link rel="stylesheet" href="styles.css?v=20261016-1">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
@@ -6949,10 +6949,10 @@
             // Only while nobody has worked on the quote since its margins were set (the server
             // checks the table is still the one the box built); after that, change margins in the quote.
             const reopen = (can('editMargins') && q.adminStatus === 'ready' && !q.sent && !freight && !q.everApproved && !!q.allocatedTableFp)
-                ? '<button type="button" class="rev-ask-btn" data-qid="' + qid + '" onclick="event.stopPropagation(); reopenMargins(this)">✏️ Edit margins</button>' : '';
+                ? '<button type="button" title="Edit margins" aria-label="Edit margins" data-qid="' + qid + '" onclick="event.stopPropagation(); reopenMargins(this)">✏️</button>' : '';
             const clear = (hasNote && can('deleteNotes'))
-                ? '<button type="button" class="rev-ask-btn" data-qid="' + qid + '" onclick="event.stopPropagation(); clearAdminNote(this)" style="color:#A32D2D;">🗑 Remove note</button>' : '';
-            return (reopen || clear) ? '<div class="rev-ask-actions" style="margin-top:6px;">' + reopen + clear + '</div>' : '';
+                ? '<button type="button" title="Delete the admin note" aria-label="Delete the admin note" data-qid="' + qid + '" onclick="event.stopPropagation(); clearAdminNote(this)">🗑</button>' : '';
+            return (reopen || clear) ? '<div class="mdk-corner">' + reopen + clear + '</div>' : '';
         }
         const adminStripBusy = {};
         async function reopenMargins(btn) {
