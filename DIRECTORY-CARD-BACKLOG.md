@@ -2741,3 +2741,9 @@ SALECHA LLP · STEEL MET INDUSTRIES · UNISTEES & ENGINEERING CO.(P) LTD. · SAL
 - ALLIANCE PIPE AND FITTINGS: Your stainless steel page gives no town for ALLIANCE PIPE AND FITTINGS (numbers "022-66362328 / 67437709 / 022- 23812778"). Which town is it in?
 - VASANTH ENTE: Your page gives VASANTH ENTE no town, only "MR DESAI /09821455345". Which town are they in?
 - CLASSIC ENGG TOOLS: Classic Engg Tools' page lists '(3)jindal pipe india' and '(4)jain tube' right after the firms they buy from. Do they buy from these two as well? They are kept as plain notes for now. / If they do, is 'jindal pipe india' Jindal Pipe Limited (the maker) or JINDAL PIPE INDUSTRIES (the Chennai dealer)? / Your stainless steel list has 9444298484, but their own page has 9444298483. Are both real numbers? Both are kept.
+
+## The open questions above — closed (16 Oct)
+
+He looked at all 148 (99 cards, 11–15 Oct batches): *"Im not sure about any of them"*. They are closed
+as they stand: every card stays exactly as his pages show it, nothing changed on any card, nothing
+guessed. From here on such points are written into the batch log only — never put to him.
