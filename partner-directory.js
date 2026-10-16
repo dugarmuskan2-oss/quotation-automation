@@ -4066,6 +4066,7 @@
                     + ' · ' + (pi.readFailed ? '<b>the reading failed — nothing was taken from it</b>'
                         : 'read into ' + pi.finds.length + ' field' + (pi.finds.length === 1 ? '' : 's'))) + '</p>'
             + '</div>'
+            + (imported && match ? firmOnFileNoteHtml(pi, match) : '')
             + (newToLists(pi.preview).length
                 ? '<p class="pd-tiny pd-newlists">New to your lists — approving adds '
                     + esc(newToLists(pi.preview).join(' · ')) + '</p>' : '')
@@ -4364,6 +4365,24 @@
         var head = mails.length + ' address' + (mails.length === 1 ? '' : 'es') + ' you have used before';
         return head + ' · ' + mails.map(esc).join(', ')
             + (pi.preview && pi.preview.enq ? ' · asked ' + pi.preview.enq + ' time' + (pi.preview.enq === 1 ? '' : 's') : '');
+    }
+
+    /**
+     * An address from his enquiries that belongs to a firm already in the directory — often a
+     * gmail one with the firm's name in it (madhavpipes@gmail.com is MADHAV PIPE's). The strip
+     * says "Updates someone you have", but not WHO, and the card he would open first looks new.
+     * Approve already adds the address to that card; this only says so.
+     */
+    function firmOnFileNoteHtml(pi, match) {
+        var mails = (pi.finds || []).filter(function (f) { return f.key === 'email'; })
+            .map(function (f) { return f.value; });
+        if (!mails.length && pi.from) mails = [pi.from];
+        var one = mails.length === 1;
+        return '<div class="pd-read" style="margin:0 0 8px;"><p class="pd-tiny">'
+            + '<b>' + esc(mails.join(', ')) + '</b> ' + (one ? 'is' : 'are') + ' for '
+            + '<button data-pd-open="' + esc(match.id) + '" class="pd-linkish">'
+            + esc(match.company || '(no name)') + '</button>, already in your directory. '
+            + 'Approve adds ' + (one ? 'it' : 'them') + ' to that card.</p></div>';
     }
 
     function matchedPartner(pi) {

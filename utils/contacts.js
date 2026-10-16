@@ -626,6 +626,8 @@ function firmsAlreadyKnown(existing, queued) {
         const mails = (item && item.preview) ? allEmails(item.preview) : [];
         if (item && item.from) mails.push(lower(item.from));
         mails.forEach(e => { if (e) inQueue[firmKeyOf(e)] = true; });
+        // An update already waiting for a firm counts as that firm being in the queue.
+        if (item && item.preview && item.preview.matchId) inQueue['m:' + item.preview.matchId] = true;
     });
     return { held, inQueue };
 }
@@ -638,17 +640,42 @@ function firmsAlreadyKnown(existing, queued) {
  * again however many enquiries go out to it, and a new colleague at a firm we already hold
  * is offered as an UPDATE to that card rather than as a second firm beside it.
  */
+// Words people put in front of a firm's name in a mailbox: sales.madhavpipes@, info.sicagen@.
+const MAILBOX_WORDS = /^(?:sales?|info|accounts?|purchases?|enquir(?:y|ies)|enq|contacts?|admin|office|mktg|marketing|mkt|hr|md|ceo|support|d[ie]spatch|orders?|works|plant|factory|godown|billing|finance)+/;
+
+/**
+ * A free-mail address whose name IS a firm already on file: "madhavpipes@gmail.com" and
+ * "sales.madhavpipes@gmail.com" are MADHAV PIPE's (16 Oct — both were queued as new firms).
+ * The address must start with the firm's WHOLE name — "rajesh1987@" is a person, not RAJESH
+ * STEEL. A short name (under eight letters) may only be followed by two letters ("madhavpipes"),
+ * or "sharmavikas@" would land on a firm called SHARMA. And exactly one firm must fit — two
+ * firms that could own the name is not a pick, and the address is offered as new, as before.
+ */
+function firmByMailName(existing, email) {
+    const parts = cleanEmail(email).split('@');
+    if (!parts[1] || !FREE_MAIL.test(parts[1])) return null;
+    const name = parts[0].replace(/[^a-z]/g, '').replace(MAILBOX_WORDS, '');
+    if (name.length < 6) return null;
+    const fits = (Array.isArray(existing) ? existing : []).filter(p => p && [p.company].concat(p.aka || []).some(n => {
+        const k = firmNameKey(n).replace(/[^a-z]/g, '');
+        return k.length >= 6 && name.indexOf(k) === 0 && (k.length >= 8 || name.length - k.length <= 2);
+    }));
+    return fits.length === 1 ? fits[0] : null;
+}
+
 function pendingFromUsage(existing, queued, emails, usage) {
     const known = firmsAlreadyKnown(existing, queued);
     const firms = {};
     sanitizeStrings(emails, 50).map(lower).filter(isEmail).forEach(email => {
         if (!worthImporting(email) || findByEmail(existing, email)) return;
-        const key = firmKeyOf(email);
-        if (known.inQueue[key]) return;
+        const byName = known.held[firmKeyOf(email)] ? null : firmByMailName(existing, email);
+        // Two free-mail addresses with one firm's name are one update to that firm, not two.
+        const key = byName ? 'm:' + byName.id : firmKeyOf(email);
+        if (known.inQueue[firmKeyOf(email)] || known.inQueue[key]) return;
         if (!firms[key]) {
             firms[key] = {
                 key, emails: [], count: 0, last: '',
-                match: known.held[key] || null,
+                match: known.held[firmKeyOf(email)] || byName || null,
                 role: (usage && usage.role) || 'dealer',
                 types: sanitizeStrings(usage && usage.pipeTypes, 6),
                 routes: (usage && usage.pickup) ? [{ from: str(usage.pickup), to: str(usage.drop) }] : [],
