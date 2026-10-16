@@ -177,10 +177,10 @@
             .catch(function () { return { ok: false, d: { error: 'Could not reach the server.' } }; });
     }
 
+    // Safe inside attributes too (" and '), not only between tags.
     function esc(s) {
-        var d = document.createElement('div');
-        d.textContent = String(s == null ? '' : s);
-        return d.innerHTML;
+        return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
     function initials(name) {
         var parts = String(name || '').trim().split(/\s+/).filter(Boolean);

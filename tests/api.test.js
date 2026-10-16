@@ -248,7 +248,9 @@ describe('POST /api/save-quotation', () => {
             .post('/api/save-quotation')
             .send({ quotation: { id: 'x', customerName: 'Test', quoteNumber: 'Q-001', lineItems: [{ originalDescription: 'd', quantity: '1' }] } });
 
-        expect(res.status).toBe(500);
+        // The first DynamoDB call is the read of the stored quote; a failed read refuses the
+        // save (503) rather than saving past the guards.
+        expect([500, 503]).toContain(res.status);
         mockDdbSend.mockReset();
     });
 });

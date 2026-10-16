@@ -9,6 +9,26 @@
 
 const express = require('express');
 const perms = require('../utils/permissions');
+const crypto = require('crypto');
+
+// The table as the Margins box built it. Edit margins re-prices by rebuilding the table from the
+// line items, which is only safe while nobody has touched the quote since: staff saving it puts
+// their own table in (freight rows, inch marks, renamed headings, hand-typed rates) and their sync
+// drops each line's cost rate. So a reopen and a re-price both need the table to still match.
+// Deleted or written-over notes are kept (who, when, the words) — the newest 50 per quote, so a
+// busy quote can never grow past DynamoDB's 400 KB item limit and start failing every save.
+const MAX_DELETED_NOTES = 50;
+function pushDeletedNote(p, entry) {
+    const list = Array.isArray(p.deletedNotes) ? p.deletedNotes : [];
+    list.push(entry);
+    p.deletedNotes = list.slice(-MAX_DELETED_NOTES);
+}
+
+function deskTableFingerprint(p) {
+    const lines = (Array.isArray(p && p.lineItems) ? p.lineItems : []).map((li) => [li && li.lineItemId, li && li.originalDescription,
+        li && li.identifiedPipeType, li && li.quantity, li && li.unitRate, li && li.costRate, li && li.marginPercent, li && li.finalRate]);
+    return crypto.createHash('sha1').update(String((p && p.tableHTML) || '') + '\n' + JSON.stringify(lines)).digest('hex').slice(0, 16);
+}
 
 const {
     ENTITY_QUOTATION,
@@ -32,7 +52,7 @@ const SUMMARY_NESTED_PATHS = [
     'adminStatus', 'adminNote', 'itemSummary', 'isNewCompany', 'regretSentAt',
     // The desk seeds a reopened quote from the margins chosen last time, and shows reopened
     // quotes to people who may only edit (not allocate).
-    'adminMargins', 'adminReopenedAt', 'adminReopenedBy',
+    'adminMargins', 'adminReopenedAt', 'adminReopenedBy', 'allocatedBy', 'allocatedTableFp',
     'preparedBy', 'sentAt', 'registerMeta',
     // Reply-sweep ("Check all replies"): the transporter enquiry threads + the customer
     // thread id + the transporter-reply flag, so awaiting quotes are found from the list
@@ -301,6 +321,7 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
     // (utils/permissions.js); this refuses with a plain reason when none of `keys` is held.
     function refuseWithout(req, res, keys, doing) {
         if (perms.allowed(req, ...keys)) return false;
+        if (req.permissionsUnknown) { res.status(503).json({ error: 'Could not check your permissions right now. Try again shortly.' }); return true; }
         res.status(403).json({ error: 'You are not allowed to ' + doing + '. Ask someone who manages people to tick it for you.', code: 'no-permission', permission: keys[0] });
         return true;
     }
@@ -355,7 +376,11 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
                 const existing = await ddbDocClient.send(new GetCommand({ TableName: ddbTableName, Key: { id: String(quotation.id) } }));
                 stored = (existing && existing.Item && existing.Item.payload) || null;
                 storedItemRev = existing && existing.Item ? existing.Item._rev : null;
-            } catch (e) { /* first save, or a read blip — fall through and save what we have */ }
+            } catch (e) {
+                // A read that FAILED is not "a new quote": saving the browser's copy as if it were
+                // would skip every guard below. Say so instead.
+                return res.status(503).json({ error: 'Could not read the stored quote just now. Nothing was saved — try again.' });
+            }
 
             // Guard 1 — accidental item wipes: if the incoming payload has NO line items and NO
             // tableHTML (e.g. a bare list-summary object saved by mistake) but the STORED quote has
@@ -375,13 +400,23 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
             // pressed Save/Approve/Send or ran the reply sweep, taking the wording with it. The same
             // overwrite un-deleted soft-deleted quotes and dropped freight enquiry records.
             // Always take the stored values; ignore whatever the client sent.
-            const SERVER_OWNED = ['revisionRequests', 'extraNotes', 'deleted', 'deletedAt', 'freightEnquiries', 'transporterReplyIn', 'supplierEnquiries', 'enquirySentBodies', 'priceCheck', 'adminStatus', 'adminMargins', 'adminNote', 'adminNoteBy', 'adminNoteAt', 'isNewCompany', 'regretSentAt', 'deletedNotes', 'adminReopenedAt', 'adminReopenedBy', 'allocatedBy', 'allocatedAt'];
+            const SERVER_OWNED = ['revisionRequests', 'extraNotes', 'deleted', 'deletedAt', 'freightEnquiries', 'transporterReplyIn', 'supplierEnquiries', 'enquirySentBodies', 'priceCheck', 'adminStatus', 'adminMargins', 'adminNote', 'adminNoteBy', 'adminNoteAt', 'isNewCompany', 'regretSentAt', 'deletedNotes', 'adminReopenedAt', 'adminReopenedBy', 'allocatedBy', 'allocatedAt', 'allocatedTableFp', 'regrettedBy', 'deletedBy'];
             if (stored) {
                 SERVER_OWNED.forEach(function (field) {
                     if (Object.prototype.hasOwnProperty.call(stored, field)) quotation[field] = stored[field];
                     else delete quotation[field];
                 });
+            } else {
+                // A brand-new quote starts on the Margins box with nothing the server would stamp:
+                // no admin note, no "allocated by", no asks or notes signed with someone's name.
+                ['adminMargins', 'adminNoteBy', 'adminNoteAt', 'regretSentAt', 'deletedNotes', 'adminReopenedAt', 'adminReopenedBy',
+                    'allocatedBy', 'allocatedAt', 'allocatedTableFp', 'regrettedBy', 'deletedBy', 'deleted', 'deletedAt',
+                    'revisionRequests', 'extraNotes'].forEach(function (field) { delete quotation[field]; });
+                quotation.adminStatus = 'awaiting';
+                quotation.adminNote = '';
             }
+            // The desk's in-browser working copy of the margins must never be stored.
+            delete quotation._adminMarginsDraft; delete quotation._deskLoading; delete quotation._deskLoaded;
 
             // Guard 3 — "sent" is ONE-WAY. A quote the customer has received can never go back to
             // looking unsent. `sent` cannot join SERVER_OWNED above, because the send records itself
@@ -742,10 +777,31 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
         if (payload.deleted) return new Stop(409, 'This quote was deleted.');
         if (payload.sent) return new Stop(409, 'This quote was already sent to the customer — change its margins in the quote itself.');
         if (payload.adminStatus === 'regretted') return new Stop(409, 'This quote was regretted.');
-        const reopened = payload.adminStatus === 'awaiting' && !!payload.adminReopenedAt;
-        const keys = payload.adminStatus === 'awaiting' ? (reopened ? ['allocateMargins', 'editMargins'] : ['allocateMargins']) : ['editMargins'];
+        // Only a quote waiting in the box. One already allocated must be reopened first (Edit
+        // margins), which is where its safety checks live — a stale desk tab gets told, not obeyed.
+        if (payload.adminStatus !== 'awaiting') return new Stop(409, 'Margins for this quote were already set. Reload — to change them, use Edit margins on the quote.');
+        const reopened = !!payload.adminReopenedAt;
+        if (reopened) {
+            const r = reopenRefusal(payload, true);
+            if (r) return r;
+        }
+        const keys = reopened ? ['allocateMargins', 'editMargins'] : ['allocateMargins'];
         if (perms.allowed(req, ...keys)) return null;
-        return new Stop(403, keys.length > 1 || keys[0] === 'editMargins' ? 'You are not allowed to edit margins.' : 'You are not allowed to allocate margins.', { code: 'no-permission', permission: keys[0] });
+        if (req.permissionsUnknown) return new Stop(503, 'Could not check your permissions right now. Try again shortly.');
+        return new Stop(403, reopened ? 'You are not allowed to edit margins.' : 'You are not allowed to allocate margins.', { code: 'no-permission', permission: keys[keys.length - 1] });
+    }
+    // Why an allocated quote can't be reopened (or, once reopened, re-priced) — or null.
+    function reopenRefusal(payload, alreadyOpen) {
+        if (payload.deleted) return new Stop(409, 'This quote was deleted.');
+        if (payload.sent) return new Stop(409, 'This quote was already sent to the customer — change its margins in the quote itself.');
+        if (!alreadyOpen && payload.adminStatus !== 'ready') return new Stop(409, payload.adminStatus === 'awaiting' ? 'This quote is already in the Margins box.' : 'This quote has not been through the Margins box.');
+        if (payload.freightDistributedIntoMargin || /freight-row/.test(String(payload.tableHTML || ''))) {
+            return new Stop(409, 'This quote has freight added — change its margins in the quote itself, or the freight line would be lost.');
+        }
+        if (!payload.allocatedTableFp || payload.allocatedTableFp !== deskTableFingerprint(payload)) {
+            return new Stop(409, 'This quote has been worked on since its margins were set — change its margins in the quote itself.');
+        }
+        return null;
     }
     // The desk's "From the admin" note. Changing it needs "Add notes"; emptying one that had words
     // needs "Delete notes" (the old words are kept in deletedNotes). Left out of the request = left alone.
@@ -754,12 +810,21 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
         const old = String(payload.adminNote || '');
         const next = String(body.adminNote == null ? '' : body.adminNote);
         if (next === old) return;
+        // The note the desk was drawn from. If a colleague changed or removed it since, sending
+        // this box would undo their change — stop and say so.
+        if (Object.prototype.hasOwnProperty.call(body, 'expectedAdminNote') && String(body.expectedAdminNote || '') !== old) {
+            throw new Stop(409, 'The admin note was changed by someone else since you opened this. Reload and try again.');
+        }
+        if (req.permissionsUnknown) throw new Stop(503, 'Could not check your permissions right now. Try again shortly.');
         const clearing = !next.replace(/<[^>]*>|&nbsp;/g, '').trim() && !!old.replace(/<[^>]*>|&nbsp;/g, '').trim();
         if (clearing) {
             if (!perms.allowed(req, 'deleteNotes')) throw new Stop(403, 'You are not allowed to delete notes.', { code: 'no-permission', permission: 'deleteNotes' });
-            (payload.deletedNotes = Array.isArray(payload.deletedNotes) ? payload.deletedNotes : []).push({ kind: 'admin', text: old, addedBy: payload.adminNoteBy || '', deletedBy: perms.stampName(req), deletedAt: now });
+            pushDeletedNote(payload, { kind: 'admin', text: old, addedBy: payload.adminNoteBy || '', deletedBy: perms.stampName(req), deletedAt: now });
         } else if (!perms.allowed(req, 'addNotes')) {
             throw new Stop(403, 'You are not allowed to add notes.', { code: 'no-permission', permission: 'addNotes' });
+        } else if (old.replace(/<[^>]*>|&nbsp;/g, '').trim()) {
+            // Words written over are kept too, not only words deleted.
+            pushDeletedNote(payload, { kind: 'admin-edit', text: old, addedBy: payload.adminNoteBy || '', deletedBy: perms.stampName(req), deletedAt: now });
         }
         payload.adminNote = next;
         payload.adminNoteBy = perms.stampName(req);
@@ -793,10 +858,12 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
                 payload.adminStatus  = 'ready';
                 payload.allocatedBy  = perms.stampName(req);
                 payload.allocatedAt  = now;
-                // Re-priced after a reopen: the old approval no longer covers these prices.
-                if (wasReopened) payload.saved = false;
+                payload.allocatedTableFp = deskTableFingerprint(payload);
+                // Re-priced after a reopen: any earlier approval no longer covers these prices.
+                if (wasReopened) { payload.saved = false; payload.everApproved = false; }
                 delete payload.adminReopenedAt;
                 delete payload.adminReopenedBy;
+                delete payload._adminMarginsDraft;
             });
             if (!saved) return res.status(404).json({ error: 'Quotation not found' });
             res.json({ success: true, quotation: saved });
@@ -816,12 +883,9 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
         try {
             const now = new Date().toISOString();
             const saved = await mutateStoredQuotation(req.params.id, function (payload) {
-                if (payload.deleted) throw new Stop(409, 'This quote was deleted.');
-                if (payload.sent) throw new Stop(409, 'This quote was already sent to the customer — change its margins in the quote itself.');
-                if (payload.adminStatus !== 'ready') throw new Stop(409, payload.adminStatus === 'awaiting' ? 'This quote is already in the Margins box.' : 'This quote has not been through the Margins box.');
-                if (payload.freightDistributedIntoMargin || /freight-row/.test(String(payload.tableHTML || ''))) {
-                    throw new Stop(409, 'This quote has freight added — change its margins in the quote itself, or the freight line would be lost.');
-                }
+                const r = reopenRefusal(payload, false);
+                if (r) throw r;
+                delete payload._adminMarginsDraft;     // the box starts from the margins chosen last time
                 payload.adminStatus = 'awaiting';
                 payload.adminReopenedAt = now;
                 payload.adminReopenedBy = perms.stampName(req);
@@ -843,7 +907,23 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
         try {
             const { undo, emailSent } = req.body || {};
             const now = new Date().toISOString();
+            if (req.body && req.body.check) {
+                // Asked BEFORE the regret email goes out, so a refusal can't come after the customer
+                // already has it. Changes nothing.
+                const stored = await loadStoredQuotation(req.params.id);
+                if (!stored) return res.status(404).json({ error: 'Quotation not found' });
+                const p = stored.payload;
+                if (p.deleted || p.sent || p.adminStatus !== 'awaiting') return res.status(409).json({ error: 'This quote is no longer waiting in the Margins box. Reload.' });
+                return res.json({ success: true, ok: true });
+            }
             const saved = await mutateStoredQuotation(req.params.id, function (payload) {
+                if (payload.deleted) throw new Stop(409, 'This quote was deleted.');
+                if (payload.sent) throw new Stop(409, 'This quote was already sent to the customer.');
+                // Regret only a quote waiting in the box; undo only a regretted one. Otherwise an
+                // "undo" on an allocated quote would put it back in the box without Edit margins.
+                if (undo ? payload.adminStatus !== 'regretted' : payload.adminStatus !== 'awaiting') {
+                    throw new Stop(409, undo ? 'This quote is not regretted.' : 'This quote is no longer waiting in the Margins box. Reload.');
+                }
                 if (undo) {
                     payload.adminStatus = 'awaiting';
                     delete payload.regretSentAt;
@@ -856,6 +936,7 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
             if (!saved) return res.status(404).json({ error: 'Quotation not found' });
             res.json({ success: true, quotation: saved });
         } catch (error) {
+            if (error instanceof Stop) return res.status(error.status).json(error.body);
             console.error('Error updating regret status:', error);
             res.status(500).json({ error: 'Failed to update regret status', details: error.message });
         }
@@ -979,7 +1060,7 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
                 removed = list.find((n) => n && n.id === noteId) || null;
                 p.extraNotes = list.filter((n) => !(n && n.id === noteId));   // always an array, even []
                 if (removed) {
-                    (p.deletedNotes = Array.isArray(p.deletedNotes) ? p.deletedNotes : []).push({ kind: 'extra', id: noteId, text: removed.text, addedBy: removed.addedBy || '', addedAt: removed.addedAt || '', deletedBy: perms.stampName(req), deletedAt: now });
+                    pushDeletedNote(p, { kind: 'extra', id: noteId, text: removed.text, addedBy: removed.addedBy || '', addedAt: removed.addedAt || '', deletedBy: perms.stampName(req), deletedAt: now });
                 }
             });
             if (!saved) return res.status(404).json({ error: 'Quotation not found' });
@@ -1002,7 +1083,7 @@ module.exports = function createQuotationsRouter({ ddbDocClient, ddbTableName, s
                 const old = String(p.adminNote || '');
                 if (expected !== null && old !== expected) throw new Stop(409, 'This note was changed since you opened it. Reload and try again.');
                 if (old.trim()) {
-                    (p.deletedNotes = Array.isArray(p.deletedNotes) ? p.deletedNotes : []).push({ kind: 'admin', text: old, addedBy: p.adminNoteBy || '', deletedBy: perms.stampName(req), deletedAt: now });
+                    pushDeletedNote(p, { kind: 'admin', text: old, addedBy: p.adminNoteBy || '', deletedBy: perms.stampName(req), deletedAt: now });
                 }
                 p.adminNote = '';   // set to '', never removed, so every copy of the page drops it
                 p.adminNoteBy = perms.stampName(req);

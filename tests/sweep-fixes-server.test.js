@@ -345,11 +345,16 @@ describe('POST /save-quotation — the six server-owned fields are never taken f
         expect(store['new-1'].payload.freightEnquiries).toEqual([{ email: 'a@b.com', threadId: 't-1' }]);
     });
 
-    test('a failed read is best-effort — the save still goes through', async () => {
+    // Was "best-effort — the save still goes through". But a failed read skipped every guard
+    // above, so a stale tab's copy could wipe revision asks, notes and the Margins box's fields
+    // (16 Oct review). A failure now looks like one: nothing is written, and the person is told.
+    test('a failed read refuses the save — nothing is written, and it says so', async () => {
         const store = saveSeed();
+        const before = JSON.stringify(store.q1);
         const res = await save(makeApp(store, { failGet: true }), stalePayload({ checkedBy: 'PAVI' }));
-        expect(res.status).toBe(200);
-        expect(store.q1.payload.checkedBy).toBe('PAVI');
+        expect(res.status).toBe(503);
+        expect(res.body.error).toMatch(/Nothing was saved/);
+        expect(JSON.stringify(store.q1)).toBe(before);
     });
 
     test('lineItems / tableHTML / headerHTML still survive the empty-payload guard', async () => {

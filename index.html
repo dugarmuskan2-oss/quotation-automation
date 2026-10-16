@@ -914,6 +914,9 @@
             }
             delete q._pendingRevisionSnapshot;   // legacy in-session field; never persist it
             delete q._detailsUpdatedAt;          // in-session freshness marker; never persist it
+            // The Margins box's working copies — in this tab only, never saved into the quote.
+            delete q._adminMarginsDraft; delete q._deskLoading; delete q._deskLoaded;
+            delete q._mdkNoteEdited; delete q._mdkNoteFrom;
             return q;
         }
 
@@ -6034,7 +6037,7 @@
                 // Admin margin-allocation states + note chip
                 const isRegretted = quotation.adminStatus === 'regretted';
                 const adminStateBadgeHTML = isRegretted
-                    ? `<span class="q-pill q-regretted">Regretted${quotation.regretSentAt ? ' · reply sent' : ''}</span>${can('allocateMargins') ? ` <a href="#" class="gmail-link" style="font-size:12px;" onclick="event.preventDefault(); event.stopPropagation(); mdkUndoRegret(${JSON.stringify(String(quotation.id))});">Undo</a>` : ''}`
+                    ? `<span class="q-pill q-regretted">Regretted${quotation.regretSentAt ? ' · reply sent' : ''}</span>${can('allocateMargins') ? ` <a href="#" class="gmail-link" style="font-size:12px;" data-qid="${escapeHtml(String(quotation.id))}" onclick="event.preventDefault(); event.stopPropagation(); mdkUndoRegret(this.getAttribute('data-qid'));">Undo</a>` : ''}`
                     : (quotation.adminStatus === 'awaiting' && !quotation.sent ? '<span class="q-pill q-awaiting">Awaiting margin</span>' : '');
                 const adminNoteChipHTML = (!isRegretted && String(quotation.adminNote || '').trim())
                     ? '<span class="admin-note-badge">📝 Admin note</span>'
@@ -6182,7 +6185,10 @@
         // this form, a fresh copy from the server is always the better one, and refreshing them
         // cannot throw away anything the user has typed here.
         const SERVER_OWNED_LIST_FIELDS = ['revisionRequests', 'extraNotes', 'freightEnquiries',
-            'supplierEnquiries', 'transporterReplyIn', 'custReplyPending'];
+            'supplierEnquiries', 'transporterReplyIn', 'custReplyPending',
+            // The Margins box's fields, written only by its own routes — so a card here can't keep
+            // offering "Edit margins" or an old note after a colleague changed them.
+            'adminStatus', 'adminNote', 'adminMargins', 'adminReopenedAt', 'adminReopenedBy', 'allocatedBy', 'allocatedTableFp'];
 
         function approvalFilterKey() {
             if (approvalEnquiryFilter) return 'enquiry';
@@ -6701,6 +6707,7 @@
                     // had already dealt with. These are never edited in the form, so copying
                     // them over cannot discard the user's unsaved work.
                     SERVER_OWNED_LIST_FIELDS.forEach(function(k) {
+                        if (k === 'adminNote' && existing._mdkNoteEdited) return;   // being typed on the desk
                         if (Object.prototype.hasOwnProperty.call(f, k)) existing[k] = f[k];
                     });
                 });
@@ -6939,7 +6946,9 @@
         function adminStripActionsHTML(q, hasNote) {
             const qid = escapeHtml(String(q.id));
             const freight = !!q.freightDistributedIntoMargin || /freight-row/.test(String(q.tableHTML || ''));
-            const reopen = (can('editMargins') && q.adminStatus === 'ready' && !q.sent && !freight)
+            // Only while nobody has worked on the quote since its margins were set (the server
+            // checks the table is still the one the box built); after that, change margins in the quote.
+            const reopen = (can('editMargins') && q.adminStatus === 'ready' && !q.sent && !freight && !q.everApproved && !!q.allocatedTableFp)
                 ? '<button type="button" class="rev-ask-btn" data-qid="' + qid + '" onclick="event.stopPropagation(); reopenMargins(this)">✏️ Edit margins</button>' : '';
             const clear = (hasNote && can('deleteNotes'))
                 ? '<button type="button" class="rev-ask-btn" data-qid="' + qid + '" onclick="event.stopPropagation(); clearAdminNote(this)" style="color:#A32D2D;">🗑 Remove note</button>' : '';
@@ -6950,7 +6959,9 @@
             const id = btn.getAttribute('data-qid');
             const q = approvedQuotations.find(function(x) { return idsMatch(x.id, id); });
             if (!q || adminStripBusy[id]) return;
-            if (!confirm('Put ' + ((q.companyName || 'this quote') + ' ' + (q.quoteNumber || '')).trim() + ' back in the Margins box to change its margins?\n\nIt will need approving again after.')) return;
+            if (typeof window._flushApprovalEdits === 'function') window._flushApprovalEdits(q.id);
+            if (q.hasUnsavedEdits) { alert('This quote has changes that are not saved. Save them first — or change its margins in the quote itself.'); return; }
+            if (!confirm('Put ' + ((q.companyName || 'this quote') + ' ' + (q.quoteNumber || '')).trim() + ' back in the Margins box to change its margins?\n\nIt will need approving after.')) return;
             adminStripBusy[id] = true; btn.disabled = true;
             try {
                 const response = await fetch(`${API_BASE_URL}/quotations/${encodeURIComponent(q.id)}/reopen-margins`, {
@@ -6958,7 +6969,10 @@
                 });
                 const result = await safeJsonParse(response);
                 if (!response.ok || !result.success) throw new Error(refusedMessage(result, result.error || ('request failed (' + response.status + ')')));
-                Object.assign(q, result.quotation);
+                // Only the box's fields — never the whole stored quote over what is on screen.
+                ['adminStatus', 'adminReopenedAt', 'adminReopenedBy', 'adminMargins', 'adminNote', 'updatedAt'].forEach(function(k) {
+                    if (Object.prototype.hasOwnProperty.call(result.quotation, k)) q[k] = result.quotation[k];
+                });
                 delete q._adminMarginsDraft;          // start from the margins chosen last time
                 syncApprovedQuotationsGlobal();
                 renderMarginDesk();
@@ -7460,7 +7474,13 @@
             fetch(`${API_BASE_URL}/quotations/${encodeURIComponent(q.id)}`)
                 .then(function(r) { return r.json(); })
                 .then(function(result) {
-                    if (result && result.quotation) Object.assign(q, result.quotation);
+                    if (result && result.quotation) {
+                        // Keep this tab's working copies: the margins being set, and a note being typed.
+                        const draft = q._adminMarginsDraft, typed = q._mdkNoteEdited ? q.adminNote : null;
+                        Object.assign(q, result.quotation);
+                        if (draft) q._adminMarginsDraft = draft; else delete q._adminMarginsDraft;
+                        if (typed !== null) q.adminNote = typed;
+                    }
                     q._deskLoaded = true;
                     // Don't re-render (which recreates inputs, dropping focus/typing) while
                     // someone is editing the desk — the loaded email shows on the next render.
@@ -7531,6 +7551,9 @@
             // Note for staff
             // Writing the note needs "Add notes"; without it the note is shown but can't be changed.
             const noteEditable = can('addNotes');
+            // The note this box was drawn from — sent back with an edit, so a colleague's change
+            // made meanwhile is never silently undone.
+            if (!q._mdkNoteEdited) q._mdkNoteFrom = String(q.adminNote || '');
             h += '<div class="mdk-note-lbl">📝 Notes for staff <span style="color:#9b988e;">(optional — shown on the quote card and the printed enquiry; you can paste a table)</span>'
                 + (!noteEditable ? ' <span style="color:#A32D2D;">— you can\'t add notes</span>' : '') + '</div>'
                 + '<div class="mdk-note" id="mdk-note-' + idAttr + '" contenteditable="' + (noteEditable ? 'true' : 'false') + '" data-ph="' + (noteEditable ? 'e.g. Quote the 6&quot; ERW at Jindal list less 5%.' : '') + '"'
@@ -7611,7 +7634,7 @@
         function mdkSetMode(id, mode) { const q = mdkQuote(id); if (!q) return; adminMarginsOf(q).seamless.mode = mode; renderMarginDesk(); }
         function mdkToggleInclude(id, key, on) { const q = mdkQuote(id); if (!q) return; const m = adminMarginsOf(q); if (m[key]) m[key].include = !!on; renderMarginDesk(); }
         function mdkSetPct(id, key, value) { const q = mdkQuote(id); if (!q) return; adminMarginsOf(q)[key].pct = String(value || '').trim(); }
-        function mdkNoteChanged(id, value) { const q = mdkQuote(id); if (q) q.adminNote = value; }
+        function mdkNoteChanged(id, value) { const q = mdkQuote(id); if (q) { q.adminNote = value; q._mdkNoteEdited = true; } }
         // Paste into the notes box: keep a real (cleaned) table when the clipboard has HTML;
         // otherwise fall through to the normal plain-text paste.
         function mdkNotePaste(e, id) {
@@ -7650,7 +7673,7 @@
             const q = mdkQuote(id);
             if (!q || mdkSending[id]) return;          // a second click while the first is saving does nothing
             const noteEl = document.getElementById('mdk-note-' + id);
-            if (noteEl && can('addNotes')) q.adminNote = noteEl.innerHTML;
+            if (noteEl && can('addNotes') && q._mdkNoteEdited) q.adminNote = noteEl.innerHTML;
             const draft = adminMarginsOf(q);
             const btn = document.getElementById('mdk-apply-' + id);
             mdkSending[id] = true;
@@ -7661,8 +7684,9 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         adminMargins: draft,
-                        // Left out entirely without "Add notes", so the stored note is left alone.
-                        ...(can('addNotes') ? { adminNote: q.adminNote || '' } : {}),
+                        // Only a note typed here is sent (with the note it was typed over); otherwise
+                        // the stored note is left exactly as it is.
+                        ...(can('addNotes') && q._mdkNoteEdited ? { adminNote: q.adminNote || '', expectedAdminNote: q._mdkNoteFrom || '' } : {}),
                         isNewCompany: !!q.isNewCompany,
                         assignedTo: q.assignedTo || ''
                     })
@@ -7670,7 +7694,7 @@
                 const result = await safeJsonParse(response);
                 if (!response.ok) throw new Error(result.error || 'Failed to apply margins');
                 Object.assign(q, result.quotation);
-                delete q._adminMarginsDraft;
+                delete q._adminMarginsDraft; delete q._mdkNoteEdited; delete q._mdkNoteFrom;
                 displayAllApprovedQuotations();
             } catch (error) {
                 console.error('Send to approval failed:', error);
@@ -7773,6 +7797,14 @@
             // Checked BEFORE the email window: a refusal after the customer is emailed would leave
             // the quote looking unregretted, one click from a second regret email.
             if (!can('allocateMargins')) { alert('You are not allowed to regret quotes from the Margins box.'); return; }
+            // Ask the server too, before the email window: what this page knows can be out of date.
+            try {
+                const pre = await fetch(`${API_BASE_URL}/quotations/${encodeURIComponent(q.id)}/regret`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ check: true })
+                });
+                const preResult = await safeJsonParse(pre);
+                if (!pre.ok) { alert(refusedMessage(preResult, preResult.error || 'Could not check this quote. Try again.')); return; }
+            } catch (e) { alert('Could not reach the server. Nothing was sent.'); return; }
             const company = q.companyName || q.projectName || 'this customer';
             if (q.gmailMessageId) {
                 // Same review-and-edit window a quotation gets. This used to be a browser confirm
@@ -12250,7 +12282,7 @@
     <script src="enquiry-preparer.js?v=20260529-1"></script>
     <!-- The same kg/m lookup the server uses, so the Freight panel can fill blanks on quotes
          generated before the backfill existed. One copy of the matching rules, not two. -->
-    <script src="utils/pipeWeights.js?v=20261016-1"></script>
+    <script src="utils/pipeWeights.js?v=20261016-2"></script>
     <!-- The same description formatter Gmail-ingested quotes use server-side, so the Freight
          tab's own enquiry table can show a transporter "8" NB X 6.35mm thk -- ERW" instead of
          the AI's raw code "8X6.35". One copy of the formatting rules, not a third one. -->

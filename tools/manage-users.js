@@ -6,10 +6,12 @@
  *   node tools/manage-users.js list
  *   node tools/manage-users.js add "Muskan" muskan@dscpipes.com
  *   node tools/manage-users.js remove muskan@dscpipes.com
- *   node tools/manage-users.js grant muskan@dscpipes.com all          (every tick — Admin)
- *   node tools/manage-users.js grant muskan@dscpipes.com addNotes,deleteNotes
+ *   node tools/manage-users.js grant  muskan@dscpipes.com all          (adds every tick — Admin)
+ *   node tools/manage-users.js grant  muskan@dscpipes.com addNotes,deleteNotes   (adds these)
+ *   node tools/manage-users.js revoke muskan@dscpipes.com deleteNotes            (takes these away)
+ *   node tools/manage-users.js set    muskan@dscpipes.com addRevisions           (exactly these)
  *
- * "grant" is the way back in if the ticks ever leave nobody able to manage people.
+ * "grant" only ever ADDS — it is the way back in if the ticks ever leave nobody able to manage people.
  *
  * The password is TYPED IN, never passed as an argument: an argument is visible to every other
  * process on the machine and lands in the shell's history file. Only the scrypt hash is stored,
@@ -145,20 +147,24 @@ async function main() {
         return;
     }
 
-    if (command === 'grant') {
+    if (command === 'grant' || command === 'revoke' || command === 'set') {
         const email = String(arg1 || '').trim().toLowerCase();
         const want = String(arg2 || '').trim();
         const i = users.findIndex((u) => perms.sameEmail(u.email, email));
         if (i < 0 || !want) {
-            console.error('Usage: node tools/manage-users.js grant email@dscpipes.com all|key,key');
+            console.error('Usage: node tools/manage-users.js grant|revoke|set email@dscpipes.com all|key,key');
             console.error('Keys: ' + perms.ALL.join(', '));
             process.exit(1);
         }
         const list = want === 'all' ? perms.ALL : want.split(',').map((k) => k.trim());
         const unknown = list.filter((k) => !perms.ALL.includes(k));
         if (unknown.length) { console.error('Not a permission: ' + unknown.join(', ') + '\nKeys: ' + perms.ALL.join(', ')); process.exit(1); }
+        const had = perms.permissionsOf(users[i]);
+        const result = command === 'grant' ? had.concat(list)
+            : command === 'revoke' ? had.filter((k) => !list.includes(k)) : list;
         const next = users.slice();
-        next[i] = withPermissions(users[i], list);
+        next[i] = withPermissions(users[i], result);
+        console.log('Before: ' + (had.join(', ') || '(nothing)'));
         if (perms.leavesNoManager(users, next)) { console.error('That would leave nobody able to manage people. Nothing was changed.'); process.exit(1); }
         await saveUsers(next);
         console.log(label(next[i]) + ' may now: ' + perms.permissionsOf(next[i]).join(', '));

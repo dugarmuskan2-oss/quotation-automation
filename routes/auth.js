@@ -162,6 +162,15 @@ function createAuthGate({ storage }) {
                 // changed tick applies at once and nobody is signed out. A list we could not read
                 // gives nothing at all rather than "everything".
                 req.user.permissions = ok ? perms.effectivePermissions(users, req.user.email) : [];
+                if (!ok) req.permissionsUnknown = true;   // routes answer "try again", not "not allowed"
+                // A Google sign-in for someone taken off the list: their cookie has no password in
+                // it, so removing them did not change the signing key. Only their domain can still
+                // let them in.
+                if (ok && session.kind === 'google' && users.length
+                    && !users.some((u) => perms.sameEmail(u && u.email, session.email))
+                    && !googleAuth.allowedByDomain(session.email)) {
+                    return refuse(req, res);
+                }
                 return next();
             }
             return refuse(req, res);
@@ -227,6 +236,7 @@ function createAuthRouter({ storage }) {
     });
 
     router.post('/password-reset/complete', express.json(), async (req, res) => {
+        forgetUsers();                       // a fresh read: this save rewrites the whole list
         const { users, ok } = await loadUsers(storage);
         if (!ok) return res.status(503).json({ error: 'Cannot check right now. Try again shortly.' });
         const person = reset.readResetToken(users, req.body && req.body.token, sessionSecret(users));
@@ -357,9 +367,21 @@ function createPeopleRouter({ storage }) {
 
     // Only someone with "Manage people" changes the list (anyone signed in while nobody has it
     // yet — see utils/permissions.js). Checked on the server: the page hiding a button is not a lock.
+    // The gate's ticks, so a request with nobody signed in (the Apps Script's ingest secret)
+    // is never "a manager" — not even while the lists are switched off.
     function refuseUnlessManager(req, res, users) {
-        if (req.authOpen || roles.canManagePeople(users, req.user && req.user.email)) return false;
+        if (perms.allowed(req, 'managePeople')) return false;
+        if (req.permissionsUnknown) { res.status(503).json({ error: 'Could not check your permissions right now. Try again shortly.' }); return true; }
         res.status(403).json({ error: 'Only someone allowed to manage people can change this.' });
+        return true;
+    }
+    // Switching the lists on (the first "Manage people" tick) must include the person doing it,
+    // or they would lock themselves out of this page the moment they saved.
+    function refuseSwitchOnWithoutSelf(req, res, before, after) {
+        if (perms.managerCount(before) > 0 || perms.managerCount(after) === 0) return false;
+        const me = after.find((u) => perms.sameEmail(u && u.email, req.user && req.user.email));
+        if (me && perms.permissionsOf(me).includes('managePeople')) return false;
+        res.status(400).json({ error: 'Tick "Manage people" for yourself first — the first person who can manage people has to be you.' });
         return true;
     }
     function refuseIfNoAdminLeft(res, before, after) {
@@ -447,6 +469,7 @@ function createPeopleRouter({ storage }) {
         const next = users.filter((u) => String(u.email || '').toLowerCase() !== email);
         next.push(record);
         if (refuseIfNoAdminLeft(res, users, next)) return;
+        if (refuseSwitchOnWithoutSelf(req, res, users, next)) return;
         if (!(await savePeople(res, next))) return;
 
         // Adding a password-based person changes every hash mixed into the signing key, which
@@ -487,7 +510,7 @@ function createPeopleRouter({ storage }) {
         const email = String((req.body && req.body.email) || '').trim().toLowerCase();
         const { users, ok } = await loadFresh();
         if (!ok) return res.status(503).json({ error: 'Cannot read the people list right now. Try again shortly.' });
-        const self = roles.sameEmail(req.user && req.user.email, email);
+        const self = !!(req.user && req.user.email) && roles.sameEmail(req.user.email, email);
         if (!self && refuseUnlessManager(req, res, users)) return;
         const person = users.find((u) => roles.sameEmail(u && u.email, email));
         if (!person) return res.status(404).json({ error: 'No one there with that email.' });
@@ -523,6 +546,7 @@ function createPeopleRouter({ storage }) {
         if (!users.some((u) => roles.sameEmail(u && u.email, email))) return res.status(404).json({ error: 'No one there with that email.' });
         const next = users.map((u) => (roles.sameEmail(u && u.email, email) ? withPermissions(u, list) : u));
         if (refuseIfNoAdminLeft(res, users, next)) return;
+        if (refuseSwitchOnWithoutSelf(req, res, users, next)) return;
         if (!(await savePeople(res, next))) return;
         const saved = next.find((u) => roles.sameEmail(u.email, email));
         res.json({ ok: true, permissions: perms.permissionsOf(saved) });
