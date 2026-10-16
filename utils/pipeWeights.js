@@ -172,14 +172,14 @@ function buildWeightMap(rows) {
 // Nominal bore in mm → inch size, for a size written "25 NB" / "25NB" (the lists are keyed by inch).
 // Only a 2–3 digit number directly before NB, with no inch mark, is read as mm: "2" NB" is 2 inch,
 // "20NB" is 3/4" and "20" NB" is 20 inch.
-const NB_MM_TO_INCH = {
+const PW_NB_MM_TO_INCH = {
     15: '1/2', 20: '3/4', 25: '1', 32: '11/4', 40: '11/2', 50: '2', 65: '21/2', 80: '3', 90: '31/2',
     100: '4', 125: '5', 150: '6', 200: '8', 250: '10', 300: '12', 350: '14', 400: '16', 450: '18',
     500: '20', 600: '24',
 };
 function inchFromNbMm(raw, size) {
     const m = /(^|[^\d\/-])(\d{2,3})\s*(?:MM\s*)?NB/i.exec(String(raw));
-    return m && m[2] === String(size) && NB_MM_TO_INCH[m[2]] ? NB_MM_TO_INCH[m[2]] : null;
+    return m && m[2] === String(size) && PW_NB_MM_TO_INCH[m[2]] ? PW_NB_MM_TO_INCH[m[2]] : null;
 }
 
 function parseDescription(description) {

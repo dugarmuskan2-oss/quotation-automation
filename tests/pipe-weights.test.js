@@ -438,3 +438,20 @@ describe('a blank cell written as "NaN" is treated as blank', () => {
         expect(Object.keys(maps.erw)).toHaveLength(4);
     });
 });
+
+// utils/pipeWeights.js is ALSO loaded in the browser as a plain <script>, next to index.html's own
+// inline script. Two top-level const/let with the same name there is a SyntaxError that stops the
+// whole file loading — on 16 Oct a new NB_MM_TO_INCH here clashed with index.html's own, and
+// window.pipeWeights silently vanished. Guard every top-level name.
+describe('browser load: no top-level name clashes with index.html', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const topNames = (src) => (src.match(/^(?:const|let|class)\s+([A-Za-z_$][\w$]*)/gm) || []).map((d) => d.split(/\s+/)[1]);
+    const htmlTop = (fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8').match(/^ {8}(?:const|let|class)\s+([A-Za-z_$][\w$]*)/gm) || [])
+        .map((d) => d.trim().split(/\s+/)[1]);
+    test('every top-level const/let in utils/pipeWeights.js is unique against index.html', () => {
+        const mine = topNames(fs.readFileSync(path.join(__dirname, '..', 'utils', 'pipeWeights.js'), 'utf8'));
+        expect(mine.length).toBeGreaterThan(0);
+        expect(mine.filter((n) => htmlTop.includes(n))).toEqual([]);
+    });
+});
