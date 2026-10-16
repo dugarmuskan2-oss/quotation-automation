@@ -53,7 +53,12 @@
     .empty { font-size: 13px; color: #8a8781; padding: 8px 0; }
     .role-select { font-size: 12px; padding: 4px 6px; border: 1px solid #d8d5ce; border-radius: 5px; background: #fff; flex: none; }
     .badge.admin { background: #eeedfe; color: #3c3489; }
-    .row:has(.confirm) { flex-wrap: wrap; }
+    .row:has(.confirm), .row:has(.pw-form) { flex-wrap: wrap; }
+    .pw-btn { font-size: 12px; padding: 5px 10px; border: 1px solid #d8d5ce; border-radius: 5px; background: #fff; color: #444; cursor: pointer; flex: none; }
+    .pw-form { display: flex; gap: 6px; align-items: center; flex: 1 0 100%; justify-content: flex-end; flex-wrap: wrap; }
+    .pw-form input[type="password"] { width: 150px; padding: 6px 8px; font-size: 13px; }
+    .pw-form button { font-size: 12px; padding: 6px 10px; border-radius: 5px; cursor: pointer; border: 1px solid #d8d5ce; background: #fff; }
+    .pw-form .save { background: #3f51b5; border-color: #3f51b5; color: #fff; }
     .confirm { display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex: 1 0 100%; font-size: 12px; color: #A32D2D; }
     .confirm button { font-size: 12px; padding: 5px 9px; border-radius: 5px; cursor: pointer; border: 1px solid #d8d5ce; background: #fff; }
     .confirm .yes { border-color: #A32D2D; background: #A32D2D; color: #fff; }
@@ -178,6 +183,8 @@
         listEl.innerHTML = people.map(function (p) {
             var mine = youEmail && p.email && youEmail.toLowerCase() === p.email.toLowerCase();
             var badge = p.kind === 'google' ? 'Google' : 'Password';
+            var pw = (p.kind === 'password' && (youCanManage || mine))
+                ? '<button class="pw-btn" type="button" data-email="' + esc(p.email) + '" data-name="' + esc(p.name) + '">Set password</button>' : '';
             var right = mine ? '<span class="you-tag">you</span>'
                 : (youCanManage ? '<button class="remove-btn" type="button" data-email="' + esc(p.email) + '" data-name="' + esc(p.name) + '">Remove</button>' : '');
             return '<div class="row">'
@@ -185,6 +192,7 @@
                 + '<div class="who"><div class="name">' + esc(p.name) + '</div><div class="email">' + esc(p.email) + '</div></div>'
                 + '<span class="badge ' + (p.kind === 'google' ? 'google' : '') + '">' + badge + '</span>'
                 + roleHtml(p)
+                + pw
                 + right
                 + '</div>';
         }).join('');
@@ -222,7 +230,40 @@
         });
     }
 
+    // New password in place, under the row. Save is locked while it saves.
+    function askNewPassword(btn) {
+        var email = btn.getAttribute('data-email');
+        var row = btn.closest('.row');
+        if (row.querySelector('.pw-form')) return;
+        var box = document.createElement('div');
+        box.className = 'pw-form';
+        box.innerHTML = '<span style="font-size:12px;color:#6f6c66">New password for ' + esc(btn.getAttribute('data-name') || email) + ':</span>'
+            + '<input type="password" class="p1" placeholder="At least 8 characters" autocomplete="new-password">'
+            + '<input type="password" class="p2" placeholder="Type it again" autocomplete="new-password">'
+            + '<button type="button" class="save">Save</button><button type="button" class="cancel">Cancel</button>';
+        row.appendChild(box);
+        box.querySelector('.p1').focus();
+        box.querySelector('.cancel').onclick = function () { box.remove(); };
+        box.querySelector('.save').onclick = function () {
+            var p1 = box.querySelector('.p1').value, p2 = box.querySelector('.p2').value;
+            if (p1.length < 8) { alert('Use a password of at least 8 characters.'); return; }
+            if (p1 !== p2) { alert('Those passwords did not match.'); return; }
+            if (busy) return;
+            busy = true;
+            var save = this; save.disabled = true; save.textContent = 'Saving…';
+            post('/api/people/password', { email: email, password: p1, confirmPassword: p2 }).then(function (res) {
+                busy = false;
+                if (!res.ok) { alert((res.d && res.d.error) || 'Could not set the password.'); save.disabled = false; save.textContent = 'Save'; return; }
+                box.innerHTML = '<span style="font-size:12px;color:#2E7D32">Password changed. Everyone else will need to sign in again once.</span>';
+                setTimeout(function () { box.remove(); }, 4000);
+            });
+        };
+    }
+
     function bindRowButtons() {
+        Array.prototype.forEach.call(listEl.querySelectorAll('.pw-btn'), function (btn) {
+            btn.addEventListener('click', function () { askNewPassword(btn); });
+        });
         Array.prototype.forEach.call(listEl.querySelectorAll('.remove-btn'), function (btn) {
             btn.addEventListener('click', function () { askToRemove(btn); });
         });

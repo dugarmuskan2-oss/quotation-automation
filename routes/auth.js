@@ -12,10 +12,11 @@
 
 const express = require('express');
 const crypto = require('crypto');
-const { CONFIG_KEY_USERS } = require('../utils/constants');
+const { CONFIG_KEY_USERS, COMPANY_EMAIL } = require('../utils/constants');
 const auth = require('../utils/auth');
 const googleAuth = require('../utils/googleAuth');
 const roles = require('../utils/peopleRoles');
+const reset = require('../utils/passwordReset');
 
 // Reading the people list from cloud storage on EVERY request would add a network round trip to
 // every page and every save. Held briefly instead; a minute-old list is fine for a list that
@@ -165,8 +166,70 @@ function createAuthGate({ storage }) {
     };
 }
 
+// This site's own address, for links in emails. PUBLIC_URL wins, as for the Google callback.
+function siteBase(req) {
+    const configured = String(process.env.PUBLIC_URL || '').trim().replace(/\/+$/, '');
+    if (configured) return configured;
+    return (isHttps(req) ? 'https' : 'http') + '://' + String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+}
+
+// One reset email per address every 2 minutes, so the button can't be used to flood the office.
+const resetAskedAt = new Map();
+function resetAskedTooSoon(email) {
+    const key = String(email || '').trim().toLowerCase();
+    const last = resetAskedAt.get(key) || 0;
+    if (Date.now() - last < 2 * 60 * 1000) return true;
+    resetAskedAt.set(key, Date.now());
+    return false;
+}
+
+// Sends the link to the OFFICE mailbox (owner's rule) — never to the address typed in.
+async function emailResetLink(req, users, email) {
+    const token = reset.makeResetToken(users, email, sessionSecret(users));
+    if (!token) return;                                   // not on the list, or signs in with Google
+    const person = users.find((u) => String(u.email || '').toLowerCase() === String(email).trim().toLowerCase());
+    const link = siteBase(req) + '/reset-password.html?token=' + encodeURIComponent(token);
+    const askedAt = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+    await require('../utils/gmail').sendEmail({
+        to: COMPANY_EMAIL,
+        subject: 'Password reset link — ' + (person.name || person.email),
+        bodyHtml: reset.resetEmailHtml(person, link, askedAt),
+    });
+}
+
 function createAuthRouter({ storage }) {
     const router = express.Router();
+
+    // "Forgot password?" The answer is the same whether or not the address is on the list, so
+    // the page can't be used to find out who has an account.
+    router.post('/password-reset/request', express.json(), async (req, res) => {
+        const email = String((req.body && req.body.email) || '').trim();
+        if (!email) return res.status(400).json({ error: 'Enter your email address.' });
+        if (resetAskedTooSoon(email)) return res.status(429).json({ error: 'A link was just sent. Wait 2 minutes before asking again.' });
+        const { users, ok } = await loadUsers(storage);
+        if (!ok) return res.status(503).json({ error: 'Cannot check right now. Try again shortly.' });
+        try { await emailResetLink(req, users, email); }
+        catch (e) {
+            console.error('Password reset email failed:', e.message);
+            resetAskedAt.delete(email.toLowerCase());
+            return res.status(503).json({ error: 'The email could not be sent. Try again shortly.' });
+        }
+        res.json({ ok: true, sentTo: COMPANY_EMAIL });
+    });
+
+    router.post('/password-reset/complete', express.json(), async (req, res) => {
+        const { users, ok } = await loadUsers(storage);
+        if (!ok) return res.status(503).json({ error: 'Cannot check right now. Try again shortly.' });
+        const person = reset.readResetToken(users, req.body && req.body.token, sessionSecret(users));
+        if (!person) return res.status(400).json({ error: 'This link has expired or was already used. Ask for a new one.' });
+        const problem = reset.passwordProblem(req.body.password, req.body.confirmPassword);
+        if (problem) return res.status(400).json({ error: problem });
+        const next = reset.withNewHash(users, person.email, auth.hashPassword(String(req.body.password)));
+        try { await storage.saveText(CONFIG_KEY_USERS, JSON.stringify(next, null, 2)); }
+        catch (e) { return res.status(503).json({ error: 'Could not save. Try again shortly.' }); }
+        forgetUsers();
+        res.json({ ok: true });
+    });
 
     router.post('/login', express.json(), async (req, res) => {
         const key = String(req.headers['x-forwarded-for'] || req.ip || 'unknown').split(',')[0].trim();
@@ -378,6 +441,26 @@ function createPeopleRouter({ storage }) {
         if (refuseIfNoAdminLeft(res, users, next)) return;
         if (!(await savePeople(res, next))) return;
 
+        reissueIfPossible(req, res, next);
+        res.json({ ok: true });
+    });
+
+    // A new password for someone who signs in with one. An admin may set anyone's; anyone may set
+    // their own. Like adding or removing a person, it changes the signing key, so everyone else
+    // signs in once more; the person doing it stays signed in.
+    router.post('/people/password', express.json(), async (req, res) => {
+        const email = String((req.body && req.body.email) || '').trim().toLowerCase();
+        const { users, ok } = await loadUsers(storage);
+        if (!ok) return res.status(503).json({ error: 'Cannot read the people list right now. Try again shortly.' });
+        const self = roles.sameEmail(req.user && req.user.email, email);
+        if (!self && refuseUnlessManager(req, res, users)) return;
+        const person = users.find((u) => roles.sameEmail(u && u.email, email));
+        if (!person) return res.status(404).json({ error: 'No one there with that email.' });
+        if (!person.hash) return res.status(400).json({ error: (person.name || email) + ' signs in with Google and has no password.' });
+        const problem = reset.passwordProblem(req.body.password, req.body.confirmPassword);
+        if (problem) return res.status(400).json({ error: problem });
+        const next = reset.withNewHash(users, email, auth.hashPassword(String(req.body.password)));
+        if (!(await savePeople(res, next))) return;
         reissueIfPossible(req, res, next);
         res.json({ ok: true });
     });

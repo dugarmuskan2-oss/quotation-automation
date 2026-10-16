@@ -127,7 +127,7 @@ const PUBLIC_FILES = new Set([
     '/logo.png', '/favicon.ico', '/styles.css', '/login.html',
     '/utils/pipeWeights.js', '/gmail-ingest/descriptionFormatter.js',
     '/weight-calculator.js', '/enquiry-preparer.js', '/freight-tab-weight-editor.js',
-    '/quote-enquiry-tab.js', '/register.js', '/partner-directory.js', '/town-places.js', '/price-list.js', '/revision-popup.js',
+    '/quote-enquiry-tab.js', '/register.js', '/partner-directory.js', '/town-places.js', '/price-list.js', '/revision-popup.js', '/reset-password.html',
 ]);
 
 // Endpoints a customer's quote link genuinely needs, and the machine-to-machine ones that carry
@@ -135,6 +135,9 @@ const PUBLIC_FILES = new Set([
 // (the list of all 2,541) must NOT be reachable just because "/api/quotations/123" is.
 const PUBLIC_API_EXACT = new Set([
     '/api/login', '/api/logout', '/api/me',
+    // "Forgot password?" happens before there is a session. The request only ever emails the
+    // office; completing needs a signed link from that email.
+    '/api/password-reset/request', '/api/password-reset/complete',
     // Signing in with Google happens BEFORE there is a session, so both ends of that round trip
     // have to be reachable without one. Neither hands anything over: the first only redirects to
     // Google, and the second refuses any code that did not come from a request this app started.
