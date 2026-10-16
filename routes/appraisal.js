@@ -28,7 +28,8 @@ const STALE_MSG = 'Someone saved this since you opened it. Reload the page to se
 
 /**
  * The testing site (a Vercel preview build) shares the live site's storage, and nobody has a
- * named login there yet. So on the testing site only, the shared password gets a test manager,
+ * named login there yet (it has no sign-in at all). So on the testing site only, anyone without a
+ * named login gets a test manager,
  * and everything it saves goes to separate "preview-" files that the live site never reads.
  */
 function isTestSite() { return process.env.VERCEL_ENV === 'preview'; }
@@ -71,7 +72,7 @@ function createAppraisalRouter({ storage, loadUsers }) {
         const { users, ok } = await loadUsers(storage);
         if (!ok) throw fail(503, 'Cannot read the people list right now. Try again shortly.');
         const email = req.user && req.user.email;
-        if (!email && req.user && isTestSite()) return { users, me: TEST_MANAGER, email: TEST_MANAGER.email, isAdmin: true, testSite: true };
+        if (!email && isTestSite()) return { users, me: TEST_MANAGER, email: TEST_MANAGER.email, isAdmin: true, testSite: true };
         if (!email) throw fail(403, 'Sign in with your own name to use the appraisal. The shared password has no name on it.');
         const me = users.find((u) => roles.sameEmail(u && u.email, email));
         if (!me) throw fail(403, 'You are not on the People list. Ask an admin to add you.');
