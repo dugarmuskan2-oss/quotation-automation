@@ -275,6 +275,10 @@ function createAuthRouter({ storage }) {
 
     router.post('/logout', (req, res) => {
         clearSessionCookie(req, res);
+        // The account circle (account-badge.js) logs out by submitting a form — a real page change —
+        // so the page's own "unsaved changes?" box asks BEFORE the session ends. That request is
+        // then sent on to the sign-in page.
+        if (req.query && req.query.go === 'login') return res.redirect(303, '/login.html');
         res.json({ ok: true });
     });
 

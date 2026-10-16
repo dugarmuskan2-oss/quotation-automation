@@ -128,6 +128,9 @@ const PUBLIC_FILES = new Set([
     '/utils/pipeWeights.js', '/gmail-ingest/descriptionFormatter.js',
     '/weight-calculator.js', '/enquiry-preparer.js', '/freight-tab-weight-editor.js',
     '/quote-enquiry-tab.js', '/register.js', '/partner-directory.js', '/town-places.js', '/price-list.js', '/revision-popup.js', '/reset-password.html',
+    // On every app page, incl. index.html — which is also a customer's shared quote page, so the
+    // script must load without a session (it then shows nothing).
+    '/account-badge.js',
 ]);
 
 // Endpoints a customer's quote link genuinely needs, and the machine-to-machine ones that carry
