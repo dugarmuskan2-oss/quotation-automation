@@ -25,6 +25,7 @@ const { applyPriceListRates } = require('./utils/priceList');
 const { bookFromDoc } = require('./utils/priceListBook');
 const { ENQUIRY_READING_RULES } = require('./utils/enquiryReading');
 const { buildScheduleByWall, applyEnquiryWalls } = require('./utils/wallThickness');
+const { normalizeLineSizes } = require('./utils/sizeNormalize');
 const {
     ENTITY_QUOTATION,
     ENTITY_GMAIL_MSG_MARKER,
@@ -656,6 +657,8 @@ async function handleGenerateQuotation({ emailContent, fileContent, instructions
         // Calculate final rates and line totals if not provided
         quotationData.lineItems = quotationData.lineItems.map(item => calculateLineItem(item));
         markNonPipeItems(quotationData.lineItems);
+        const sizeFixes = normalizeLineSizes(quotationData.lineItems, enquiryText);
+        if (sizeFixes.mmToInch || sizeFixes.xxs || sizeFixes.stdXs) console.log('Sizes: ' + sizeFixes.mmToInch + ' mm → inch, ' + sizeFixes.xxs + ' XS → XXS, ' + sizeFixes.stdXs + ' STD/XS → Sch');
         const wallSchedules = await setSchedulesFromEnquiryWalls(quotationData.lineItems, askedWalls);
         if (wallSchedules) console.log('Schedule from enquiry wall: ' + wallSchedules.matched + ' set, ' + wallSchedules.unmatched + ' with no matching schedule');
 

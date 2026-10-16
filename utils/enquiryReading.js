@@ -21,11 +21,14 @@
 
 const ENQUIRY_READING_RULES = `
 LINE ITEM FORMAT — this EXTENDS the JSON format in the system instructions, which leaves two keys out. Every object in "lineItems" must have ALL of these keys: {"originalDescription": "", "identifiedPipeType": "", "quantity": "", "unit": "", "wallThicknessMm": "", "kgPerMeter": "", "unitRate": "", "marginPercent": "", "finalRate": "", "lineTotal": ""}. Never drop "unit" or "wallThicknessMm".
+SIZE IN INCHES — the size at the start of "originalDescription" is always the NOMINAL size in INCHES. Convert a nominal bore in mm ("NB 40", "40 NB", "40 mm dia" → 11/2) and an outside diameter in mm ("OD 48.3", "48 mm OD" → 11/2; "60.3" → 2) to inches. Never write a millimetre figure as the size.
+XS AND XXS — after the size comes "X", then the class. So XS is written "1/2XXS" and XXS is written "1/2XXXS" (three X's). Never write XXS as "1/2XXS".
 THE CUSTOMER — "companyName" is the company that SENT this enquiry: take it from the signature or letterhead, else from the sender's email address in the "From:" line (e.g. someone@enexioindia.com → Enexio). NEVER use the name of an end client, project, plant or site the pipes are for — a contractor often asks for several of its clients' projects in one email. Put those names in "projectName" instead. If the sender's company cannot be found, leave "companyName" empty rather than using a project name.
 EVERY FILE — every attached file is part of the enquiry. Extract the items of EVERY file and EVERY table; when an email covers several projects (often one file each), include every project's items. In a table whose columns are pipe sizes, the quantity for each size is in its total row (e.g. "INDENT QTY", "TOTAL"), not the individual drawing rows.
 PIPE TYPE — this OVERRIDES every pipe-type rule in the system instructions (including "thickness in mm → ERW" and any rule that a schedule means seamless). Decide in this order:
   1. Galvanised / GI pipe → "GI".
   2. The enquiry names one of these standards for the pipe, however written → "Seamless": API 5L Gr. B (API 5L, API5L GrB), ASTM A106 Gr. B (A 106, A-106, SA106, ASTM 106 Gr B), ASTM A53 (A 53, A-53, SA53). A standard in a heading or a note applies to every pipe under it.
+  ("Seamless" also covers its abbreviations: SMLS, S/L, SML.)
   3. The enquiry says "seamless" (with no standard above) AND gives ERW grades — Light / Medium / Heavy, A / B / C class, IS 1239 or IS 3589 → "ERW".
   4. The enquiry says "seamless" (with no standard above) and gives schedules or walls → "Seamless".
   5. Everything else → "ERW" — including "4\" Sch 40" or "114.3 x 6.02" with no standard and no word seamless.
