@@ -34,6 +34,12 @@ const STALE_MSG = 'Someone saved this since you opened it. Reload the page to se
  */
 function isTestSite() { return process.env.VERCEL_ENV === 'preview'; }
 const TEST_MANAGER = { name: 'Test manager (testing site)', email: 'test-manager@testing-site' };
+// The testing site has no People list, so it gets two pretend staff to score. Never on the live site.
+const SAMPLE_STAFF = [
+    { name: 'Sample Staff – Ravi', email: 'sample-ravi@testing-site' },
+    { name: 'Sample Staff – Priya', email: 'sample-priya@testing-site' },
+];
+function withSampleStaff(users) { return isTestSite() ? [...users, ...SAMPLE_STAFF] : users; }
 
 function key(name) { return String(process.env.CONFIG_PREFIX || '').trim() + (isTestSite() ? 'preview-' : '') + APPRAISAL_KEY_PREFIX + name; }
 const setupKey = () => key('setup.json');
@@ -69,8 +75,9 @@ function createAppraisalRouter({ storage, loadUsers }) {
 
     /** The signed-in person, their People-list record, and whether they are an admin. */
     async function whoIsAsking(req) {
-        const { users, ok } = await loadUsers(storage);
+        const { users: people, ok } = await loadUsers(storage);
         if (!ok) throw fail(503, 'Cannot read the people list right now. Try again shortly.');
+        const users = withSampleStaff(people);
         const email = req.user && req.user.email;
         if (!email && isTestSite()) return { users, me: TEST_MANAGER, email: TEST_MANAGER.email, isAdmin: true, testSite: true };
         if (!email) throw fail(403, 'Sign in with your own name to use the appraisal. The shared password has no name on it.');
