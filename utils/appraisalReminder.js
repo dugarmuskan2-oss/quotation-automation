@@ -15,6 +15,9 @@
  */
 
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+// The owner, 16 Oct 2026: no reminders for the first batch (Q2 · Jul–Sep 2026). The first quarter
+// that can ever be reminded is Q3 · Oct–Dec 2026, so the first email can come on 1 Jan 2027.
+const FIRST_REMINDED_QUARTER = { fy: 2026, q: 3 };
 const MONTHS = [['Apr', 'Jun'], ['Jul', 'Sep'], ['Oct', 'Dec'], ['Jan', 'Mar']];
 
 function yy(n) { return String(n % 100).padStart(2, '0'); }
@@ -84,11 +87,14 @@ function setUpAtMs(setup) {
     return Number.isFinite(t) ? t : null;
 }
 
-/** Is a reminder due for quarter `due`? Only once Setup is saved, and only from the quarter that
- *  had just ended when it was (the round the page asked for first) onwards. */
+/** Is a reminder due for quarter `due`? Only once Setup is saved, only from the quarter that had
+ *  just ended when it was (the round the page asked for first) onwards, and never before
+ *  FIRST_REMINDED_QUARTER. */
 function quarterIsDue(setup, isStarter, due) {
     const since = setUpAtMs(setup);
-    return !isStarter && since != null && due.endsMs >= dueQuarter(since).endsMs;
+    if (isStarter || since == null) return false;
+    if (due.endsMs < quarterEndMs(FIRST_REMINDED_QUARTER.fy, FIRST_REMINDED_QUARTER.q)) return false;
+    return due.endsMs >= dueQuarter(since).endsMs;
 }
 
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
